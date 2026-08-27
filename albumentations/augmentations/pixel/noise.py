@@ -44,6 +44,7 @@ __all__ = [
     "FilmGrain",
     "GaussNoise",
     "ISONoise",
+    "KSpaceSpikeNoise",
     "MultiplicativeNoise",
     "RicianNoise",
     "SaltAndPepper",
@@ -1273,6 +1274,7 @@ class SaltAndPepper(_FullVolumeNoiseTransform):
         - GaussNoise: For additive Gaussian noise
         - MultiplicativeNoise: For multiplicative noise
         - ISONoise: For camera sensor noise simulation
+        - KSpaceSpikeNoise: For MRI k-space spike artifacts (Fourier-domain)
 
     """
 
@@ -1406,6 +1408,7 @@ class FilmGrain(_FullVolumeNoiseTransform):
     See Also:
         - GaussNoise: i.i.d. Gaussian noise; use for sensor or transmission noise.
         - ShotNoise: Poisson (photon) noise in linear space; use for low-light sensor noise.
+        - KSpaceSpikeNoise: Fourier-domain spike artifacts; distinct from magnitude noise.
 
     """
 
@@ -1649,3 +1652,189 @@ class RicianNoise(_FullVolumeNoiseTransform):
         np.multiply(real_noise, std, out=real_noise)
         np.multiply(imaginary_noise, std, out=imaginary_noise)
         return real_noise, imaginary_noise
+
+
+class KSpaceSpikeNoise(_FullVolumeNoiseTransform):
+    """Inject point spikes into the MRI k-space spectrum and reconstruct the image or volume,
+    producing structured stripes typical of acquisition failures.
+
+    K-space spike artifacts arise from isolated high-energy points in the Fourier
+    representation of MRI data (e.g. scanner spikes, radio-frequency interference).
+    Each sampled spike adds a real amplitude at its frequency and at the conjugate
+    mirror, keeping the spectrum Hermitian so the reconstruction is real.
+
+    Args:
+        num_spikes_range (tuple[int, int]): Inclusive range for the number of spikes sampled
+            per invocation. Zero spikes is an exact identity. Default: (1, 5).
+        intensity_range (tuple[float, float]): Range for the spike amplitude as a fraction of
+            the spectrum maximum magnitude. Zero is an exact identity. Default: (0.1, 0.5).
+        per_channel (bool): If True, sample independent spike locations and amplitudes for each
+            channel. If False, share one set of spikes across all channels. Default: False.
+        p (float): Probability of applying the transform. Default: 0.5.
+
+    Targets:
+        image, volume
+
+    Image types:
+        uint8, float32
+
+    Number of channels:
+        Any
+
+    Notes:
+        - The Fourier transform is computed over spatial axes only; batch and channel dimensions
+          are excluded. Spikes are injected into one transform-domain representation and a single
+          inverse transform reconstructs the output.
+        - Each spike injects a real amplitude `intensity * max|F|` at the sampled bin and at its
+          conjugate mirror, so the half-spectrum stays Hermitian and the reconstruction is real
+          without discarding imaginary parts. Self-conjugate bins (DC and the Nyquist bin of even
+          axes) are injected once.
+        - Spikes are uniform over the full frequency grid, including DC. A spike at DC shifts the
+          global mean rather than creating stripes; this is intentional and documented.
+        - A spike of relative amplitude `i` turns a flat field of value `c` into a cosine
+          pattern of amplitude `2 * i * c` along the spike's frequency direction.
+        - One spike realization is sampled per transform invocation and reused across all channels
+          (shared mode), all images in a batch, and the whole volume as a single 3D transform.
+        - uint8 inputs are processed as float32 in [0, 1] and converted back with rounding, so
+          outputs stay within [0, 255]; float32 outputs are clipped to [0, 1].
+        - This differs from image-space impulse noise (SaltAndPepper), which replaces individual
+          pixels, and from RingingOvershoot, which convolves in the image domain.
+
+    Mathematical Formulation:
+        F = rfftn(I, axes=spatial)
+        a = intensity * max(|F|)
+
+        for each spike k:
+            F[k] += a
+            F[(-k) mod N] += a
+
+        I = clip(irfftn(F), 0, 1)
+
+        For a flat field the pair injection produces a cosine artifact of amplitude 2a / (H * W)
+        at the spike frequency, oriented along the spike's direction.
+
+    Examples:
+        >>> import numpy as np
+        >>> import albumentations as A
+        >>> image = np.random.randint(0, 256, (128, 128, 3), dtype=np.uint8)
+        >>> transform = A.Compose(
+        ...     [A.KSpaceSpikeNoise(num_spikes_range=(2, 4), intensity_range=(0.1, 0.3), p=1.0)],
+        ...     seed=137,
+        ... )
+        >>> spiked = transform(image=image)["image"]
+
+        Volumes are supported with one 3D spike realization per invocation:
+        >>> volume = np.random.rand(4, 32, 32, 1).astype(np.float32)
+        >>> transform = A.Compose([A.KSpaceSpikeNoise(p=1.0)], seed=137)
+        >>> spiked_volume = transform(volume=volume)["volume"]
+
+    References:
+        - TorchIO RandomSpike: https://docs.torchio.org/2.0/reference/transforms/spike/
+        - TorchIO paper: https://www.sciencedirect.com/science/article/pii/S0169260721003102
+
+    See Also:
+        - SaltAndPepper: Image-space impulse noise; use when corruption lives in pixel space.
+        - RingingOvershoot: Image-domain convolution ringing; use for sharpening artifacts.
+        - RicianNoise: MRI magnitude-reconstruction noise with a low-signal floor.
+        - GaussNoise: Additive Gaussian noise for general sensor or transmission noise.
+
+    """
+
+    class InitSchema(BaseTransformInitSchema):
+        num_spikes_range: Annotated[
+            tuple[int, int],
+            AfterValidator(check_range_bounds(0)),
+            AfterValidator(nondecreasing),
+        ]
+        intensity_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0)),
+            AfterValidator(nondecreasing),
+        ]
+        per_channel: bool
+
+    def __init__(
+        self,
+        *,
+        num_spikes_range: tuple[int, int] = (1, 5),
+        intensity_range: tuple[float, float] = (0.1, 0.5),
+        per_channel: bool = False,
+        p: float = 0.5,
+    ):
+        super().__init__(p=p)
+        self.num_spikes_range = num_spikes_range
+        self.intensity_range = intensity_range
+        self.per_channel = per_channel
+
+    def apply(self, img: ImageType, spikes: np.ndarray, intensity: float, **params: Any) -> ImageType:
+        if intensity == 0 or spikes.size == 0:
+            return img
+        return fpixel.k_space_spike(img, spikes, intensity)
+
+    def apply_to_images(self, images: ImageType, spikes: np.ndarray, intensity: float, **params: Any) -> ImageType:
+        if intensity == 0 or spikes.size == 0:
+            return images
+        return fpixel.k_space_spike(images, spikes, intensity)
+
+    def apply_to_volume(self, volume: ImageType, spikes: np.ndarray, intensity: float, **params: Any) -> ImageType:
+        if intensity == 0 or spikes.size == 0:
+            return volume
+        return fpixel.k_space_spike(volume, spikes, intensity)
+
+    @staticmethod
+    def _spatial_rank(view: TargetView) -> int:
+        spatial_shape = view.descriptor.spatial_shape
+        if spatial_shape is not None:
+            return len(spatial_shape)
+        return 3 if view.canonical_type in {"volume", "mask3d"} else 2
+
+    @staticmethod
+    def _sample_spikes(
+        spatial_shape: tuple[int, ...],
+        num_spikes: int,
+        channel_count: int | None,
+        sampling: SamplingContext,
+    ) -> np.ndarray:
+        rank = len(spatial_shape)
+        bounds = np.asarray(spatial_shape, dtype=np.int64)
+        if channel_count is None:
+            return sampling.random_generator.integers(0, bounds, size=(num_spikes, rank))
+        return sampling.random_generator.integers(0, bounds, size=(channel_count, num_spikes, rank))
+
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
+        sampling: SamplingContext,
+    ) -> SampledParams:
+        del params, data
+        num_spikes = sampling.py_random.randrange(self.num_spikes_range[0], self.num_spikes_range[1] + 1)
+        intensity = sampling.py_random.uniform(*self.intensity_range)
+        sampling.applied_overrides.update({"num_spikes_range": num_spikes, "intensity_range": intensity})
+
+        groups: list[TargetParams] = []
+        key = (
+            (lambda view: (view.descriptor.channels, self._spatial_rank(view)))
+            if self.per_channel
+            else self._spatial_rank
+        )
+        for views in targets.group_image_like_by(key):
+            rank = self._spatial_rank(views[0])
+            spatial_shape = targets.require_aligned_spatial_shape(rank)
+            channel_count = views[0].descriptor.channels if self.per_channel else None
+            if self.per_channel and channel_count is None:
+                raise ValueError(
+                    "KSpaceSpikeNoise requires image-like targets with a known channel count for per_channel=True",
+                )
+            spikes = self._sample_spikes(spatial_shape, num_spikes, channel_count, sampling)
+            groups.append(
+                _target_parameter_group(
+                    views,
+                    "spikes",
+                    spikes,
+                    spatial_shape=True,
+                    channels=self.per_channel,
+                ),
+            )
+        return SampledParams(params={"intensity": intensity}, target_params=tuple(groups))

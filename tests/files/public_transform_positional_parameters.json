@@ -59,6 +59,7 @@
   "HorizontalFlip": ["p"],
   "HueSaturationValue": ["hue_shift_range", "sat_shift_range", "val_shift_range", "p"],
   "ISONoise": ["color_shift_range", "intensity_range", "p"],
+  "KSpaceSpikeNoise": [],
   "Illumination": ["mode", "intensity_range", "effect_type", "angle_range", "center_range", "sigma_range", "p"],
   "ImageCompression": ["compression_type", "quality_range", "p"],
   "InvertImg": ["p"],

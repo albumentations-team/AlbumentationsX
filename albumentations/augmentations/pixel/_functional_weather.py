@@ -651,16 +651,15 @@ def _add_weighted_uint8_batch(
     weight1: float,
     image2: ImageType,
     weight2: float,
-    image_elements: int,
 ) -> ImageType:
-    """Blend a uint8 batch without changing rounding at image boundaries."""
-    if image_elements % _SUN_FLARE_SIMD_ALIGNMENT_ELEMENTS == 0:
+    """Blend a uint8 batch without changing backend routing at image boundaries."""
+    if image1[0].size % _SUN_FLARE_SIMD_ALIGNMENT_ELEMENTS == 0:
         return add_weighted(image1, weight1, image2, weight2)
 
-    result = np.multiply(image1, np.float32(weight1), dtype=np.float32)
-    np.add(result, np.multiply(image2, np.float32(weight2), dtype=np.float32), out=result)
-    np.rint(result, out=result)
-    return result.astype(np.uint8)
+    result = np.empty_like(image1)
+    for index in range(len(image1)):
+        result[index] = add_weighted(image1[index], weight1, image2[index], weight2)
+    return result
 
 
 @uint8_io
@@ -674,11 +673,9 @@ def _add_sun_flare_overlay_batch(
 ) -> ImageType:
     """Apply the overlay sun flare kernel across an image batch."""
     height, width = images.shape[1:3]
-    image_elements = images[0].size
-    overlay = images.reshape(-1, width, images.shape[-1]).copy()
+    overlay = images.copy()
     output = overlay.copy()
-    overlay_batch = overlay.reshape(images.shape)
-    overlay_pixels = overlay_batch.reshape(images.shape[0], -1, images.shape[-1])
+    overlay_pixels = overlay.reshape(images.shape[0], -1, images.shape[-1])
 
     weighted_brightness = 0.0
     total_radius_length = 0.0
@@ -694,12 +691,11 @@ def _add_sun_flare_overlay_batch(
             mask_y, mask_x = np.nonzero(circle_mask)
             indices = (mask_y + y_min) * width + mask_x + x_min
             overlay_pixels[:, indices] = circle_color
-        output = _add_weighted_uint8_batch(overlay, alpha, output, 1 - alpha, image_elements)
+        output = _add_weighted_uint8_batch(overlay, alpha, output, 1 - alpha)
 
     point = [int(x) for x in flare_center]
     overlay = output.copy()
-    overlay_batch = overlay.reshape(images.shape)
-    overlay_pixels = overlay_batch.reshape(images.shape[0], -1, images.shape[-1])
+    overlay_pixels = overlay.reshape(images.shape[0], -1, images.shape[-1])
     num_times = src_radius // 10
 
     max_alpha = weighted_brightness / total_radius_length * 5
@@ -721,9 +717,9 @@ def _add_sun_flare_overlay_batch(
             indices = sorted_indices[offsets[i] : offsets[i + 1]]
             overlay_pixels[:, indices] = src_color
             alp = alpha[num_times - i - 1] * alpha[num_times - i - 1] * alpha[num_times - i - 1]
-            output = _add_weighted_uint8_batch(overlay, alp, output, 1 - alp, image_elements)
+            output = _add_weighted_uint8_batch(overlay, alp, output, 1 - alp)
 
-    return output.reshape(images.shape)
+    return output
 
 
 @uint8_io

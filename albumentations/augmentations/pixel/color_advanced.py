@@ -106,6 +106,8 @@ class ColorJitter(ImageOnlyTransform):
 
     """
 
+    _supported_channel_counts = frozenset({1, 3})
+
     class InitSchema(BaseTransformInitSchema):
         brightness_range: Annotated[
             tuple[float, float],
@@ -269,6 +271,8 @@ class ChromaticAberration(ImageOnlyTransform):
         Chromatic Aberration: https://en.wikipedia.org/wiki/Chromatic_aberration
 
     """
+
+    _supported_channel_counts = frozenset({3})
 
     class InitSchema(BaseTransformInitSchema):
         primary_distortion_range: tuple[float, float]
@@ -1213,6 +1217,8 @@ class PhotoMetricDistort(ImageOnlyTransform):
           https://pytorch.org/vision/stable/generated/torchvision.transforms.v2.RandomPhotometricDistort.html
 
     """
+
+    _supported_channel_counts = frozenset({1, 3})
 
     class InitSchema(BaseTransformInitSchema):
         brightness_range: Annotated[

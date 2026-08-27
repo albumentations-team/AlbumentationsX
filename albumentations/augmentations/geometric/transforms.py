@@ -6,6 +6,7 @@ transformations like grid shuffling and thin plate splines.
 """
 
 import random
+from collections.abc import Mapping
 from typing import Annotated, Any, ClassVar, Literal, TypeVar, cast
 from warnings import warn
 
@@ -216,6 +217,17 @@ class Perspective(DualTransform):
             self.interpolation,
         )
         return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
+
+    def _get_empty_batch_item_shape(
+        self,
+        item_shape: tuple[int, ...],
+        params: Mapping[str, Any],
+    ) -> tuple[int, ...]:
+        if self.keep_size:
+            return item_shape
+        max_height: int = params["max_height"]
+        max_width: int = params["max_width"]
+        return max_height, max_width, *item_shape[2:]
 
     def apply_to_images(
         self,
@@ -620,6 +632,14 @@ class Affine(DualTransform):
             border_value=self.fill,
         )
         return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
+
+    def _get_empty_batch_item_shape(
+        self,
+        item_shape: tuple[int, ...],
+        params: Mapping[str, Any],
+    ) -> tuple[int, ...]:
+        output_shape: tuple[int, int] = params["output_shape"]
+        return output_shape[0], output_shape[1], *item_shape[2:]
 
     def apply_to_images(
         self,
@@ -1112,7 +1132,7 @@ class GridElasticDeform(DualTransform):
 
     _targets = ALL_TARGETS
 
-    _supported_channel_counts: frozenset[int] = frozenset({1, 3})
+    _supported_channel_counts: ClassVar[frozenset[int]] = frozenset({1, 3})
 
     class InitSchema(BaseTransformInitSchema):
         num_grid_xy: Annotated[tuple[int, int], AfterValidator(check_range_bounds(1, None))]

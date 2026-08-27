@@ -146,6 +146,8 @@ class RandomSnow(ImageOnlyTransform):
 
     """
 
+    _supported_channel_counts = frozenset({3})
+
     class InitSchema(BaseTransformInitSchema):
         snow_point_range: Annotated[
             tuple[float, float],
@@ -299,6 +301,8 @@ class RandomGravel(ImageOnlyTransform):
 
     """
 
+    _supported_channel_counts = frozenset({3})
+
     class InitSchema(BaseTransformInitSchema):
         gravel_roi: tuple[float, float, float, float]
         number_of_patches: int = Field(ge=1)
@@ -449,6 +453,8 @@ class RandomRain(ImageOnlyTransform):
         - AtmosphericFog: Depth-dependent fog via scattering.
 
     """
+
+    _supported_channel_counts = frozenset({3})
 
     class InitSchema(BaseTransformInitSchema):
         slant_range: Annotated[
@@ -623,6 +629,8 @@ class RandomFog(ImageOnlyTransform):
         - RandomSnow: Snow overlay for winter conditions.
 
     """
+
+    _supported_channel_counts = frozenset({3})
 
     class InitSchema(BaseTransformInitSchema):
         fog_coef_range: Annotated[
@@ -827,6 +835,8 @@ class RandomSunFlare(ImageOnlyTransform):
         - Screen blending: https://en.wikipedia.org/wiki/Blend_modes#Screen
 
     """
+
+    _supported_channel_counts = frozenset({3})
 
     class InitSchema(BaseTransformInitSchema):
         flare_roi: tuple[float, float, float, float]

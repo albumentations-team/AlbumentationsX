@@ -13,6 +13,7 @@ import albumentations.augmentations.geometric.functional as fgeometric
 import albumentations.augmentations.pixel.functional as fpixel
 from albumentations.augmentations.pixel import _functional_noise as fnoise
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.transforms_interface import BasicTransform
 from tests.conftest import (
     IMAGES,
@@ -510,6 +511,142 @@ def test_illumination_empty_batch(mode, params, dtype, shape):
     assert actual.dtype == images.dtype
     assert delegated.shape == images.shape
     assert delegated.dtype == images.dtype
+
+
+@pytest.mark.parametrize("target_name", ["images", "volume"])
+def test_default_batch_route_does_not_apply_transform_to_empty_input(target_name, monkeypatch):
+    batch = np.empty((0, 64, 80, 3), dtype=np.uint8)
+    transform = A.ImageCompression(quality_range=(90, 90), p=1)
+
+    def unexpected_apply(*args, **kwargs):
+        raise AssertionError("empty batches must not materialize and transform a synthetic item")
+
+    monkeypatch.setattr(transform, "apply", unexpected_apply)
+    result = A.Compose([transform], seed=137, strict=True)(**{target_name: batch})[target_name]
+
+    assert result is batch
+
+
+@pytest.mark.parametrize("target_name", ["images", "volume"])
+@pytest.mark.parametrize(
+    ("transform_cls", "error_type", "message"),
+    [
+        (A.ColorJitter, TypeError, "ColorJitter transformation expects 1-channel or 3-channel images."),
+        (A.CLAHE, TypeError, "CLAHE transformation expects 1-channel or 3-channel images."),
+        (A.RandomGravel, ValueError, "This transformation expects 3-channel images"),
+    ],
+)
+@pytest.mark.parametrize("batch_size", [0, 1], ids=["empty", "one-item"])
+def test_empty_batch_preserves_builtin_channel_validation(
+    target_name,
+    transform_cls,
+    error_type,
+    message,
+    batch_size,
+):
+    batch = np.zeros((batch_size, 8, 9, 5), dtype=np.uint8)
+    transform = A.Compose([transform_cls(p=1)], seed=137, strict=True)
+
+    with pytest.raises(error_type, match=message):
+        transform(**{target_name: batch})
+
+
+@pytest.mark.parametrize("target_name", ["images", "volume"])
+def test_inherited_default_batch_route_preserves_custom_empty_metadata(target_name):
+    class CropAndCast(A.ImageOnlyTransform):
+        def apply(self, img, **params):
+            return img[:5, :7].astype(np.float32)
+
+    def apply(batch):
+        transform = A.Compose([CropAndCast(p=1)], seed=137, strict=True)
+        return transform(**{target_name: batch})[target_name]
+
+    one_item_result = apply(np.zeros((1, 10, 12, 3), dtype=np.uint8))
+    empty_result = apply(np.empty((0, 10, 12, 3), dtype=np.uint8))
+
+    assert empty_result.shape == (0, *one_item_result.shape[1:])
+    assert empty_result.dtype == one_item_result.dtype
+
+
+@pytest.mark.parametrize("target_name", ["images", "volume"])
+def test_empty_batch_helpers_do_not_bind_sampled_parameter_names(target_name):
+    class CollidingParameters(A.ImageOnlyTransform):
+        def sample_parameters(
+            self,
+            params: dict[str, Any],
+            data: dict[str, Any],
+            targets: TargetSet,
+            sampling: SamplingContext,
+        ) -> SampledParams:
+            return SampledParams(
+                params={
+                    "batch": 1,
+                    "apply_fn": 2,
+                    "item_shape": 3,
+                    "item_dtype": 4,
+                    "target_name": 5,
+                },
+            )
+
+        def apply(self, img, batch, apply_fn, item_shape, item_dtype, target_name, **params):
+            return img[:5, :7].astype(np.float32)
+
+    def apply(batch):
+        transform = A.Compose([CollidingParameters(p=1)], seed=137, strict=True)
+        return transform(**{target_name: batch})[target_name]
+
+    one_item_result = apply(np.zeros((1, 10, 12, 3), dtype=np.uint8))
+    empty_result = apply(np.empty((0, 10, 12, 3), dtype=np.uint8))
+
+    assert empty_result.shape == (0, *one_item_result.shape[1:])
+    assert empty_result.dtype == one_item_result.dtype
+
+
+@pytest.mark.parametrize("target_name", ["images", "volume"])
+def test_custom_empty_metadata_hook_avoids_item_materialization(target_name):
+    class CropAndCast(A.ImageOnlyTransform):
+        def apply(self, img, **params):
+            raise AssertionError("declared empty-batch metadata must bypass the item transform")
+
+        def _get_empty_batch_item_metadata(self, item_shape, item_dtype, target_name, params):
+            assert target_name == "image"
+            return (5, 7, *item_shape[2:]), np.dtype(np.float32)
+
+    batch = np.empty((0, 10, 12, 3), dtype=np.uint8)
+    transform = A.Compose([CropAndCast(p=1)], seed=137, strict=True)
+    result = transform(**{target_name: batch})[target_name]
+
+    assert result.shape == (0, 5, 7, 3)
+    assert result.dtype == np.float32
+
+
+@pytest.mark.parametrize("target_name", ["images", "volume"])
+def test_shape_preserving_empty_batch_output_is_writeable(target_name):
+    batch = np.empty((0, 10, 12, 3), dtype=np.uint8)
+    batch.setflags(write=False)
+    transform = A.Compose([A.ImageCompression(quality_range=(90, 90), p=1)], seed=137, strict=True)
+    result = transform(**{target_name: batch})[target_name]
+
+    assert result.flags.writeable
+    assert not np.shares_memory(result, batch)
+
+
+@pytest.mark.parametrize("target_name", ["images", "volume"])
+def test_custom_shape_preserving_empty_metadata_output_is_writeable(target_name):
+    class IdentityMetadata(A.ImageOnlyTransform):
+        def apply(self, img, **params):
+            raise AssertionError("declared empty-batch metadata must bypass the item transform")
+
+        def _get_empty_batch_item_metadata(self, item_shape, item_dtype, target_name, params):
+            return item_shape, item_dtype
+
+    batch = np.empty((0, 10, 12, 3), dtype=np.uint8)
+    batch.setflags(write=False)
+    transform = A.Compose([IdentityMetadata(p=1)], seed=137, strict=True)
+    result = transform(**{target_name: batch})[target_name]
+
+    assert result.flags.writeable
+    assert not np.shares_memory(result, batch)
 
 
 def test_crop_non_empty_mask():

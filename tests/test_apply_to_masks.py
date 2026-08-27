@@ -207,16 +207,111 @@ def test_inherited_empty_volume_and_mask3d_shapes_stay_aligned(transform, expect
     assert result["mask3d"].flags.writeable
 
 
-@pytest.mark.parametrize("depth", [1, 2])
-def test_inherited_mask3d_output_is_owned_and_writeable(depth: int):
-    mask3d = _make_mask3d(depth, 31, 47, 3, np.dtype(np.uint8))
+@pytest.mark.parametrize("case", INHERITED_MASK3D_CASES, ids=lambda case: case.case_id)
+def test_inherited_empty_mask3d_matches_nonempty_item_geometry(case: TransformContractCase):
+    results = []
+    for empty in (False, True):
+        data = _make_registered_mask3d_data(case)
+        if empty:
+            data["volume"] = np.empty((0, 48, 64, 3), dtype=np.uint8)
+            data["mask3d"] = np.empty((0, 48, 64, 3), dtype=np.uint8)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            transform = case.transform_cls(**copy.deepcopy(dict(case.init_kwargs)), p=1)
+        pipeline = A.Compose(
+            [transform],
+            seed=137,
+            strict=True,
+            **copy.deepcopy(dict(case.primary_compose_kwargs)),
+        )
+        results.append(pipeline(**data))
+
+    nonempty_result, empty_result = results
+    assert empty_result["volume"].shape == (0, *nonempty_result["volume"].shape[1:])
+    assert empty_result["mask3d"].shape == (0, *nonempty_result["mask3d"].shape[1:])
+
+
+def test_inherited_mask3d_route_preserves_custom_empty_metadata():
+    class CropAndCastMask(A.DualTransform):
+        def apply(self, img, **params):
+            return img
+
+        def apply_to_mask(self, mask, **params):
+            return mask[:5, :7].astype(np.float32)
+
+    def apply(mask3d):
+        transform = A.Compose([CropAndCastMask(p=1)], seed=137, strict=True)
+        return transform(mask3d=mask3d)["mask3d"]
+
+    one_item_result = apply(np.zeros((1, 10, 12, 3), dtype=np.uint8))
+    empty_result = apply(np.empty((0, 10, 12, 3), dtype=np.uint8))
+
+    assert empty_result.shape == (0, *one_item_result.shape[1:])
+    assert empty_result.dtype == one_item_result.dtype
+
+
+def test_custom_empty_mask_metadata_hook_avoids_item_materialization():
+    class CropAndCastMask(A.DualTransform):
+        def apply(self, img, **params):
+            raise AssertionError("declared empty-batch metadata must bypass the image transform")
+
+        def apply_to_mask(self, mask, **params):
+            raise AssertionError("declared empty-batch metadata must bypass the mask transform")
+
+        def _get_empty_batch_item_metadata(self, item_shape, item_dtype, target_name, params):
+            assert target_name == "mask"
+            return (5, 7, *item_shape[2:]), np.dtype(np.float32)
+
+    mask3d = np.empty((0, 10, 12, 3), dtype=np.uint8)
+    transform = A.Compose([CropAndCastMask(p=1)], seed=137, strict=True)
+    result = transform(mask3d=mask3d)["mask3d"]
+
+    assert result.shape == (0, 5, 7, 3)
+    assert result.dtype == np.float32
+
+
+def test_inherited_empty_mask3d_output_is_writeable_for_readonly_input():
+    mask3d = np.empty((0, 10, 12, 3), dtype=np.uint8)
     mask3d.setflags(write=False)
+    transform = A.Compose([A.Morphological(scale=(3, 3), p=1)], seed=137, strict=True)
+    result = transform(mask3d=mask3d)["mask3d"]
+
+    assert result.flags.writeable
+    assert not np.shares_memory(result, mask3d)
+
+
+@pytest.mark.parametrize("depth", [1, 2])
+@pytest.mark.parametrize("read_only", [False, True], ids=["writeable-input", "read-only-input"])
+def test_inherited_mask3d_output_is_owned_and_writeable(depth: int, read_only: bool):
+    mask3d = _make_mask3d(depth, 31, 47, 3, np.dtype(np.uint8))
+    if read_only:
+        mask3d.setflags(write=False)
     snapshot = mask3d.copy()
     transform = A.PixelDropout(dropout_prob=0.25, mask_drop_value=None, p=1)
     result = _assert_public_mask3d_matches_per_depth(transform, mask3d)
     np.testing.assert_array_equal(mask3d, snapshot)
     assert result.flags.writeable
     assert not np.shares_memory(result, mask3d)
+
+
+def test_singleton_mask3d_reuses_allocated_slice_result(monkeypatch):
+    mask3d = _make_mask3d(1, 31, 47, 3, np.dtype(np.uint8))
+    transform = A.Morphological(scale=(3, 3), p=1)
+    apply_to_mask = transform.apply_to_mask
+    slice_results = []
+
+    def tracked_apply_to_mask(mask, *args, **params):
+        result = apply_to_mask(mask, *args, **params)
+        slice_results.append(result)
+        return result
+
+    monkeypatch.setattr(transform, "apply_to_mask", tracked_apply_to_mask)
+    result = A.Compose([transform], seed=137, strict=True)(mask3d=mask3d)["mask3d"]
+
+    assert len(slice_results) == 1
+    assert np.shares_memory(result, slice_results[0])
+    assert not np.shares_memory(result, mask3d)
+    assert result.flags.writeable
 
 
 def test_inherited_mask3d_noncontiguous_input_is_not_mutated():

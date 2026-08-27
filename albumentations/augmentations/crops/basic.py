@@ -1,6 +1,6 @@
 """Basic crop and crop-pad transforms."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Annotated, Any, Literal, cast
 
 from typing_extensions import Self
@@ -888,6 +888,16 @@ class CropAndPad(DualTransform):
         if self.keep_size:
             return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
         return result
+
+    def _get_empty_batch_item_shape(
+        self,
+        item_shape: tuple[int, ...],
+        params: Mapping[str, Any],
+    ) -> tuple[int, ...]:
+        if self.keep_size:
+            return item_shape
+        result_shape: tuple[int, int] = params["result_shape"]
+        return result_shape[0], result_shape[1], *item_shape[2:]
 
     def apply_to_mask(
         self,

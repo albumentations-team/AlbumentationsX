@@ -166,17 +166,22 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
     _sampling_spatial_rank: ClassVar[int | None] = None
     _runtime_generated_params: ClassVar[frozenset[str]] = frozenset()
     _preserves_input_image_range: ClassVar[bool] = True  # image targets retain the input dtype's normalized range
+    _supported_channel_counts: ClassVar[frozenset[int] | None] = None
+    _empty_batch_metadata_is_known: ClassVar[bool] = False
     _removed_sampling_hooks: ClassVar[frozenset[str]] = frozenset({"get_params", "get_params_dependent_on_data"})
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
-        """Reject removed sampling hooks when a transform subclass is declared, keeping the execution hot path free
-        from legacy compatibility checks.
+        """Configure empty-batch metadata ownership and reject removed sampling hooks when a transform subclass
+        is declared, keeping both runtime contracts centralized.
 
-        Only methods declared directly on the new class are considered. This lets
-        an unrelated base class retain a same-named helper while making a former
-        Albumentations sampling override fail at import or class-definition time.
+        Package-owned transforms use audited empty-batch metadata without running their
+        pixel operation. External subclasses keep synthetic-item metadata inference unless
+        they provide their own metadata hook. Only sampling hooks declared directly on the
+        new class are rejected; unrelated inherited helpers remain valid.
         """
         super().__init_subclass__(**kwargs)
+        if "_empty_batch_metadata_is_known" not in cls.__dict__:
+            cls._empty_batch_metadata_is_known = cls.__module__.startswith("albumentations.")
         removed_hooks = sorted(cls._removed_sampling_hooks.intersection(cls.__dict__))
         if removed_hooks:
             names = ", ".join(removed_hooks)
@@ -800,8 +805,8 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         *,
         ensure_contiguous: bool = False,
     ) -> np.ndarray:
-        """Apply a function to each element in a batch with pre-allocation. Uses the first element,
-        or a synthetic item for an empty batch, to determine output shape and dtype.
+        """Apply a function independently to each batch item, inferring output shape and dtype from the first
+        transformed item before pre-allocation.
 
         Args:
             batch (np.ndarray): Input batch array of shape (N, ...)
@@ -813,9 +818,11 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
         """
         if len(batch) == 0:
-            empty_item = np.empty(batch.shape[1:], dtype=batch.dtype)
-            first_result = apply_fn(empty_item)
-            return np.empty((0, *first_result.shape), dtype=first_result.dtype)
+            if not ensure_contiguous:
+                return batch if batch.flags.writeable else batch.copy()
+            if batch.flags.writeable and batch.flags.c_contiguous:
+                return batch
+            return np.require(batch, requirements=["W", "C"])
 
         # Process first element to determine output shape
         first_result = apply_fn(batch[0])
@@ -835,12 +842,13 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
         return np.require(result, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else result
 
-    @staticmethod
     def _apply_to_batch_same_shape(
+        self,
         batch: np.ndarray,
         apply_fn: Callable[[np.ndarray], np.ndarray],
         *,
         ensure_contiguous: bool = False,
+        target_name: str = "image",
     ) -> np.ndarray:
         """Apply a function to each batch element with pre-allocation when every output preserves
         the input element shape and dtype.
@@ -849,13 +857,20 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             batch (np.ndarray): Input batch array of shape (N, ...)
             apply_fn (Callable[[np.ndarray], np.ndarray]): Function to apply to each element
             ensure_contiguous (bool): Whether to ensure C-contiguous output
+            target_name (str): Semantic item target used for empty-input validation
 
         Returns:
             np.ndarray: Transformed batch array.
 
         """
         if len(batch) == 0:
-            return np.require(batch, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else batch
+            if self._empty_batch_metadata_is_known:
+                self._validate_empty_batch_item(batch, apply_fn, target_name)
+            if not ensure_contiguous:
+                return batch if batch.flags.writeable else batch.copy()
+            if batch.flags.writeable and batch.flags.c_contiguous:
+                return batch
+            return np.require(batch, requirements=["W", "C"])
 
         result = np.empty_like(batch)
 
@@ -863,6 +878,105 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             result[i] = apply_fn(item)
 
         return np.require(result, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else result
+
+    def _validate_empty_batch_item(
+        self,
+        batch: np.ndarray,
+        apply_fn: Callable[[np.ndarray], np.ndarray] | None,
+        target_name: str,
+        params: Mapping[str, Any] | None = None,
+    ) -> None:
+        """Run an audited image-channel check on zero-pixel metadata when an empty route would otherwise skip it."""
+        if target_name != "image":
+            return
+
+        item_shape = batch.shape[1:]
+        if len(item_shape) not in {2, 3}:
+            validation_shape = (0, *item_shape[1:]) if item_shape else ()
+            unsupported_channel_count = None
+        else:
+            if self._supported_channel_counts is None:
+                return
+
+            channel_count = 1 if len(item_shape) == 2 else item_shape[-1]
+            if channel_count in self._supported_channel_counts:
+                return
+
+            validation_shape = tuple(0 if index < 2 else size for index, size in enumerate(item_shape))
+            unsupported_channel_count = channel_count
+
+        validation_item = np.empty(validation_shape, dtype=batch.dtype)
+        if apply_fn is not None:
+            apply_fn(validation_item)
+        elif params is not None:
+            self.apply(validation_item, **params)
+        else:
+            raise RuntimeError("Empty image validation requires item parameters or an apply function")
+
+        if unsupported_channel_count is not None:
+            raise RuntimeError(
+                f"{self.__class__.__name__} declares unsupported channel count "
+                f"{unsupported_channel_count} but accepted it",
+            )
+
+    def _get_empty_batch_item_shape(
+        self,
+        item_shape: tuple[int, ...],
+        params: Mapping[str, Any],
+    ) -> tuple[int, ...]:
+        """Compute an audited package transform's output item shape from resolved parameters, without allocating or
+        processing any pixel data.
+        """
+        return item_shape
+
+    def _get_empty_batch_item_metadata(
+        self,
+        item_shape: tuple[int, ...],
+        item_dtype: np.dtype[Any],
+        target_name: str,
+        params: Mapping[str, Any],
+    ) -> tuple[tuple[int, ...], np.dtype[Any]] | None:
+        """Let extension transforms declare target-specific output shape and dtype, avoiding synthetic item processing
+        when an input batch is empty.
+        """
+        return None
+
+    def _apply_to_empty_batch(
+        self,
+        batch: np.ndarray,
+        apply_fn: Callable[[np.ndarray], np.ndarray] | None,
+        target_name: str,
+        params: Mapping[str, Any],
+    ) -> np.ndarray:
+        """Build an empty result from audited package-owned geometry while retaining the input dtype and avoiding any
+        item materialization.
+        """
+        self._validate_empty_batch_item(batch, apply_fn, target_name, params)
+        output_item_shape = self._get_empty_batch_item_shape(batch.shape[1:], params)
+        if output_item_shape == batch.shape[1:]:
+            return batch if batch.flags.writeable else batch.copy()
+        return np.empty((0, *output_item_shape), dtype=batch.dtype)
+
+    def _apply_to_empty_batch_with_metadata_fallback(
+        self,
+        batch: np.ndarray,
+        apply_fn: Callable[[np.ndarray], np.ndarray],
+        target_name: str,
+        params: Mapping[str, Any],
+    ) -> np.ndarray:
+        """Build an empty extension result from declared target metadata, falling back to legacy synthetic-item
+        inference when metadata is unavailable.
+        """
+        metadata = self._get_empty_batch_item_metadata(batch.shape[1:], batch.dtype, target_name, params)
+        if metadata is None:
+            empty_item = np.empty(batch.shape[1:], dtype=batch.dtype)
+            first_result = apply_fn(empty_item)
+            return np.empty((0, *first_result.shape), dtype=first_result.dtype)
+
+        output_item_shape, output_item_dtype = metadata
+        if output_item_shape == batch.shape[1:] and output_item_dtype == batch.dtype:
+            return batch if batch.flags.writeable else batch.copy()
+        return np.empty((0, *output_item_shape), dtype=output_item_dtype)
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
         """Apply transform on images. Input shape (N, H, W, C); uses _apply_to_batch with per-image
@@ -879,6 +993,19 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             ImageType: Transformed images as numpy array in the same format as input
 
         """
+        if len(images) == 0:
+            if self._empty_batch_metadata_is_known:
+                return self._apply_to_empty_batch(images, None, "image", params)
+
+            def metadata_apply_fn(img: np.ndarray) -> np.ndarray:
+                return self.apply(img, **params)
+
+            return self._apply_to_empty_batch_with_metadata_fallback(
+                images,
+                metadata_apply_fn,
+                "image",
+                params,
+            )
         return self._apply_to_batch(images, lambda img: self.apply(img, **params))
 
     def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> VolumeType:
@@ -1353,12 +1480,32 @@ class DualTransform(BasicTransform):
 
     def apply_to_mask3d(self, mask3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
         """Apply one resolved 2D mask operation independently to every depth slice."""
+        if len(mask3d) == 0:
+            if self._empty_batch_metadata_is_known:
+                return self._apply_to_empty_batch(mask3d, None, "mask", params)
+
+            def metadata_apply_fn(mask: np.ndarray) -> np.ndarray:
+                return self.apply_to_mask(mask, *args, **params)
+
+            return self._apply_to_empty_batch_with_metadata_fallback(
+                mask3d,
+                metadata_apply_fn,
+                "mask",
+                params,
+            )
 
         def apply_fn(mask: np.ndarray) -> np.ndarray:
             return self.apply_to_mask(mask, *args, **params)
 
-        transformed = self._apply_to_batch(mask3d, apply_fn)
-        return transformed.copy() if len(mask3d) == 1 else transformed
+        if len(mask3d) == 1:
+            transformed_slice = apply_fn(mask3d[0])
+            if not transformed_slice.flags.writeable or (
+                not transformed_slice.flags.owndata and np.shares_memory(transformed_slice, mask3d)
+            ):
+                transformed_slice = transformed_slice.copy()
+            return transformed_slice[np.newaxis]
+
+        return self._apply_to_batch(mask3d, apply_fn)
 
     def _get_label_transform_name(self, **params: Any) -> str | None:
         """Get the transform name to use for label mapping. For most transforms returns class

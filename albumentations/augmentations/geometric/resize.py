@@ -4,7 +4,7 @@ This module provides transform classes for resizing operations, including unifor
 scaling with aspect ratio preservation, and size-constrained transformations.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, Literal
 
 import cv2
@@ -236,6 +236,17 @@ class RandomScale(DualTransform):
         result = fgeometric.scale_xy(img, scale_x, scale_y, interpolation)
         return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation)
 
+    def _get_empty_batch_item_shape(
+        self,
+        item_shape: tuple[int, ...],
+        params: Mapping[str, Any],
+    ) -> tuple[int, ...]:
+        scale_x: float = params["scale_x"]
+        scale_y: float = params["scale_y"]
+        height = max(1, int(item_shape[0] * scale_y))
+        width = max(1, int(item_shape[1] * scale_x))
+        return height, width, *item_shape[2:]
+
     def apply_to_mask(
         self,
         mask: ImageType,
@@ -428,6 +439,16 @@ class BaseMaxSizeTransform(DualTransform):
 
         result = fgeometric.resize(img, (new_height, new_width), interpolation=interpolation)
         return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation)
+
+    def _get_empty_batch_item_shape(
+        self,
+        item_shape: tuple[int, ...],
+        params: Mapping[str, Any],
+    ) -> tuple[int, ...]:
+        scale: float = params["scale"]
+        height = max(1, round(item_shape[0] * scale))
+        width = max(1, round(item_shape[1] * scale))
+        return height, width, *item_shape[2:]
 
     def apply_to_mask(
         self,
@@ -829,6 +850,13 @@ class Resize(DualTransform):
         result = fgeometric.resize(img, (self.height, self.width), interpolation=interpolation)
         return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation)
 
+    def _get_empty_batch_item_shape(
+        self,
+        item_shape: tuple[int, ...],
+        params: Mapping[str, Any],
+    ) -> tuple[int, ...]:
+        return self.height, self.width, *item_shape[2:]
+
     def apply_to_mask(self, mask: ImageType, **params: Any) -> ImageType:
         height, width = mask.shape[:2]
         is_downscale = (self.height < height) or (self.width < width)
@@ -970,6 +998,13 @@ class LetterBox(DualTransform):
             value=self.fill,
         )
         return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
+
+    def _get_empty_batch_item_shape(
+        self,
+        item_shape: tuple[int, ...],
+        params: Mapping[str, Any],
+    ) -> tuple[int, ...]:
+        return self.size[0], self.size[1], *item_shape[2:]
 
     def apply_to_mask(
         self,

@@ -6,6 +6,7 @@ border handling options.
 """
 
 import math
+from collections.abc import Mapping
 from typing import Any, Literal
 
 import cv2
@@ -413,6 +414,19 @@ class Rotate(DualTransform):
         if self.crop_border:
             img_out = fcrops.crop(img_out, x_min, y_min, x_max, y_max)
         return fgeometric.clip_if_interpolation_can_overshoot(img_out, self.interpolation)
+
+    def _get_empty_batch_item_shape(
+        self,
+        item_shape: tuple[int, ...],
+        params: Mapping[str, Any],
+    ) -> tuple[int, ...]:
+        if not self.crop_border:
+            return item_shape
+        x_min: int = params["x_min"]
+        x_max: int = params["x_max"]
+        y_min: int = params["y_min"]
+        y_max: int = params["y_max"]
+        return y_max - y_min, x_max - x_min, *item_shape[2:]
 
     def apply_to_mask(
         self,

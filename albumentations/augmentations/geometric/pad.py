@@ -12,6 +12,7 @@ Padding transformations in this module support various border modes (constant, r
 and properly handle all target types including images, masks, bounding boxes, and keypoints.
 """
 
+from collections.abc import Mapping
 from numbers import Real
 from typing import Any, ClassVar, Literal
 
@@ -219,6 +220,19 @@ class Pad(DualTransform):
             border_mode=self.border_mode,
             value=self.fill,
         )
+
+    def _get_empty_batch_item_shape(
+        self,
+        item_shape: tuple[int, ...],
+        params: Mapping[str, Any],
+    ) -> tuple[int, ...]:
+        pad_top: int = params["pad_top"]
+        pad_bottom: int = params["pad_bottom"]
+        pad_left: int = params["pad_left"]
+        pad_right: int = params["pad_right"]
+        height = item_shape[0] + pad_top + pad_bottom
+        width = item_shape[1] + pad_left + pad_right
+        return height, width, *item_shape[2:]
 
     def apply_to_mask(
         self,

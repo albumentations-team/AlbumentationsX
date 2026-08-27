@@ -37,6 +37,8 @@ from ._functional_sharpness import (
 _maybe_process_in_chunks = cast("Any", maybe_process_in_chunks)
 # Keep sustained-batch chunks on Albucore's large-array route while bounding temporary conversion memory.
 _FROM_FLOAT_BATCH_MIN_CHUNK_ELEMENTS = 512 * 1024
+# Keep each image boundary aligned across common SIMD block sizes before blending the flattened batch.
+_SUN_FLARE_SIMD_ALIGNMENT_ELEMENTS = 4096
 
 
 def add_snow_bleach(
@@ -644,6 +646,23 @@ def add_sun_flare_batch(
     raise ValueError(f"Invalid method: {method}")
 
 
+def _add_weighted_uint8_batch(
+    image1: ImageType,
+    weight1: float,
+    image2: ImageType,
+    weight2: float,
+    image_elements: int,
+) -> ImageType:
+    """Blend a uint8 batch without changing rounding at image boundaries."""
+    if image_elements % _SUN_FLARE_SIMD_ALIGNMENT_ELEMENTS == 0:
+        return add_weighted(image1, weight1, image2, weight2)
+
+    result = np.multiply(image1, np.float32(weight1), dtype=np.float32)
+    np.add(result, np.multiply(image2, np.float32(weight2), dtype=np.float32), out=result)
+    np.rint(result, out=result)
+    return result.astype(np.uint8)
+
+
 @uint8_io
 @preserve_channel_dim
 def _add_sun_flare_overlay_batch(
@@ -655,6 +674,7 @@ def _add_sun_flare_overlay_batch(
 ) -> ImageType:
     """Apply the overlay sun flare kernel across an image batch."""
     height, width = images.shape[1:3]
+    image_elements = images[0].size
     overlay = images.reshape(-1, width, images.shape[-1]).copy()
     output = overlay.copy()
     overlay_batch = overlay.reshape(images.shape)
@@ -674,7 +694,7 @@ def _add_sun_flare_overlay_batch(
             mask_y, mask_x = np.nonzero(circle_mask)
             indices = (mask_y + y_min) * width + mask_x + x_min
             overlay_pixels[:, indices] = circle_color
-        output = add_weighted(overlay, alpha, output, 1 - alpha)
+        output = _add_weighted_uint8_batch(overlay, alpha, output, 1 - alpha, image_elements)
 
     point = [int(x) for x in flare_center]
     overlay = output.copy()
@@ -701,7 +721,7 @@ def _add_sun_flare_overlay_batch(
             indices = sorted_indices[offsets[i] : offsets[i + 1]]
             overlay_pixels[:, indices] = src_color
             alp = alpha[num_times - i - 1] * alpha[num_times - i - 1] * alpha[num_times - i - 1]
-            output = add_weighted(overlay, alp, output, 1 - alp)
+            output = _add_weighted_uint8_batch(overlay, alp, output, 1 - alp, image_elements)
 
     return output.reshape(images.shape)
 

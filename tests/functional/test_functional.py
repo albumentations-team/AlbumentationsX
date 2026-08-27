@@ -512,9 +512,10 @@ def test_equalize_uniform_image():
 
 @pytest.mark.parametrize("method", ["overlay", "physics_based"])
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
-def test_sun_flare_batch_matches_per_image(method, dtype):
+@pytest.mark.parametrize(("height", "width"), [(101, 99), (256, 256)])
+def test_sun_flare_batch_matches_per_image(method, dtype, height, width):
     rng = np.random.default_rng(137)
-    images = rng.integers(0, 256, (4, 32, 28, 3), dtype=np.uint8)
+    images = rng.integers(0, 256, (4, height, width, 3), dtype=np.uint8)
     if dtype == np.float32:
         images = (images.astype(np.float32) / 255).astype(np.float32)
 

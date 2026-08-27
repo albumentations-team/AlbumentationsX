@@ -16,7 +16,7 @@ from warnings import warn
 import cv2
 import numpy as np
 import torch
-from albucore import batch_transform, sz_lut
+from albucore import sz_lut
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -1349,9 +1349,19 @@ class DualTransform(BasicTransform):
             self._apply_to_batch(masks, lambda mask: self.apply_to_mask(mask, *args, **params)),
         )
 
-    @batch_transform("spatial")
     def apply_to_mask3d(self, mask3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
-        return self.apply_to_mask(mask3d, *args, **params)
+        """Apply one resolved 2D mask operation independently to every depth slice."""
+
+        def apply_fn(mask: np.ndarray) -> np.ndarray:
+            return self.apply_to_mask(mask, *args, **params)
+
+        if len(mask3d) == 0:
+            empty_slice = np.empty(mask3d.shape[1:], dtype=mask3d.dtype)
+            transformed_slice = apply_fn(empty_slice)
+            return np.empty((0, *transformed_slice.shape), dtype=transformed_slice.dtype)
+
+        transformed = self._apply_to_batch(mask3d, apply_fn)
+        return transformed.copy() if len(mask3d) == 1 else transformed
 
     def _get_label_transform_name(self, **params: Any) -> str | None:
         """Get the transform name to use for label mapping. For most transforms returns class

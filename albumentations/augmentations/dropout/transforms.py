@@ -205,7 +205,13 @@ class BaseDropout(DualTransform):
         # We can reuse the same logic
         return self.apply_to_images(volume, holes, seed, **params)
 
-    def apply_to_mask3d(self, mask: VolumeType, holes: np.ndarray, seed: int, **params: Any) -> VolumeType:
+    def apply_to_mask3d(  # type: ignore[override]
+        self,
+        mask: VolumeType,
+        holes: np.ndarray,
+        seed: int,
+        **params: Any,
+    ) -> VolumeType:
         if self.fill_mask is None or holes.size == 0:
             return mask
         return cutout_on_volume(mask, holes, self.fill_mask, np.random.default_rng(seed))

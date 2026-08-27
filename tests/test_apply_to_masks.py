@@ -1,9 +1,228 @@
 """Tests for apply_to_mask(s) methods in crop and flip transforms."""
 
+from __future__ import annotations
+
+import copy
+import warnings
+from collections.abc import Mapping
+from typing import Any
+
 import numpy as np
 import pytest
 
 import albumentations as A
+from albumentations.core.transform_params import SampledParams
+from albumentations.core.type_definitions import Targets
+from tests.helpers.transform_cases import TRANSFORM_CONTRACT_CASES, TransformContractCase
+
+
+def _inherits_dual_transform_mask3d(case: TransformContractCase) -> bool:
+    if issubclass(case.transform_cls, A.Transform3D):
+        return False
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        transform = case.transform_cls(**copy.deepcopy(dict(case.init_kwargs)), p=1)
+    raw_targets = transform._targets
+    targets = raw_targets if isinstance(raw_targets, tuple) else (raw_targets,)
+    return Targets.MASK3D in targets and case.transform_cls.apply_to_mask3d is A.DualTransform.apply_to_mask3d
+
+
+INHERITED_MASK3D_CASES = tuple(case for case in TRANSFORM_CONTRACT_CASES if _inherits_dual_transform_mask3d(case))
+
+
+def _make_mask3d(depth: int, height: int, width: int, channels: int, dtype: np.dtype[Any]) -> np.ndarray:
+    rows = np.arange(height, dtype=np.float32)[None, :, None, None]
+    columns = np.arange(width, dtype=np.float32)[None, None, :, None]
+    depths = np.arange(depth, dtype=np.float32)[:, None, None, None]
+    channel_offsets = np.arange(channels, dtype=np.float32)[None, None, None, :]
+    values = (17 * depths + 3 * rows + 5 * columns + 29 * channel_offsets) % 251
+    if np.issubdtype(dtype, np.floating):
+        return (values / 250).astype(dtype)
+    return values.astype(dtype)
+
+
+def _make_registered_mask3d_data(case: TransformContractCase, seed: int = 137) -> dict[str, Any]:
+    rng = np.random.default_rng(seed)
+    mask3d = _make_mask3d(2, 48, 64, 3, np.dtype(np.uint8))
+    volume = np.flip(mask3d, axis=2).copy()
+
+    def data_factory(unused_rng: np.random.Generator) -> dict[str, Any]:
+        data: dict[str, Any] = {"volume": volume, "mask3d": mask3d}
+        if "mask" in case.required_targets:
+            mask = np.zeros((48, 64), dtype=np.uint8)
+            mask[5:21, 7:29] = 1
+            mask[27:43, 35:59] = 2
+            data["mask"] = mask
+        return data
+
+    return case.make_data(rng, data_factory)
+
+
+def _resolved_mask3d_params(transform: A.BasicTransform) -> Mapping[str, Any]:
+    return SampledParams.from_dict(transform.get_applied_params()).params_for("mask3d")
+
+
+def _assert_public_mask3d_matches_per_depth(
+    transform: A.DualTransform,
+    mask3d: np.ndarray,
+    *,
+    data: dict[str, Any] | None = None,
+    compose_kwargs: Mapping[str, Any] | None = None,
+    seed: int = 137,
+) -> np.ndarray:
+    source = {"mask3d": mask3d} if data is None else data
+    pipeline = A.Compose(
+        [transform],
+        save_applied_params=True,
+        strict=True,
+        seed=seed,
+        **copy.deepcopy(dict(compose_kwargs or {})),
+    )
+    result = pipeline(**source)["mask3d"]
+    params = _resolved_mask3d_params(transform)
+    normalized_mask3d = mask3d[..., None] if mask3d.ndim == 3 else mask3d
+    expected = np.stack([transform.apply_to_mask(mask, **params) for mask in normalized_mask3d])
+    if mask3d.ndim == 3:
+        expected = expected[..., 0]
+    np.testing.assert_array_equal(result, expected)
+    return result
+
+
+@pytest.mark.parametrize("case", INHERITED_MASK3D_CASES, ids=lambda case: case.case_id)
+def test_inherited_mask3d_registered_modes_match_per_depth(case: TransformContractCase):
+    """Every registered inherited mode uses one resolved parameter set independently per depth slice."""
+    data = _make_registered_mask3d_data(case)
+    source_snapshot = copy.deepcopy(data)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        transform = case.transform_cls(**copy.deepcopy(dict(case.init_kwargs)), p=1)
+    result = _assert_public_mask3d_matches_per_depth(
+        transform,
+        data["mask3d"],
+        data=data,
+        compose_kwargs=case.primary_compose_kwargs,
+    )
+    np.testing.assert_array_equal(data["mask3d"], source_snapshot["mask3d"])
+    assert result.dtype == data["mask3d"].dtype
+    assert result.flags.writeable
+
+
+def _border_transform(transform_cls: type[A.DualTransform], fill_mask: float | tuple[float, ...]) -> A.DualTransform:
+    common = {"fill_mask": fill_mask, "p": 1}
+    if transform_cls is A.Pad:
+        transform = A.Pad(padding=4, **common)
+    elif transform_cls is A.PadIfNeeded:
+        transform = A.PadIfNeeded(min_height=56, min_width=72, **common)
+    elif transform_cls is A.LetterBox:
+        transform = A.LetterBox(size=(56, 72), **common)
+    elif transform_cls is A.Rotate:
+        transform = A.Rotate(angle_range=(17, 17), **common)
+    elif transform_cls is A.SafeRotate:
+        transform = A.SafeRotate(angle_range=(17, 17), **common)
+    elif transform_cls is A.ShiftScaleRotate:
+        transform = A.ShiftScaleRotate(shift_range=(0.1, 0.1), scale_range=(0, 0), rotate_range=(17, 17), **common)
+    elif transform_cls is A.Affine:
+        transform = A.Affine(
+            scale=(1, 1),
+            translate_px={"x": (3, 3), "y": (2, 2)},
+            rotate=(17, 17),
+            **common,
+        )
+    elif transform_cls is A.Perspective:
+        transform = A.Perspective(scale=(0.15, 0.15), **common)
+    else:
+        raise AssertionError(transform_cls)
+    return transform
+
+
+@pytest.mark.parametrize(
+    "transform_cls",
+    [A.Pad, A.PadIfNeeded, A.LetterBox, A.Rotate, A.SafeRotate, A.ShiftScaleRotate, A.Affine, A.Perspective],
+)
+@pytest.mark.parametrize("fill_mask", [11, (11, 13, 17)], ids=["scalar", "per-channel"])
+def test_inherited_mask3d_border_values_match_per_depth(transform_cls, fill_mask):
+    mask3d = _make_mask3d(2, 48, 64, 3, np.dtype(np.uint8))
+    _assert_public_mask3d_matches_per_depth(_border_transform(transform_cls, fill_mask), mask3d)
+
+
+@pytest.mark.parametrize("per_channel", [False, True], ids=["shared", "per-channel"])
+@pytest.mark.parametrize("channels", [3, 5])
+def test_pixel_dropout_mask3d_matches_per_depth(per_channel: bool, channels: int):
+    mask3d = _make_mask3d(2, 48, 64, channels, np.dtype(np.uint8))
+    transform = A.PixelDropout(
+        dropout_prob=0.25,
+        per_channel=per_channel,
+        drop_value=2,
+        mask_drop_value=tuple(range(11, 11 + channels)),
+        p=1,
+    )
+    _assert_public_mask3d_matches_per_depth(transform, mask3d)
+
+
+@pytest.mark.parametrize("depth", [1, 2])
+@pytest.mark.parametrize("channels", [1, 3, 5])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_inherited_mask3d_representation_matrix(depth, channels, dtype):
+    mask3d = _make_mask3d(depth, 31, 47, channels, np.dtype(dtype))
+    result = _assert_public_mask3d_matches_per_depth(A.Morphological(scale=(3, 3), p=1), mask3d)
+    assert result.shape == mask3d.shape
+    assert result.dtype == mask3d.dtype
+    assert result.min() >= mask3d.min()
+    assert result.max() <= mask3d.max()
+
+
+def test_pixel_dropout_grayscale_mask3d_matches_normalized_per_depth():
+    mask3d = _make_mask3d(2, 31, 47, 1, np.dtype(np.uint8))[..., 0]
+    transform = A.PixelDropout(
+        dropout_prob=0.25,
+        per_channel=True,
+        drop_value=2,
+        mask_drop_value=11,
+        p=1,
+    )
+    result = _assert_public_mask3d_matches_per_depth(transform, mask3d)
+    assert result.shape == mask3d.shape
+
+
+@pytest.mark.parametrize(
+    "transform,expected_shape",
+    [
+        (A.Resize(24, 32, p=1), (0, 24, 32, 3)),
+        (A.Pad(4, p=1), (0, 56, 72, 3)),
+        (A.LetterBox((24, 32), p=1), (0, 24, 32, 3)),
+        (A.Morphological(scale=(3, 3), p=1), (0, 48, 64, 3)),
+    ],
+    ids=["resize", "pad", "letter-box", "morphological"],
+)
+def test_inherited_mask3d_empty_depth_shape(transform, expected_shape):
+    mask3d = np.empty((0, 48, 64, 3), dtype=np.uint8)
+    result = A.Compose([transform], seed=137, strict=True)(mask3d=mask3d)["mask3d"]
+    assert result.shape == expected_shape
+    assert result.dtype == mask3d.dtype
+    assert result.flags.writeable
+
+
+@pytest.mark.parametrize("depth", [1, 2])
+def test_inherited_mask3d_output_is_owned_and_writeable(depth: int):
+    mask3d = _make_mask3d(depth, 31, 47, 3, np.dtype(np.uint8))
+    mask3d.setflags(write=False)
+    snapshot = mask3d.copy()
+    transform = A.PixelDropout(dropout_prob=0.25, mask_drop_value=None, p=1)
+    result = _assert_public_mask3d_matches_per_depth(transform, mask3d)
+    np.testing.assert_array_equal(mask3d, snapshot)
+    assert result.flags.writeable
+    assert not np.shares_memory(result, mask3d)
+
+
+def test_inherited_mask3d_noncontiguous_input_is_not_mutated():
+    base = _make_mask3d(2, 62, 94, 3, np.dtype(np.uint8))
+    mask3d = base[:, ::2, ::2]
+    assert not mask3d.flags.c_contiguous
+    snapshot = mask3d.copy()
+    result = _assert_public_mask3d_matches_per_depth(A.Morphological(scale=(3, 3), p=1), mask3d)
+    np.testing.assert_array_equal(mask3d, snapshot)
+    assert result.flags.writeable
+    assert not np.shares_memory(result, mask3d)
 
 
 # Test crops with single mask (empty and non-empty)

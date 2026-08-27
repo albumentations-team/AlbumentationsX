@@ -11,6 +11,7 @@ from albucore import (
 )
 from sklearn.decomposition import NMF
 
+import albumentations as A
 import albumentations.augmentations.blur.functional as fblur
 import albumentations.augmentations.geometric.functional as fgeometric
 import albumentations.augmentations.pixel._functional_torchvision as ftorchvision
@@ -507,6 +508,54 @@ def test_equalize_uniform_image():
     mask = np.ones((100, 100, 1), dtype=bool)
     result_masked = fpixel.equalize(uniform_img, mask=mask, mode="cv")
     np.testing.assert_array_equal(result_masked, uniform_img)
+
+
+@pytest.mark.parametrize("method", ["overlay", "physics_based"])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_sun_flare_batch_matches_per_image(method, dtype):
+    rng = np.random.default_rng(137)
+    images = rng.integers(0, 256, (4, 32, 28, 3), dtype=np.uint8)
+    if dtype == np.float32:
+        images = (images.astype(np.float32) / 255).astype(np.float32)
+
+    params = {
+        "flare_center": (13, 9),
+        "src_radius": 40,
+        "src_color": (240, 210, 180),
+        "circles": [
+            (0.12, (4, 8), 8, (230, 200, 190)),
+            (0.18, (24, 20), 27, (220, 240, 200)),
+        ],
+    }
+    scalar = fpixel.add_sun_flare_overlay if method == "overlay" else fpixel.add_sun_flare_physics_based
+    expected = np.stack([scalar(image, **params) for image in images])
+    actual = fpixel.add_sun_flare_batch(images, method, **params)
+
+    transform = A.RandomSunFlare(method=method, src_radius=40, src_color=(240, 210, 180), p=1)
+    delegated = transform.apply_to_images(images, **params)
+
+    if dtype == np.float32:
+        np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-7, equal_nan=False)
+        np.testing.assert_allclose(delegated, actual, rtol=1e-6, atol=1e-7, equal_nan=False)
+    else:
+        np.testing.assert_array_equal(actual, expected)
+        np.testing.assert_array_equal(delegated, actual)
+
+
+@pytest.mark.parametrize("method", ["overlay", "physics_based"])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_sun_flare_batch_preserves_empty_identity(method, dtype):
+    images = np.empty((0, 24, 20, 3), dtype=dtype)
+    params = {
+        "flare_center": (10, 10),
+        "src_radius": 40,
+        "src_color": (255, 255, 255),
+        "circles": [],
+    }
+
+    result = fpixel.add_sun_flare_batch(images, method, **params)
+
+    assert result is images
 
 
 @pytest.mark.parametrize(

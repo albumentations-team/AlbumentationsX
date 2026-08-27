@@ -2565,6 +2565,57 @@ def test_random_sun_flare_invalid_input(params):
         A.RandomSunFlare(**params)
 
 
+@pytest.mark.parametrize("method", ["overlay", "physics_based"])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("target_name", ["images", "volume"])
+def test_random_sun_flare_batch_replay(method, dtype, target_name):
+    rng = np.random.default_rng(137)
+    images = rng.integers(0, 256, (3, 32, 28, 3), dtype=np.uint8)
+    if dtype == np.float32:
+        images = (images.astype(np.float32) / 255).astype(np.float32)
+    original = images.copy()
+
+    transform = A.ReplayCompose(
+        [
+            A.RandomSunFlare(
+                method=method,
+                src_radius=40,
+                src_color=(240, 210, 180),
+                p=1.0,
+            ),
+        ],
+        seed=137,
+    )
+
+    data = {target_name: images}
+    result = transform(**data)
+    replayed = A.ReplayCompose.replay(result["replay"], **data)
+
+    assert result[target_name].shape == images.shape
+    assert result[target_name].dtype == images.dtype
+    np.testing.assert_array_equal(result[target_name], replayed[target_name])
+    np.testing.assert_array_equal(images, original)
+
+
+@pytest.mark.parametrize("method", ["overlay", "physics_based"])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_random_sun_flare_empty_batch(method, dtype):
+    images = np.empty((0, 24, 20, 3), dtype=dtype)
+
+    result = A.Compose([A.RandomSunFlare(method=method, p=1.0)], seed=137, strict=True)(images=images)
+
+    assert result["images"].shape == images.shape
+    assert result["images"].dtype == images.dtype
+
+
+@pytest.mark.parametrize("method", ["overlay", "physics_based"])
+def test_random_sun_flare_batch_rejects_non_rgb_images(method):
+    images = np.zeros((2, 24, 20, 1), dtype=np.uint8)
+
+    with pytest.raises(ValueError, match="3-channel"):
+        A.Compose([A.RandomSunFlare(method=method, p=1.0)], strict=True)(images=images)
+
+
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
     get_primary_2d_transform_params(

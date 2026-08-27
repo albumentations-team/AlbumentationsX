@@ -909,6 +909,16 @@ class RandomSunFlare(ImageOnlyTransform):
 
         raise ValueError(f"Invalid method: {self.method}")
 
+    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+        return fpixel.add_sun_flare_batch(
+            images,
+            self.method,
+            params["flare_center"],
+            self.src_radius,
+            self.src_color,
+            params["circles"],
+        )
+
     def sample_parameters(
         self,
         params: dict[str, Any],

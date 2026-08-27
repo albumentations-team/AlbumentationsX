@@ -619,6 +619,150 @@ def add_sun_flare_physics_based(
     return cast("ImageType", 255 - ((255 - output) * (255 - flare_layer) / 255))
 
 
+def add_sun_flare_batch(
+    images: ImageType,
+    method: str,
+    flare_center: tuple[float, float],
+    src_radius: int,
+    src_color: tuple[int, ...],
+    circles: list[Any],
+) -> ImageType:
+    """Apply one sampled sun flare to an RGB image batch."""
+    if len(images) == 0:
+        return images
+
+    if images.ndim != 4:
+        raise ValueError("This transformation expects 3-channel images")
+
+    non_rgb_error(images)
+
+    if method == "overlay":
+        return _add_sun_flare_overlay_batch(images, flare_center, src_radius, src_color, circles)
+    if method == "physics_based":
+        return _add_sun_flare_physics_based_batch(images, flare_center, src_radius, src_color, circles)
+
+    raise ValueError(f"Invalid method: {method}")
+
+
+@uint8_io
+@preserve_channel_dim
+def _add_sun_flare_overlay_batch(
+    images: ImageType,
+    flare_center: tuple[float, float],
+    src_radius: int,
+    src_color: tuple[int, ...],
+    circles: list[Any],
+) -> ImageType:
+    """Apply the overlay sun flare kernel across an image batch."""
+    height, width = images.shape[1:3]
+    overlay = images.reshape(-1, width, images.shape[-1]).copy()
+    output = overlay.copy()
+    overlay_batch = overlay.reshape(images.shape)
+    overlay_pixels = overlay_batch.reshape(images.shape[0], -1, images.shape[-1])
+
+    weighted_brightness = 0.0
+    total_radius_length = 0.0
+
+    for alpha, (x, y), rad3, circle_color in circles:
+        weighted_brightness += alpha * rad3
+        total_radius_length += rad3
+        x_min, x_max = max(x - rad3, 0), min(x + rad3 + 1, width)
+        y_min, y_max = max(y - rad3, 0), min(y + rad3 + 1, height)
+        if x_min < x_max and y_min < y_max:
+            circle_mask = np.zeros((y_max - y_min, x_max - x_min), dtype=np.uint8)
+            cv2.circle(circle_mask, (x - x_min, y - y_min), rad3, 1, -1)
+            mask_y, mask_x = np.nonzero(circle_mask)
+            indices = (mask_y + y_min) * width + mask_x + x_min
+            overlay_pixels[:, indices] = circle_color
+        output = add_weighted(overlay, alpha, output, 1 - alpha)
+
+    point = [int(x) for x in flare_center]
+    overlay = output.copy()
+    overlay_batch = overlay.reshape(images.shape)
+    overlay_pixels = overlay_batch.reshape(images.shape[0], -1, images.shape[-1])
+    num_times = src_radius // 10
+
+    max_alpha = weighted_brightness / total_radius_length * 5
+    alpha = np.linspace(0.0, min(max_alpha, 1.0), num=num_times)
+    rad = np.linspace(1, src_radius, num=num_times)
+
+    if num_times:
+        radiuses = [int(value) for value in rad]
+        radius_index = np.full((height, width), -1, dtype=np.int16)
+        for i in range(num_times - 1, -1, -1):
+            cv2.circle(radius_index, point, radiuses[i], i, -1)
+
+        flat_radius_index = radius_index.ravel()
+        sorted_indices = np.argsort(flat_radius_index)
+        counts = np.bincount(flat_radius_index + 1, minlength=num_times + 1)
+        offsets = np.cumsum(counts)
+
+        for i in range(num_times):
+            indices = sorted_indices[offsets[i] : offsets[i + 1]]
+            overlay_pixels[:, indices] = src_color
+            alp = alpha[num_times - i - 1] * alpha[num_times - i - 1] * alpha[num_times - i - 1]
+            output = add_weighted(overlay, alp, output, 1 - alp)
+
+    return output.reshape(images.shape)
+
+
+@uint8_io
+@clipped
+def _add_sun_flare_physics_based_batch(
+    images: ImageType,
+    flare_center: tuple[int, int],
+    src_radius: int,
+    src_color: tuple[int, int, int],
+    circles: list[Any],
+) -> ImageType:
+    """Apply the physics-based sun flare kernel across an image batch."""
+    output = images.copy()
+    height, width = images.shape[1:3]
+
+    flare_layer = np.zeros((height, width, images.shape[-1]), dtype=np.float32)
+
+    cv2.circle(flare_layer, flare_center, src_radius, src_color, -1)
+
+    for angle in [0, 45, 90, 135]:
+        end_point = (
+            int(flare_center[0] + np.cos(np.radians(angle)) * max(width, height)),
+            int(flare_center[1] + np.sin(np.radians(angle)) * max(width, height)),
+        )
+        cv2.line(flare_layer, flare_center, end_point, src_color, 2)
+
+    for _, center, size, color in circles:
+        cv2.circle(flare_layer, center, int(size**0.33), color, -1)
+
+    flare_layer = cv2.GaussianBlur(flare_layer, (0, 0), sigmaX=15, sigmaY=15)
+
+    y = np.arange(height, dtype=np.float32)[:, np.newaxis] - flare_center[1]
+    x = np.arange(width, dtype=np.float32)[np.newaxis, :] - flare_center[0]
+    mask = x * x + y * y
+    mask = albucore_sqrt(mask, inplace=True)
+    mask *= np.float32(1 / (max(width, height) * 0.7))
+    np.clip(mask, 0, 1, out=mask)
+    np.subtract(1, mask, out=mask)
+
+    flare_layer *= mask[..., np.newaxis]
+
+    channels = list(cv2.split(flare_layer))
+    channels[0] = cv2.GaussianBlur(
+        channels[0],
+        (0, 0),
+        sigmaX=3,
+        sigmaY=3,
+    )
+    channels[2] = cv2.GaussianBlur(
+        channels[2],
+        (0, 0),
+        sigmaX=5,
+        sigmaY=5,
+    )
+    flare_layer = cv2.merge(channels)
+
+    return cast("ImageType", 255 - ((255 - output) * (255 - flare_layer) / 255))
+
+
 @uint8_io
 @preserve_channel_dim
 def add_shadow(
@@ -1053,6 +1197,7 @@ __all__ = [
     "add_shadow_batch",
     "add_snow_bleach",
     "add_snow_texture",
+    "add_sun_flare_batch",
     "add_sun_flare_overlay",
     "add_sun_flare_physics_based",
     "apply_atmospheric_fog",

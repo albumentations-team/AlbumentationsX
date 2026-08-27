@@ -800,8 +800,8 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         *,
         ensure_contiguous: bool = False,
     ) -> np.ndarray:
-        """Apply a function to each element in a batch with pre-allocation. Uses first element to
-        determine output shape; avoids per-call allocation.
+        """Apply a function to each element in a batch with pre-allocation. Uses the first element,
+        or a synthetic item for an empty batch, to determine output shape and dtype.
 
         Args:
             batch (np.ndarray): Input batch array of shape (N, ...)
@@ -813,7 +813,9 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
         """
         if len(batch) == 0:
-            return np.require(batch, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else batch
+            empty_item = np.empty(batch.shape[1:], dtype=batch.dtype)
+            first_result = apply_fn(empty_item)
+            return np.empty((0, *first_result.shape), dtype=first_result.dtype)
 
         # Process first element to determine output shape
         first_result = apply_fn(batch[0])
@@ -1354,11 +1356,6 @@ class DualTransform(BasicTransform):
 
         def apply_fn(mask: np.ndarray) -> np.ndarray:
             return self.apply_to_mask(mask, *args, **params)
-
-        if len(mask3d) == 0:
-            empty_slice = np.empty(mask3d.shape[1:], dtype=mask3d.dtype)
-            transformed_slice = apply_fn(empty_slice)
-            return np.empty((0, *transformed_slice.shape), dtype=transformed_slice.dtype)
 
         transformed = self._apply_to_batch(mask3d, apply_fn)
         return transformed.copy() if len(mask3d) == 1 else transformed

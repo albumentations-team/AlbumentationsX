@@ -194,12 +194,17 @@ def test_pixel_dropout_grayscale_mask3d_matches_normalized_per_depth():
     ],
     ids=["resize", "pad", "letter-box", "morphological"],
 )
-def test_inherited_mask3d_empty_depth_shape(transform, expected_shape):
-    mask3d = np.empty((0, 48, 64, 3), dtype=np.uint8)
-    result = A.Compose([transform], seed=137, strict=True)(mask3d=mask3d)["mask3d"]
-    assert result.shape == expected_shape
-    assert result.dtype == mask3d.dtype
-    assert result.flags.writeable
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_inherited_empty_volume_and_mask3d_shapes_stay_aligned(transform, expected_shape, dtype):
+    volume = np.empty((0, 48, 64, 3), dtype=dtype)
+    mask3d = np.empty((0, 48, 64, 3), dtype=dtype)
+    result = A.Compose([transform], seed=137, strict=True)(volume=volume, mask3d=mask3d)
+    assert result["volume"].shape == expected_shape
+    assert result["mask3d"].shape == expected_shape
+    assert result["volume"].dtype == volume.dtype
+    assert result["mask3d"].dtype == mask3d.dtype
+    assert result["volume"].flags.writeable
+    assert result["mask3d"].flags.writeable
 
 
 @pytest.mark.parametrize("depth", [1, 2])

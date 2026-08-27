@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Literal, cast
 
+import torch
+
 from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
     MONO_CHANNEL_DIMENSIONS,
@@ -771,6 +773,7 @@ __all__ = [
     "generate_shared_noise",
     "generate_spatial_noise",
     "get_safe_brightness_contrast_params",
+    "k_space_spike",
     "rician_noise",
     "sample_beta",
     "sample_gaussian",
@@ -795,3 +798,69 @@ def rician_noise(
     np.add(result, np.square(imaginary_noise), out=result)
     np.sqrt(result, out=result)
     return np.clip(result, 0.0, 1.0, out=result)
+
+
+@preserve_channel_dim
+@float32_io
+def k_space_spike(
+    img: ImageType,
+    spikes: np.ndarray,
+    intensity: float,
+) -> ImageType:
+    """Inject point spikes into the Fourier spectrum and reconstruct via inverse FFT.
+
+    Each spike adds a real amplitude `intensity * max|F|` at its frequency bin and at the
+    conjugate mirror, keeping the half-spectrum Hermitian so the reconstruction is real.
+    """
+    if intensity == 0 or spikes.size == 0:
+        return img
+
+    injections = _spike_injections(spikes)
+    if not injections:
+        return img
+
+    ndim = spikes.shape[-1]
+    is_batch = img.ndim == ndim + 2
+    axes = tuple(range(1, ndim + 1)) if is_batch else tuple(range(ndim))
+    axis_sizes = tuple(img.shape[axis] for axis in axes)
+
+    tensor = torch.from_numpy(np.ascontiguousarray(img))
+    spectrum = torch.fft.rfftn(tensor, dim=axes)
+    max_amplitudes = torch.abs(spectrum).amax(dim=axes, keepdim=True)
+    half_axis = ndim - 1
+
+    def folded(coords: tuple[int, ...]) -> tuple[int, ...]:
+        return tuple(
+            index if axis != half_axis or index <= axis_sizes[axis] // 2 else axis_sizes[axis] - index
+            for axis, index in enumerate(coords)
+        )
+
+    def index_for(coords: tuple[int, ...], channel: int | None = None) -> tuple[Any, ...]:
+        prefix = (slice(None),) if is_batch else ()
+        return prefix + coords + ((channel,) if channel is not None else ())
+
+    for coords, channel in injections:
+        amplitude = (
+            intensity * float(max_amplitudes.max())
+            if channel is None
+            else intensity * float(max_amplitudes[..., channel].max())
+        )
+        mirror = tuple((size - coord) % size for size, coord in zip(axis_sizes, coords, strict=True))
+        if coords == mirror:
+            spectrum[index_for(folded(coords), channel)] += amplitude
+        else:
+            for bin_coords in {folded(coords), folded(mirror)}:
+                spectrum[index_for(bin_coords, channel)] += amplitude
+
+    return np.clip(torch.fft.irfftn(spectrum, s=axis_sizes, dim=axes).numpy(), 0.0, 1.0)
+
+
+def _spike_injections(spikes: np.ndarray) -> list[tuple[tuple[int, ...], int | None]]:
+    """Expand shared or per-channel spikes into (coords, channel) pairs."""
+    injections: list[tuple[tuple[int, ...], int | None]] = []
+    if spikes.ndim == 2:
+        injections.extend((tuple(int(index) for index in spike), None) for spike in spikes)
+    else:
+        for channel in range(spikes.shape[0]):
+            injections.extend((tuple(int(index) for index in spike), channel) for spike in spikes[channel])
+    return injections

@@ -65,6 +65,7 @@ FUNCTIONAL_3D_KERNELS = (
     "transform_cube",
     "swap_tiles_on_volume",
     "rician_noise",
+    "k_space_spike",
 )
 
 
@@ -492,6 +493,10 @@ def _call_rician_noise(benchmark: Any) -> np.ndarray:
     return fpixel.rician_noise(benchmark.volume, benchmark.real_noise, benchmark.imaginary_noise)
 
 
+def _call_k_space_spike(benchmark: Any) -> np.ndarray:
+    return fpixel.k_space_spike(benchmark.volume, benchmark.spikes, 0.1)
+
+
 FUNCTIONAL_3D_CALLS: Mapping[str, ImageKernelCall] = {
     "affine_3d": _call_affine_3d,
     "anisotropy_3d": _call_anisotropy_3d,
@@ -503,6 +508,7 @@ FUNCTIONAL_3D_CALLS: Mapping[str, ImageKernelCall] = {
     "transform_cube": _call_transform_cube,
     "swap_tiles_on_volume": _call_swap_tiles_on_volume,
     "rician_noise": _call_rician_noise,
+    "k_space_spike": _call_k_space_spike,
 }
 
 
@@ -658,6 +664,8 @@ class TimeFunctional3DKernels:
         if name == "rician_noise":
             self.real_noise = rng.standard_normal(self.volume.shape, dtype=np.float32) * 0.1
             self.imaginary_noise = rng.standard_normal(self.volume.shape, dtype=np.float32) * 0.1
+        if name == "k_space_spike":
+            self.spikes = rng.integers(0, np.array([depth, height, width]), size=(4, 3))
 
     def time_kernel(self, case_id: str) -> None:
         FUNCTIONAL_3D_CALLS[self.name](self)

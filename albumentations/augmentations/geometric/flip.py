@@ -27,9 +27,10 @@ from typing import Any, Literal, cast
 
 import numpy as np
 import torch
-from albucore import hflip, vflip
+from albucore import flip_volume, hflip, rot90_volume, transpose_volume, vflip
 
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
@@ -52,6 +53,30 @@ __all__ = [
     "Transpose",
     "VerticalFlip",
 ]
+
+
+def _apply_d4_to_tensor_volume(
+    volume: torch.Tensor,
+    group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
+) -> torch.Tensor:
+    match group_element:
+        case "e":
+            result = volume
+        case "r90":
+            result = rot90_volume(volume, 1, (-2, -1))
+        case "r180":
+            result = rot90_volume(volume, 2, (-2, -1))
+        case "r270":
+            result = rot90_volume(volume, 3, (-2, -1))
+        case "v":
+            result = flip_volume(volume, -2)
+        case "hvt":
+            result = transpose_volume(flip_volume(volume, (-2, -1)), -2, -1)
+        case "h":
+            result = flip_volume(volume, -1)
+        case "t":
+            result = transpose_volume(volume, -2, -1)
+    return result
 
 
 class VerticalFlip(DualTransform):
@@ -124,12 +149,11 @@ class VerticalFlip(DualTransform):
             return cast("ImageType", fgeometric.flip_tensor(img, dims=(-2,)))
         return vflip(img)
 
-    def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
-        bbox_type = params["bbox_type"]
+    def apply_to_bboxes(self, bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"], **params: Any) -> np.ndarray:
         return fgeometric.bboxes_vflip(bboxes, bbox_type=bbox_type)
 
-    def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
-        return fgeometric.keypoints_vflip(keypoints, params["shape"][0])
+    def apply_to_keypoints(self, keypoints: np.ndarray, shape: tuple[int, int], **params: Any) -> np.ndarray:
+        return fgeometric.keypoints_vflip(keypoints, shape[0])
 
     def apply_to_mask(self, mask: ImageType, **params: Any) -> ImageType:
         if mask.size == 0:
@@ -232,12 +256,11 @@ class HorizontalFlip(DualTransform):
             return cast("ImageType", fgeometric.flip_tensor(img, dims=(-1,)))
         return hflip(img)
 
-    def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
-        bbox_type = params["bbox_type"]
+    def apply_to_bboxes(self, bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"], **params: Any) -> np.ndarray:
         return fgeometric.bboxes_hflip(bboxes, bbox_type=bbox_type)
 
-    def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
-        return fgeometric.keypoints_hflip(keypoints, params["shape"][1])
+    def apply_to_keypoints(self, keypoints: np.ndarray, shape: tuple[int, int], **params: Any) -> np.ndarray:
+        return fgeometric.keypoints_hflip(keypoints, shape[1])
 
     def apply_to_mask(self, mask: ImageType, **params: Any) -> ImageType:
         if mask.size == 0:
@@ -347,8 +370,7 @@ class Transpose(DualTransform):
             return cast("ImageType", fgeometric.transpose_tensor(img))
         return fgeometric.transpose(img)
 
-    def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
-        bbox_type = params["bbox_type"]
+    def apply_to_bboxes(self, bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"], **params: Any) -> np.ndarray:
         return fgeometric.bboxes_transpose(bboxes, bbox_type=bbox_type)
 
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
@@ -472,6 +494,8 @@ class D4(DualTransform):
 
     _targets = ALL_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+    _supports_cpu_tensor = True
+    _cpu_tensor_targets = frozenset({"volume", "mask3d"})
 
     class InitSchema(BaseTransformInitSchema):
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"] | None
@@ -496,18 +520,19 @@ class D4(DualTransform):
         self,
         bboxes: np.ndarray,
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
+        bbox_type: Literal["hbb", "obb"],
         **params: Any,
     ) -> np.ndarray:
-        bbox_type = params["bbox_type"]
         return fgeometric.bboxes_d4(bboxes, group_element, bbox_type=bbox_type)
 
     def apply_to_keypoints(
         self,
         keypoints: np.ndarray,
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
-        return fgeometric.keypoints_d4(keypoints, group_element, params["shape"])
+        return fgeometric.keypoints_d4(keypoints, group_element, shape)
 
     def apply_to_mask(
         self,
@@ -545,6 +570,8 @@ class D4(DualTransform):
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
         **params: Any,
     ) -> ImageType:
+        if isinstance(images, torch.Tensor):
+            return cast("ImageType", _apply_d4_to_tensor_volume(images, group_element))
         return fgeometric.d4_images(images, group_element)
 
     def apply_to_mask3d(
@@ -553,6 +580,11 @@ class D4(DualTransform):
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
         **params: Any,
     ) -> VolumeType:
+        if isinstance(mask3d, torch.Tensor):
+            return cast(
+                "VolumeType",
+                _apply_d4_to_tensor_volume(mask3d.unsqueeze(0), group_element).squeeze(0),
+            )
         if mask3d.size == 0:
             # Group elements that transpose dimensions: "r90", "r270", "t", "hvt"
             # Assume mask3d shape is (D, H, W, C)
@@ -573,14 +605,15 @@ class D4(DualTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]]:
+    ) -> SampledParams:
         if self.group_element is not None:
             group_element = self.group_element
         else:
             group_element = sampling.random_generator.choice(d4_group_elements)
         sampling.applied_overrides["group_element"] = group_element
-        return {"group_element": group_element}
+        return SampledParams(params={"group_element": group_element})
 
     def inverse(self) -> D4:
         """Return a new D4 with the inverse group element to undo this transform. Use after inference

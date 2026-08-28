@@ -12,6 +12,12 @@ from pydantic import AfterValidator
 
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import check_range_bounds
+from albumentations.core.transform_params import (
+    SampledParams,
+    TargetParams,
+    TargetSet,
+    requirements_for_views,
+)
 from albumentations.core.transforms_interface import BaseTransformInitSchema, ImageOnlyTransform
 from albumentations.core.type_definitions import ImageType
 
@@ -105,20 +111,26 @@ class ChannelDropout(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, tuple[int, ...]]:
-        metadata = self.get_image_data(data)
-        num_channels = metadata["num_channels"]
-        if num_channels == 1:
-            msg = "Images has one channel. ChannelDropout is not defined."
-            raise NotImplementedError(msg)
-
-        if self.channel_drop_range[1] >= num_channels:
-            msg = "Can not drop all channels in ChannelDropout."
-            raise ValueError(msg)
-        num_drop_channels = sampling.py_random.randint(*self.channel_drop_range)
-        channels_to_drop = tuple(sampling.py_random.sample(range(num_channels), k=num_drop_channels))
-
-        sampling.applied_overrides["channel_drop_range"] = num_drop_channels
-
-        return {"channels_to_drop": channels_to_drop}
+    ) -> SampledParams:
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(lambda view: view.descriptor.channels):
+            view = views[0]
+            num_channels = view.descriptor.channels or 1
+            if num_channels == 1:
+                msg = "Images has one channel. ChannelDropout is not defined."
+                raise NotImplementedError(msg)
+            if self.channel_drop_range[1] >= num_channels:
+                msg = "Can not drop all channels in ChannelDropout."
+                raise ValueError(msg)
+            num_drop_channels = sampling.py_random.randint(*self.channel_drop_range)
+            channels_to_drop = tuple(sampling.py_random.sample(range(num_channels), k=num_drop_channels))
+            groups.append(
+                TargetParams(
+                    targets=tuple(item.name for item in views),
+                    params={"channels_to_drop": channels_to_drop},
+                    requirements=requirements_for_views(views, channels=True),
+                ),
+            )
+        return SampledParams(params={}, target_params=tuple(groups))

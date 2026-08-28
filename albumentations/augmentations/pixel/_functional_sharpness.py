@@ -358,7 +358,11 @@ def planckian_jitter(
 
 @clipped
 @preserve_channel_dim
-def convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
+def convolve(
+    img: ImageType,
+    kernel: np.ndarray,
+    border_mode: int = cv2.BORDER_DEFAULT,
+) -> ImageType:
     """Convolve image with 2D kernel via cv2.filter2D. Any channel count. Use for custom blur,
     sharpen, or edge kernels. Clipped.
 
@@ -366,15 +370,78 @@ def convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
 
     Args:
         img (ImageType): Input image.
-        kernel (np.ndarray): Kernel.
+        kernel (np.ndarray): A 2D kernel shared across channels, or a stack of 2D kernels with
+            shape `(channels, height, width)`.
+        border_mode (int): OpenCV border mode used for pixels outside the image.
 
     Returns:
         ImageType: Convolved image.
 
     """
     img = cast("ImageType", np.array(img, copy=True, order="C"))
-    cv2.filter2D(img, ddepth=-1, kernel=kernel, dst=img)
+    if kernel.ndim == 2:
+        cv2.filter2D(img, ddepth=-1, kernel=kernel, dst=img, borderType=border_mode)
+        return img
+
+    if kernel.ndim != 3:
+        raise ValueError(f"kernel must have 2 or 3 dimensions, got {kernel.ndim}")
+
+    channels = 1 if img.ndim == 2 else img.shape[-1]
+    if kernel.shape[0] != channels:
+        raise ValueError(f"Expected one kernel per channel ({channels}), got {kernel.shape[0]}")
+
+    if img.ndim == 2:
+        cv2.filter2D(img, ddepth=-1, kernel=kernel[0], dst=img, borderType=border_mode)
+    else:
+        for channel, channel_kernel in enumerate(kernel):
+            filtered_channel = cv2.filter2D(
+                img[..., channel],
+                ddepth=-1,
+                kernel=channel_kernel,
+                borderType=border_mode,
+            )
+            img[..., channel] = filtered_channel
     return img
+
+
+def create_stochastic_convolution_kernel(
+    random_field: np.ndarray,
+    strength: float,
+) -> np.ndarray:
+    """Create an identity-centered stochastic convolution kernel from a sampled field.
+
+    The field contains either one `(K, K)` kernel or one `(C, K, K)` kernel per channel. The
+    random component is scaled by `strength / K` so its expected energy is independent of the
+    selected kernel side length. The identity impulse is added without normalizing the result;
+    signed weights and realized DC gain are therefore preserved.
+
+    Args:
+        random_field (np.ndarray): Float random field with shape `(K, K)` or `(C, K, K)`.
+        strength (float): Non-negative perturbation strength.
+
+    Returns:
+        np.ndarray: Float32 kernel with the same rank as `random_field`.
+
+    Raises:
+        ValueError: If the field is not square or has an unsupported rank.
+
+    """
+    if random_field.ndim not in {2, 3}:
+        raise ValueError(f"random_field must have 2 or 3 dimensions, got {random_field.ndim}")
+    if not np.isfinite(strength) or strength < 0:
+        raise ValueError("strength must be finite and non-negative")
+    kernel_size = random_field.shape[-1]
+    if random_field.shape[-2] != kernel_size or kernel_size % 2 == 0:
+        raise ValueError("random_field must contain odd square kernels")
+
+    kernel = np.array(random_field, dtype=np.float32, copy=True, order="C")
+    np.multiply(kernel, np.float32(strength / kernel_size), out=kernel)
+    center = kernel_size // 2
+    if kernel.ndim == 2:
+        kernel[center, center] += 1.0
+    else:
+        kernel[:, center, center] += 1.0
+    return kernel
 
 
 @clipped
@@ -404,6 +471,7 @@ __all__ = [
     "_get_planckian_coeffs",
     "chromatic_aberration",
     "convolve",
+    "create_stochastic_convolution_kernel",
     "pixel_dropout",
     "planckian_jitter",
     "separable_convolve",

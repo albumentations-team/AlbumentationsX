@@ -330,8 +330,9 @@ def create_illumination_gradient(
         return create_corner_illumination_gradient(height, width, params["intensity"], params["corner"])
 
     # gaussian
-    if "spots" in params:
-        return create_gaussian_illumination_gradient_from_spots(height, width, params["spots"])
+    spots = params.get("spots")
+    if spots is not None:
+        return create_gaussian_illumination_gradient_from_spots(height, width, spots)
     return create_gaussian_illumination_gradient(
         height,
         width,
@@ -500,8 +501,9 @@ def apply_illumination_batch(
     gradient = create_illumination_gradient(height, width, mode, params)
     if not implicit_grayscale:
         gradient = gradient[..., np.newaxis]
+    spots = params.get("spots")
     gaussian_brightens = mode == "gaussian" and (
-        any(spot[3] > 0 for spot in params["spots"]) if "spots" in params else params["intensity"] > 0
+        any(spot[3] > 0 for spot in spots) if spots is not None else params["intensity"] > 0
     )
     clip_required = (mode == "corner" and params["intensity"] < 0) or gaussian_brightens
     num_channels = 1 if implicit_grayscale else images.shape[-1]
@@ -683,7 +685,7 @@ def _auto_contrast_multichannel_hist(
         lut = _create_auto_contrast_lut(hist, cutoff, ignore, method, max_value)
         if lut is None:
             continue
-        result[..., channel_idx] = sz_lut(channel, lut)
+        result[..., channel_idx] = sz_lut(cast("ImageUInt8", channel), lut)
 
     return result
 

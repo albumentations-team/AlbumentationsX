@@ -22,6 +22,12 @@ from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
 )
+from albumentations.core.transform_params import (
+    SampledParams,
+    TargetParams,
+    TargetRequirement,
+    TargetSet,
+)
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
@@ -158,15 +164,16 @@ class Blur(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         kernel = fblur.sample_odd_from_range(
             sampling.py_random,
             self.blur_range[0],
             self.blur_range[1],
         )
         sampling.applied_overrides["blur_range"] = kernel
-        return {"kernel": kernel}
+        return SampledParams(params={"kernel": kernel})
 
 
 class MotionBlur(Blur):
@@ -419,8 +426,9 @@ class MotionBlur(Blur):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         ksize = fblur.sample_odd_from_range(
             sampling.py_random,
             self.blur_range[0],
@@ -446,7 +454,7 @@ class MotionBlur(Blur):
             random_state=sampling.py_random,
         )
 
-        return {"kernel": kernel.astype(np.float32) / float(reduce_sum(kernel))}
+        return SampledParams(params={"kernel": kernel.astype(np.float32) / float(reduce_sum(kernel))})
 
 
 class MedianBlur(Blur):
@@ -671,15 +679,16 @@ class ModeFilter(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         kernel_size = fblur.sample_odd_from_range(
             sampling.py_random,
             self.kernel_range[0],
             self.kernel_range[1],
         )
         sampling.applied_overrides["kernel_range"] = kernel_size
-        return {"kernel_size": kernel_size}
+        return SampledParams(params={"kernel_size": kernel_size})
 
 
 class GaussianBlur(ImageOnlyTransform):
@@ -907,21 +916,29 @@ class GaussianBlur(ImageOnlyTransform):
         self,
         img: ImageType,
         kernel: np.ndarray,
+        pillow_mode: bool,
         **params: Any,
     ) -> ImageType:
-        if params.get("pillow_mode", False):
+        if pillow_mode:
             return fblur.pillow_gaussian_blur(img, kernel)
         return fpixel.separable_convolve(img, kernel=kernel)
 
-    def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
+    def apply_to_volume(
+        self,
+        volume: VolumeType,
+        kernel: np.ndarray,
+        sigma: tuple[float, float, float],
+        kernel_size: tuple[int, int, int],
+        **params: Any,
+    ) -> VolumeType:
         if self.volume_mode == "slice":
-            return super().apply_to_volume(volume, **params)
+            return super().apply_to_volume(volume, kernel=kernel, **params)
         return cast(
             "VolumeType",
             gaussian_blur3d(
                 volume,
-                sigma=params["volume_sigma"],
-                kernel_size=params["volume_kernel_size"],
+                sigma=sigma,
+                kernel_size=kernel_size,
             ),
         )
 
@@ -936,8 +953,9 @@ class GaussianBlur(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         sigma = sampling.py_random.uniform(*self.sigma_range)
         ksize = (
             self._sample_3d_kernel_size(self.blur_range, sampling)
@@ -952,7 +970,13 @@ class GaussianBlur(ImageOnlyTransform):
             "pillow_mode": ksize == 0,
         }
         if self.volume_mode == "slice":
-            return result
+            return SampledParams(
+                params={
+                    **result,
+                    "sigma": (sigma, sigma, sigma),
+                    "kernel_size": (ksize, ksize, ksize),
+                }
+            )
 
         sigma_z = sigma if self.sigma_z_range is None else sampling.py_random.uniform(*self.sigma_z_range)
         kernel_size_z = ksize if self.blur_z_range is None else self._sample_3d_kernel_size(self.blur_z_range, sampling)
@@ -963,13 +987,20 @@ class GaussianBlur(ImageOnlyTransform):
                 "blur_z_range": kernel_size_z,
             },
         )
-        result.update(
-            {
-                "volume_sigma": (sigma_z, sigma, sigma),
-                "volume_kernel_size": (kernel_size_z, ksize, ksize),
-            },
-        )
-        return result
+        volume_views = targets.by_canonical_type("volume")
+        volume_group: tuple[TargetParams, ...] = ()
+        if volume_views:
+            volume_group = (
+                TargetParams(
+                    targets=tuple(view.name for view in volume_views),
+                    params={
+                        "sigma": (sigma_z, sigma, sigma),
+                        "kernel_size": (kernel_size_z, ksize, ksize),
+                    },
+                    requirements={view.name: TargetRequirement() for view in volume_views},
+                ),
+            )
+        return SampledParams(params=result, target_params=volume_group)
 
 
 class GlassBlur(ImageOnlyTransform):
@@ -1155,20 +1186,20 @@ class GlassBlur(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, np.ndarray]:
-        height, width = params["shape"][:2]
-        # generate array containing all necessary values for transformations
-        width_pixels = height - self.max_delta * 2
-        height_pixels = width - self.max_delta * 2
-        total_pixels = int(width_pixels * height_pixels)
+    ) -> SampledParams:
+        height, width = targets.require_aligned_spatial_shape(2)
+        height_pixels = height - self.max_delta * 2
+        width_pixels = width - self.max_delta * 2
+        total_pixels = width_pixels * height_pixels
         dxy = sampling.random_generator.integers(
             -self.max_delta,
             self.max_delta,
             size=(total_pixels, self.iterations, 2),
         )
 
-        return {"dxy": dxy}
+        return SampledParams(params={"dxy": dxy})
 
 
 class AdvancedBlur(ImageOnlyTransform):
@@ -1440,8 +1471,9 @@ class AdvancedBlur(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, np.ndarray]:
+    ) -> SampledParams:
         ksize = fblur.sample_odd_from_range(
             sampling.py_random,
             self.blur_range[0],
@@ -1498,7 +1530,7 @@ class AdvancedBlur(ImageOnlyTransform):
 
         # Normalize kernel
         kernel = kernel.astype(np.float32) / reduce_sum(kernel)
-        return {"kernel": kernel}
+        return SampledParams(params={"kernel": kernel})
 
 
 class Defocus(ImageOnlyTransform):
@@ -1633,20 +1665,28 @@ class Defocus(ImageOnlyTransform):
     ) -> ImageType:
         return fblur.defocus(img, radius, alias_blur)
 
-    def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
-        kernel = fblur.create_defocus_kernel(params["radius"], params["alias_blur"])
+    def apply_to_images(
+        self,
+        images: ImageType,
+        radius: int,
+        alias_blur: float,
+        *args: Any,
+        **params: Any,
+    ) -> ImageType:
+        kernel = fblur.create_defocus_kernel(radius, alias_blur)
         return self._apply_to_batch(images, lambda img: fpixel.convolve(img, kernel))
 
     def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         radius = sampling.py_random.randint(*self.radius_range)
         alias_blur = sampling.py_random.uniform(*self.alias_blur_range)
         sampling.applied_overrides.update({"radius_range": radius, "alias_blur_range": alias_blur})
-        return {"radius": radius, "alias_blur": alias_blur}
+        return SampledParams(params={"radius": radius, "alias_blur": alias_blur})
 
 
 class ZoomBlur(ImageOnlyTransform):
@@ -1773,9 +1813,10 @@ class ZoomBlur(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         step_factor = sampling.py_random.uniform(*self.step_factor_range)
         max_factor = max(1 + step_factor, sampling.py_random.uniform(*self.max_factor_range))
         sampling.applied_overrides.update({"step_factor_range": step_factor, "max_factor_range": max_factor})
-        return {"zoom_factors": np.arange(1.0, max_factor, step_factor)}
+        return SampledParams(params={"zoom_factors": np.arange(1.0, max_factor, step_factor)})

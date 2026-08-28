@@ -6,9 +6,9 @@ import pytest
 import albumentations as A
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.core.invocation import SamplingContext
+from tests.utils import make_sampling_args
 
 DISTORTION_TRANSFORMS = [
-    pytest.param(A.ElasticTransform, {"alpha": 2, "sigma": 20}, id="ElasticTransform"),
     pytest.param(A.GridDistortion, {"num_steps": 5, "distort_range": (-0.2, 0.2)}, id="GridDistortion"),
     pytest.param(A.OpticalDistortion, {"distort_range": (-0.05, 0.05)}, id="OpticalDistortion"),
     pytest.param(A.PiecewiseAffine, {"scale_range": (0.03, 0.05)}, id="PiecewiseAffine"),
@@ -22,7 +22,6 @@ DISTORTION_TRANSFORMS = [
 ]
 
 NOOP_DISTORTION_TRANSFORMS = [
-    pytest.param(A.ElasticTransform, {"alpha": 0, "sigma": 20}, id="ElasticTransform"),
     pytest.param(A.GridDistortion, {"num_steps": 5, "distort_range": (0, 0)}, id="GridDistortion"),
     pytest.param(A.OpticalDistortion, {"distort_range": (0, 0)}, id="OpticalDistortion"),
     pytest.param(A.WaterRefraction, {"amplitude_range": (0, 0)}, id="WaterRefraction"),
@@ -51,7 +50,7 @@ def test_map_resolution_range_accepts_valid_tuple(transform_cls, params):
 )
 def test_map_resolution_range_rejects_invalid_values(map_resolution_range):
     with pytest.raises(ValueError):
-        A.ElasticTransform(map_resolution_range=map_resolution_range)
+        A.GridDistortion(map_resolution_range=map_resolution_range)
 
 
 @pytest.mark.parametrize(("transform_cls", "params"), DISTORTION_TRANSFORMS)
@@ -61,10 +60,9 @@ def test_low_map_resolution_returns_full_size_maps(transform_cls, params):
     transform.set_random_seed(137)
 
     result = transform.sample_parameters(
-        {"shape": image.shape},
-        {"image": image},
+        *make_sampling_args(transform, {"image": image}),
         SamplingContext.from_owner(transform, {}),
-    )
+    ).params
 
     assert result["map_x"].shape == image.shape[:2]
     assert result["map_y"].shape == image.shape[:2]
@@ -80,10 +78,9 @@ def test_low_map_resolution_returns_full_size_maps_for_tiny_images(transform_cls
     transform.set_random_seed(137)
 
     result = transform.sample_parameters(
-        {"shape": image.shape},
-        {"image": image},
+        *make_sampling_args(transform, {"image": image}),
         SamplingContext.from_owner(transform, {}),
-    )
+    ).params
 
     assert result["map_x"].shape == image.shape[:2]
     assert result["map_y"].shape == image.shape[:2]

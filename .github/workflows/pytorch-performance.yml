@@ -4,6 +4,15 @@ on:
   schedule:
     - cron: "53 4 * * 2"
   workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: "Optional git ref/SHA for the before baseline. Leave empty to use the previous release tag."
+        required: false
+        type: string
+      candidate_ref:
+        description: "Optional git ref/SHA for the after candidate. Defaults to HEAD."
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -13,7 +22,7 @@ jobs:
     name: PyTorch tensor benchmark evidence
     runs-on: ubuntu-latest
     continue-on-error: true
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
     - name: Checkout
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -29,24 +38,47 @@ jobs:
       run: >
         python tools/collect_test_environment.py
         --output pytorch-benchmark-evidence/environment-pytorch-benchmark.json
-        --command "asv run dedicated PyTorch Tensor benchmark evidence"
+        --command "ASV PyTorch Tensor regression comparison"
     - name: Register PyTorch ASV machine profile
       working-directory: benchmark
       run: asv --config asv-pytorch.conf.json machine --yes
     - name: Check PyTorch benchmark suite importability
       working-directory: benchmark
       run: asv --config asv-pytorch.conf.json check --verbose
-    - name: Run PyTorch tensor benchmark evidence
+    - name: Compare PyTorch tensor benchmarks
       working-directory: benchmark
+      env:
+        INPUT_BASELINE_REF: ${{ inputs.baseline_ref }}
+        INPUT_CANDIDATE_REF: ${{ inputs.candidate_ref }}
       run: |
         set -o pipefail
-        asv --config asv-pytorch.conf.json run \
-          --quick \
-          --show-stderr \
-          --attribute repeat=1 \
-          --attribute number=1 \
-          'HEAD^!' \
-          2>&1 | tee "$GITHUB_WORKSPACE/pytorch-benchmark-evidence/asv-pytorch-run.txt"
+        CANDIDATE_REF="${INPUT_CANDIDATE_REF:-HEAD}"
+        BASELINE_REF="$INPUT_BASELINE_REF"
+        if [ -z "$BASELINE_REF" ]; then
+          BASELINE_REF="$(git describe --tags --abbrev=0 --match '[0-9]*' "$CANDIDATE_REF^")"
+        fi
+        BASELINE_SHA="$(git rev-parse "$BASELINE_REF")"
+        CANDIDATE_SHA="$(git rev-parse "$CANDIDATE_REF")"
+        printf '%s\n' "$BASELINE_REF" > "$GITHUB_WORKSPACE/pytorch-benchmark-evidence/benchmark-baseline-ref.txt"
+        printf '%s\n' "$BASELINE_SHA" > "$GITHUB_WORKSPACE/pytorch-benchmark-evidence/benchmark-baseline-sha.txt"
+        printf '%s\n' "$CANDIDATE_REF" > "$GITHUB_WORKSPACE/pytorch-benchmark-evidence/benchmark-candidate-ref.txt"
+        printf '%s\n' "$CANDIDATE_SHA" > "$GITHUB_WORKSPACE/pytorch-benchmark-evidence/benchmark-candidate-sha.txt"
+        printf '%s\n' "dedicated-pytorch-tensor" > "$GITHUB_WORKSPACE/pytorch-benchmark-evidence/benchmark-filter.txt"
+        ASV_EXIT_CODE=0
+        asv --config asv-pytorch.conf.json continuous \
+          --quick --show-stderr \
+          --attribute repeat=1 --attribute number=1 \
+          "$BASELINE_REF" "$CANDIDATE_REF" \
+          2>&1 | tee "$GITHUB_WORKSPACE/pytorch-benchmark-evidence/asv-continuous.txt" || ASV_EXIT_CODE=$?
+        printf '%s\n' "$ASV_EXIT_CODE" > "$GITHUB_WORKSPACE/pytorch-benchmark-evidence/asv-continuous-exit-code.txt"
+    - name: Summarize PyTorch tensor comparison
+      if: always()
+      run: |
+        ASV_EXIT_CODE="$(cat pytorch-benchmark-evidence/asv-continuous-exit-code.txt 2>/dev/null || true)"
+        python tools/asv_summary.py \
+          --input pytorch-benchmark-evidence/asv-continuous.txt \
+          --output pytorch-benchmark-evidence/benchmark-asv-summary.json \
+          --asv-exit-code "${ASV_EXIT_CODE:-1}" --allow-missing
     - name: Upload PyTorch benchmark artifacts
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

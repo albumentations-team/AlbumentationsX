@@ -11,6 +11,7 @@ from typing import Annotated, Any, ClassVar, Literal
 
 import cv2
 import numpy as np
+from albucore import from_float, to_float
 from pydantic import field_validator
 from pydantic.functional_validators import AfterValidator
 
@@ -25,6 +26,7 @@ from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
 )
+from albumentations.core.transform_params import SampledParams, TargetParams, TargetSet, requirements_for_views
 from albumentations.core.transforms_interface import BaseTransformInitSchema, ImageOnlyTransform
 from albumentations.core.type_definitions import ImageType
 
@@ -102,13 +104,15 @@ class BaseDomainAdaptation(ImageOnlyTransform):
         ...     def sample_parameters(
         ...         self,
         ...         params: dict[str, Any],
-        ...         data: dict[str, Any]
-        ...     ) -> dict[str, Any]:
+        ...         data: dict[str, Any],
+        ...         targets: TargetSet,
+        ...         sampling: SamplingContext,
+        ...     ) -> SampledParams:
         ...         target_image = data.get(self.reference_key)
         ...         if target_image is None:
         ...             # Fallback if target image is not provided
-        ...             return {"target_image": None}
-        ...         return {"target_image": target_image}
+        ...             return SampledParams(params={"target_image": None})
+        ...         return SampledParams(params={"target_image": target_image})
         ...
         ...     def apply(
         ...         self,
@@ -189,6 +193,50 @@ class BaseDomainAdaptation(ImageOnlyTransform):
             )
 
         return sampling.py_random.choice(metadata_images)
+
+    @staticmethod
+    def _reference_for_target(reference_image: np.ndarray, target_dtype: Any) -> np.ndarray:
+        target_numpy_dtype = np.dtype(str(target_dtype).removeprefix("torch."))
+        if reference_image.dtype == target_numpy_dtype:
+            return reference_image
+
+        reference_float = to_float(reference_image)
+        return reference_float if target_numpy_dtype == np.float32 else from_float(reference_float, target_numpy_dtype)
+
+    def _target_reference_params(
+        self,
+        reference_image: np.ndarray,
+        targets: TargetSet,
+        parameter_name: str,
+    ) -> tuple[TargetParams, ...]:
+        reference_channels = reference_image.shape[-1] if reference_image.ndim > 2 else 1
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(
+            lambda view: (
+                tuple((view.descriptor.spatial_shape or ())[-2:]),
+                view.descriptor.channels,
+                str(view.descriptor.dtype),
+            ),
+        ):
+            spatial_shape = views[0].descriptor.spatial_shape
+            if spatial_shape is None:
+                raise ValueError(f"{self.__class__.__name__} requires image-like targets with known spatial shapes")
+            channels = views[0].descriptor.channels or 1
+            if channels != reference_channels:
+                raise ValueError(
+                    f"{self.__class__.__name__} reference image has {reference_channels} channels; "
+                    f"target {views[0].name!r} has {channels}",
+                )
+            height, width = spatial_shape[-2:]
+            resized_reference = fgeometric.resize(reference_image, (height, width), cv2.INTER_LINEAR)
+            groups.append(
+                TargetParams(
+                    targets=tuple(view.name for view in views),
+                    params={parameter_name: self._reference_for_target(resized_reference, views[0].descriptor.dtype)},
+                    requirements=requirements_for_views(views, spatial_shape_suffix=True, channels=True, dtype=True),
+                ),
+            )
+        return tuple(groups)
 
 
 class HistogramMatching(BaseDomainAdaptation):
@@ -307,17 +355,18 @@ class HistogramMatching(BaseDomainAdaptation):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         reference_image = self._get_reference_image(data, sampling)
         blend_ratio = sampling.py_random.uniform(*self.blend_ratio)
 
         sampling.applied_overrides["blend_ratio"] = blend_ratio
 
-        return {
-            "reference_image": reference_image,
-            "blend_ratio": blend_ratio,
-        }
+        return SampledParams(
+            params={"blend_ratio": blend_ratio},
+            target_params=self._target_reference_params(reference_image, targets, "reference_image"),
+        )
 
     def apply(
         self,
@@ -495,19 +544,16 @@ class FDA(BaseDomainAdaptation):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         target_image = self._get_reference_image(data, sampling)
-        height, width = params["shape"][:2]
-
-        # Resize the target image to match the input image dimensions
-        target_image_resized = fgeometric.resize(target_image, (height, width), cv2.INTER_LINEAR)
-
         beta = sampling.py_random.uniform(*self.beta_range)
-
         sampling.applied_overrides["beta_range"] = beta
-
-        return {"target_image": target_image_resized, "beta": beta}
+        return SampledParams(
+            params={"beta": beta},
+            target_params=self._target_reference_params(target_image, targets, "target_image"),
+        )
 
     def apply(
         self,
@@ -680,16 +726,21 @@ class PixelDistributionAdaptation(BaseDomainAdaptation):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         blend_ratio = sampling.py_random.uniform(*self.blend_ratio)
 
         sampling.applied_overrides["blend_ratio"] = blend_ratio
 
-        return {
-            "reference_image": self._get_reference_image(data, sampling),
-            "blend_ratio": blend_ratio,
-        }
+        return SampledParams(
+            params={"blend_ratio": blend_ratio},
+            target_params=self._target_reference_params(
+                self._get_reference_image(data, sampling),
+                targets,
+                "reference_image",
+            ),
+        )
 
     def apply(self, img: ImageType, reference_image: ImageType, blend_ratio: float, **params: Any) -> ImageType:
         return adapt_pixel_distribution(

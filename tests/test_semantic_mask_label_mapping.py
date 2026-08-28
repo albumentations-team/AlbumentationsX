@@ -6,6 +6,7 @@ import pytest
 import torch
 
 import albumentations as A
+from albumentations.core.transform_params import SampledParams, TargetSet
 
 
 class _ApplyWithParamsTrackingFlip(A.HorizontalFlip):
@@ -136,9 +137,11 @@ def test_semantic_mask_label_mapping_follows_realized_cubic_symmetry_operation(
         self: A.CubicSymmetry,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: Any,
-    ) -> dict[str, Any]:
-        return {"index": index, "volume_shape": data["volume"].shape}
+    ) -> SampledParams:
+        del self, params, targets, sampling
+        return SampledParams(params={"index": index, "volume_shape": data["volume"].shape})
 
     monkeypatch.setattr(A.CubicSymmetry, "sample_parameters", fixed_index)
     result = A.Compose(

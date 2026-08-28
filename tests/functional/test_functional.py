@@ -3698,48 +3698,39 @@ def test_grayscale_to_multichannel_float_values():
 
 
 @pytest.mark.parametrize(
-    ["method", "expected_property"],
+    "method",
     [
-        ("weighted_average", "uses_opencv_coefficients"),  # 0.299*R + 0.587*G + 0.114*B
-        ("from_lab", "uses_lightness_channel"),  # L from LAB
-        ("desaturation", "uses_min_max_average"),  # (min + max) / 2
-        ("average", "uses_simple_mean"),  # (R + G + B) / 3
-        ("max", "uses_maximum_value"),  # max(R, G, B)
-        ("pca", "uses_principal_component"),  # First principal component
+        "weighted_average",
+        "from_lab",
+        "desaturation",
+        "average",
+        "max",
+        "pca",
     ],
 )
-def test_to_gray_method_properties(method, expected_property):
-    """Test that each to_gray method has expected properties."""
-    # Create a specific test image to verify method behavior
-    # Red channel = 255, Green channel = 128, Blue channel = 0
+def test_to_gray_methods(method):
     test_img = np.zeros((10, 10, 3), dtype=np.uint8)
-    test_img[..., 0] = 255  # Red
-    test_img[..., 1] = 128  # Green
-    test_img[..., 2] = 0  # Blue
+    test_img[..., 0] = 255
+    test_img[..., 1] = 128
+    test_img[..., 2] = 0
 
     result = fpixel.to_gray(test_img, 1, method)
 
-    # Verify method-specific properties
     if method == "weighted_average":
-        # Should be close to OpenCV formula: 0.299*255 + 0.587*128 + 0.114*0 ≈ 151
         expected = int(0.299 * 255 + 0.587 * 128 + 0.114 * 0)
         assert np.abs(result[0, 0] - expected) <= 1, f"weighted_average result {result[0, 0]} != {expected}"
 
     elif method == "average":
-        # Should be (255 + 128 + 0) / 3 ≈ 127.67
         expected = int((255 + 128 + 0) / 3)
         assert np.abs(result[0, 0] - expected) <= 1, f"average result {result[0, 0]} != {expected}"
 
     elif method == "max":
-        # Should be max(255, 128, 0) = 255
         assert result[0, 0] == 255, f"max result {result[0, 0]} != 255"
 
     elif method == "desaturation":
-        # Should be (max + min) / 2 = (255 + 0) / 2 = 127.5
         expected = int((255 + 0) / 2)
         assert np.abs(result[0, 0] - expected) <= 1, f"desaturation result {result[0, 0]} != {expected}"
 
-    # All methods should produce values in valid range
     assert result.min() >= 0 and result.max() <= 255, f"Result out of range for method={method}"
 
 

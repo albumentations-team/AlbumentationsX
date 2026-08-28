@@ -35,12 +35,20 @@ from ._functional_shared import (
     power,
     preserve_channel_dim,
     reduce_sum,
-    reshape_xhwc_channel,
-    restore_xhwc_channel,
     sz_lut,
     uint8_io,
     warn,
 )
+
+
+def _reshape_xhwc_for_opencv(data: np.ndarray) -> tuple[np.ndarray, tuple[int, ...]]:
+    """Flatten the leading batch or depth axis before a channel-last OpenCV operation."""
+    return data.reshape(-1, data.shape[2], data.shape[3]), data.shape
+
+
+def _restore_xhwc_from_opencv(data: np.ndarray, original_shape: tuple[int, ...]) -> np.ndarray:
+    """Restore a flattened OpenCV result to its batch or depth layout."""
+    return data.reshape(original_shape[0], original_shape[1], data.shape[1], original_shape[3])
 
 
 @uint8_io
@@ -86,7 +94,7 @@ def shift_hsv(
     if hue_shift != 0:
         lut_hue = np.arange(0, 256, dtype=np.int16)
         lut_hue = np.mod(lut_hue + hue_shift, 180).astype(np.uint8)
-        hue = sz_lut(hue, lut_hue, inplace=False)
+        hue = sz_lut(cast("ImageUInt8", hue), lut_hue, inplace=False)
 
     if sat_shift != 0:
         # Create a mask for all grayscale pixels (S=0)
@@ -239,7 +247,7 @@ def _equalize_cv(img: ImageType, mask: np.ndarray | None = None) -> ImageType:
     if lut is None:
         return img
 
-    return sz_lut(img, lut, inplace=True)
+    return sz_lut(cast("ImageUInt8", img), lut, inplace=True)
 
 
 def _create_equalize_cv_lut(histogram: np.ndarray) -> np.ndarray | None:
@@ -527,9 +535,9 @@ def linear_transformation_rgb(
     if img.ndim == 3:
         return cast("ImageType", cv2.transform(img, transformation_matrix))
     if img.ndim == 4:
-        transformed, original_shape = reshape_xhwc_channel(img)
+        transformed, original_shape = _reshape_xhwc_for_opencv(img)
         transformed = cast("ImageType", cv2.transform(transformed, transformation_matrix))
-        return cast("ImageType", restore_xhwc_channel(transformed, original_shape))
+        return cast("ImageType", _restore_xhwc_from_opencv(transformed, original_shape))
     raise ValueError(f"Expected input shape (H, W, 3) or (B, H, W, 3), got {img.shape}")
 
 
@@ -782,7 +790,7 @@ def gamma_transform(img: ImageType, gamma: float) -> ImageType:
     """
     if img.dtype == np.uint8:
         table = (np.arange(0, 256.0 / 255, 1.0 / 255) ** gamma) * 255
-        return sz_lut(img, table.astype(np.uint8), inplace=False)
+        return sz_lut(cast("ImageUInt8", img), table.astype(np.uint8), inplace=False)
 
     return power(img, gamma)
 
@@ -898,6 +906,38 @@ def iso_noise_images(
     return hls_batch
 
 
+@float32_io
+@clipped
+def iso_noise_volume(
+    volume: np.ndarray,
+    color_shift: float,
+    intensity: float,
+    random_generator: np.random.Generator,
+) -> np.ndarray:
+    """Apply camera-like ISO noise to an RGB volume with a single seeded voxel-wise field, so hue and
+    luminance vary through depth. Use for 3D RGB data.
+    """
+    non_rgb_error(volume[0])
+    hls_volume = np.empty_like(volume)
+    for depth_index, image in enumerate(volume):
+        cv2.cvtColor(image, cv2.COLOR_RGB2HLS, dst=hls_volume[depth_index])
+
+    luminance_std = float(np.std(hls_volume[..., 1]))
+    volume_shape = volume.shape[:3]
+    luminance_noise = random_generator.poisson(luminance_std * intensity, size=volume_shape).astype(np.float32)
+    color_noise = random_generator.normal(0, color_shift * intensity, size=volume_shape).astype(np.float32)
+
+    hls_volume[..., 0] += color_noise
+    luminance_noise *= intensity
+    hls_volume[..., 1] *= 1.0 - luminance_noise
+    hls_volume[..., 1] += luminance_noise
+
+    for image in hls_volume:
+        cv2.cvtColor(image, cv2.COLOR_HLS2RGB, dst=image)
+
+    return hls_volume
+
+
 def to_gray_weighted_average(img: ImageType) -> ImageType:
     """Convert RGB to grayscale with weighted average (0.299*R+0.587*G+0.114*B). Single or batch.
     BT.601. Matches OpenCV perceptual luminance.
@@ -928,12 +968,12 @@ def to_gray_weighted_average(img: ImageType) -> ImageType:
     if img.ndim == 3:
         return cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2GRAY))
     if img.ndim == 4:
-        im, original_shape = reshape_xhwc_channel(img)
+        im, original_shape = _reshape_xhwc_for_opencv(img)
         im = cast("ImageType", cv2.cvtColor(im, cv2.COLOR_RGB2GRAY))
 
         new_shape = (*original_shape[:-1], 1)
 
-        return cast("ImageType", restore_xhwc_channel(im, new_shape))
+        return cast("ImageType", _restore_xhwc_from_opencv(im, new_shape))
 
     raise ValueError(f"Unsupported number of dimensions: {img.ndim}")
 
@@ -944,15 +984,8 @@ def to_gray_from_lab(img: ImageType) -> ImageType:
     better than a simple average. Single image or batch. uint8 I/O.
 
     This function converts RGB images to grayscale by first converting to LAB color space
-    and then extracting the L (lightness) channel. It uses albucore's reshape utilities
-    to efficiently handle batches and the `volume` target by processing them as a single tall image.
-
-    Implementation Details:
-        The function uses albucore's reshape_for_channel and restore_from_channel functions:
-        - reshape_for_channel: Flattens batches and the `volume` target to 2D format for OpenCV processing
-        - restore_from_channel: Restores the original shape after processing
-
-        This enables processing all images in a single OpenCV call
+    and then extracting the L (lightness) channel. It flattens batches and volumes into one tall image
+    for the OpenCV call.
 
     Args:
         img (ImageType): Input RGB image(s) as a numpy array. Must have 3 channels in the last dimension.
@@ -1007,12 +1040,12 @@ def to_gray_from_lab(img: ImageType) -> ImageType:
     if img.ndim == 3:
         return cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2LAB)[..., 0])
     if img.ndim == 4:
-        im, original_shape = reshape_xhwc_channel(img)
+        im, original_shape = _reshape_xhwc_for_opencv(img)
         im = cast("ImageType", cv2.cvtColor(im, cv2.COLOR_RGB2LAB)[..., 0])
 
         new_shape = (*original_shape[:-1], 1)
 
-        return cast("ImageType", restore_xhwc_channel(im, new_shape))
+        return cast("ImageType", _restore_xhwc_from_opencv(im, new_shape))
 
     raise ValueError(f"Unsupported number of dimensions: {img.ndim}")
 
@@ -1420,6 +1453,7 @@ __all__ = [
     "invert",
     "iso_noise",
     "iso_noise_images",
+    "iso_noise_volume",
     "linear_transformation_rgb",
     "move_tone_curve",
     "noop",

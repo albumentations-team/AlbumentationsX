@@ -11,7 +11,7 @@ from warnings import warn
 
 import cv2
 import numpy as np
-from albucore import batch_transform, is_grayscale_image, is_rgb_image, warp_affine
+from albucore import is_grayscale_image, is_rgb_image, warp_affine
 from pydantic import (
     Field,
     ValidationInfo,
@@ -32,6 +32,7 @@ from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
 )
+from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
@@ -45,7 +46,6 @@ from albumentations.core.type_definitions import (
     ImageType,
     InterpolationType,
     StackedMasks4D,
-    VolumeType,
 )
 
 from . import functional as fgeometric
@@ -261,12 +261,13 @@ class Perspective(DualTransform):
         matrix_bbox: np.ndarray,
         max_height: int,
         max_width: int,
+        shape: tuple[int, int],
+        bbox_type: Literal["hbb", "obb"],
         **params: Any,
     ) -> np.ndarray:
-        bbox_type = params["bbox_type"]
         return fgeometric.perspective_bboxes(
             bboxes,
-            params["shape"],
+            shape,
             matrix_bbox,
             max_width,
             max_height,
@@ -280,11 +281,12 @@ class Perspective(DualTransform):
         matrix: np.ndarray,
         max_height: int,
         max_width: int,
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
         return fgeometric.perspective_keypoints(
             keypoints,
-            params["shape"],
+            shape,
             matrix,
             max_width,
             max_height,
@@ -295,9 +297,10 @@ class Perspective(DualTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        image_shape = params["shape"][:2]
+    ) -> SampledParams:
+        image_shape = targets.require_aligned_spatial_shape(2)
         scale = sampling.py_random.uniform(*self.scale)
 
         points = fgeometric.generate_perspective_points(
@@ -320,12 +323,14 @@ class Perspective(DualTransform):
 
         sampling.applied_overrides["scale"] = scale
 
-        return {
-            "matrix": matrix,
-            "max_height": max_height,
-            "max_width": max_width,
-            "matrix_bbox": matrix,
-        }
+        return SampledParams(
+            params={
+                "matrix": matrix,
+                "max_height": max_height,
+                "max_width": max_width,
+                "matrix_bbox": matrix,
+            }
+        )
 
 
 class _AffineInitSchema(BaseTransformInitSchema):
@@ -679,14 +684,15 @@ class Affine(DualTransform):
         bboxes: np.ndarray,
         bbox_matrix: np.ndarray,
         output_shape: tuple[int, int],
+        shape: tuple[int, int],
+        bbox_type: Literal["hbb", "obb"],
         **params: Any,
     ) -> np.ndarray:
-        bbox_type = params["bbox_type"]
         return fgeometric.bboxes_affine(
             bboxes,
             bbox_matrix,
             self.rotate_method,
-            params["shape"][:2],
+            shape[:2],
             self.border_mode,
             output_shape,
             bbox_type=bbox_type,
@@ -697,12 +703,13 @@ class Affine(DualTransform):
         keypoints: np.ndarray,
         matrix: np.ndarray,
         scale: dict[str, float],
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
         return fgeometric.keypoints_affine(
             keypoints,
             matrix,
-            params["shape"],
+            shape,
             scale,
             self.border_mode,
         )
@@ -752,9 +759,10 @@ class Affine(DualTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        image_shape = params["shape"][:2]
+    ) -> SampledParams:
+        image_shape = targets.require_aligned_spatial_shape(2)
 
         translate = self._get_translate_params(image_shape, sampling)
         shear = self._get_shear_params(sampling)
@@ -802,13 +810,15 @@ class Affine(DualTransform):
         else:
             output_shape = image_shape
 
-        return {
-            "rotate": rotate,
-            "scale": scale,
-            "matrix": matrix,
-            "bbox_matrix": bbox_matrix,
-            "output_shape": output_shape,
-        }
+        return SampledParams(
+            params={
+                "rotate": rotate,
+                "scale": scale,
+                "matrix": matrix,
+                "bbox_matrix": bbox_matrix,
+                "output_shape": output_shape,
+            }
+        )
 
     def _get_translate_params(self, image_shape: tuple[int, int], sampling: SamplingContext) -> dict[str, int]:
         height, width = image_shape[:2]
@@ -1135,9 +1145,10 @@ class GridElasticDeform(DualTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        image_shape = params["shape"][:2]
+    ) -> SampledParams:
+        image_shape = targets.require_aligned_spatial_shape(2)
 
         # Replace calculate_grid_dimensions with split_uniform_grid
         tiles = fgeometric.split_uniform_grid(
@@ -1169,7 +1180,7 @@ class GridElasticDeform(DualTransform):
 
         generated_mesh = self._generate_mesh(polygons, dimensions)
 
-        return {"generated_mesh": generated_mesh}
+        return SampledParams(params={"generated_mesh": generated_mesh})
 
     def apply(
         self,
@@ -1194,28 +1205,30 @@ class GridElasticDeform(DualTransform):
         self,
         bboxes: np.ndarray,
         generated_mesh: np.ndarray,
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
-        bboxes_denorm = denormalize_bboxes(bboxes, params["shape"][:2])
+        bboxes_denorm = denormalize_bboxes(bboxes, shape[:2])
         return normalize_bboxes(
             fgeometric.bbox_distort_image(
                 bboxes_denorm,
                 generated_mesh,
-                params["shape"][:2],
+                shape[:2],
             ),
-            params["shape"][:2],
+            shape[:2],
         )
 
     def apply_to_keypoints(
         self,
         keypoints: np.ndarray,
         generated_mesh: np.ndarray,
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
         return fgeometric.distort_image_keypoints(
             keypoints,
             generated_mesh,
-            params["shape"][:2],
+            shape[:2],
         )
 
 
@@ -1340,9 +1353,10 @@ class RandomGridShuffle(DualTransform):
         bboxes: np.ndarray,
         tiles: np.ndarray,
         mapping: list[int],
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
-        image_shape = params["shape"][:2]
+        image_shape = shape[:2]
         bboxes_denorm = denormalize_bboxes(bboxes, image_shape)
         processor = cast("BboxProcessor", self.get_processor("bboxes"))
         if processor is None:
@@ -1368,21 +1382,14 @@ class RandomGridShuffle(DualTransform):
     ) -> np.ndarray:
         return fgeometric.swap_tiles_on_keypoints(keypoints, tiles, mapping)
 
-    @batch_transform("spatial")
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
-        return self.apply(images, **params)
-
-    @batch_transform("spatial")
-    def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(mask3d, **params)
-
     def sample_parameters(
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, np.ndarray | list[int]]:
-        image_shape = params["shape"][:2]
+    ) -> SampledParams:
+        image_shape = targets.require_aligned_spatial_shape(2)
 
         original_tiles = fgeometric.split_uniform_grid(
             image_shape,
@@ -1395,7 +1402,7 @@ class RandomGridShuffle(DualTransform):
             sampling.random_generator,
         )
 
-        return {"tiles": original_tiles, "mapping": mapping}
+        return SampledParams(params={"tiles": original_tiles, "mapping": mapping})
 
 
 class Morphological(DualTransform):
@@ -1506,9 +1513,11 @@ class Morphological(DualTransform):
         self,
         bboxes: np.ndarray,
         kernel: np.ndarray,
+        shape: tuple[int, int],
+        bbox_type: Literal["hbb", "obb"],
         **params: Any,
     ) -> np.ndarray:
-        image_shape = params["shape"]
+        image_shape = shape
 
         denormalized_boxes = denormalize_bboxes(bboxes, image_shape)
 
@@ -1517,7 +1526,7 @@ class Morphological(DualTransform):
             kernel,
             self.operation,
             image_shape,
-            bbox_type=params["bbox_type"],
+            bbox_type=bbox_type,
         )
 
         return normalize_bboxes(result, image_shape)
@@ -1533,8 +1542,11 @@ class Morphological(DualTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, np.ndarray]:
-        return {
-            "kernel": cv2.getStructuringElement(cv2.MORPH_ELLIPSE, self.scale),
-        }
+    ) -> SampledParams:
+        return SampledParams(
+            params={
+                "kernel": cv2.getStructuringElement(cv2.MORPH_ELLIPSE, self.scale),
+            }
+        )

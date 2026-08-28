@@ -3,6 +3,12 @@
 from typing import Annotated, Any, Literal
 
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import (
+    SampledParams,
+    TargetParams,
+    TargetSet,
+    requirements_for_views,
+)
 
 from ._color_shared import (
     AfterValidator,
@@ -12,7 +18,6 @@ from ._color_shared import (
     ImageType,
     Self,
     albucore,
-    batch_transform,
     check_range_bounds,
     cv2,
     fpixel,
@@ -192,28 +197,40 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        shape = params["shape"]
-
+    ) -> SampledParams:
         # Sample adjustment strengths
         brightness = sampling.py_random.uniform(*self.brightness_range)
         contrast = sampling.py_random.uniform(*self.contrast_range)
 
         sampling.applied_overrides.update({"brightness_range": brightness, "contrast_range": contrast})
 
-        plasma = _generate_resized_plasma(
-            target_shape=shape[:2],
-            plasma_size=self.plasma_size,
-            roughness=self.roughness,
-            random_generator=sampling.random_generator,
+        groups = []
+        for views in targets.group_image_like_by(
+            lambda view: tuple((view.descriptor.spatial_shape or ())[-2:]),
+        ):
+            spatial_shape = views[0].descriptor.spatial_shape
+            if spatial_shape is None:
+                raise ValueError("PlasmaBrightnessContrast requires image-like targets with known shapes")
+            target_shape = (spatial_shape[-2], spatial_shape[-1])
+            plasma = _generate_resized_plasma(
+                target_shape=target_shape,
+                plasma_size=self.plasma_size,
+                roughness=self.roughness,
+                random_generator=sampling.random_generator,
+            )
+            groups.append(
+                TargetParams(
+                    targets=tuple(view.name for view in views),
+                    params={"plasma_pattern": plasma},
+                    requirements=requirements_for_views(views, spatial_shape_suffix=True),
+                ),
+            )
+        return SampledParams(
+            params={"brightness_factor": brightness, "contrast_factor": contrast},
+            target_params=tuple(groups),
         )
-
-        return {
-            "brightness_factor": brightness,
-            "contrast_factor": contrast,
-            "plasma_pattern": plasma,
-        }
 
     def apply(
         self,
@@ -229,10 +246,6 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
             contrast_factor,
             plasma_pattern,
         )
-
-    @batch_transform("spatial")
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
-        return self.apply(images, **params)
 
 
 class PlasmaShadow(ImageOnlyTransform):
@@ -354,26 +367,36 @@ class PlasmaShadow(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        shape = params["shape"]
-
+    ) -> SampledParams:
         # Sample shadow intensity
         intensity = sampling.py_random.uniform(*self.shadow_intensity_range)
 
         sampling.applied_overrides["shadow_intensity_range"] = intensity
 
-        plasma = _generate_resized_plasma(
-            target_shape=shape[:2],
-            plasma_size=self.plasma_size,
-            roughness=self.roughness,
-            random_generator=sampling.random_generator,
-        )
-
-        return {
-            "intensity": intensity,
-            "plasma_pattern": plasma,
-        }
+        groups = []
+        for views in targets.group_image_like_by(
+            lambda view: tuple((view.descriptor.spatial_shape or ())[-2:]),
+        ):
+            spatial_shape = views[0].descriptor.spatial_shape
+            if spatial_shape is None:
+                raise ValueError("PlasmaShadow requires image-like targets with known shapes")
+            target_shape = (spatial_shape[-2], spatial_shape[-1])
+            plasma = _generate_resized_plasma(
+                target_shape=target_shape,
+                plasma_size=self.plasma_size,
+                roughness=self.roughness,
+                random_generator=sampling.random_generator,
+            )
+            groups.append(
+                TargetParams(
+                    targets=tuple(view.name for view in views),
+                    params={"plasma_pattern": plasma},
+                    requirements=requirements_for_views(views, spatial_shape_suffix=True),
+                ),
+            )
+        return SampledParams(params={"intensity": intensity}, target_params=tuple(groups))
 
     def apply(
         self,
@@ -384,14 +407,10 @@ class PlasmaShadow(ImageOnlyTransform):
     ) -> ImageType:
         return fpixel.apply_plasma_shadow(img, intensity, plasma_pattern)
 
-    @batch_transform("spatial")
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
-        return self.apply(images, **params)
-
 
 class Illumination(ImageOnlyTransform):
-    """Illumination patterns: directional (linear), corner shadows/highlights, or gaussian.
-    mode and params control shape and strength. Simulates lighting variation.
+    """Simulate directional, corner, or local Gaussian lighting patterns to make training images more robust
+    to varied illumination conditions.
 
     This transform simulates different lighting conditions by applying controlled
     illumination patterns. It can create effects like:
@@ -459,10 +478,9 @@ class Illumination(ImageOnlyTransform):
             so several spots can produce a stronger combined effect. Only used for 'gaussian' mode.
             Default: (1, 1)
 
-        gaussian_spots (tuple[tuple[float, float, float, float], ...] | None): Optional deterministic Gaussian spots,
-            primarily used by applied-configuration replay. Each spot is represented as
-            `(center_x, center_y, sigma, signed_intensity)`. When provided, `num_spots_range` must equal the
-            exact number of spots. Default: None
+        gaussian_spots (tuple[tuple[float, float, float, float], ...] | None): Optional fixed Gaussian spots.
+            Each spot is represented as `(center_x, center_y, sigma, signed_intensity)`. Providing this value bypasses
+            random spot sampling, and `num_spots_range` must equal the exact number of spots. Default: None
 
         p (float): Probability of applying the transform. Default: 0.5
 
@@ -473,7 +491,9 @@ class Illumination(ImageOnlyTransform):
         uint8, float32
 
     Examples:
+        >>> import numpy as np
         >>> import albumentations as A
+        >>> image = np.full((100, 100, 3), 128, dtype=np.uint8)
         >>> # Simulate sunlight through window
         >>> transform = A.Illumination(
         ...     mode='linear',
@@ -481,6 +501,7 @@ class Illumination(ImageOnlyTransform):
         ...     effect_type='brighten',
         ...     angle_range=(30, 60)
         ... )
+        >>> transformed_image = transform(image=image)["image"]
         >>>
         >>> # Create dramatic corner shadow
         >>> transform = A.Illumination(
@@ -488,6 +509,7 @@ class Illumination(ImageOnlyTransform):
         ...     intensity_range=(0.1, 0.2),
         ...     effect_type='darken'
         ... )
+        >>> transformed_image = transform(image=image)["image"]
         >>>
         >>> # Add a random number of independently sampled bright and dark spots
         >>> transform = A.Illumination(
@@ -499,6 +521,7 @@ class Illumination(ImageOnlyTransform):
         ...     sigma_range=(0.2, 0.5),
         ...     p=1.0,
         ... )
+        >>> transformed_image = transform(image=image)["image"]
 
     References:
         - Lighting in Computer Vision:
@@ -608,61 +631,17 @@ class Illumination(ImageOnlyTransform):
             return -intensity
         return intensity
 
-    def sample_parameters(
-        self,
-        params: dict[str, Any],
-        data: dict[str, Any],
-        sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        if self.mode == "gaussian" and self.gaussian_spots is not None:
-            sampling.applied_overrides.update(
-                {
-                    "gaussian_spots": self.gaussian_spots,
-                    "num_spots_range": len(self.gaussian_spots),
-                },
-            )
-            if len(self.gaussian_spots) == 1:
-                center_x, center_y, sigma, intensity = self.gaussian_spots[0]
-                return {
-                    "intensity": intensity,
-                    "center": (center_x, center_y),
-                    "sigma": sigma,
-                }
-            return {"spots": self.gaussian_spots}
+    def _sample_gaussian_spot(self, sampling: SamplingContext) -> GaussianIlluminationSpot:
+        intensity = self._sample_signed_intensity(sampling)
+        center_x = sampling.py_random.uniform(*self.center_range)
+        center_y = sampling.py_random.uniform(*self.center_range)
+        sigma = sampling.py_random.uniform(*self.sigma_range)
+        return center_x, center_y, sigma, intensity
 
-        if self.mode == "gaussian":
+    def _sample_gaussian_parameters(self, sampling: SamplingContext) -> SampledParams:
+        if self.gaussian_spots is None:
             num_spots = 1 if self.num_spots_range == (1, 1) else sampling.py_random.randint(*self.num_spots_range)
-            if num_spots == 1:
-                intensity = self._sample_signed_intensity(sampling)
-                x = sampling.py_random.uniform(*self.center_range)
-                y = sampling.py_random.uniform(*self.center_range)
-                sigma = sampling.py_random.uniform(*self.sigma_range)
-                spot = (x, y, sigma, intensity)
-                sampling.applied_overrides.update(
-                    {
-                        "intensity_range": abs(intensity),
-                        "angle_range": self.angle_range,
-                        "center_range": (x, y),
-                        "sigma_range": sigma,
-                        "num_spots_range": 1,
-                        "gaussian_spots": (spot,),
-                    },
-                )
-                return {
-                    "intensity": intensity,
-                    "center": (x, y),
-                    "sigma": sigma,
-                }
-
-            spots_list = []
-            for _ in range(num_spots):
-                intensity = self._sample_signed_intensity(sampling)
-                x = sampling.py_random.uniform(*self.center_range)
-                y = sampling.py_random.uniform(*self.center_range)
-                sigma = sampling.py_random.uniform(*self.sigma_range)
-                spots_list.append((x, y, sigma, intensity))
-            spots = tuple(spots_list)
-
+            spots = tuple(self._sample_gaussian_spot(sampling) for _ in range(num_spots))
             intensities = [abs(spot[3]) for spot in spots]
             sampling.applied_overrides.update(
                 {
@@ -671,12 +650,51 @@ class Illumination(ImageOnlyTransform):
                     "center_range": (spots[0][0], spots[0][1]) if num_spots == 1 else self.center_range,
                     "sigma_range": spots[0][2]
                     if num_spots == 1
-                    else (min(s[2] for s in spots), max(s[2] for s in spots)),
-                    "num_spots_range": num_spots,
-                    "gaussian_spots": spots,
+                    else (min(spot[2] for spot in spots), max(spot[2] for spot in spots)),
                 },
             )
-            return {"spots": spots}
+        else:
+            spots = self.gaussian_spots
+            num_spots = len(spots)
+
+        sampling.applied_overrides.update(
+            {
+                "num_spots_range": num_spots,
+                "gaussian_spots": spots,
+            },
+        )
+        if num_spots == 1:
+            center_x, center_y, sigma, intensity = spots[0]
+            return SampledParams(
+                params={
+                    "intensity": intensity,
+                    "angle": None,
+                    "corner": None,
+                    "center": (center_x, center_y),
+                    "sigma": sigma,
+                    "spots": None,
+                },
+            )
+        return SampledParams(
+            params={
+                "intensity": None,
+                "angle": None,
+                "corner": None,
+                "center": None,
+                "sigma": None,
+                "spots": spots,
+            },
+        )
+
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
+        sampling: SamplingContext,
+    ) -> SampledParams:
+        if self.mode == "gaussian":
+            return self._sample_gaussian_parameters(sampling)
 
         intensity = self._sample_signed_intensity(sampling)
 
@@ -694,36 +712,50 @@ class Illumination(ImageOnlyTransform):
         if self.mode == "linear":
             angle = sampling.py_random.uniform(*self.angle_range)
             sampling.applied_overrides["angle_range"] = angle
-            return {
-                "intensity": intensity,
-                "angle": angle,
-            }
+            return SampledParams(
+                params={
+                    "intensity": intensity,
+                    "angle": angle,
+                    "corner": None,
+                    "center": None,
+                    "sigma": None,
+                    "spots": None,
+                }
+            )
         if self.mode == "corner":
             corner = sampling.py_random.randint(0, 3)  # Choose random corner
-            return {
-                "intensity": intensity,
-                "corner": corner,
-            }
-
+            return SampledParams(
+                params={
+                    "intensity": intensity,
+                    "angle": None,
+                    "corner": corner,
+                    "center": None,
+                    "sigma": None,
+                    "spots": None,
+                }
+            )
         raise RuntimeError(f"Unsupported illumination mode: {self.mode}")
 
-    def apply(self, img: ImageType, **params: Any) -> ImageType:
-        if self.mode == "linear":
-            return fpixel.apply_linear_illumination(
-                img,
-                intensity=params["intensity"],
-                angle=params["angle"],
-            )
-        if self.mode == "corner":
-            return fpixel.apply_corner_illumination(
-                img,
-                intensity=params["intensity"],
-                corner=params["corner"],
-            )
-
-        if "spots" in params:
-            return fpixel.apply_gaussian_illumination_spots(img, params["spots"])
-        return fpixel.apply_gaussian_illumination(img, params["intensity"], params["center"], params["sigma"])
+    def apply(
+        self,
+        img: ImageType,
+        intensity: float | None,
+        angle: float | None,
+        corner: Literal[0, 1, 2, 3] | None,
+        center: tuple[float, float] | None,
+        sigma: float | None,
+        spots: tuple[GaussianIlluminationSpot, ...] | None,
+        **params: Any,
+    ) -> ImageType:
+        if self.mode == "linear" and intensity is not None and angle is not None:
+            return fpixel.apply_linear_illumination(img, intensity=intensity, angle=angle)
+        if self.mode == "corner" and intensity is not None and corner is not None:
+            return fpixel.apply_corner_illumination(img, intensity=intensity, corner=corner)
+        if self.mode == "gaussian" and spots is not None:
+            return fpixel.apply_gaussian_illumination_spots(img, spots)
+        if self.mode == "gaussian" and intensity is not None and center is not None and sigma is not None:
+            return fpixel.apply_gaussian_illumination(img, intensity=intensity, center=center, sigma=sigma)
+        raise RuntimeError(f"Illumination sampled parameters are incompatible with mode {self.mode!r}")
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
         return fpixel.apply_illumination_batch(images, self.mode, **params)
@@ -809,8 +841,9 @@ class Vignetting(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, float]:
+    ) -> SampledParams:
         intensity = sampling.py_random.uniform(*self.intensity_range)
         center_x = sampling.py_random.uniform(*self.center_range)
         center_y = sampling.py_random.uniform(*self.center_range)
@@ -820,11 +853,13 @@ class Vignetting(ImageOnlyTransform):
                 "center_range": (min(center_x, center_y), max(center_x, center_y)),
             },
         )
-        return {
-            "intensity": intensity,
-            "center_x": center_x,
-            "center_y": center_y,
-        }
+        return SampledParams(
+            params={
+                "intensity": intensity,
+                "center_x": center_x,
+                "center_y": center_y,
+            }
+        )
 
 
 __all__ = [

@@ -9,9 +9,9 @@ Design documents are created for:
 - Complex features requiring detailed planning
 - Significant architectural changes
 - Features with multiple implementation phases
-- Systems that need comprehensive documentation for maintainers
+- System-wide behavior that needs maintainer documentation
 
-**Note**: Regular bug fixes and small improvements should be documented in commit messages and PR descriptions, not as separate design documents.
+Document regular bug fixes and small improvements in commit messages and PR descriptions.
 
 ## Current Architectural References
 
@@ -33,6 +33,11 @@ Implemented configuration-centric contract system that verifies strict JSON tran
 reconstruction, replay execution, exact output where declared, and non-default coverage for every public constructor
 parameter.
 
+### [Bounded 2D ElasticTransform](elastic-transform.md)
+
+Implemented contract for the greenfield 2D elastic transform: bounded cubic B-spline coefficient grids, synchronized
+targets, certificate-bounded keypoint inversion, and separate constructor, applied-config, and `ReplayCompose` persistence rules.
+
 ### [Generated Transform Target Contracts](transform-target-contracts.md)
 
 Coverage contract for the shared transform-case registry and reusable target profiles.
@@ -49,6 +54,15 @@ Execution architecture for compiling an immutable `Compose` graph at constructio
 sample-dependent work, with separate branch-free executors for ordinary, observed, trace, and replay routes.
 
 ## Active Design Work
+
+### [Greenfield Target-Specific Parameter Sampling](target-specific-parameter-sampling.md)
+
+Plan for replacing flat sampled-parameter dictionaries and special `volume_*` fields with parameters plus
+actual-target-key `TargetParams` records, including aliases, mixed representations, deterministic execution, and replay.
+
+**Status**: Implemented (greenfield cutover).
+
+The maintained sampler inventory is in [Target-Specific Sampling Inventory](target-specific-parameter-sampling-inventory.md).
 
 ### [Shared CI Foundation](https://github.com/albumentations-team/ci-foundation/blob/main/docs/architecture.md)
 

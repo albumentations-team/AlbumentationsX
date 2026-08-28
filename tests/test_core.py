@@ -22,6 +22,7 @@ from albumentations.core.composition import (
     SomeOf,
 )
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.transforms_interface import DualTransform, ImageOnlyTransform, NoOp
 from tests.conftest import (
     IMAGES,
@@ -123,7 +124,7 @@ def test_image_only_transform(image):
         with mock.patch.object(
             ImageOnlyTransform,
             "sample_parameters",
-            return_value={"interpolation": cv2.INTER_LINEAR},
+            return_value=SampledParams(params={"interpolation": cv2.INTER_LINEAR}),
         ):
             aug = ImageOnlyTransform(p=1)
             data = aug(image=image, mask=mask)
@@ -135,12 +136,30 @@ def test_image_only_transform(image):
             np.testing.assert_array_equal(data["mask"], mask)
 
 
+@pytest.mark.parametrize(
+    ("handler_name", "shape"),
+    [
+        ("apply_to_images", (2, 5, 7, 1)),
+        ("apply_to_volume", (2, 5, 7, 1)),
+    ],
+)
+def test_base_batch_handlers_forward_positional_parameters(handler_name: str, shape: tuple[int, ...]) -> None:
+    class TransformWithRequiredArguments(DualTransform):
+        def apply(self, image: np.ndarray, multiplier: int, offset: int, **params: Any) -> np.ndarray:
+            return image * multiplier + offset
+
+    source = np.ones(shape, dtype=np.int16)
+    actual = getattr(TransformWithRequiredArguments(p=1.0), handler_name)(source, 2, 137)
+
+    np.testing.assert_array_equal(actual, source * 2 + 137)
+
+
 @pytest.mark.parametrize("image", IMAGES)
 def test_dual_transform(image):
     mask = image.copy()
 
     with mock.patch.object(DualTransform, "apply") as mocked_apply:
-        with mock.patch.object(DualTransform, "sample_parameters", return_value={}):
+        with mock.patch.object(DualTransform, "sample_parameters", return_value=SampledParams(params={})):
             aug = DualTransform(p=1)
             aug(image=image, mask=mask)
 
@@ -178,7 +197,7 @@ def test_additional_targets(image):
         with mock.patch.object(
             DualTransform,
             "sample_parameters",
-            return_value={"interpolation": cv2.INTER_LINEAR},
+            return_value=SampledParams(params={"interpolation": cv2.INTER_LINEAR}),
         ):
             aug = DualTransform(p=1)
             aug.add_targets({"image2": "image"})
@@ -766,6 +785,8 @@ def test_single_transform_compose(
             A.Mosaic,
             A.MaskDropout,
             A.ConstrainedCoarseDropout,
+            A.GuidedCoarseDropout,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -787,6 +808,8 @@ def test_non_contiguous_input_dual(augmentation_cls, params):
         data["mask"] = mask
     elif augmentation_cls == A.CopyAndPaste:
         data["copy_paste_metadata"] = []
+    elif augmentation_cls == A.GuidedCoarseDropout:
+        data["dropout_region"] = np.ones(image.shape[:2], dtype=np.uint8)
 
     # pipeline gracefully handles non-contiguous inputs
     data = transform(**data)
@@ -813,7 +836,9 @@ NON_CONTIGUOUS_VOLUMETRIC_CASES = get_primary_dual_transform_params(
         A.Mosaic,
         A.MaskDropout,
         A.ConstrainedCoarseDropout,
+        A.GuidedCoarseDropout,
         A.PixelDropout,
+        A.BBoxSubsetSafeRandomCrop,
     },
 )
 
@@ -1171,6 +1196,7 @@ def test_compose_additional_targets_in_available_keys() -> None:
             A.FDA,
             A.HistogramMatching,
             A.PixelDistributionAdaptation,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -1204,6 +1230,8 @@ def test_images_as_target(augmentation_cls, params, shape):
 
     if augmentation_cls == A.CopyAndPaste:
         data["copy_paste_metadata"] = []
+    elif augmentation_cls == A.GuidedCoarseDropout:
+        data["dropout_region"] = np.ones(image.shape[:2], dtype=np.uint8)
 
     aug = A.Compose(
         [augmentation_cls(p=1, **params)],
@@ -1264,7 +1292,7 @@ def test_non_contiguous_input_with_compose(augmentation_cls, params, bboxes):
         aug = A.Compose([augmentation_cls(p=1, **params)], strict=True, seed=137)
 
         data["cropping_bbox"] = bboxes[0]
-    elif augmentation_cls in [A.RandomSizedBBoxSafeCrop, A.BBoxSafeRandomCrop]:
+    elif augmentation_cls in [A.RandomSizedBBoxSafeCrop, A.BBoxSafeRandomCrop, A.BBoxSubsetSafeRandomCrop]:
         # requires "bboxes" arg
         aug = A.Compose(
             [augmentation_cls(p=1, **params)],
@@ -1296,6 +1324,9 @@ def test_non_contiguous_input_with_compose(augmentation_cls, params, bboxes):
     elif augmentation_cls == A.CopyAndPaste:
         aug = A.Compose([augmentation_cls(p=1, **params)], strict=True, seed=137)
         data["copy_paste_metadata"] = []
+    elif augmentation_cls == A.GuidedCoarseDropout:
+        aug = A.Compose([augmentation_cls(p=1, **params)], p=1, strict=True, seed=137)
+        data["dropout_region"] = np.ones(image.shape[:2], dtype=np.uint8)
     elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
         data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image]
         aug = A.Compose([augmentation_cls(p=1, **params)], p=1, strict=True, seed=137)
@@ -1333,6 +1364,7 @@ def test_non_contiguous_input_with_compose(augmentation_cls, params, bboxes):
             A.RandomCropNearBBox,
             A.PadIfNeeded,
             A.Mosaic,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -1352,6 +1384,8 @@ def test_masks_as_target(augmentation_cls, params, masks):
 
     if augmentation_cls == A.CopyAndPaste:
         data["copy_paste_metadata"] = []
+    elif augmentation_cls == A.GuidedCoarseDropout:
+        data["dropout_region"] = np.ones(image.shape[:2], dtype=np.uint8)
 
     aug = A.Compose(
         [augmentation_cls(p=1, **params)],
@@ -1402,6 +1436,7 @@ def test_masks_as_target(augmentation_cls, params, masks):
             A.TimeReverse,
             A.TimeMasking,
             A.Mosaic,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -1439,6 +1474,8 @@ def test_mask_interpolation_all_cv_interpolation_modes(augmentation_cls, params,
     call_kw: dict[str, Any] = {"image": image, "mask": mask}
     if augmentation_cls == A.CopyAndPaste:
         call_kw["copy_paste_metadata"] = []
+    elif augmentation_cls == A.GuidedCoarseDropout:
+        call_kw["dropout_region"] = np.ones(image.shape[:2], dtype=np.uint8)
     transformed = aug(**call_kw)
 
     np.testing.assert_array_equal(transformed["mask"], transformed["image"])
@@ -1468,7 +1505,7 @@ def test_mask_interpolation_someof(interpolation, compose):
 
 
 @pytest.mark.parametrize(
-    ["transform", "expected_param_keys"],
+    ["transform", "expected_params_keys"],
     [
         (A.HorizontalFlip(p=1), {"shape"}),
         (A.VerticalFlip(p=1), {"shape"}),
@@ -1493,12 +1530,13 @@ def test_mask_interpolation_someof(interpolation, compose):
         ),
     ],
 )
-def test_transform_returns_params(transform, expected_param_keys):
+def test_transform_returns_params(transform, expected_params_keys):
     image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
     transform(image=image)
     params = transform.get_applied_params()
     assert isinstance(params, dict)
-    assert set(params.keys()) == expected_param_keys
+    assert set(params) == {"parameter_schema", "target_schema", "params", "target_params"}
+    assert expected_params_keys.issubset(params["params"])
 
 
 @pytest.mark.parametrize(
@@ -1926,6 +1964,7 @@ def test_transform_strict_with_valid_params():
             A.Morphological,
             A.AtLeastOneBBoxRandomCrop,
             A.Mosaic,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -1956,6 +1995,8 @@ def test_mask_interpolation(augmentation_cls, params, border_mode, image):
     call_kw: dict[str, Any] = {"image": image, "mask": mask}
     if augmentation_cls == A.CopyAndPaste:
         call_kw["copy_paste_metadata"] = []
+    elif augmentation_cls == A.GuidedCoarseDropout:
+        call_kw["dropout_region"] = np.ones(image.shape[:2], dtype=np.uint8)
     transform(**call_kw)
 
 
@@ -2836,9 +2877,15 @@ def test_user_data_targets_as_params() -> None:
     class UserDataAwareTransform(A.NoOp):
         targets_as_params = ("user_data",)
 
-        def sample_parameters(self, params: dict, data: dict, sampling: SamplingContext) -> dict:
+        def sample_parameters(
+            self,
+            params: dict[str, Any],
+            data: dict[str, Any],
+            targets: TargetSet,
+            sampling: SamplingContext,
+        ) -> SampledParams:
             ud = data.get("user_data")
-            return {"seen_user_data": ud is not None, "ud_value": ud}
+            return SampledParams(params={"seen_user_data": ud is not None, "ud_value": ud})
 
         def apply_to_user_data(self, data: Any, **params: Any) -> Any:
             return {**data, "seen": params.get("seen_user_data", False)}
@@ -2903,9 +2950,15 @@ def test_applied_config_invalid_key_raises():
     """Transforms that set invalid applied_config keys must raise ValueError."""
 
     class BadTransform(A.NoOp):
-        def sample_parameters(self, params, data, sampling: SamplingContext):
+        def sample_parameters(
+            self,
+            params: dict[str, Any],
+            data: dict[str, Any],
+            targets: TargetSet,
+            sampling: SamplingContext,
+        ) -> SampledParams:
             sampling.applied_overrides["not_a_real_constructor_param_xyz"] = 42
-            return {}
+            return SampledParams(params={})
 
     aug = BadTransform(p=1.0)
     with pytest.raises(ValueError, match="not_a_real_constructor_param_xyz"):

@@ -1,12 +1,3 @@
-"""Comprehensive tests for flip transforms with masks.
-
-These tests verify:
-1. Correct axis flipping for different mask shapes
-2. Array contiguity (no negative strides)
-3. Compatibility with PyTorch tensor conversion
-4. Actual transformation correctness (not just shapes)
-"""
-
 import numpy as np
 import pytest
 
@@ -14,197 +5,108 @@ import albumentations as A
 
 
 class TestFlipMasksCorrectness:
-    """Test that flips actually flip the correct pixels on the correct axes."""
-
     @pytest.mark.parametrize(
         "transform_class,axis",
         [
-            (A.HorizontalFlip, 1),  # Flips along width (axis 1 for 2D, axis 2 for 3D+)
-            (A.VerticalFlip, 0),  # Flips along height (axis 0 for 2D, axis 1 for 3D+)
+            (A.HorizontalFlip, 1),
+            (A.VerticalFlip, 0),
         ],
     )
     def test_flip_single_mask_correctness(self, transform_class, axis):
-        """Test that single mask (H, W, C) is flipped on the correct axis."""
-        # Create a mask with distinct pattern
         mask = np.array(
             [
                 [[1, 10], [2, 20], [3, 30]],
                 [[4, 40], [5, 50], [6, 60]],
             ],
             dtype=np.uint8,
-        )  # Shape: (2, 3, 2) = (H, W, C)
+        )
 
         transform = transform_class(p=1.0)
         aug = A.Compose([transform])
         result = aug(image=np.zeros((2, 3, 3), dtype=np.uint8), mask=mask)
 
-        # Verify the flip happened on the correct axis
-        if axis == 0:  # Vertical flip (flip H)
+        if axis == 0:
             expected = np.flip(mask, axis=0)
-            # Should be: [[4,40], [5,50], [6,60]], [[1,10], [2,20], [3,30]]
-        else:  # Horizontal flip (flip W)
+        else:
             expected = np.flip(mask, axis=1)
-            # Should be: [[3,30], [2,20], [1,10]], [[6,60], [5,50], [4,40]]
 
         np.testing.assert_array_equal(result["mask"], expected)
 
     @pytest.mark.parametrize(
         "transform_class,axis",
         [
-            (A.HorizontalFlip, 2),  # Flips along width (axis 2 for (N,H,W,C))
-            (A.VerticalFlip, 1),  # Flips along height (axis 1 for (N,H,W,C))
+            (A.HorizontalFlip, 2),
+            (A.VerticalFlip, 1),
         ],
     )
     def test_flip_masks_batch_correctness(self, transform_class, axis):
-        """Test that masks batch (N, H, W, C) is flipped on the correct axis."""
-        # Create two masks with distinct patterns
         masks = np.array(
             [
-                [  # First mask
+                [
                     [[1, 10], [2, 20], [3, 30]],
                     [[4, 40], [5, 50], [6, 60]],
                 ],
-                [  # Second mask
+                [
                     [[7, 70], [8, 80], [9, 90]],
                     [[10, 100], [11, 110], [12, 120]],
                 ],
             ],
             dtype=np.uint8,
-        )  # Shape: (2, 2, 3, 2) = (N, H, W, C)
+        )
 
         transform = transform_class(p=1.0)
         aug = A.Compose([transform])
         result = aug(image=np.zeros((2, 3, 3), dtype=np.uint8), masks=masks)
 
-        # Verify the flip happened on the correct axis
         expected = np.flip(masks, axis=axis)
         np.testing.assert_array_equal(result["masks"], expected)
 
     def test_transpose_mask_correctness(self):
-        """Test that Transpose actually transposes H and W."""
-        # Create a mask with distinct pattern
         mask = np.array(
             [
                 [[1, 10], [2, 20], [3, 30]],
                 [[4, 40], [5, 50], [6, 60]],
             ],
             dtype=np.uint8,
-        )  # Shape: (2, 3, 2) = (H=2, W=3, C=2)
+        )
 
         transform = A.Transpose(p=1.0)
         aug = A.Compose([transform])
         result = aug(image=np.zeros((2, 3, 3), dtype=np.uint8), mask=mask)
 
-        # After transpose: (H, W, C) -> (W, H, C) = (3, 2, 2)
-        assert result["mask"].shape == (3, 2, 2)
-
-        # Verify actual transposition: axes (0,1,2) -> (1,0,2)
         expected = np.transpose(mask, (1, 0, 2))
         np.testing.assert_array_equal(result["mask"], expected)
 
     def test_transpose_masks_batch_correctness(self):
-        """Test that Transpose transposes H and W for batch."""
         masks = np.array(
             [
-                [  # First mask (H=2, W=3)
+                [
                     [[1, 10], [2, 20], [3, 30]],
                     [[4, 40], [5, 50], [6, 60]],
                 ],
-                [  # Second mask
+                [
                     [[7, 70], [8, 80], [9, 90]],
                     [[10, 100], [11, 110], [12, 120]],
                 ],
             ],
             dtype=np.uint8,
-        )  # Shape: (N=2, H=2, W=3, C=2)
+        )
 
         transform = A.Transpose(p=1.0)
         aug = A.Compose([transform])
         result = aug(image=np.zeros((2, 3, 3), dtype=np.uint8), masks=masks)
 
-        # After transpose: (N, H, W, C) -> (N, W, H, C) = (2, 3, 2, 2)
-        assert result["masks"].shape == (2, 3, 2, 2)
-
-        # Verify actual transposition: axes (0,1,2,3) -> (0,2,1,3)
         expected = np.transpose(masks, (0, 2, 1, 3))
         np.testing.assert_array_equal(result["masks"], expected)
 
 
-class TestFlipMasksContiguity:
-    """Test that flipped masks are contiguous (no negative strides)."""
-
-    @pytest.mark.parametrize(
-        "transform_class",
-        [
-            A.HorizontalFlip,
-            A.VerticalFlip,
-            A.Transpose,
-            A.D4,
-        ],
-    )
-    def test_single_mask_non_contiguous_input(self, transform_class):
-        """Test that single mask non-contiguous input is handled gracefully."""
-        mask = np.random.randint(0, 2, (80, 120, 3), dtype=np.uint8)
-
-        transform = transform_class(p=1.0)
-        aug = A.Compose([transform])
-        result = aug(image=np.zeros((80, 120, 3), dtype=np.uint8), mask=mask)
-        assert "mask" in result
-        assert isinstance(result["mask"], np.ndarray)
-
-    @pytest.mark.parametrize(
-        "transform_class",
-        [
-            A.HorizontalFlip,
-            A.VerticalFlip,
-            A.Transpose,
-            A.D4,
-        ],
-    )
-    def test_masks_batch_non_contiguous_input(self, transform_class):
-        """Test that masks batch non-contiguous input is handled gracefully."""
-        masks = np.random.randint(0, 2, (5, 80, 120, 3), dtype=np.uint8)
-
-        transform = transform_class(p=1.0)
-        aug = A.Compose([transform])
-        result = aug(image=np.zeros((80, 120, 3), dtype=np.uint8), masks=masks)
-        assert "masks" in result
-        assert isinstance(result["masks"], np.ndarray)
-
-    @pytest.mark.parametrize(
-        "transform_class",
-        [
-            A.HorizontalFlip,
-            A.VerticalFlip,
-            A.Transpose,
-            A.D4,
-        ],
-    )
-    def test_mask3d_non_contiguous_input(self, transform_class):
-        """Test that 3D mask non-contiguous input is handled gracefully."""
-        mask3d = np.random.randint(0, 2, (20, 80, 120, 3), dtype=np.uint8)
-
-        transform = transform_class(p=1.0)
-        aug = A.Compose([transform])
-        result = aug(
-            image=np.zeros((80, 120, 3), dtype=np.uint8),
-            volume=np.zeros((20, 80, 120, 3), dtype=np.uint8),
-            mask3d=mask3d,
-        )
-        assert "mask3d" in result
-        assert isinstance(result["mask3d"], np.ndarray)
-
-
 @pytest.mark.pytorch
 class TestFlipMasksPyTorchCompatibility:
-    """Test that flipped masks can be converted to PyTorch tensors."""
-
     def test_horizontal_flip_with_to_tensor_v2(self):
-        """Test the exact scenario that was failing: HFlip + ToFloat + ToTensorV2."""
         import torch
 
         image = np.random.randint(0, 256, (101, 99, 3), dtype=np.uint8)
-        masks = np.stack([image[:, :, 0]] * 2)  # Shape: (2, 101, 99)
+        masks = np.stack([image[:, :, 0]] * 2)
 
         transform = A.Compose(
             [
@@ -216,46 +118,14 @@ class TestFlipMasksPyTorchCompatibility:
             strict=True,
         )
 
-        # This was failing before the fix
         result = transform(image=image, masks=masks)
 
-        # Verify tensor conversion worked
         assert isinstance(result["image"], torch.Tensor)
         assert isinstance(result["masks"], torch.Tensor)
-        assert result["masks"].shape[0] == 2  # 2 masks
+        assert result["masks"].shape[0] == 2
 
 
 class TestD4MasksSpecific:
-    """Test D4 transform with all group elements."""
-
-    @pytest.mark.parametrize("group_element", ["e", "r90", "r180", "r270", "v", "h", "t", "hvt"])
-    def test_d4_mask_non_contiguous_input_all_elements(self, group_element):
-        """Test that all D4 group elements handle non-contiguous masks gracefully when used through Compose."""
-        mask = np.random.randint(0, 2, (100, 100, 3), dtype=np.uint8)
-
-        # Seed to get specific group element (this is implementation detail, but tests D4's behavior)
-        # For testing purposes, we just verify that going through Compose produces contiguous output
-        transform = A.D4(p=1.0)
-        aug = A.Compose([transform])
-
-        # Apply through Compose
-        result = aug(image=np.zeros((100, 100, 3), dtype=np.uint8), mask=mask)
-        assert "mask" in result
-        assert isinstance(result["mask"], np.ndarray)
-
-    @pytest.mark.parametrize("group_element", ["e", "r90", "r180", "r270", "v", "h", "t", "hvt"])
-    def test_d4_masks_batch_non_contiguous_input_all_elements(self, group_element):
-        """Test that all D4 group elements handle non-contiguous masks batch gracefully when used through Compose."""
-        masks = np.random.randint(0, 2, (3, 100, 100, 3), dtype=np.uint8)
-
-        transform = A.D4(p=1.0)
-        aug = A.Compose([transform])
-
-        # Apply through Compose
-        result = aug(image=np.zeros((100, 100, 3), dtype=np.uint8), masks=masks)
-        assert "masks" in result
-        assert isinstance(result["masks"], np.ndarray)
-
     @pytest.mark.parametrize(
         "group_element,should_transpose",
         [
@@ -270,20 +140,18 @@ class TestD4MasksSpecific:
         ],
     )
     def test_d4_mask_dimension_changes(self, group_element, should_transpose):
-        """Test that D4 changes dimensions correctly for non-square masks."""
-        # Non-square mask
         mask = np.random.randint(0, 2, (80, 120, 3), dtype=np.uint8)
 
-        transform = A.D4(p=1.0)
-        result = transform.apply_to_mask(mask, group_element=group_element)
+        result = A.Compose([A.D4(group_element=group_element, p=1.0)])(
+            image=np.zeros((80, 120, 3), dtype=np.uint8),
+            mask=mask,
+        )["mask"]
 
         if should_transpose:
-            # Should swap H and W
             assert result.shape == (120, 80, 3), (
                 f"D4 with '{group_element}' should swap dimensions but got {result.shape}"
             )
         else:
-            # Should preserve H and W
             assert result.shape == (80, 120, 3), (
                 f"D4 with '{group_element}' should preserve dimensions but got {result.shape}"
             )

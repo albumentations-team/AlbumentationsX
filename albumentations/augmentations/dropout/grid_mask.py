@@ -14,6 +14,7 @@ from albumentations.augmentations.dropout import functional as fdropout
 from albumentations.augmentations.dropout.transforms import BaseDropout, BaseDropoutInitSchema, DropoutFillValue
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
+from albumentations.core.transform_params import SampledParams, TargetSet
 
 __all__ = ["GridMask"]
 
@@ -98,10 +99,10 @@ class GridMask(BaseDropout):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        image_shape = params["shape"][:2]
-
+    ) -> SampledParams:
+        image_shape = targets.require_aligned_spatial_shape(2)
         num_grid = sampling.py_random.randint(*self.num_grid_range)
         line_width_ratio = sampling.py_random.uniform(*self.line_width_range)
         rotation = sampling.py_random.uniform(*self.rotation_range)
@@ -121,5 +122,4 @@ class GridMask(BaseDropout):
                 "rotation_range": rotation,
             },
         )
-
-        return {"holes": holes, "seed": sampling.random_generator.integers(0, 2**32 - 1)}
+        return SampledParams(params={"holes": holes, "seed": sampling.random_generator.integers(0, 2**32 - 1)})

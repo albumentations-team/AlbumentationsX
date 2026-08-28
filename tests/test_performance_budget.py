@@ -24,13 +24,13 @@ def _coverage_detail() -> dict:
             "annotation_scaling": 7,
             "batch_matrix": 11,
             "catalog_smoke": 134,
-            "direct_kernel": 28,
+            "direct_kernel": 29,
             "family_matrix": 109,
             "memory": 9,
             "parameter_sensitivity": 6,
             "pytorch_tensor": 2,
             "reference_data": 7,
-            "target_matrix": 6,
+            "target_matrix": 7,
             "volumetric_matrix": 7,
         },
         "public_transforms": 136,
@@ -132,6 +132,35 @@ def test_build_budget_requires_comparison_when_requested() -> None:
 
     assert budget["status"] == "missing_comparison"
     assert "ASV comparison summary is required" in budget["issues"][0]
+
+
+def test_build_budget_treats_missing_asv_summary_as_missing_comparison() -> None:
+    budget = build_budget(
+        _coverage_summary(),
+        _coverage_detail(),
+        {"missing": True, "asv_exit_code": 1},
+        require_comparison=True,
+    )
+
+    assert budget["status"] == "missing_comparison"
+    assert budget["comparison"]["provided"] is False
+
+
+def test_build_budget_treats_empty_failed_asv_summary_as_missing_comparison() -> None:
+    budget = build_budget(
+        _coverage_summary(),
+        _coverage_detail(),
+        {
+            "missing": False,
+            "asv_exit_code": 1,
+            "status": {},
+            "totals": {"changed": 0, "improvements": 0, "regressions": 0},
+        },
+        require_comparison=True,
+    )
+
+    assert budget["status"] == "missing_comparison"
+    assert budget["comparison"]["provided"] is False
 
 
 def test_build_budget_rejects_missing_required_coverage_layers() -> None:

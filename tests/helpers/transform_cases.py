@@ -18,6 +18,7 @@ from tests.helpers.applied_config import ReplayProfile
 from tests.helpers.contract_data import (
     ContractContextFactory,
     ContractDataFactory,
+    make_binary_region_context,
     make_copy_and_paste_context,
     make_crop_near_bbox_context,
     make_empty_context,
@@ -131,6 +132,17 @@ _BASE_CASE_SPECS: list[list[Any]] = [
         ],
     ],
     [
+        A.GuidedCoarseDropout,
+        {
+            "num_holes_range": (3, 5),
+            "hole_height_range": (0.05, 0.15),
+            "hole_width_range": (0.05, 0.15),
+            "fill_mask": 0,
+            "protected_bbox_labels": [1],
+            "protection_margin": 0.1,
+        },
+    ],
+    [
         A.RandomSnow,
         {"snow_point_range": (0.2, 0.4), "brightness_coeff": 4},
     ],
@@ -240,8 +252,8 @@ _BASE_CASE_SPECS: list[list[Any]] = [
     [
         A.ElasticTransform,
         {
-            "alpha": 2,
-            "sigma": 25,
+            "displacement_range": (0.03, 0.05),
+            "control_grid_shape": (4, 4),
             "interpolation": cv2.INTER_CUBIC,
         },
     ],
@@ -329,6 +341,14 @@ _BASE_CASE_SPECS: list[list[Any]] = [
             "fill": [11, 12, 13],
             "border_mode": cv2.BORDER_REFLECT101,
         },
+    ],
+    [
+        A.CropAndPad,
+        {"px_choices": (-5, -10, -15), "keep_size": False},
+    ],
+    [
+        A.CropAndPad,
+        {"percent_choices": (-0.05, -0.10), "keep_size": False},
     ],
     [
         A.Superpixels,
@@ -543,6 +563,16 @@ _BASE_CASE_SPECS: list[list[Any]] = [
     ],
     [A.GridElasticDeform, {"num_grid_xy": (10, 10), "magnitude": 10}],
     [A.ShotNoise, {"scale_range": (0.1, 0.3)}],
+    [A.RicianNoise, {"std_range": (0.05, 0.15)}],
+    [
+        A.StochasticConvolution,
+        {
+            "kernel_range": (3, 7),
+            "strength_range": (0.1, 0.3),
+            "per_channel": True,
+            "border_mode": cv2.BORDER_REFLECT,
+        },
+    ],
     [A.TimeReverse, {}],
     [A.TimeMasking, {"time_mask_param": 10}],
     [A.FrequencyMasking, {"freq_mask_param": 30}],
@@ -625,6 +655,14 @@ _BASE_CASE_SPECS: list[list[Any]] = [
     ],
     [A.RandomSizedBBoxSafeCrop, {"height": 80, "width": 80, "erosion_rate": 0.2}],
     [A.BBoxSafeRandomCrop, {"erosion_rate": 0.2}],
+    [
+        A.BBoxSubsetSafeRandomCrop,
+        {
+            "subset_fraction_range": (0.3, 0.8),
+            "erosion_rate": 0.2,
+            "aspect_ratio_range": (0.4, 1.5),
+        },
+    ],
     [
         A.HEStain,
         [
@@ -794,6 +832,11 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
     ),
     ("bbox-label-selection", A.ConstrainedCoarseDropout, {"fill": 7, "bbox_labels": [1], "mask_indices": None}),
     (
+        "guided-protection",
+        A.GuidedCoarseDropout,
+        {"region_key": "sal", "fill": 7, "fill_mask": 0, "protected_bbox_labels": [1], "protection_margin": 0.15},
+    ),
+    (
         "gaussian-scaled-donor",
         A.CopyAndPaste,
         {
@@ -835,18 +878,15 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
         },
     ),
     (
-        "uniform-direct-low-resolution",
+        "bounded-custom-grid",
         A.ElasticTransform,
         {
-            "approximate": True,
-            "same_dxdy": True,
+            "displacement_range": (0.01, 0.04),
+            "control_grid_shape": (4, 6),
             "mask_interpolation": cv2.INTER_LINEAR,
-            "noise_distribution": "uniform",
-            "keypoint_remapping_method": "direct",
             "border_mode": cv2.BORDER_REFLECT,
             "fill": 7,
             "fill_mask": 3,
-            "map_resolution_range": (0.5, 0.8),
         },
     ),
     ("wide-alpha", A.Enhance, {"alpha_range": (0.2, 0.8)}),
@@ -1158,6 +1198,18 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
         },
     ),
     ("stronger", A.ShotNoise, {"scale_range": (0.2, 0.4)}),
+    ("stronger", A.RicianNoise, {"std_range": (0.1, 0.3)}),
+    ("per-channel", A.RicianNoise, {"std_range": (0.05, 0.15), "per_channel": True}),
+    (
+        "constant-border",
+        A.StochasticConvolution,
+        {
+            "kernel_range": (5, 5),
+            "strength_range": (0.2, 0.2),
+            "per_channel": False,
+            "border_mode": cv2.BORDER_CONSTANT,
+        },
+    ),
     (
         "max-size-hw-downscale",
         A.SmallestMaxSize,
@@ -1252,6 +1304,7 @@ _VARIANT_NAMES: dict[type[A.BasicTransform], tuple[str, ...]] = {
     A.LetterBox: ("square-center", "wide-top-left", "tall-bottom-right"),
     A.LongestMaxSize: ("max-size", "max-size-hw"),
     A.PadIfNeeded: ("center", "top-left"),
+    A.CropAndPad: ("px", "px-choices", "percent-choices"),
     A.PixelDropout: ("random-fill", "fixed-fill"),
     A.RandomToneCurve: ("shared", "per-channel"),
     A.ShiftScaleRotate: ("shared-shift", "axis-shift"),
@@ -1261,6 +1314,7 @@ _VARIANT_NAMES: dict[type[A.BasicTransform], tuple[str, ...]] = {
 _BBOX_TRANSFORMS = {
     A.AtLeastOneBBoxRandomCrop,
     A.BBoxSafeRandomCrop,
+    A.BBoxSubsetSafeRandomCrop,
     A.RandomCropNearBBox,
     A.RandomSizedBBoxSafeCrop,
 }
@@ -1345,6 +1399,15 @@ def _case_data(
         key = init_kwargs.get("metadata_key", "textimage_metadata")
         case = (make_image_data, make_text_context(key))
         metadata_keys = frozenset({key})
+    elif transform_cls is A.GuidedCoarseDropout:
+        compose_kwargs = {
+            "bbox_params": A.BboxParams(
+                coord_format="albumentations",
+                label_fields=["bbox_labels"],
+            ),
+        }
+        case = (make_hbb_data, make_binary_region_context(init_kwargs.get("region_key", "dropout_region")))
+        metadata_keys = frozenset({init_kwargs.get("region_key", "dropout_region")})
     elif transform_cls in {A.Colorize, A.ToRGB}:
         case = (make_grayscale_image_data, make_empty_context)
     elif transform_cls is A.FromFloat:
@@ -1367,7 +1430,12 @@ def _required_targets(
 ) -> frozenset[str]:
     if transform_cls in {A.Mosaic, A.CopyAndPaste}:
         return frozenset({"image"})
-    if transform_cls in {A.AtLeastOneBBoxRandomCrop, A.BBoxSafeRandomCrop, A.RandomSizedBBoxSafeCrop}:
+    if transform_cls in {
+        A.AtLeastOneBBoxRandomCrop,
+        A.BBoxSafeRandomCrop,
+        A.BBoxSubsetSafeRandomCrop,
+        A.RandomSizedBBoxSafeCrop,
+    }:
         return frozenset({"bboxes"})
     if transform_cls is A.ConstrainedCoarseDropout:
         return frozenset({"bboxes" if init_kwargs.get("bbox_labels") is not None else "mask"})

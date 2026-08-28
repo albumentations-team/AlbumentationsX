@@ -15,6 +15,7 @@ import albumentations.augmentations.text.functional as ftext
 from albumentations.core.bbox_utils import check_bboxes, denormalize_bboxes
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
+from albumentations.core.transform_params import SampledParams, TargetParams, TargetSet, requirements_for_views
 from albumentations.core.transforms_interface import BaseTransformInitSchema, ImageOnlyTransform
 from albumentations.core.type_definitions import ImageType
 
@@ -161,7 +162,7 @@ class TextImage(ImageOnlyTransform):
 
     def preprocess_metadata(
         self,
-        image: ImageType,
+        image_shape: tuple[int, int],
         bbox: tuple[float, float, float, float],
         text: str,
         bbox_index: int,
@@ -171,7 +172,7 @@ class TextImage(ImageOnlyTransform):
         Returns dict with bbox_coords, text, font, font_color.
 
         Args:
-            image (ImageType): Input image
+            image_shape (tuple[int, int]): Height and width of the target image
             bbox (tuple[float, float, float, float]): Normalized bounding box coordinates
             text (str): Text to render in the bounding box
             bbox_index (int): Index of the bounding box in the original metadata
@@ -191,7 +192,6 @@ class TextImage(ImageOnlyTransform):
                 "ImageFont from PIL is required to use TextImage transform. Install it with `pip install Pillow`.",
             ) from err
         check_bboxes(np.array([bbox]))
-        image_shape = (image.shape[0], image.shape[1])
         denormalized_bbox = denormalize_bboxes(np.array([bbox]), image_shape)[0]
 
         x_min, y_min, x_max, y_max = (int(x) for x in denormalized_bbox[:4])
@@ -225,16 +225,17 @@ class TextImage(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        image = data["image"] if "image" in data else data["images"][0]
-
+    ) -> SampledParams:
         metadata = data[self.metadata_key]
 
         if metadata == []:
-            return {
-                "overlay_data": [],
-            }
+            return SampledParams(
+                params={
+                    "overlay_data": [],
+                }
+            )
 
         if isinstance(metadata, dict):
             metadata = [metadata]
@@ -245,22 +246,35 @@ class TextImage(ImageOnlyTransform):
 
         bbox_indices_to_update = sampling.py_random.sample(range(len(metadata)), num_bboxes_to_modify)
 
-        overlay_data = [
-            self.preprocess_metadata(
-                image,
-                metadata[bbox_index]["bbox"],
-                metadata[bbox_index]["text"],
-                bbox_index,
-                sampling,
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(
+            lambda view: tuple((view.descriptor.spatial_shape or ())[-2:]),
+        ):
+            spatial_shape = views[0].descriptor.spatial_shape
+            if spatial_shape is None:
+                raise ValueError("TextImage requires image-like targets with known spatial shapes")
+            height, width = spatial_shape[-2:]
+            overlay_data = [
+                self.preprocess_metadata(
+                    (height, width),
+                    metadata[bbox_index]["bbox"],
+                    metadata[bbox_index]["text"],
+                    bbox_index,
+                    sampling,
+                )
+                for bbox_index in bbox_indices_to_update
+            ]
+            groups.append(
+                TargetParams(
+                    targets=tuple(view.name for view in views),
+                    params={"overlay_data": overlay_data},
+                    requirements=requirements_for_views(views, spatial_shape_suffix=True),
+                ),
             )
-            for bbox_index in bbox_indices_to_update
-        ]
 
         sampling.applied_overrides["fraction_range"] = fraction
 
-        return {
-            "overlay_data": overlay_data,
-        }
+        return SampledParams(params={}, target_params=tuple(groups))
 
     def apply(
         self,
@@ -270,12 +284,12 @@ class TextImage(ImageOnlyTransform):
     ) -> ImageType:
         return ftext.render_text(img, overlay_data, clear_bg=self.clear_bg)
 
-    def apply_with_params(self, params: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
+    def apply_with_params(self, sampled_params: SampledParams, *args: Any, **kwargs: Any) -> dict[str, Any]:
         """Apply transform and include overlay data in result. Returns dict with transformed data and
         overlay info. Used by Compose when metadata_key present.
 
         Args:
-            params (dict[str, Any]): Parameters for the transform
+            sampled_params (SampledParams): Realized shared and target-specific parameters.
             *args (Any): Additional positional arguments
             **kwargs (Any): Additional keyword arguments
 
@@ -283,7 +297,8 @@ class TextImage(ImageOnlyTransform):
             dict[str, Any]: Dictionary containing the transformed data and simplified overlay information
 
         """
-        res = super().apply_with_params(params, *args, **kwargs)
+        res = super().apply_with_params(sampled_params, *args, **kwargs)
+        target_name = next(name for name in ("image", "images", "volume") if name in kwargs)
         res["overlay_data"] = [
             {
                 "bbox_coords": overlay["bbox_coords"],
@@ -292,7 +307,7 @@ class TextImage(ImageOnlyTransform):
                 "bbox_index": overlay["bbox_index"],
                 "font_color": overlay["font_color"],
             }
-            for overlay in params["overlay_data"]
+            for overlay in sampled_params.params_for(target_name)["overlay_data"]
         ]
 
         return res

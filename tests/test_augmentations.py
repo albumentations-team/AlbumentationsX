@@ -4,7 +4,9 @@ import pytest
 from albucore import from_float, to_float
 
 import albumentations as A
+from albumentations.augmentations.pixel import _functional_weather as fweather
 from albumentations.augmentations.pixel import functional as fpixel
+from albumentations.augmentations.pixel import weather
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transforms_interface import ImageOnlyTransform
 from tests.conftest import (
@@ -21,8 +23,15 @@ from .utils import (
     get_primary_2d_transform_params,
     get_primary_dual_transform_params,
     get_primary_image_only_transform_params,
+    get_resolved_applied_params,
+    make_sampling_args,
     set_seed,
 )
+
+
+def _add_guided_dropout_region(data, augmentation_cls) -> None:
+    if augmentation_cls is A.GuidedCoarseDropout:
+        data["dropout_region"] = np.ones(data["image"].shape[:2], dtype=np.uint8)
 
 
 @pytest.mark.parametrize(
@@ -109,6 +118,7 @@ def test_image_only_augmentations(augmentation_cls, params):
         except_augmentations={
             A.RandomSizedBBoxSafeCrop,
             A.BBoxSafeRandomCrop,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -137,6 +147,7 @@ def test_dual_augmentations(augmentation_cls, params):
         except_augmentations={
             A.RandomSizedBBoxSafeCrop,
             A.BBoxSafeRandomCrop,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -164,6 +175,7 @@ def test_dual_augmentations_with_float_values(augmentation_cls, params):
         except_augmentations={
             A.RandomSizedBBoxSafeCrop,
             A.BBoxSafeRandomCrop,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -197,6 +209,7 @@ def test_augmentations_wont_change_input(augmentation_cls, params):
     elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
         data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image]
 
+    _add_guided_dropout_region(data, augmentation_cls)
     aug(**data)
 
     np.testing.assert_array_equal(image, image_copy)
@@ -210,6 +223,7 @@ def test_augmentations_wont_change_input(augmentation_cls, params):
             A.RandomSizedBBoxSafeCrop,
             A.BBoxSafeRandomCrop,
             A.CropNonEmptyMaskIfExists,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -244,6 +258,7 @@ def test_augmentations_wont_change_float_input(augmentation_cls, params, image_f
     elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
         data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image_float32]
 
+    _add_guided_dropout_region(data, augmentation_cls)
     aug(**data)
 
     np.testing.assert_array_equal(image_float32, float_image_copy)
@@ -275,6 +290,7 @@ def test_augmentations_wont_change_float_input(augmentation_cls, params, image_f
             A.Pad,
             A.Mosaic,
             A.MaskDropout,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -332,6 +348,7 @@ def test_augmentations_wont_change_shape_rgb(augmentation_cls, params):
             "image": image_3ch,
             "mask": mask_3ch,
         }
+    _add_guided_dropout_region(data, augmentation_cls)
     result = aug(**data)
 
     np.testing.assert_array_equal(image_3ch.shape, result["image"].shape)
@@ -407,6 +424,7 @@ def test_mask_fill_value(augmentation_cls, params):
             A.Equalize,
             A.GridElasticDeform,
             A.HEStain,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -440,6 +458,7 @@ def test_multichannel_image_augmentations(augmentation_cls, params):
     elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
         data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image]
 
+    _add_guided_dropout_region(data, augmentation_cls)
     data = aug(**data)
     assert data["image"].dtype == np.uint8
     assert data["image"].shape[2] == image.shape[-1]
@@ -485,6 +504,7 @@ def test_multichannel_image_augmentations(augmentation_cls, params):
             A.RandomFog,
             A.GridElasticDeform,
             A.HEStain,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -517,6 +537,7 @@ def test_float_multichannel_image_augmentations(augmentation_cls, params):
     elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
         data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image]
 
+    _add_guided_dropout_region(data, augmentation_cls)
     data = aug(**data)
 
     assert data["image"].dtype == np.float32
@@ -562,6 +583,7 @@ def test_float_multichannel_image_augmentations(augmentation_cls, params):
             A.Equalize,
             A.GridElasticDeform,
             A.HEStain,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -596,6 +618,7 @@ def test_multichannel_image_augmentations_diff_channels(augmentation_cls, params
     elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
         data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image]
 
+    _add_guided_dropout_region(data, augmentation_cls)
     data = aug(**data)
 
     assert data["image"].dtype == np.uint8
@@ -646,6 +669,7 @@ def test_multichannel_image_augmentations_diff_channels(augmentation_cls, params
             A.RandomFog,
             A.GridElasticDeform,
             A.HEStain,
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -679,6 +703,7 @@ def test_float_multichannel_image_augmentations_diff_channels(augmentation_cls, 
     elif augmentation_cls in TransformTestHelper.METADATA_KEYS:
         data[TransformTestHelper.METADATA_KEYS[augmentation_cls]] = [image]
 
+    _add_guided_dropout_region(data, augmentation_cls)
     data = aug(**data)
 
     assert data["image"].dtype == np.float32
@@ -931,6 +956,7 @@ def test_pad_if_needed_position(params, image_shape):
             A.Mosaic,
             A.Dithering,  # Error diffusion is sensitive to floating-point precision
             A.RandomSnow,  # OpenCV HLS/HSV quantization differences
+            A.BBoxSubsetSafeRandomCrop,
         },
     ),
 )
@@ -950,6 +976,7 @@ def test_augmentations_match_uint8_float32(augmentation_cls, params):
     elif augmentation_cls == A.CopyAndPaste:
         data["copy_paste_metadata"] = []
 
+    _add_guided_dropout_region(data, augmentation_cls)
     transformed_uint8 = transform(**data)["image"]
 
     data["image"] = image_float32
@@ -1085,10 +1112,9 @@ def test_constrained_coarse_dropout_with_mask():
 
     # Get holes
     params = transform.sample_parameters(
-        {},
-        {"image": image, "mask": mask},
+        *make_sampling_args(transform, {"image": image, "mask": mask}),
         SamplingContext.from_owner(transform, {}),
-    )
+    ).params
     holes = params["holes"]
 
     # Verify number of holes (2 per object, 3 objects)
@@ -1152,7 +1178,7 @@ def test_constrained_coarse_dropout_with_bboxes(bbox_labels, bboxes, expected_nu
     # Apply transform
     transform(image=image, bboxes=bboxes_without_labels, class_labels=labels)
 
-    holes = ccd.params["holes"]
+    holes = get_resolved_applied_params(ccd)["holes"]
 
     # Verify number of holes (2 per object)
     assert len(holes) == expected_num_objects * 2, (
@@ -1611,10 +1637,9 @@ def test_random_rain_slant(slant_range, expected_slant_range):
         transform.set_random_seed(137 + iteration)
         # Get params without actually applying transform
         params = transform.sample_parameters(
-            {"shape": image.shape},
-            {"image": image},
+            *make_sampling_args(transform, {"image": image}),
             SamplingContext.from_owner(transform, {}),
-        )
+        ).params
         slants.append(params["slant"])
 
     # Assert all slants are within the expected range
@@ -1953,6 +1978,190 @@ def test_enhance_apply_to_images_matches_per_image(mode, dtype):
     np.testing.assert_array_equal(batched, per_image)
 
 
+def _overlapping_shadow_params() -> tuple[list[np.ndarray], np.ndarray]:
+    vertices_list = [
+        np.array([[1, 1], [5, 1], [5, 5], [1, 5]], dtype=np.int32),
+        np.array([[3, 3], [7, 3], [7, 7], [3, 7]], dtype=np.int32),
+    ]
+    return vertices_list, np.array([0.5, 0.25], dtype=np.float64)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("num_channels", [1, 3, 5])
+def test_random_shadow_apply_to_images_matches_overlapping_per_image_results(dtype, num_channels):
+    values = np.array([137, 200], dtype=np.uint8)
+    if dtype == np.float32:
+        values = values.astype(np.float32) / np.float32(255)
+
+    source = np.broadcast_to(values[:, np.newaxis, np.newaxis, np.newaxis], (2, 18, 9, num_channels)).copy()
+    images = source[:, ::2]
+    images.setflags(write=False)
+    images_before = images.copy()
+    vertices_list, intensities = _overlapping_shadow_params()
+    transform = A.RandomShadow(p=1.0)
+
+    actual = transform.apply_to_images(images, vertices_list=vertices_list, intensities=intensities)
+    expected = np.stack(
+        [transform.apply(image, vertices_list=vertices_list, intensities=intensities) for image in images],
+    )
+
+    assert actual.shape == images.shape
+    assert actual.dtype == images.dtype
+    assert actual.flags.c_contiguous
+    assert actual.flags.writeable
+    assert not np.shares_memory(actual, images)
+    np.testing.assert_array_equal(images, images_before)
+    np.testing.assert_array_equal(actual, expected)
+
+    expected_pixels = np.array([[68, 51, 102], [100, 75, 150]], dtype=np.uint8)
+    if dtype == np.float32:
+        expected_pixels = expected_pixels.astype(np.float32) / np.float32(255)
+    np.testing.assert_array_equal(actual[:, 1, 1, 0], expected_pixels[:, 0])
+    np.testing.assert_array_equal(actual[:, 3, 3, 0], expected_pixels[:, 1])
+    np.testing.assert_array_equal(actual[:, 7, 7, 0], expected_pixels[:, 2])
+
+
+def test_random_shadow_apply_to_images_rasterizes_each_polygon_once(monkeypatch):
+    vertices_list, intensities = _overlapping_shadow_params()
+    images = np.full((4, 9, 9, 3), 137, dtype=np.uint8)
+    transform = A.RandomShadow(p=1.0)
+    expected = np.stack(
+        [transform.apply(image, vertices_list=vertices_list, intensities=intensities) for image in images],
+    )
+    fill_poly_calls = 0
+    original_fill_poly = cv2.fillPoly
+
+    def counting_fill_poly(*args, **kwargs):
+        nonlocal fill_poly_calls
+        fill_poly_calls += 1
+        return original_fill_poly(*args, **kwargs)
+
+    monkeypatch.setattr(cv2, "fillPoly", counting_fill_poly)
+
+    actual = transform.apply_to_images(images, vertices_list=vertices_list, intensities=intensities)
+
+    assert fill_poly_calls == len(vertices_list)
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_random_shadow_apply_to_images_matches_out_of_bounds_polygons(dtype):
+    images = np.full((2, 9, 9, 3), 137, dtype=np.uint8)
+    if dtype == np.float32:
+        images = images.astype(np.float32) / np.float32(255)
+    vertices_list = [
+        np.array([[-4, -4], [4, -4], [4, 4], [-4, 4]], dtype=np.int32),
+        np.array([[20, 20], [24, 20], [24, 24], [20, 24]], dtype=np.int32),
+    ]
+    intensities = np.array([0.5, 0.25], dtype=np.float64)
+    transform = A.RandomShadow(p=1.0)
+
+    actual = transform.apply_to_images(images, vertices_list=vertices_list, intensities=intensities)
+    expected = np.stack(
+        [transform.apply(image, vertices_list=vertices_list, intensities=intensities) for image in images],
+    )
+
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("writeable", [False, True])
+def test_random_shadow_apply_to_images_large_float32_conversion_matches_per_image(writeable):
+    images = np.random.default_rng(137).random((2, 257, 341, 3), dtype=np.float32)
+    images.setflags(write=writeable)
+    vertices_list, intensities = _overlapping_shadow_params()
+    transform = A.RandomShadow(p=1.0)
+
+    actual = transform.apply_to_images(images, vertices_list=vertices_list, intensities=intensities)
+    expected = np.stack(
+        [transform.apply(image, vertices_list=vertices_list, intensities=intensities) for image in images],
+    )
+
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("shape", [(2, 256, 256, 5), (2, 512, 512, 3)])
+def test_random_shadow_apply_to_images_preserves_per_image_float32_conversion_working_set(monkeypatch, shape):
+    images = np.random.default_rng(137).random(shape, dtype=np.float32)
+    vertices_list, intensities = _overlapping_shadow_params()
+    transform = A.RandomShadow(p=1.0)
+    expected = np.stack(
+        [transform.apply(image, vertices_list=vertices_list, intensities=intensities) for image in images],
+    )
+    conversion_sizes: list[int] = []
+    original_from_float = fweather.from_float
+
+    def tracked_from_float(
+        image: np.ndarray,
+        target_dtype: np.dtype[np.generic],
+        max_value: float | None = None,
+    ) -> np.ndarray:
+        conversion_sizes.append(image.size)
+        return original_from_float(image, target_dtype=target_dtype, max_value=max_value)
+
+    monkeypatch.setattr(fweather, "from_float", tracked_from_float)
+
+    actual = transform.apply_to_images(images, vertices_list=vertices_list, intensities=intensities)
+
+    assert conversion_sizes == [images[0].size] * len(images)
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("target_name", ["images", "volume"])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("seed", [137, 138])
+@pytest.mark.parametrize("batch_size", [1, 3])
+def test_random_shadow_batch_compose_routes_match_per_image_results(target_name, dtype, seed, batch_size):
+    rng = np.random.default_rng(seed)
+    shape = (batch_size, 17, 19, 5)
+    if dtype == np.uint8:
+        data = rng.integers(0, 256, shape, dtype=np.uint8)
+    else:
+        data = rng.random(shape, dtype=np.float32)
+    data_before = data.copy()
+    transform = A.RandomShadow(
+        num_shadows_range=(2, 2),
+        shadow_intensity_range=(0.2, 0.7),
+        p=1.0,
+    )
+    compose = A.Compose([transform], seed=seed, strict=True, save_applied_params=True)
+
+    actual = compose(**{target_name: data})[target_name]
+    params = get_resolved_applied_params(transform, target_name)
+    expected = np.stack([transform.apply(image, **params) for image in data])
+
+    np.testing.assert_array_equal(data, data_before)
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_random_shadow_apply_to_images_preserves_empty_batch_identity(dtype):
+    images = np.empty((0, 17, 19, 3), dtype=dtype)
+    transform = A.RandomShadow(p=1.0)
+    vertices_list, intensities = _overlapping_shadow_params()
+
+    assert transform.apply_to_images(images, vertices_list=vertices_list, intensities=intensities) is images
+    assert A.Compose([transform], seed=137, strict=True)(images=images)["images"] is images
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("width", [1, 3])
+def test_random_shadow_apply_to_images_preserves_raw_grayscale_batch(dtype, width):
+    images = np.arange(3 * 9 * width, dtype=np.uint8).reshape(3, 9, width)
+    if dtype == np.float32:
+        images = images.astype(np.float32) / np.float32(255)
+    vertices_list = [np.array([[0, 0], [width - 1, 0], [width - 1, 8], [0, 8]], dtype=np.int32)]
+    intensities = np.array([0.5], dtype=np.float64)
+    transform = A.RandomShadow(p=1.0)
+
+    actual = transform.apply_to_images(images, vertices_list=vertices_list, intensities=intensities)
+    expected = np.stack(
+        [transform.apply(image, vertices_list=vertices_list, intensities=intensities) for image in images],
+    )
+
+    assert actual.shape == images.shape
+    np.testing.assert_array_equal(actual, expected)
+
+
 @pytest.mark.parametrize("mode", ["rain", "mud"])
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
 @pytest.mark.parametrize("seed", [137, 138, 139])
@@ -1970,7 +2179,7 @@ def test_spatter_apply_to_images_matches_inherited_fallback(mode, dtype, seed, b
     images_before = images.copy()
     transform = A.Spatter(mode=mode, color=(137, 89, 211), p=1.0)
     compose_result = A.Compose([transform], save_applied_params=True, seed=seed, strict=True)(images=images)["images"]
-    params = transform.get_applied_params()
+    params = get_resolved_applied_params(transform, target="images")
     expected = ImageOnlyTransform.apply_to_images(transform, images, **params)
     direct_result = transform.apply_to_images(images, **params)
 
@@ -1999,11 +2208,14 @@ def test_spatter_apply_to_images_matches_inherited_fallback(mode, dtype, seed, b
                     [[[-1 / 255, 0.5 / 255, 1.5 / 255], [254.5 / 255, 255.5 / 255, 2]]],
                     dtype=np.float32,
                 ),
+                "non_mud": None,
+                "mud": None,
             },
         ),
         (
             "mud",
             {
+                "drops": None,
                 "non_mud": np.array([[[1, 0.5, 2], [-1, 1, 1]]], dtype=np.float32),
                 "mud": np.array(
                     [[[-1 / 255, 0.5 / 255, -0.5 / 255], [2, -0.5 / 255, 0.5 / 255]]],
@@ -2033,10 +2245,16 @@ def test_spatter_apply_to_images_float32_clipping_vectors(mode):
     images = np.array([[[[-0.25, 0.25, 1.25]]]], dtype=np.float32)
     transform = A.Spatter(mode=mode, p=1.0)
     if mode == "rain":
-        params = {"mode": mode, "drops": np.array([[[-0.5, 0.5, 0.5]]], dtype=np.float32)}
+        params = {
+            "mode": mode,
+            "drops": np.array([[[-0.5, 0.5, 0.5]]], dtype=np.float32),
+            "non_mud": None,
+            "mud": None,
+        }
     else:
         params = {
             "mode": mode,
+            "drops": None,
             "non_mud": np.array([[[2, 2, 2]]], dtype=np.float32),
             "mud": np.array([[[-0.5, 0.25, -0.25]]], dtype=np.float32),
         }
@@ -2066,18 +2284,29 @@ def test_spatter_apply_to_images_switches_at_working_set_guard(
 ):
     fallback_calls = 0
 
-    def fallback(transform, images, *args, **params):
+    def fallback(transform, images, *args, **forwarded_params):
         nonlocal fallback_calls
         fallback_calls += 1
+        assert not args
+        assert forwarded_params["mode"] == mode
+        assert forwarded_params["drops"] is params["drops"]
+        assert forwarded_params["non_mud"] is params["non_mud"]
+        assert forwarded_params["mud"] is params["mud"]
         return np.full_like(images, 137 if dtype == np.uint8 else 0.5)
 
     monkeypatch.setattr(ImageOnlyTransform, "apply_to_images", fallback)
     transform = A.Spatter(mode=mode, p=1.0)
     if mode == "rain":
-        params = {"mode": mode, "drops": np.zeros((height, width, 3), dtype=np.float32)}
+        params = {
+            "mode": mode,
+            "drops": np.zeros((height, width, 3), dtype=np.float32),
+            "non_mud": None,
+            "mud": None,
+        }
     else:
         params = {
             "mode": mode,
+            "drops": None,
             "non_mud": np.ones((height, width, 3), dtype=np.float32),
             "mud": np.zeros((height, width, 3), dtype=np.float32),
         }
@@ -2096,12 +2325,33 @@ def test_spatter_apply_to_images_switches_at_working_set_guard(
     )
 
 
+@pytest.mark.parametrize(
+    ("mode", "dtype"),
+    [("rain", np.uint8), ("mud", np.uint8), ("mud", np.float32)],
+)
+def test_spatter_fallback_passes_explicit_parameters_to_base_handler(monkeypatch, mode, dtype):
+    images = np.zeros((2, 5, 7, 3), dtype=dtype)
+    effect = np.zeros(images.shape[1:], dtype=np.float32)
+    params = (
+        {"mode": mode, "drops": effect, "non_mud": None, "mud": None}
+        if mode == "rain"
+        else {"mode": mode, "drops": None, "non_mud": np.ones_like(effect), "mud": effect}
+    )
+    transform = A.Spatter(mode=mode, p=1.0)
+    monkeypatch.setitem(weather._SPATTER_BATCH_FALLBACK_WORKING_SET_BYTES, (mode, images.dtype.name), 0)
+
+    actual = transform.apply_to_images(images, **params)
+    expected = ImageOnlyTransform.apply_to_images(transform, images, **params)
+
+    np.testing.assert_array_equal(actual, expected)
+
+
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
 def test_spatter_apply_to_images_preserves_empty_batch_identity(dtype):
     images = np.empty((0, 17, 19, 3), dtype=dtype)
     transform = A.Spatter(p=1.0)
 
-    assert transform.apply_to_images(images) is images
+    assert transform.apply_to_images(images, mode="rain", drops=None, non_mud=None, mud=None) is images
     assert A.Compose([transform], seed=137, strict=True)(images=images)["images"] is images
 
 
@@ -2119,7 +2369,13 @@ def test_spatter_apply_to_images_rejects_non_rgb_batches(shape):
     transform = A.Spatter(p=1.0)
 
     with pytest.raises(ValueError, match="This transformation expects 3-channel images"):
-        transform.apply_to_images(images, mode="rain", drops=np.zeros((*shape[1:3], 3), dtype=np.float32))
+        transform.apply_to_images(
+            images,
+            mode="rain",
+            drops=np.zeros((*shape[1:3], 3), dtype=np.float32),
+            non_mud=None,
+            mud=None,
+        )
 
 
 @pytest.mark.parametrize("mode", ["rain", "mud"])
@@ -2133,7 +2389,7 @@ def test_spatter_batch_path_preserves_volume_routing(mode, dtype):
     transform = A.Spatter(mode=mode, p=1.0)
 
     actual = A.Compose([transform], save_applied_params=True, seed=137, strict=True)(volume=volume)["volume"]
-    params = transform.get_applied_params()
+    params = get_resolved_applied_params(transform, "volume")
     expected = ImageOnlyTransform.apply_to_images(transform, volume, **params)
 
     if dtype == np.uint8:

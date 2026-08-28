@@ -30,6 +30,7 @@ class TransformTestHelper:
     # Transforms that require special metadata
     METADATA_TRANSFORMS: ClassVar[set[type]] = {
         A.FDA,
+        A.GuidedCoarseDropout,
         A.HistogramMatching,
         A.PixelDistributionAdaptation,
         A.Mosaic,
@@ -258,6 +259,9 @@ class TransformTestHelper:
         elif transform_cls == A.CopyAndPaste:
             if "copy_paste_metadata" not in data:
                 data["copy_paste_metadata"] = []
+
+        elif transform_cls == A.GuidedCoarseDropout:
+            data.setdefault("dropout_region", np.ones(base_image.shape[:2], dtype=np.uint8))
 
         elif transform_cls in TransformTestHelper.METADATA_KEYS:
             metadata_key = TransformTestHelper.METADATA_KEYS[transform_cls]

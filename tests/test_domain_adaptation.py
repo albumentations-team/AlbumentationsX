@@ -551,6 +551,32 @@ def test_fda_transform_5plus_channels(num_channels):
     assert result.dtype == image.dtype
 
 
+def test_fda_materializes_reference_images_for_unaligned_aliases():
+    rng = np.random.default_rng(137)
+    image = rng.integers(0, 256, (17, 23, 3), dtype=np.uint8)
+    image2 = rng.integers(0, 256, (29, 31, 3), dtype=np.uint8)
+    reference = rng.integers(0, 256, (11, 13, 3), dtype=np.uint8)
+    transform = A.FDA(beta_range=(0.05, 0.05), p=1.0)
+    transform.add_targets({"image2": "image"})
+
+    result = transform(image=image, image2=image2, fda_metadata=[reference])
+
+    assert result["image"].shape == image.shape
+    assert result["image2"].shape == image2.shape
+
+
+def test_fda_rejects_aliases_with_channels_incompatible_with_reference():
+    rng = np.random.default_rng(137)
+    image = rng.integers(0, 256, (17, 23, 3), dtype=np.uint8)
+    image2 = rng.integers(0, 256, (17, 23, 5), dtype=np.uint8)
+    reference = rng.integers(0, 256, (11, 13, 3), dtype=np.uint8)
+    transform = A.FDA(beta_range=(0.05, 0.05), p=1.0)
+    transform.add_targets({"image2": "image"})
+
+    with pytest.raises(ValueError, match="reference image has 3 channels; target 'image2' has 5"):
+        transform(image=image, image2=image2, fda_metadata=[reference])
+
+
 @pytest.mark.parametrize("num_channels", [5, 6])
 @pytest.mark.parametrize("transform_type", ["pca", "standard", "minmax"])
 def test_pixel_distribution_adaptation_transform_5plus_channels(num_channels, transform_type):

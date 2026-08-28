@@ -11,6 +11,7 @@ import numpy as np
 from albucore import median_blur, resize3d
 
 from albumentations.augmentations.blur import functional as fblur
+from albumentations.augmentations.dropout import functional as fdropout
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.augmentations.transforms3d import functional as f3d
@@ -63,6 +64,7 @@ FUNCTIONAL_3D_KERNELS = (
     "rotate90_3d",
     "transform_cube",
     "swap_tiles_on_volume",
+    "rician_noise",
 )
 
 
@@ -87,6 +89,7 @@ FUNCTIONAL_PIXEL_KERNELS: Mapping[str, KernelSupport] = {
     "shift_hsv": KernelSupport(channels=(3,)),
     "linear_transformation_rgb": KernelSupport(channels=(3,)),
     "pixel_dropout": KernelSupport(),
+    "guided_coarse_dropout": KernelSupport(),
     "channel_shuffle": KernelSupport(channels=(3, 5)),
     "image_compression": KernelSupport(dtypes=("uint8",)),
     "move_tone_curve_shared": KernelSupport(),
@@ -102,6 +105,8 @@ FUNCTIONAL_BLUR_KERNELS: Mapping[str, KernelSupport] = {
     "zoom_blur": KernelSupport(),
     "mode_filter": KernelSupport(),
     "glass_blur": KernelSupport(channels=(1, 3), sizes=("small", "medium")),
+    "stochastic_convolve_shared": KernelSupport(),
+    "stochastic_convolve_per_channel": KernelSupport(),
     **{name: KernelSupport() for name, _ in MEDIAN_BLUR_FUNCTIONAL_CASES},
 }
 
@@ -327,6 +332,16 @@ def _call_pixel_dropout(benchmark: Any) -> np.ndarray:
     return fpixel.pixel_dropout(benchmark.image, benchmark.drop_mask, benchmark.drop_values)
 
 
+def _call_guided_coarse_dropout(benchmark: Any) -> np.ndarray:
+    return fdropout.fill_masked_holes(
+        benchmark.image,
+        benchmark.guided_holes,
+        benchmark.guided_dropout_mask,
+        "random_uniform",
+        benchmark.random_generator,
+    )
+
+
 def _call_channel_shuffle(benchmark: Any) -> np.ndarray:
     return fpixel.channel_shuffle(benchmark.image, benchmark.channels_shuffled)
 
@@ -368,6 +383,7 @@ PIXEL_CALLS: Mapping[str, ImageKernelCall] = {
     "shift_hsv": _call_shift_hsv,
     "linear_transformation_rgb": _call_linear_transformation_rgb,
     "pixel_dropout": _call_pixel_dropout,
+    "guided_coarse_dropout": _call_guided_coarse_dropout,
     "channel_shuffle": _call_channel_shuffle,
     "image_compression": _call_image_compression,
     "move_tone_curve_shared": _call_move_tone_curve_shared,
@@ -401,6 +417,14 @@ def _call_glass_blur(benchmark: Any) -> np.ndarray:
     return fblur.glass_blur(benchmark.image, 0.7, 2, benchmark.glass_iterations, benchmark.dxy, "fast")
 
 
+def _call_stochastic_convolve_shared(benchmark: Any) -> np.ndarray:
+    return fpixel.convolve(benchmark.image, benchmark.stochastic_kernel)
+
+
+def _call_stochastic_convolve_per_channel(benchmark: Any) -> np.ndarray:
+    return fpixel.convolve(benchmark.image, benchmark.stochastic_per_channel_kernel)
+
+
 def _make_median_blur_call(kernel_size: int) -> ImageKernelCall:
     def call(benchmark: Any) -> np.ndarray:
         return median_blur(benchmark.image, kernel_size)
@@ -415,6 +439,8 @@ BLUR_CALLS: Mapping[str, ImageKernelCall] = {
     "zoom_blur": _call_zoom_blur,
     "mode_filter": _call_mode_filter,
     "glass_blur": _call_glass_blur,
+    "stochastic_convolve_shared": _call_stochastic_convolve_shared,
+    "stochastic_convolve_per_channel": _call_stochastic_convolve_per_channel,
     **{name: _make_median_blur_call(kernel_size) for name, kernel_size in MEDIAN_BLUR_FUNCTIONAL_CASES},
 }
 
@@ -462,6 +488,10 @@ def _call_swap_tiles_on_volume(benchmark: Any) -> np.ndarray:
     return f3d.swap_tiles_on_volume(benchmark.volume, benchmark.tiles, benchmark.mapping)
 
 
+def _call_rician_noise(benchmark: Any) -> np.ndarray:
+    return fpixel.rician_noise(benchmark.volume, benchmark.real_noise, benchmark.imaginary_noise)
+
+
 FUNCTIONAL_3D_CALLS: Mapping[str, ImageKernelCall] = {
     "affine_3d": _call_affine_3d,
     "anisotropy_3d": _call_anisotropy_3d,
@@ -472,6 +502,7 @@ FUNCTIONAL_3D_CALLS: Mapping[str, ImageKernelCall] = {
     "rotate90_3d": _call_rotate90_3d,
     "transform_cube": _call_transform_cube,
     "swap_tiles_on_volume": _call_swap_tiles_on_volume,
+    "rician_noise": _call_rician_noise,
 }
 
 
@@ -545,6 +576,21 @@ class TimeFunctionalPixelKernels:
         self.drop_mask = np.zeros(self.image.shape[:2], dtype=bool)
         self.drop_mask[::8, ::8] = True
         self.drop_values = np.zeros((channels,), dtype=self.image.dtype)
+        height, width = self.image.shape[:2]
+        hole_height, hole_width = max(1, height // 8), max(1, width // 8)
+        self.guided_holes = np.array(
+            [
+                [0, 0, hole_width, hole_height],
+                [width - hole_width, 0, width, hole_height],
+                [0, height - hole_height, hole_width, height],
+                [width - hole_width, height - hole_height, width, height],
+            ],
+            dtype=np.int32,
+        )
+        self.guided_dropout_mask = np.zeros((height, width), dtype=bool)
+        for left, top, right, bottom in self.guided_holes:
+            self.guided_dropout_mask[top:bottom, left:right] = True
+        self.random_generator = np.random.default_rng(137)
         self.channels_shuffled = list(reversed(range(channels)))
         self.solarize_threshold = 128 if self.image.dtype == np.uint8 else 0.5
         self.tone_curve_low_y = np.linspace(0.11, 0.31, channels, dtype=np.float64)
@@ -566,6 +612,10 @@ class TimeFunctionalBlurKernels:
         self.name = name
         self.image = make_image(size_name, channels, dtype_from_name(dtype_name))
         self.kernel = np.ones((3, 3), dtype=np.float32) / 9
+        random_field = np.random.default_rng(137).standard_normal((3, 3), dtype=np.float32)
+        per_channel_field = np.random.default_rng(138).standard_normal((channels, 3, 3), dtype=np.float32)
+        self.stochastic_kernel = fpixel.create_stochastic_convolution_kernel(random_field, 0.1)
+        self.stochastic_per_channel_kernel = fpixel.create_stochastic_convolution_kernel(per_channel_field, 0.1)
         self.zoom_factors = np.array([1.0, 1.02, 1.04], dtype=np.float32)
         self.glass_iterations = 1
         max_delta = 2
@@ -605,6 +655,9 @@ class TimeFunctional3DKernels:
         self.tiles = f3d.split_uniform_grid_3d((depth, height, width), (2, 2, 2), rng)
         shape_groups = f3d.create_shape_groups_3d(self.tiles)
         self.mapping = f3d.shuffle_tiles_within_shape_groups_3d(shape_groups, rng)
+        if name == "rician_noise":
+            self.real_noise = rng.standard_normal(self.volume.shape, dtype=np.float32) * 0.1
+            self.imaginary_noise = rng.standard_normal(self.volume.shape, dtype=np.float32) * 0.1
 
     def time_kernel(self, case_id: str) -> None:
         FUNCTIONAL_3D_CALLS[self.name](self)

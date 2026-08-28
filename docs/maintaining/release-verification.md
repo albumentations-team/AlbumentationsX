@@ -61,7 +61,9 @@ The Correctness & Compatibility Report summarizes what CI tested for a release:
 - lower-bound dependency coverage
 - golden regression and property-test coverage
 - performance benchmark evidence
-- performance-budget status for coverage contracts and regression triage
+- exact ASV baseline-to-candidate refs and the resolved benchmark profile
+- performance-budget status for coverage contracts and regression triage;
+  normal release bundles require `comparison.provided: true`
 - runtime dependency audit, workflow audit, and OpenSSF Scorecard status
 - pip-audit, zizmor, Scorecard JSON, and Scorecard SARIF artifacts where the
   corresponding workflows ran

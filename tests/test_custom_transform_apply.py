@@ -11,6 +11,7 @@ import pytest
 
 import albumentations as A
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import SampledParams, TargetSet
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Fixtures
@@ -53,9 +54,10 @@ class BrightnessWithLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        return {"factor": 0.5}
+    ) -> SampledParams:
+        return SampledParams(params={"factor": 0.5})
 
     def apply(self, img: np.ndarray, factor: float = 1.0, **p) -> np.ndarray:
         return np.clip(img.astype(np.float32) * factor, 0, 255).astype(img.dtype)
@@ -84,9 +86,10 @@ class RotateWithLabel(A.CustomTransformsApplyMixin, A.DualTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        return {"factor": 1}  # fixed for deterministic tests
+    ) -> SampledParams:
+        return SampledParams(params={"factor": 1})
 
     def apply(self, img: np.ndarray, factor: int = 0, **p) -> np.ndarray:
         return np.rot90(img, factor)
@@ -105,9 +108,10 @@ class MultiTargetDual(A.CustomTransformsApplyMixin, A.DualTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        return {"factor": 2}
+    ) -> SampledParams:
+        return SampledParams(params={"factor": 2})
 
     def apply(self, img: np.ndarray, **p) -> np.ndarray:
         return img
@@ -129,9 +133,10 @@ class VolumeWithLabel(A.CustomTransformsApplyMixin, A.Transform3D):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
-        return {"factor": 1}
+    ) -> SampledParams:
+        return SampledParams(params={"factor": 1})
 
     def apply(self, img: np.ndarray, **p) -> np.ndarray:
         return img
@@ -453,8 +458,14 @@ class TestParamsPassthrough:
         received = {}
 
         class _Capture(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
-            def sample_parameters(self, params, data, sampling: SamplingContext):
-                return {"factor": 7}
+            def sample_parameters(
+                self,
+                params: dict[str, Any],
+                data: dict[str, Any],
+                targets: TargetSet,
+                sampling: SamplingContext,
+            ) -> SampledParams:
+                return SampledParams(params={"factor": 7})
 
             def apply(self, img, factor=0, **p):
                 received["apply_factor"] = factor
@@ -473,8 +484,14 @@ class TestParamsPassthrough:
         received = {}
 
         class _CaptureMulti(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
-            def sample_parameters(self, params, data, sampling: SamplingContext):
-                return {"alpha": 3, "beta": 9}
+            def sample_parameters(
+                self,
+                params: dict[str, Any],
+                data: dict[str, Any],
+                targets: TargetSet,
+                sampling: SamplingContext,
+            ) -> SampledParams:
+                return SampledParams(params={"alpha": 3, "beta": 9})
 
             def apply(self, img, **p):
                 return img
@@ -588,10 +605,11 @@ class TestGetParamsDependentOnData:
                 self,
                 params: dict[str, Any],
                 data: dict[str, Any],
+                targets: TargetSet,
                 sampling: SamplingContext,
-            ) -> dict[str, Any]:
+            ) -> SampledParams:
                 label = data.get("label", 0)
-                return {"base": 10, "offset": label * 2}
+                return SampledParams(params={"base": 10, "offset": label * 2})
 
             def apply(self, img: np.ndarray, base: int = 0, offset: int = 0, **p) -> np.ndarray:
                 return img
@@ -612,9 +630,10 @@ class TestGetParamsDependentOnData:
                 self,
                 params: dict[str, Any],
                 data: dict[str, Any],
+                targets: TargetSet,
                 sampling: SamplingContext,
-            ) -> dict[str, Any]:
-                return {}
+            ) -> SampledParams:
+                return SampledParams(params={})
 
             def apply(self, img: np.ndarray, **p) -> np.ndarray:
                 return img
@@ -638,9 +657,10 @@ class TestAddTargetsWithCustomKeys:
                 self,
                 params: dict[str, Any],
                 data: dict[str, Any],
+                targets: TargetSet,
                 sampling: SamplingContext,
-            ) -> dict[str, Any]:
-                return {}
+            ) -> SampledParams:
+                return SampledParams(params={})
 
             def apply(self, img: np.ndarray, **p) -> np.ndarray:
                 return img
@@ -663,9 +683,10 @@ class TestAddTargetsWithCustomKeys:
                 self,
                 params: dict[str, Any],
                 data: dict[str, Any],
+                targets: TargetSet,
                 sampling: SamplingContext,
-            ) -> dict[str, Any]:
-                return {}
+            ) -> SampledParams:
+                return SampledParams(params={})
 
             def apply(self, img: np.ndarray, **p) -> np.ndarray:
                 return img
@@ -751,9 +772,10 @@ class TestAvailableKeysAndComposition:
                 self,
                 params: dict[str, Any],
                 data: dict[str, Any],
+                targets: TargetSet,
                 sampling: SamplingContext,
-            ) -> dict[str, Any]:
-                return {}
+            ) -> SampledParams:
+                return SampledParams(params={})
 
             def apply(self, img: np.ndarray, **p) -> np.ndarray:
                 return img
@@ -766,9 +788,10 @@ class TestAvailableKeysAndComposition:
                 self,
                 params: dict[str, Any],
                 data: dict[str, Any],
+                targets: TargetSet,
                 sampling: SamplingContext,
-            ) -> dict[str, Any]:
-                return {}
+            ) -> SampledParams:
+                return SampledParams(params={})
 
             def apply(self, img: np.ndarray, **p) -> np.ndarray:
                 return img
@@ -788,9 +811,10 @@ class TestAvailableKeysAndComposition:
                 self,
                 params: dict[str, Any],
                 data: dict[str, Any],
+                targets: TargetSet,
                 sampling: SamplingContext,
-            ) -> dict[str, Any]:
-                return {}
+            ) -> SampledParams:
+                return SampledParams(params={})
 
             def apply(self, img: np.ndarray, **p) -> np.ndarray:
                 return img

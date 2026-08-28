@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "albumentationsx"
 
-version = "2.4.2"
+version = "2.4.3"
 
 description = "Fast, flexible, and advanced augmentation library for deep learning, computer vision, and medical imaging. Albumentations offers a wide range of transformations for both 2D (images, masks, bboxes, keypoints) and 3D (volume data, volumetric masks, keypoints) data, with optimized performance and seamless integration into ML workflows. Licensed under AGPL-3.0-only; alternative commercial terms are also available."
 readme = "README.md"
@@ -126,7 +126,7 @@ classifiers = [
 ]
 
 dependencies = [
-  "albucore==0.2.13",
+  "albucore==0.2.16",
   "numkong>=7.8.0",
   "numpy>=2.2.6",
   "pydantic>=2.12.4",
@@ -207,6 +207,7 @@ ci-benchmark = [
   "opencv-python-headless>=5.0.0.93",
 ]
 ci-release = [
+  { include-group = "ci-benchmark" },
   { include-group = "ci-test" },
   { include-group = "ci-package" },
   { include-group = "ci-security" },
@@ -535,9 +536,8 @@ verbose = false
 check_references = true
 
 # Pre-commit hook check-google-docstrings reads this section (see package README).
-# First paragraph: 120-160 chars (concatenated). Each physical line must be <= 120 chars (ruff E501).
-# Solution: split the first paragraph across two lines; the hook joins them with a space.
-# NEVER add E501 to pyproject ignores or use # noqa: E501 — split long lines instead.
+# Public transform preview metadata is checked separately in tests/test_docstrings.py.
+# Each physical line must be <= 120 chars (ruff E501); do not disable E501 or use # noqa: E501.
 # See .codex/skills/docstring-deep-dive and docs/contributing/coding_guidelines.md.
 [tool.docstring_checker]
 paths = [ "albumentations" ]
@@ -545,6 +545,4 @@ require_param_types = true
 check_references = true
 check_type_consistency = true
 exclude_files = [ "__init__.py" ]
-min_short_description_length = 120
-max_short_description_length = 160
 verbose = false

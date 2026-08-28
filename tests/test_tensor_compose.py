@@ -7,6 +7,7 @@ import pytest
 import torch
 
 import albumentations as A
+from albumentations.core import composition
 from albumentations.core.transforms_interface import ImageOnlyTransform
 from albumentations.core.utils import get_image_data, get_shape, get_volume_shape
 
@@ -274,6 +275,63 @@ def test_flip3d_tensor_compose_preserves_volume_mask_and_semantic_mapping() -> N
     assert result["mask3d"].dtype == mask3d.dtype
     torch.testing.assert_close(result["volume"], torch.flip(volume, dims=(3,)))
     torch.testing.assert_close(result["mask3d"], expected_mask3d)
+
+
+@pytest.mark.parametrize("dtype", [torch.uint8, torch.float32])
+@pytest.mark.parametrize("group_element", ["e", "r90", "r180", "r270", "v", "hvt", "h", "t"])
+@pytest.mark.parametrize("strided", [False, True])
+def test_square_symmetry_volume_tensor_compose_stays_on_direct_route(
+    monkeypatch: pytest.MonkeyPatch,
+    dtype: torch.dtype,
+    group_element: str,
+    strided: bool,
+) -> None:
+    volume = torch.arange(2 * 3 * 5 * 5, dtype=dtype).reshape(2, 3, 5, 5)
+    mask3d = torch.arange(3 * 5 * 5, dtype=torch.uint8).reshape(3, 5, 5)
+    if strided:
+        volume = volume.transpose(-2, -1)
+        mask3d = mask3d.transpose(-2, -1)
+
+    def fail_on_numpy_bridge(*args: object, **kwargs: object) -> None:
+        raise AssertionError("SquareSymmetry volume Tensor route entered the NumPy bridge")
+
+    monkeypatch.setattr(composition, "tensor_to_numpy_spatial", fail_on_numpy_bridge)
+    result = A.Compose([A.SquareSymmetry(group_element=group_element, p=1.0)], strict=True)(
+        volume=volume,
+        mask3d=mask3d,
+    )
+
+    expected_volume = _d4_tensor_reference(volume, group_element)
+    expected_mask3d = _d4_tensor_reference(mask3d, group_element)
+    assert result["volume"].dtype == volume.dtype
+    assert result["mask3d"].dtype == mask3d.dtype
+    assert result["volume"].stride() == expected_volume.stride()
+    assert result["mask3d"].stride() == expected_mask3d.stride()
+    torch.testing.assert_close(result["volume"], expected_volume)
+    torch.testing.assert_close(result["mask3d"], expected_mask3d)
+
+
+def _d4_tensor_reference(value: torch.Tensor, group_element: str) -> torch.Tensor:
+    match group_element:
+        case "e":
+            result = value
+        case "r90":
+            result = torch.rot90(value, 1, (-2, -1))
+        case "r180":
+            result = torch.rot90(value, 2, (-2, -1))
+        case "r270":
+            result = torch.rot90(value, 3, (-2, -1))
+        case "v":
+            result = torch.flip(value, (-2,))
+        case "hvt":
+            result = torch.transpose(torch.flip(value, (-2, -1)), -2, -1)
+        case "h":
+            result = torch.flip(value, (-1,))
+        case "t":
+            result = torch.transpose(value, -2, -1)
+        case _:
+            raise AssertionError(f"Unexpected D4 group element: {group_element}")
+    return result
 
 
 def test_tensor_compose_combines_3d_transforms() -> None:

@@ -29,7 +29,7 @@ wheels = [
 
 [[package]]
 name = "albucore"
-version = "0.2.13"
+version = "0.2.16"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numkong" },
@@ -38,14 +38,14 @@ dependencies = [
     { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "stringzilla" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d5/7b/a7018a715bda30e37b0a584bd1e7a9c084b8063308a150a490887ab39532/albucore-0.2.13.tar.gz", hash = "sha256:0afb83ea8ad73d799370cb45c8c26e739becccbe1cdf3e3fe11594907c2eb622", size = 196407, upload-time = "2026-08-13T11:36:57.103Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a7/a3/b97df8aea6611d446761084c80f272c836060859564180168abcd061aef8/albucore-0.2.16.tar.gz", hash = "sha256:37176c8386975dcfe0a317407bfb9b5585c679192e6a051dbfc0adfa995cdfed", size = 194964, upload-time = "2026-08-28T09:10:37.681Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4c/41/1c6374737bf1033455a351a26bd6d04e6c2cbc8d27353153f6aa3da7e16c/albucore-0.2.13-py3-none-any.whl", hash = "sha256:a2d4d049a4cb1b2f0a52874b9d6ec109947661718112e34923d72cc90a701021", size = 57248, upload-time = "2026-08-13T11:36:55.716Z" },
+    { url = "https://files.pythonhosted.org/packages/bf/6e/daab9387f9c12dbb6192d6c99bf70a6c03b935f5fe7692f60384d2a7c5fc/albucore-0.2.16-py3-none-any.whl", hash = "sha256:ec65662c95daf54d6a090ef5d4a2eed29cc5dae26768d00d0d9a4fb4dd7e58d0", size = 58139, upload-time = "2026-08-28T09:10:36.128Z" },
 ]
 
 [[package]]
 name = "albumentationsx"
-version = "2.4.2"
+version = "2.4.3"
 source = { editable = "." }
 dependencies = [
     { name = "albucore" },
@@ -110,6 +110,7 @@ ci-quality = [
 ]
 ci-release = [
     { name = "albu-spec" },
+    { name = "asv" },
     { name = "cyclonedx-bom" },
     { name = "deepdiff" },
     { name = "defusedxml" },
@@ -212,7 +213,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "albucore", specifier = "==0.2.13" },
+    { name = "albucore", specifier = "==0.2.16" },
     { name = "huggingface-hub", marker = "extra == 'hub'" },
     { name = "numkong", specifier = ">=7.8.0" },
     { name = "numpy", specifier = ">=2.2.6" },
@@ -253,6 +254,7 @@ ci-quality = [
 ]
 ci-release = [
     { name = "albu-spec", specifier = ">=0.0.6" },
+    { name = "asv" },
     { name = "cyclonedx-bom", specifier = ">=7.3.1" },
     { name = "deepdiff", specifier = ">=9.1.0" },
     { name = "defusedxml", specifier = ">=0.7.1" },

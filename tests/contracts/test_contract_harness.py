@@ -8,6 +8,7 @@ from pydantic import model_validator
 from typing_extensions import Self
 
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.transforms_interface import BaseTransformInitSchema, ImageOnlyTransform
 from albumentations.core.type_definitions import ImageType
 from tests.helpers.applied_config import (
@@ -44,10 +45,11 @@ class CrossFieldConflict(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         sampling.applied_overrides["choice"] = "a"
-        return {}
+        return SampledParams(params={})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         return img
@@ -58,10 +60,11 @@ class UnknownEmittedKey(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         sampling.applied_overrides["unknown_key"] = 137
-        return {}
+        return SampledParams(params={})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         return img
@@ -79,10 +82,11 @@ class NonJsonValue(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         sampling.applied_overrides["payload"] = {1, 2}
-        return {}
+        return SampledParams(params={})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         return img
@@ -100,11 +104,12 @@ class MutatesPreviousRecord(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         self.history.append(len(self.history) + 1)
         sampling.applied_overrides["history"] = self.history
-        return {}
+        return SampledParams(params={})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         return img
@@ -122,10 +127,11 @@ class ReconstructsButCannotRun(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         sampling.applied_overrides["mode"] = "replay"
-        return {}
+        return SampledParams(params={})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         if self.mode == "replay":
@@ -145,10 +151,11 @@ class ReconstructsWithDifferentOutput(ImageOnlyTransform):
         self,
         params: dict[str, Any],
         data: dict[str, Any],
+        targets: TargetSet,
         sampling: SamplingContext,
-    ) -> dict[str, Any]:
+    ) -> SampledParams:
         sampling.applied_overrides["mode"] = "replay"
-        return {}
+        return SampledParams(params={})
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
         return np.zeros_like(img) if self.mode == "replay" else img

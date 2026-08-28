@@ -28,11 +28,10 @@ kernel.
 Add the pure function in the corresponding `functional.py` file (no class state, no RNG):
 
 ```python
-def my_transform(img: np.ndarray, param1: float, param2: int) -> np.ndarray:
-    ...
+def my_transform(img: np.ndarray, param1: float, param2: int) -> np.ndarray: ...
 ```
 
-- No randomness — all random values come from `sample_parameters`
+- Keep the functional layer deterministic; define stochastic behavior at the transform sampling boundary.
 - Delete redundant work and full-array passes before selecting a backend
 - Compare applicable NumPy, OpenCV, NumKong, StringZilla, and LUT implementations
 - Consider `np.bincount` for repeated reductions over dense non-negative integer labels
@@ -42,19 +41,16 @@ def my_transform(img: np.ndarray, param1: float, param2: int) -> np.ndarray:
 
 ## 3. Write the transform class
 
-- Keep sampling in `sample_parameters`; `apply_*` receives realized parameters only.
-- Accept `sampling: SamplingContext` in `sample_parameters`. Use `sampling.py_random` for scalar draws and
-  `sampling.random_generator` only for array-valued draws. Record replay policy through
-  `sampling.applied_overrides` when the transform supports observed execution.
+- Define sampling and replay behavior at the `sample_parameters` boundary. Implement the greenfield
+  `sample_parameters(params, data, targets, sampling) -> SampledParams` contract;
+  return `SampledParams(params={...})` for values used by every target and use actual-key `TargetParams` entries
+  for representation-dependent values. The coding guidance document describes the complete contract and the hook reports
+  mechanical violations.
 - Use relative parameters where users should transfer a policy across image sizes.
 - Use `ImageType` for image, mask, and volume signatures; reserve `np.ndarray` for bboxes and keypoints.
 - Compose inputs always have a channel dimension: `(H, W, C)`, `(N, H, W, C)`, and `(D, H, W, C)`; grayscale is
   `(H, W, 1)`. Do not add Compose-path compatibility branches for two-dimensional grayscale data.
 - Keep reusable pixel arithmetic in `functional.py`, not in a transform class.
-
-Pre-commit checks transform naming, constructor serialization overrides, `_range` annotations, schema and `apply_*`
-defaults, direct module RNG, fill naming, required Examples sections, docstring syntax, forbidden geometric OpenCV APIs,
-and README catalog synchronization.
 
 ## 4. Add batch optimization (`apply_to_images`)
 

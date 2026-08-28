@@ -938,6 +938,24 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
         },
     ),
     (
+        "gaussian-multiple",
+        A.Illumination,
+        {
+            "mode": "gaussian",
+            "num_spots_range": (2, 4),
+            "effect_type": "both",
+        },
+    ),
+    (
+        "gaussian-deterministic-spots",
+        A.Illumination,
+        {
+            "mode": "gaussian",
+            "num_spots_range": (2, 2),
+            "gaussian_spots": ((0.3, 0.4, 0.25, 0.1), (0.7, 0.6, 0.4, -0.08)),
+        },
+    ),
+    (
         "wide-roi-rays",
         A.LensFlare,
         {"flare_roi": (0.1, 0.1, 0.8, 0.6), "num_rays_range": (6, 10), "bloom_range": (0.02, 0.08)},

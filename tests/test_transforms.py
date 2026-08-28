@@ -1,4 +1,5 @@
 import copy
+import json
 import random
 from functools import partial
 from typing import Any
@@ -459,6 +460,14 @@ def test_illumination_explicit_grayscale_channel(mode):
         ("corner", {"intensity": -0.13, "corner": 2}),
         ("gaussian", {"intensity": 0.13, "center": (0.37, 0.61), "sigma": 0.43}),
         ("gaussian", {"intensity": -0.13, "center": (0.37, 0.61), "sigma": 0.43}),
+        (
+            "gaussian",
+            {"spots": ((0.37, 0.61, 0.43, 0.13), (0.62, 0.42, 0.31, 0.08))},
+        ),
+        (
+            "gaussian",
+            {"spots": ((0.37, 0.61, 0.43, 0.13), (0.62, 0.42, 0.31, -0.08))},
+        ),
     ],
 )
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
@@ -487,6 +496,7 @@ def test_illumination_batch_helper_matches_per_image(mode, params, dtype, channe
         ("linear", {"intensity": 0.13, "angle": 37.0}),
         ("corner", {"intensity": 0.13, "corner": 2}),
         ("gaussian", {"intensity": 0.13, "center": (0.37, 0.61), "sigma": 0.43}),
+        ("gaussian", {"spots": ((0.37, 0.61, 0.43, 0.13), (0.62, 0.42, 0.31, -0.08))}),
     ],
 )
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
@@ -502,6 +512,116 @@ def test_illumination_empty_batch(mode, params, dtype, shape):
     assert actual.dtype == images.dtype
     assert delegated.shape == images.shape
     assert delegated.dtype == images.dtype
+
+
+def test_illumination_default_gaussian_preserves_seeded_draw_order():
+    image = np.arange(24 * 20 * 3, dtype=np.uint8).reshape(24, 20, 3)
+    transform = A.Illumination(mode="gaussian", p=1)
+    pipeline = A.Compose([transform], seed=137, save_applied_params=True)
+
+    actual = pipeline(image=image)["image"]
+    expected_spot = (
+        0.8922037732150782,
+        0.28473780446259456,
+        0.4790219963198539,
+        -0.02374964911119945,
+    )
+    expected = fpixel.apply_gaussian_illumination(
+        image,
+        expected_spot[3],
+        expected_spot[:2],
+        expected_spot[2],
+    )
+
+    applied_params = transform.get_applied_params()
+    assert applied_params["intensity"] == expected_spot[3]
+    assert applied_params["center"] == expected_spot[:2]
+    assert applied_params["sigma"] == expected_spot[2]
+    assert transform.get_applied_config()["gaussian_spots"] == (expected_spot,)
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_illumination_multiple_gaussian_spots_share_field_across_targets(dtype):
+    image = np.full((24, 20, 3), 127, dtype=np.uint8)
+    if dtype == np.float32:
+        image = image.astype(np.float32) / 255
+    images = np.stack([image, image])
+    volume = np.stack([image, image])
+    transform = A.Compose(
+        [A.Illumination(mode="gaussian", num_spots_range=(3, 3), effect_type="both", p=1)],
+        seed=137,
+    )
+
+    result = transform(image=image, images=images, volume=volume)
+
+    assert result["image"].dtype == dtype
+    assert result["images"].dtype == dtype
+    assert result["volume"].dtype == dtype
+    assert np.min(result["image"]) >= 0
+    assert np.max(result["image"]) <= (255 if dtype == np.uint8 else 1)
+    np.testing.assert_array_equal(result["images"][0], result["image"])
+    np.testing.assert_array_equal(result["volume"][0], result["image"])
+
+
+def test_illumination_multiple_gaussian_spots_applied_config_json_round_trip():
+    image = np.full((24, 20, 3), 127, dtype=np.uint8)
+    transform = A.Compose(
+        [A.Illumination(mode="gaussian", num_spots_range=(2, 4), effect_type="both", p=1)],
+        seed=137,
+        save_applied_params=True,
+        strict=True,
+    )
+
+    result = transform(image=image)
+    transported = json.loads(json.dumps(result["applied_transforms"], allow_nan=False))
+    config = transported[0][1]
+    replay = A.Compose.from_applied_transforms(transported, strict=True)
+
+    assert config["num_spots_range"] == len(config["gaussian_spots"])
+    assert all(len(spot) == 4 for spot in config["gaussian_spots"])
+    np.testing.assert_array_equal(replay(image=image)["image"], result["image"])
+
+
+def test_illumination_both_samples_each_gaussian_spot_effect_independently():
+    image = np.zeros((8, 8, 3), dtype=np.uint8)
+    transform = A.Illumination(mode="gaussian", num_spots_range=(3, 3), effect_type="both", p=1)
+    pipeline = A.Compose([transform], seed=137, save_applied_params=True)
+
+    pipeline(image=image)
+    signs = [spot[3] > 0 for spot in transform.get_applied_params()["spots"]]
+
+    assert signs == [False, True, True]
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "error_pattern"),
+    [
+        ({"num_spots_range": (0, 1)}, "must be >= 1"),
+        ({"num_spots_range": (3, 2)}, "First value should be less than"),
+        ({"mode": "linear", "num_spots_range": (2, 2)}, "only be changed for gaussian mode"),
+        ({"mode": "gaussian", "gaussian_spots": ()}, "must contain at least one spot"),
+        (
+            {"mode": "gaussian", "num_spots_range": (2, 2), "gaussian_spots": ((0.5, 0.5, 0.3, 0.1),)},
+            "must equal the number",
+        ),
+        (
+            {"mode": "gaussian", "gaussian_spots": ((1.1, 0.5, 0.3, 0.1),)},
+            "centers must be in",
+        ),
+        (
+            {"mode": "gaussian", "gaussian_spots": ((0.5, 0.5, 0.1, 0.1),)},
+            "sigma must be in",
+        ),
+        (
+            {"mode": "gaussian", "gaussian_spots": ((0.5, 0.5, 0.3, 0.5),)},
+            "intensity magnitude must be in",
+        ),
+    ],
+)
+def test_illumination_multiple_gaussian_spots_validation(kwargs, error_pattern):
+    with pytest.raises(ValueError, match=error_pattern):
+        A.Illumination(**kwargs, strict=True)
 
 
 def test_crop_non_empty_mask():

@@ -2565,6 +2565,33 @@ def test_gaussian_illumination_multichannel_consistency(intensity):
 
 
 @pytest.mark.parametrize(
+    "spots",
+    [
+        ((0.4, 0.5, 0.25, 0.1), (0.6, 0.5, 0.25, 0.15)),
+        ((0.4, 0.5, 0.25, -0.1), (0.6, 0.5, 0.25, -0.15)),
+        ((0.4, 0.5, 0.25, 0.15), (0.6, 0.5, 0.25, -0.1)),
+    ],
+)
+def test_gaussian_illumination_spots_multiply_overlapping_fields(spots):
+    image = np.full((31, 29), 0.5, dtype=np.float32)
+    expected_gradient = np.ones(image.shape, dtype=np.float32)
+    for center_x, center_y, sigma, intensity in spots:
+        spot_gradient = fpixel.create_gaussian_illumination_gradient(
+            *image.shape,
+            intensity,
+            (center_x, center_y),
+            sigma,
+        )
+        np.multiply(expected_gradient, spot_gradient, out=expected_gradient)
+
+    actual_gradient = fpixel.create_gaussian_illumination_gradient_from_spots(*image.shape, spots)
+    actual = fpixel.apply_gaussian_illumination_spots(image, spots)
+
+    np.testing.assert_allclose(actual_gradient, expected_gradient, rtol=1e-6, atol=1e-7, equal_nan=False)
+    np.testing.assert_allclose(actual, image * expected_gradient, rtol=1e-6, atol=1e-7, equal_nan=False)
+
+
+@pytest.mark.parametrize(
     ["sigma", "expected_pattern"],
     [
         (0.1, "narrow"),  # Narrow gaussian should have steeper falloff

@@ -320,21 +320,39 @@ def create_illumination_gradient(
     Returns a float32 gradient that can be applied via multiply_by_array.
     The returned gradient does NOT have a channel dimension.
     """
-    intensity = params["intensity"]
-
     if mode == "linear":
+        intensity = params["intensity"]
         gradient = create_directional_gradient(height, width, params["angle"])
         _multiply_scalar_inplace(gradient, intensity)
         return gradient
 
     if mode == "corner":
-        return create_corner_illumination_gradient(height, width, intensity, params["corner"])
+        return create_corner_illumination_gradient(height, width, params["intensity"], params["corner"])
 
     # gaussian
+    if "spots" in params:
+        return create_gaussian_illumination_gradient_from_spots(height, width, params["spots"])
+    return create_gaussian_illumination_gradient(
+        height,
+        width,
+        params["intensity"],
+        params["center"],
+        params["sigma"],
+    )
+
+
+def create_gaussian_illumination_gradient(
+    height: int,
+    width: int,
+    intensity: float,
+    center: tuple[float, float],
+    sigma: float,
+) -> np.ndarray:
+    """Create a float32 Gaussian illumination multiplier for one independently parameterized spot over an image of the
+    requested height and width.
+    """
     if intensity == 0:
         return np.ones((height, width), dtype=np.float32)
-    center = params["center"]
-    sigma = params["sigma"]
     center_x = width * center[0]
     center_y = height * center[1]
     sigma2 = 2 * (max(height, width) * sigma) ** 2
@@ -351,6 +369,24 @@ def create_illumination_gradient(
     _multiply_scalar_inplace(x, intensity)
     _add_scalar_inplace(x, 1.0)
     return x
+
+
+def create_gaussian_illumination_gradient_from_spots(
+    height: int,
+    width: int,
+    spots: Sequence[tuple[float, float, float, float]],
+) -> np.ndarray:
+    """Multiply the float32 multipliers from independently parameterized Gaussian spots into one shared illumination
+    field for an image.
+    """
+    if not spots:
+        return np.ones((height, width), dtype=np.float32)
+    center_x, center_y, sigma, intensity = spots[0]
+    gradient = create_gaussian_illumination_gradient(height, width, intensity, (center_x, center_y), sigma)
+    for center_x, center_y, sigma, intensity in spots[1:]:
+        spot_gradient = create_gaussian_illumination_gradient(height, width, intensity, (center_x, center_y), sigma)
+        np.multiply(gradient, spot_gradient, out=gradient)
+    return gradient
 
 
 @float32_io
@@ -429,7 +465,7 @@ def _apply_clipped_illumination_batch(
         np.minimum(result_view, 1.0, out=result_view)
         return result
 
-    # These clipped modes only use multipliers >= 1, so the lower image bound cannot be crossed.
+    # Valid illumination multipliers remain nonnegative, so only the upper image bound can be crossed.
     for index, image in enumerate(images):
         np.multiply(image, gradient, out=result[index])
         np.minimum(result[index], 1.0, out=result[index])
@@ -464,7 +500,10 @@ def apply_illumination_batch(
     gradient = create_illumination_gradient(height, width, mode, params)
     if not implicit_grayscale:
         gradient = gradient[..., np.newaxis]
-    clip_required = (mode == "corner" and params["intensity"] < 0) or (mode == "gaussian" and params["intensity"] > 0)
+    gaussian_brightens = mode == "gaussian" and (
+        any(spot[3] > 0 for spot in params["spots"]) if "spots" in params else params["intensity"] > 0
+    )
+    clip_required = (mode == "corner" and params["intensity"] < 0) or gaussian_brightens
     num_channels = 1 if implicit_grayscale else images.shape[-1]
 
     # The uint8 path regresses against the per-image kernels.
@@ -534,32 +573,28 @@ def apply_gaussian_illumination(
         return img.copy()
 
     height, width = img.shape[:2]
+    x = create_gaussian_illumination_gradient(height, width, intensity, center, sigma)
 
-    # Pre-compute constants
-    center_x = width * center[0]
-    center_y = height * center[1]
-    sigma2 = 2 * (max(height, width) * sigma) ** 2  # Pre-compute denominator
+    if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
+        num_channels = img.shape[2]
+        x = x[..., np.newaxis] if num_channels == 1 else cv2.merge([x] * num_channels)
 
-    # Create coordinate grid and calculate distances in-place
-    y, x = np.ogrid[:height, :width]
-    x = x.astype(np.float32)
-    y = y.astype(np.float32)
-    x -= center_x
-    y -= center_y
+    return multiply_by_array(img, x)
 
-    # Calculate squared distances in-place
-    cv2.multiply(x, x, dst=x)
-    cv2.multiply(y, y, dst=y)
 
-    x = x + y
+@clipped
+def apply_gaussian_illumination_spots(
+    img: ImageType,
+    spots: Sequence[tuple[float, float, float, float]],
+) -> ImageType:
+    """Apply a multiplicatively combined field of independently parameterized Gaussian spots to an image and preserve
+    its input dtype.
+    """
+    if all(spot[3] == 0 for spot in spots):
+        return img.copy()
 
-    # Calculate gaussian directly into x array
-    _multiply_scalar_inplace(x, -1 / sigma2)
-    x = albucore_exp(x, inplace=True)
-
-    # Scale by intensity
-    _multiply_scalar_inplace(x, intensity)
-    _add_scalar_inplace(x, 1.0)
+    height, width = img.shape[:2]
+    x = create_gaussian_illumination_gradient_from_spots(height, width, spots)
 
     if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
         num_channels = img.shape[2]
@@ -1294,6 +1329,7 @@ __all__ = [
     "apply_corner_illumination",
     "apply_film_grain",
     "apply_gaussian_illumination",
+    "apply_gaussian_illumination_spots",
     "apply_halftone",
     "apply_illumination_batch",
     "apply_lens_flare",
@@ -1306,6 +1342,8 @@ __all__ = [
     "create_contrast_lut",
     "create_corner_illumination_gradient",
     "create_directional_gradient",
+    "create_gaussian_illumination_gradient",
+    "create_gaussian_illumination_gradient_from_spots",
     "create_illumination_gradient",
     "generate_plasma_pattern",
     "generate_random_values",

@@ -6,6 +6,7 @@ from albucore import from_float, to_float
 import albumentations as A
 from albumentations.augmentations.pixel import _functional_weather as fweather
 from albumentations.augmentations.pixel import functional as fpixel
+from albumentations.augmentations.pixel import weather
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transforms_interface import ImageOnlyTransform
 from tests.conftest import (
@@ -2286,12 +2287,11 @@ def test_spatter_apply_to_images_switches_at_working_set_guard(
     def fallback(transform, images, *args, **forwarded_params):
         nonlocal fallback_calls
         fallback_calls += 1
-        assert len(args) == 4
-        assert args[0] == mode
-        assert args[1] is params["drops"]
-        assert args[2] is params["non_mud"]
-        assert args[3] is params["mud"]
-        assert not forwarded_params
+        assert not args
+        assert forwarded_params["mode"] == mode
+        assert forwarded_params["drops"] is params["drops"]
+        assert forwarded_params["non_mud"] is params["non_mud"]
+        assert forwarded_params["mud"] is params["mud"]
         return np.full_like(images, 137 if dtype == np.uint8 else 0.5)
 
     monkeypatch.setattr(ImageOnlyTransform, "apply_to_images", fallback)
@@ -2323,6 +2323,27 @@ def test_spatter_apply_to_images_switches_at_working_set_guard(
         threshold_result,
         np.full_like(at_threshold, 137 if dtype == np.uint8 else 0.5),
     )
+
+
+@pytest.mark.parametrize(
+    ("mode", "dtype"),
+    [("rain", np.uint8), ("mud", np.uint8), ("mud", np.float32)],
+)
+def test_spatter_fallback_passes_explicit_parameters_to_base_handler(monkeypatch, mode, dtype):
+    images = np.zeros((2, 5, 7, 3), dtype=dtype)
+    effect = np.zeros(images.shape[1:], dtype=np.float32)
+    params = (
+        {"mode": mode, "drops": effect, "non_mud": None, "mud": None}
+        if mode == "rain"
+        else {"mode": mode, "drops": None, "non_mud": np.ones_like(effect), "mud": effect}
+    )
+    transform = A.Spatter(mode=mode, p=1.0)
+    monkeypatch.setitem(weather._SPATTER_BATCH_FALLBACK_WORKING_SET_BYTES, (mode, images.dtype.name), 0)
+
+    actual = transform.apply_to_images(images, **params)
+    expected = ImageOnlyTransform.apply_to_images(transform, images, **params)
+
+    np.testing.assert_array_equal(actual, expected)
 
 
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])

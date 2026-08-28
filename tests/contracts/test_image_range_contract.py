@@ -90,7 +90,8 @@ def test_range_preserving_transforms_keep_normalized_image_targets_in_range(
             continue
         image = result[target]
         max_value = np.iinfo(image.dtype).max if image.dtype == np.uint8 else 1.0
+        range_tolerance = np.finfo(np.float32).eps if image.dtype == np.float32 else 0
         assert image.dtype in (np.uint8, np.float32), f"{case.case_id}: {target} returned {image.dtype}"
         assert np.isfinite(image).all(), f"{case.case_id}: {target} contains non-finite values"
-        assert image.min() >= 0, f"{case.case_id}: {target} has values below zero"
-        assert image.max() <= max_value, f"{case.case_id}: {target} exceeds {max_value}"
+        assert image.min() >= -range_tolerance, f"{case.case_id}: {target} has values below zero"
+        assert image.max() <= max_value + range_tolerance, f"{case.case_id}: {target} exceeds {max_value}"

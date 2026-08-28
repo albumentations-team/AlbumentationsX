@@ -69,7 +69,7 @@ d(z, y, x) = mean(V_xy(y, x), V_xz(z, x), V_yz(z, y))
 
 where the mean includes all three planes.
 
-The functional layer converts this pull map to Albucore's normalized `(x, y, z)` grid once. `remap3d` receives the grid and the public interpolation, border, and fill settings.
+The sampler converts the compact planes to Albucore's normalized `(x, y, z)` grid once and passes it to every raster target. `ReplayCompose` persists only the compact sampler data and rebuilds the grid after a JSON round trip.
 
 ### Targets and persistence
 

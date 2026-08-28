@@ -140,7 +140,7 @@ def test_elastic_transform3d_keypoint_inverse_recovers_xyz_reference() -> None:
 
 
 def test_elastic_transform3d_remap_respects_constant_volume_and_mask_fills() -> None:
-    volume = np.ones((3, 5, 7, 1), dtype=np.uint8)
+    volume = np.ones((3, 5, 7, 1), dtype=np.float32)
     mask3d = np.ones((3, 5, 7), dtype=np.uint16)
     sampling_grid = f3d.create_elastic_grid_3d({}, volume.shape[:3])
     sampling_grid[..., 0] = 2.0

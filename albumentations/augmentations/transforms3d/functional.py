@@ -9,12 +9,13 @@ specifically designed for 3D data.
 import math
 import random
 from collections.abc import Mapping
+from copy import deepcopy
 from typing import Any, Literal, cast
 
 import cv2
 import numpy as np
 import torch
-from albucore import clip, remap3d, resize3d, warp_affine3d
+from albucore import remap3d, resize3d, warp_affine3d
 
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.utils import handle_empty_array
@@ -212,21 +213,26 @@ def _add_elastic_plane(
         )
 
 
+def _as_elastic_control_coefficients(control_coefficients: Mapping[str, Any]) -> dict[str, np.ndarray]:
+    return {plane: np.asarray(coefficients, dtype=np.float32) for plane, coefficients in control_coefficients.items()}
+
+
 def create_elastic_grid_3d(
-    control_coefficients: Mapping[str, np.ndarray],
+    control_coefficients: Mapping[str, Any],
     volume_shape: tuple[int, int, int],
 ) -> np.ndarray:
     """Build one normalized 3D pull grid from compact C2 control planes for volumetric deformation without dense
     displacement or meshgrid allocations.
 
     Args:
-        control_coefficients (Mapping[str, np.ndarray]): Active XY, XZ, and YZ cubic coefficient planes.
+        control_coefficients (Mapping[str, Any]): Active XY, XZ, and YZ cubic coefficient planes.
         volume_shape (tuple[int, int, int]): Output `(depth, height, width)` shape.
 
     Returns:
         np.ndarray: Float32 normalized `(depth, height, width, 3)` pull coordinates in `(x, y, z)` order.
 
     """
+    control_coefficients = _as_elastic_control_coefficients(control_coefficients)
     depth, height, width = volume_shape
     sampling_grid = np.empty((depth, height, width, 3), dtype=np.float32)
     sampling_grid[..., 0] = _normalized_axis(width)
@@ -271,20 +277,62 @@ def create_elastic_grid_3d(
     return sampling_grid
 
 
-def _clip_interpolated_float_volume(
-    result: VolumeType | torch.Tensor,
-    original_numpy_dtype: np.dtype[Any] | None,
-    original_tensor_dtype: torch.dtype | None,
+class ElasticTransform3DSampler(dict[str, Any]):
+    """Carry serializable elastic coefficients and one invocation-local sampling grid."""
+
+    __slots__ = ("_remaining_grid_uses", "sampling_grid")
+
+    def __init__(
+        self,
+        control_coefficients: Mapping[str, Any],
+        volume_shape: tuple[int, int, int],
+        raster_target_count: int,
+    ) -> None:
+        super().__init__(control_coefficients=control_coefficients, volume_shape=volume_shape)
+        self.sampling_grid = (
+            None if not control_coefficients else create_elastic_grid_3d(control_coefficients, volume_shape)
+        )
+        self._remaining_grid_uses = raster_target_count
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> dict[str, Any]:
+        return deepcopy(dict(self), memo)
+
+    def release_sampling_grid(self) -> None:
+        self._remaining_grid_uses -= 1
+        if self._remaining_grid_uses == 0:
+            self.sampling_grid = None
+
+
+def elastic_transform_3d(
+    volume: VolumeType | torch.Tensor,
+    sampler: Mapping[str, Any],
     interpolation: int,
-    is_mask: bool,
+    border_mode: int,
+    fill: float | tuple[float, ...] | None,
+    *,
+    is_mask: bool = False,
 ) -> VolumeType | torch.Tensor:
-    if is_mask or interpolation == cv2.INTER_NEAREST:
-        return result
-    if isinstance(result, np.ndarray) and original_numpy_dtype == np.dtype(np.float32):
-        return clip(result, np.dtype(np.float32), inplace=True)
-    if isinstance(result, torch.Tensor) and original_tensor_dtype == torch.float32:
-        return result.clamp_(0.0, 1.0)
-    return result
+    """Build and apply a compact elastic pull field to one volume or mask."""
+    source_shape = (
+        tuple(volume.shape if is_mask else volume.shape[1:]) if isinstance(volume, torch.Tensor) else volume.shape[:3]
+    )
+    recorded_shape = tuple(sampler["volume_shape"])
+    if source_shape != recorded_shape:
+        raise ValueError(
+            f"ElasticTransform3D replay requires the same spatial shape {recorded_shape}, got {source_shape}",
+        )
+    control_coefficients = sampler["control_coefficients"]
+    if not control_coefficients:
+        return volume
+    sampling_grid = getattr(sampler, "sampling_grid", None)
+    uses_cached_grid = sampling_grid is not None
+    if not uses_cached_grid:
+        sampling_grid = create_elastic_grid_3d(control_coefficients, recorded_shape)
+    try:
+        return remap_3d(volume, sampling_grid, interpolation, border_mode, fill, is_mask=is_mask)
+    finally:
+        if uses_cached_grid and isinstance(sampler, ElasticTransform3DSampler):
+            sampler.release_sampling_grid()
 
 
 def remap_3d(
@@ -333,13 +381,6 @@ def remap_3d(
         interpolation=interpolation,
         border_mode=border_mode,
         border_value=fill,
-    )
-    result = _clip_interpolated_float_volume(
-        result,
-        original_numpy_dtype,
-        original_tensor_dtype,
-        interpolation,
-        is_mask,
     )
     if needs_mask_promotion:
         if isinstance(result, np.ndarray):
@@ -397,7 +438,7 @@ def _elastic_plane_displacement(
 @handle_empty_array("keypoints")
 def remap_elastic_keypoints_3d(
     keypoints: np.ndarray,
-    control_coefficients: Mapping[str, np.ndarray],
+    control_coefficients: Mapping[str, Any],
     volume_shape: tuple[int, int, int],
     tolerance: float = 1e-3,
 ) -> np.ndarray:
@@ -406,7 +447,7 @@ def remap_elastic_keypoints_3d(
 
     Args:
         keypoints (np.ndarray): XYZ keypoints with optional trailing attributes.
-        control_coefficients (Mapping[str, np.ndarray]): Active compact cubic control planes.
+        control_coefficients (Mapping[str, Any]): Active compact cubic control planes.
         volume_shape (tuple[int, int, int]): `(depth, height, width)` source shape.
         tolerance (float): Maximum accepted forward residual in voxel units.
 
@@ -414,6 +455,7 @@ def remap_elastic_keypoints_3d(
         np.ndarray: Keypoints in output coordinates; unconverged or out-of-domain rows have `-1` spatial coordinates.
 
     """
+    control_coefficients = _as_elastic_control_coefficients(control_coefficients)
     source_points = np.asarray(keypoints[:, :3], dtype=np.float64)
     transformed_points = source_points.copy()
     active_points = np.isfinite(source_points).all(axis=1)

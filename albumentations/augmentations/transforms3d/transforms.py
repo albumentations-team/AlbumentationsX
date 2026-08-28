@@ -343,7 +343,6 @@ class ElasticTransform3D(Transform3D):
 
     """
 
-    _runtime_generated_params = frozenset({"sampling_grid"})
     _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
     _supports_cpu_tensor = True
     _cpu_tensor_targets = frozenset({"volume", "mask3d"})
@@ -410,14 +409,14 @@ class ElasticTransform3D(Transform3D):
     ) -> SampledParams:
         del params, data
         volume_shape = _sampling_volume_shape(targets)
+        raster_target_count = len(targets.by_canonical_type("volume")) + len(targets.by_canonical_type("mask3d"))
         low, high = self.displacement_range
         magnitude = low if low == high else sampling.py_random.uniform(low, high)
         sampling.applied_overrides["displacement_range"] = (magnitude, magnitude)
         if magnitude == 0:
             return SampledParams(
                 params={
-                    "control_coefficients": {},
-                    "volume_shape": volume_shape,
+                    "sampler": f3d.ElasticTransform3DSampler({}, volume_shape, raster_target_count),
                 }
             )
 
@@ -433,77 +432,42 @@ class ElasticTransform3D(Transform3D):
         }
         return SampledParams(
             params={
-                "control_coefficients": control_coefficients,
-                "volume_shape": volume_shape,
+                "sampler": f3d.ElasticTransform3DSampler(
+                    control_coefficients,
+                    volume_shape,
+                    raster_target_count,
+                ),
             }
         )
-
-    def _apply_label_mappings_without_geometry(
-        self,
-        params: dict[str, Any],
-        data: dict[str, Any],
-    ) -> dict[str, Any]:
-        result = dict(data)
-        if "keypoints" in result and result["keypoints"] is not None:
-            result["keypoints"] = self._apply_label_mapping_to_keypoints(result["keypoints"], **params)
-        if self._semantic_mask_label_mappings:
-            result = self._apply_label_mapping_to_semantic_masks(result, **params)
-        return result
-
-    def apply_with_params(self, sampled_params: SampledParams, *args: Any, **kwargs: Any) -> dict[str, Any]:
-        """Build the ephemeral sampling grid once, enforce replay shape, and dispatch every target with the sampled
-        compact coefficient planes.
-        """
-        params = dict(sampled_params.params)
-        recorded_shape = tuple(params["volume_shape"])
-        if self.replay_mode:
-            current_shape = _sampling_volume_shape(self._build_target_set(kwargs))
-            if current_shape != recorded_shape:
-                raise ValueError(
-                    f"ElasticTransform3D replay requires the same spatial shape {recorded_shape}, got {current_shape}",
-                )
-        if not params["control_coefficients"]:
-            return self._apply_label_mappings_without_geometry(params, kwargs)
-
-        runtime_params = dict(params)
-        runtime_params["volume_shape"] = recorded_shape
-        runtime_params["control_coefficients"] = {
-            plane: np.asarray(coefficients, dtype=np.float32)
-            for plane, coefficients in params["control_coefficients"].items()
-        }
-        runtime_params["sampling_grid"] = f3d.create_elastic_grid_3d(
-            runtime_params["control_coefficients"],
-            recorded_shape,
-        )
-        runtime_sampled_params = SampledParams(
-            params=runtime_params,
-            target_params=sampled_params.target_params,
-            target_schema=sampled_params.target_schema,
-        )
-        return super().apply_with_params(runtime_sampled_params, *args, **kwargs)
 
     def apply_to_volume(
         self,
         volume: VolumeType,
-        sampling_grid: np.ndarray,
+        sampler: dict[str, Any],
         **params: Any,
     ) -> VolumeType:
         return cast(
             "VolumeType",
-            f3d.remap_3d(volume, sampling_grid, self.interpolation, self.border_mode, self.fill),
+            f3d.elastic_transform_3d(
+                volume,
+                sampler,
+                self.interpolation,
+                self.border_mode,
+                self.fill,
+            ),
         )
 
     def apply_to_mask3d(
         self,
         mask3d: VolumeType,
-        sampling_grid: np.ndarray,
+        sampler: dict[str, Any],
         **params: Any,
     ) -> VolumeType:
         return cast(
             "VolumeType",
-            f3d.remap_3d(
+            f3d.elastic_transform_3d(
                 mask3d,
-                sampling_grid,
+                sampler,
                 self.mask_interpolation,
                 self.border_mode,
                 self.fill_mask,
@@ -514,11 +478,17 @@ class ElasticTransform3D(Transform3D):
     def apply_to_keypoints(
         self,
         keypoints: np.ndarray,
-        control_coefficients: dict[str, np.ndarray],
-        volume_shape: tuple[int, int, int],
+        sampler: dict[str, Any],
         **params: Any,
     ) -> np.ndarray:
-        return f3d.remap_elastic_keypoints_3d(keypoints, control_coefficients, volume_shape)
+        control_coefficients = sampler["control_coefficients"]
+        if not control_coefficients:
+            return keypoints
+        return f3d.remap_elastic_keypoints_3d(
+            keypoints,
+            control_coefficients,
+            tuple(sampler["volume_shape"]),
+        )
 
 
 class Anisotropy3D(VolumeOnlyTransform):

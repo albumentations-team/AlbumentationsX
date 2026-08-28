@@ -1775,6 +1775,18 @@ class DualTransform(BasicTransform):
 
         return keypoints
 
+    def _apply_label_mappings_without_dispatch(
+        self,
+        params: Mapping[str, Any],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        result = dict(data)
+        if "keypoints" in result and result["keypoints"] is not None:
+            result["keypoints"] = self._apply_label_mapping_to_keypoints(result["keypoints"], **params)
+        if self._semantic_mask_label_mappings:
+            result = self._apply_label_mapping_to_semantic_masks(result, **params)
+        return result
+
     def apply_with_params(self, sampled_params: SampledParams, *args: Any, **kwargs: Any) -> dict[str, Any]:
         """Apply a dual transform with its parameters, including configured keypoint and transform-aware
         semantic-mask label mappings.

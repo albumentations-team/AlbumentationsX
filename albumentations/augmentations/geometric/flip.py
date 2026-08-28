@@ -149,12 +149,11 @@ class VerticalFlip(DualTransform):
             return cast("ImageType", fgeometric.flip_tensor(img, dims=(-2,)))
         return vflip(img)
 
-    def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
-        bbox_type = params["bbox_type"]
+    def apply_to_bboxes(self, bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"], **params: Any) -> np.ndarray:
         return fgeometric.bboxes_vflip(bboxes, bbox_type=bbox_type)
 
-    def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
-        return fgeometric.keypoints_vflip(keypoints, params["shape"][0])
+    def apply_to_keypoints(self, keypoints: np.ndarray, shape: tuple[int, int], **params: Any) -> np.ndarray:
+        return fgeometric.keypoints_vflip(keypoints, shape[0])
 
     def apply_to_mask(self, mask: ImageType, **params: Any) -> ImageType:
         if mask.size == 0:
@@ -257,12 +256,11 @@ class HorizontalFlip(DualTransform):
             return cast("ImageType", fgeometric.flip_tensor(img, dims=(-1,)))
         return hflip(img)
 
-    def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
-        bbox_type = params["bbox_type"]
+    def apply_to_bboxes(self, bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"], **params: Any) -> np.ndarray:
         return fgeometric.bboxes_hflip(bboxes, bbox_type=bbox_type)
 
-    def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
-        return fgeometric.keypoints_hflip(keypoints, params["shape"][1])
+    def apply_to_keypoints(self, keypoints: np.ndarray, shape: tuple[int, int], **params: Any) -> np.ndarray:
+        return fgeometric.keypoints_hflip(keypoints, shape[1])
 
     def apply_to_mask(self, mask: ImageType, **params: Any) -> ImageType:
         if mask.size == 0:
@@ -372,8 +370,7 @@ class Transpose(DualTransform):
             return cast("ImageType", fgeometric.transpose_tensor(img))
         return fgeometric.transpose(img)
 
-    def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
-        bbox_type = params["bbox_type"]
+    def apply_to_bboxes(self, bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"], **params: Any) -> np.ndarray:
         return fgeometric.bboxes_transpose(bboxes, bbox_type=bbox_type)
 
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
@@ -523,18 +520,19 @@ class D4(DualTransform):
         self,
         bboxes: np.ndarray,
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
+        bbox_type: Literal["hbb", "obb"],
         **params: Any,
     ) -> np.ndarray:
-        bbox_type = params["bbox_type"]
         return fgeometric.bboxes_d4(bboxes, group_element, bbox_type=bbox_type)
 
     def apply_to_keypoints(
         self,
         keypoints: np.ndarray,
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
-        return fgeometric.keypoints_d4(keypoints, group_element, params["shape"])
+        return fgeometric.keypoints_d4(keypoints, group_element, shape)
 
     def apply_to_mask(
         self,

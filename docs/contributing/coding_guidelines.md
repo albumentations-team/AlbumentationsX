@@ -404,6 +404,12 @@ those decisions from the first-target `params["shape"]` field.
   def apply_to_mask(self, mask: np.ndarray, fill_mask: int = 0) -> np.ndarray:
   ```
 
+#### Declare consumed sampled parameters explicitly
+
+Every transform `apply*` method must name each sampled parameter it reads, including execution parameters such as
+`shape` and `bbox_type`. Keep `**params` only to forward parameters to another handler; do not read it with
+`params[...]` or `params.get(...)`. The `check-ax-coding-guidance` pre-commit hook enforces this rule.
+
 #### Keep `apply*` Methods Thin
 
 `apply`, `apply_to_images`, and other `apply*` methods are transform-layer policy and dispatch points, not places to

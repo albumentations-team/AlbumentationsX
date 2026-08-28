@@ -16,7 +16,7 @@ from warnings import warn
 import cv2
 import numpy as np
 import torch
-from albucore import batch_transform, sz_lut
+from albucore import sz_lut
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -877,7 +877,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             ImageType: Transformed images as numpy array in the same format as input
 
         """
-        return self._apply_to_batch(images, lambda img: self.apply(img, **params))
+        return self._apply_to_batch(images, lambda img: self.apply(img, *args, **params))
 
     def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> VolumeType:
         """Apply transform slice by slice to a volume. Delegates to apply_to_images so each slice
@@ -1349,9 +1349,8 @@ class DualTransform(BasicTransform):
             self._apply_to_batch(masks, lambda mask: self.apply_to_mask(mask, *args, **params)),
         )
 
-    @batch_transform("spatial")
     def apply_to_mask3d(self, mask3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
-        return self.apply_to_mask(mask3d, *args, **params)
+        return self._apply_to_batch(mask3d, lambda mask: self.apply_to_mask(mask, *args, **params))
 
     def _get_label_transform_name(self, **params: Any) -> str | None:
         """Get the transform name to use for label mapping. For most transforms returns class
@@ -1440,7 +1439,7 @@ class DualTransform(BasicTransform):
         if is_empty:
             return mask
         if isinstance(mask, np.ndarray) and mask.dtype == np.uint8 and uint8_lut is not None:
-            return sz_lut(mask, uint8_lut, inplace=False)
+            return sz_lut(cast("NDArray[np.uint8]", mask), uint8_lut, inplace=False)
 
         if isinstance(mask, torch.Tensor):
             result = mask.clone()

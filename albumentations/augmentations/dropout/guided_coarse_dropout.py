@@ -256,44 +256,45 @@ class GuidedCoarseDropout(BaseDropout):
             }
         )
 
-    def apply(
+    def apply(  # type: ignore[override]  # pyrefly: ignore[bad-override]
         self,
         img: ImageType,
         holes: np.ndarray,
         seed: int,
+        dropout_mask: np.ndarray | None,
         **params: Any,
     ) -> ImageType:
-        dropout_mask = params.get("dropout_mask")
         if dropout_mask is None:
             return img
         self._validate_fill_channel_count(img, {2, 3})
         return fdropout.fill_masked_holes(img, holes, dropout_mask, self.fill, np.random.default_rng(seed))
 
-    def apply_to_mask(
+    def apply_to_mask(  # type: ignore[override]  # pyrefly: ignore[bad-override]
         self,
         mask: ImageType,
         holes: np.ndarray,
         seed: int,
+        dropout_mask: np.ndarray | None,
         **params: Any,
     ) -> ImageType:
-        dropout_mask = params.get("dropout_mask")
         if dropout_mask is None or self.fill_mask is None:
             return mask
         return fdropout.fill_masked_pixels(mask, dropout_mask, self.fill_mask)
 
-    def apply_to_bboxes(
+    def apply_to_bboxes(  # type: ignore[override]  # pyrefly: ignore[bad-override]
         self,
         bboxes: np.ndarray,
         holes: np.ndarray,
+        dropout_mask: np.ndarray | None,
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
-        dropout_mask = params.get("dropout_mask")
         if dropout_mask is None or len(bboxes) == 0:
             return bboxes
         processor = cast("BboxProcessor | None", self.get_processor("bboxes"))
         if processor is None:
             return bboxes
-        image_shape = params["shape"][:2]
+        image_shape = shape[:2]
         result = fdropout.mask_dropout_bboxes(
             denormalize_bboxes(bboxes, image_shape),
             dropout_mask,
@@ -303,13 +304,13 @@ class GuidedCoarseDropout(BaseDropout):
         )
         return normalize_bboxes(result, image_shape)
 
-    def apply_to_keypoints(
+    def apply_to_keypoints(  # type: ignore[override]  # pyrefly: ignore[bad-override]
         self,
         keypoints: np.ndarray,
         holes: np.ndarray,
+        dropout_mask: np.ndarray | None,
         **params: Any,
     ) -> np.ndarray:
-        dropout_mask = params.get("dropout_mask")
         if dropout_mask is None or len(keypoints) == 0:
             return keypoints
         processor = cast("KeypointsProcessor | None", self.get_processor("keypoints"))

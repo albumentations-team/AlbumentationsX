@@ -294,7 +294,7 @@ def _apply_brightness_contrast_uint8(
         # Values are non-negative after clipping, so floor matches the uint8 cast between torchvision operations.
         np.floor(lut, out=lut)
         lut = np.clip(lut * brightness_factor, 0.0, 255.0)
-    return sz_lut(img, lut.astype(np.uint8), inplace=False)
+    return sz_lut(cast("ImageUInt8", img), lut.astype(np.uint8), inplace=False)
 
 
 def _apply_brightness_contrast_float32(

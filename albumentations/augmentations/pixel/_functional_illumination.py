@@ -648,7 +648,7 @@ def _auto_contrast_multichannel_hist(
         lut = _create_auto_contrast_lut(hist, cutoff, ignore, method, max_value)
         if lut is None:
             continue
-        result[..., channel_idx] = sz_lut(channel, lut)
+        result[..., channel_idx] = sz_lut(cast("ImageUInt8", channel), lut)
 
     return result
 

@@ -158,10 +158,11 @@ class BaseRemapTransform(DualTransform):
         bboxes: np.ndarray,
         map_x: np.ndarray,
         map_y: np.ndarray,
+        shape: tuple[int, int],
+        bbox_type: Literal["hbb", "obb"],
         **params: Any,
     ) -> np.ndarray:
-        image_shape = params["shape"][:2]
-        bbox_type = params["bbox_type"]
+        image_shape = shape[:2]
         bboxes_denorm = denormalize_bboxes(bboxes, image_shape)
         bboxes_returned = fgeometric.remap_bboxes(
             bboxes_denorm,
@@ -253,11 +254,12 @@ class BaseDistortion(BaseRemapTransform):
         keypoints: np.ndarray,
         map_x: np.ndarray,
         map_y: np.ndarray,
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
         if self.keypoint_remapping_method == "direct":
-            return fgeometric.remap_keypoints(keypoints, map_x, map_y, params["shape"])
-        return fgeometric.remap_keypoints_via_mask(keypoints, map_x, map_y, params["shape"])
+            return fgeometric.remap_keypoints(keypoints, map_x, map_y, shape)
+        return fgeometric.remap_keypoints_via_mask(keypoints, map_x, map_y, shape)
 
 
 class ElasticTransform(BaseRemapTransform):
@@ -462,12 +464,13 @@ class ElasticTransform(BaseRemapTransform):
         self,
         keypoints: np.ndarray,
         control_coefficients: np.ndarray,
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
         return fgeometric.remap_elastic_keypoints(
             keypoints,
             control_coefficients,
-            params["shape"][:2],
+            shape[:2],
         )
 
 

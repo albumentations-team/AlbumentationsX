@@ -600,8 +600,12 @@ class BasePad3D(Transform3D):
             value=cast("tuple[float, ...] | float", self.fill_mask),
         )
 
-    def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
-        padding = params["padding"]
+    def apply_to_keypoints(
+        self,
+        keypoints: np.ndarray,
+        padding: tuple[int, int, int, int, int, int],
+        **params: Any,
+    ) -> np.ndarray:
         shift_vector = np.array([padding[4], padding[2], padding[0]])
         return fgeometric.shift_keypoints(keypoints, shift_vector)
 
@@ -1983,8 +1987,14 @@ class CubicSymmetry(Transform3D):
     def apply_to_volume(self, volume: VolumeType, index: int, **params: Any) -> VolumeType:
         return f3d.transform_cube(volume, index)
 
-    def apply_to_keypoints(self, keypoints: np.ndarray, index: int, **params: Any) -> np.ndarray:
-        return f3d.transform_cube_keypoints(keypoints, index, volume_shape=params["volume_shape"])
+    def apply_to_keypoints(
+        self,
+        keypoints: np.ndarray,
+        index: int,
+        volume_shape: tuple[int, int, int],
+        **params: Any,
+    ) -> np.ndarray:
+        return f3d.transform_cube_keypoints(keypoints, index, volume_shape=volume_shape)
 
 
 class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified by issue #388.

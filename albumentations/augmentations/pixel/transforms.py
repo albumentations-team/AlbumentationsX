@@ -1387,18 +1387,22 @@ class Dithering(ImageOnlyTransform):
             )
         return SampledParams(params={}, target_params=tuple(groups))
 
-    def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
-        random_noise = params.pop("random_noise", None)
+    def apply_to_images(
+        self,
+        images: ImageType,
+        random_noise: np.ndarray | None,
+        *args: Any,
+        **params: Any,
+    ) -> ImageType:
         if isinstance(random_noise, np.ndarray) and random_noise.ndim == images.ndim:
             result = np.empty_like(images)
             for index, image in enumerate(images):
                 result[index] = self.apply(image, random_noise=random_noise[index], **params)
             return result
-        if random_noise is not None:
-            params["random_noise"] = random_noise
-        else:
-            params["random_noise"] = None
-        return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
+        return self._apply_to_batch_same_shape(
+            images,
+            lambda image: self.apply(image, random_noise=random_noise, **params),
+        )
 
 
 class Halftone(ImageOnlyTransform):

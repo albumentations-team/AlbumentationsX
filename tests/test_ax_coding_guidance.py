@@ -94,10 +94,14 @@ class BaseExample(DualTransform):
             return value
         alias = params
         return alias["offset"]
+    def apply_to_images(self, images, **params):
+        return self._apply(images, lambda image: image + params["offset"])
+    def apply_to_volume(self, volume, **params):
+        return self._apply(volume, lambda image=params["offset"]: image)
 """,
         },
     )
-    assert diagnostics.count("AXG025") == 5
+    assert diagnostics.count("AXG025") == 7
     assert "AXG025" not in rule_ids(
         {
             "albumentations/augmentations/example.py": """
@@ -107,6 +111,8 @@ class Example(DualTransform):
         return self._apply(image, offset, **params)
     def apply_to_mask(self, mask, keep_mask, **params):
         return mask if keep_mask else mask * 0
+    def apply_to_images(self, images, **params):
+        return self._apply(images, lambda params: params["offset"])
 """,
         },
     )

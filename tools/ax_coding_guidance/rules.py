@@ -210,7 +210,17 @@ class _SampledParameterAccessChecker(ast.NodeVisitor):
         return
 
     def visit_Lambda(self, node: ast.Lambda) -> None:
-        return
+        for default in [*node.args.defaults, *node.args.kw_defaults]:
+            if default is not None:
+                self.visit(default)
+
+        argument_names = {argument.arg for argument in [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]}
+        if node.args.vararg is not None:
+            argument_names.add(node.args.vararg.arg)
+        if node.args.kwarg is not None:
+            argument_names.add(node.args.kwarg.arg)
+        if self.parameter_name not in argument_names:
+            self.visit(node.body)
 
     def visit_Subscript(self, node: ast.Subscript) -> None:
         if isinstance(node.value, ast.Name) and node.value.id == self.parameter_name:

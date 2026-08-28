@@ -201,7 +201,7 @@ class _SampledParameterAccessChecker(ast.NodeVisitor):
 
     def __init__(self, parameter_name: str) -> None:
         self.parameter_name = parameter_name
-        self.accesses: list[ast.Subscript | ast.Call] = []
+        self.accesses: list[ast.expr] = []
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         return
@@ -215,22 +215,41 @@ class _SampledParameterAccessChecker(ast.NodeVisitor):
     def visit_Subscript(self, node: ast.Subscript) -> None:
         if isinstance(node.value, ast.Name) and node.value.id == self.parameter_name:
             self.accesses.append(node)
+            self.visit(node.slice)
+            return
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
-        if (
+        is_direct_mapping_call = (
             isinstance(node.func, ast.Attribute)
             and isinstance(node.func.value, ast.Name)
             and node.func.value.id == self.parameter_name
-        ):
+        )
+        if is_direct_mapping_call:
             self.accesses.append(node)
-        self.generic_visit(node)
+        else:
+            self.visit(node.func)
+        for arg in node.args:
+            self.visit(arg)
+        for keyword in node.keywords:
+            if keyword.arg is None and isinstance(keyword.value, ast.Name) and keyword.value.id == self.parameter_name:
+                continue
+            self.visit(keyword.value)
+
+    def visit_Name(self, node: ast.Name) -> None:
+        if isinstance(node.ctx, ast.Load) and node.id == self.parameter_name:
+            self.accesses.append(node)
 
 
-def _sampled_parameter_name(node: ast.Subscript | ast.Call) -> str | None:
+def _sampled_parameter_name(node: ast.expr) -> str | None:
     if isinstance(node, ast.Subscript):
         return node.slice.value if isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str) else None
-    if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+    if (
+        isinstance(node, ast.Call)
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+    ):
         return node.args[0].value
     return None
 

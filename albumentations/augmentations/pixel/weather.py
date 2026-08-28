@@ -1336,7 +1336,7 @@ class Spatter(ImageOnlyTransform):
         fallback_threshold = _SPATTER_BATCH_FALLBACK_WORKING_SET_BYTES.get((mode, images.dtype.name))
         working_set = images.size * np.dtype(np.float32).itemsize
         if fallback_threshold is not None and working_set >= fallback_threshold:
-            return ImageOnlyTransform.apply_to_images(self, images, **params)
+            return ImageOnlyTransform.apply_to_images(self, images, mode, drops, non_mud, mud, **params)
 
         if mode == "rain":
             if drops is None:

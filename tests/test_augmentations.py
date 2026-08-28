@@ -2283,9 +2283,15 @@ def test_spatter_apply_to_images_switches_at_working_set_guard(
 ):
     fallback_calls = 0
 
-    def fallback(transform, images, *args, **params):
+    def fallback(transform, images, *args, **forwarded_params):
         nonlocal fallback_calls
         fallback_calls += 1
+        assert len(args) == 4
+        assert args[0] == mode
+        assert args[1] is params["drops"]
+        assert args[2] is params["non_mud"]
+        assert args[3] is params["mud"]
+        assert not forwarded_params
         return np.full_like(images, 137 if dtype == np.uint8 else 0.5)
 
     monkeypatch.setattr(ImageOnlyTransform, "apply_to_images", fallback)

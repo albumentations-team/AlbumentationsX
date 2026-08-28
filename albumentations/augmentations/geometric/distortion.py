@@ -295,6 +295,11 @@ class ElasticTransform(BaseRemapTransform):
         `ReplayCompose` stores the compact sampled coefficient lattice and replays it for the same
         spatial shape. Applied configuration fixes the realized magnitude but samples a new lattice.
 
+    See Also:
+        - ElasticTransform3D: Applies coupled XY, XZ, and YZ cubic fields to volumetric data and XYZ keypoints.
+        - GridDistortion: Uses a rectilinear grid when piecewise-linear deformation fits the data.
+        - OpticalDistortion: Simulates lens-like radial distortion in camera images.
+
     Examples:
         >>> import numpy as np
         >>> import albumentations as A

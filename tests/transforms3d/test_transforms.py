@@ -1049,6 +1049,7 @@ def test_center_crop3d_keypoints(
         except_augmentations={
             A.CoarseDropout3D,
             A.Anisotropy3D,
+            A.ElasticTransform3D,
         },
     ),
 )

@@ -16,29 +16,26 @@ def _forward_elastic_point(
     volume_shape: tuple[int, int, int],
 ) -> np.ndarray:
     displacement = np.zeros(3, dtype=np.float64)
-    if "xy" in control_coefficients:
-        displacement[:2] += fgeometric.evaluate_control_grid(
-            point[np.newaxis, :2],
-            control_coefficients["xy"],
-            volume_shape[1:],
-        )[0]
-    if "xz" in control_coefficients:
-        xz_displacement = fgeometric.evaluate_control_grid(
-            point[np.newaxis, (0, 2)],
-            control_coefficients["xz"],
-            (volume_shape[0], volume_shape[2]),
-        )[0]
-        displacement[0] += xz_displacement[0]
-        displacement[2] += xz_displacement[1]
-    if "yz" in control_coefficients:
-        yz_displacement = fgeometric.evaluate_control_grid(
-            point[np.newaxis, 1:3],
-            control_coefficients["yz"],
-            volume_shape[:2],
-        )[0]
-        displacement[1] += yz_displacement[0]
-        displacement[2] += yz_displacement[1]
-    return point + displacement / len(control_coefficients)
+    displacement[:2] += fgeometric.evaluate_control_grid(
+        point[np.newaxis, :2],
+        control_coefficients["xy"],
+        volume_shape[1:],
+    )[0]
+    xz_displacement = fgeometric.evaluate_control_grid(
+        point[np.newaxis, (0, 2)],
+        control_coefficients["xz"],
+        (volume_shape[0], volume_shape[2]),
+    )[0]
+    displacement[0] += xz_displacement[0]
+    displacement[2] += xz_displacement[1]
+    yz_displacement = fgeometric.evaluate_control_grid(
+        point[np.newaxis, 1:3],
+        control_coefficients["yz"],
+        volume_shape[:2],
+    )[0]
+    displacement[1] += yz_displacement[0]
+    displacement[2] += yz_displacement[1]
+    return point + displacement / 3
 
 
 def test_elastic_transform3d_shares_one_field_between_volume_mask_and_keypoints() -> None:
@@ -101,6 +98,8 @@ def test_elastic_transform3d_topology_bound_is_strict() -> None:
 def test_elastic_transform3d_yz_grid_matches_its_voxel_displacement() -> None:
     volume_shape = (5, 7, 11)
     control_coefficients = {
+        "xy": np.zeros((4, 5, 2), dtype=np.float32),
+        "xz": np.zeros((4, 5, 2), dtype=np.float32),
         "yz": np.random.default_rng(137).uniform(-0.2, 0.2, (4, 5, 2)).astype(np.float32),
     }
     output_points = np.array(((3.0, 2.0, 1.0), (7.0, 5.0, 3.0)), dtype=np.float64)
@@ -142,7 +141,10 @@ def test_elastic_transform3d_keypoint_inverse_recovers_xyz_reference() -> None:
 def test_elastic_transform3d_remap_respects_constant_volume_and_mask_fills() -> None:
     volume = np.ones((3, 5, 7, 1), dtype=np.float32)
     mask3d = np.ones((3, 5, 7), dtype=np.uint16)
-    sampling_grid = f3d.create_elastic_grid_3d({}, volume.shape[:3])
+    sampling_grid = f3d.create_elastic_grid_3d(
+        {plane: np.zeros((4, 4, 2), dtype=np.float32) for plane in ("xy", "xz", "yz")},
+        volume.shape[:3],
+    )
     sampling_grid[..., 0] = 2.0
 
     remapped_volume = f3d.remap_3d(

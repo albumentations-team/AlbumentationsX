@@ -239,41 +239,37 @@ def create_elastic_grid_3d(
     sampling_grid[..., 1] = _normalized_axis(height)[np.newaxis, :, np.newaxis]
     sampling_grid[..., 2] = _normalized_axis(depth)[:, np.newaxis, np.newaxis]
 
-    active_plane_count = len(control_coefficients)
-    if active_plane_count == 0:
+    if not control_coefficients:
         return sampling_grid
 
-    plane_count = np.float32(active_plane_count)
+    plane_count = np.float32(3)
     depth_scale = np.float32(2.0 / (depth * plane_count))
     height_scale = np.float32(2.0 / (height * plane_count))
     width_scale = np.float32(2.0 / (width * plane_count))
-    if "xy" in control_coefficients:
-        _add_elastic_plane(
-            sampling_grid,
-            control_coefficients["xy"],
-            sampling_grid.shape[1:3],
-            0,
-            (0, 1),
-            (width_scale, height_scale),
-        )
-    if "xz" in control_coefficients:
-        _add_elastic_plane(
-            sampling_grid,
-            control_coefficients["xz"],
-            (sampling_grid.shape[0], sampling_grid.shape[2]),
-            1,
-            (0, 2),
-            (width_scale, depth_scale),
-        )
-    if "yz" in control_coefficients:
-        _add_elastic_plane(
-            sampling_grid,
-            control_coefficients["yz"],
-            sampling_grid.shape[:2],
-            2,
-            (1, 2),
-            (height_scale, depth_scale),
-        )
+    _add_elastic_plane(
+        sampling_grid,
+        control_coefficients["xy"],
+        sampling_grid.shape[1:3],
+        0,
+        (0, 1),
+        (width_scale, height_scale),
+    )
+    _add_elastic_plane(
+        sampling_grid,
+        control_coefficients["xz"],
+        (sampling_grid.shape[0], sampling_grid.shape[2]),
+        1,
+        (0, 2),
+        (width_scale, depth_scale),
+    )
+    _add_elastic_plane(
+        sampling_grid,
+        control_coefficients["yz"],
+        sampling_grid.shape[:2],
+        2,
+        (1, 2),
+        (height_scale, depth_scale),
+    )
     return sampling_grid
 
 
@@ -405,34 +401,30 @@ def _elastic_plane_displacement(
     volume_shape: tuple[int, int, int],
 ) -> np.ndarray:
     displacement = np.zeros((len(points), 3), dtype=np.float64)
-    active_plane_count = len(control_coefficients)
-    if active_plane_count == 0:
+    if not control_coefficients:
         return displacement
 
-    if "xy" in control_coefficients:
-        xy_displacement = fgeometric.evaluate_control_grid(
-            points[:, :2],
-            control_coefficients["xy"],
-            volume_shape[1:],
-        )
-        displacement[:, :2] += xy_displacement
-    if "xz" in control_coefficients:
-        xz_displacement = fgeometric.evaluate_control_grid(
-            points[:, (0, 2)],
-            control_coefficients["xz"],
-            (volume_shape[0], volume_shape[2]),
-        )
-        displacement[:, 0] += xz_displacement[:, 0]
-        displacement[:, 2] += xz_displacement[:, 1]
-    if "yz" in control_coefficients:
-        yz_displacement = fgeometric.evaluate_control_grid(
-            points[:, 1:3],
-            control_coefficients["yz"],
-            volume_shape[:2],
-        )
-        displacement[:, 1] += yz_displacement[:, 0]
-        displacement[:, 2] += yz_displacement[:, 1]
-    return displacement / active_plane_count
+    xy_displacement = fgeometric.evaluate_control_grid(
+        points[:, :2],
+        control_coefficients["xy"],
+        volume_shape[1:],
+    )
+    displacement[:, :2] += xy_displacement
+    xz_displacement = fgeometric.evaluate_control_grid(
+        points[:, (0, 2)],
+        control_coefficients["xz"],
+        (volume_shape[0], volume_shape[2]),
+    )
+    displacement[:, 0] += xz_displacement[:, 0]
+    displacement[:, 2] += xz_displacement[:, 1]
+    yz_displacement = fgeometric.evaluate_control_grid(
+        points[:, 1:3],
+        control_coefficients["yz"],
+        volume_shape[:2],
+    )
+    displacement[:, 1] += yz_displacement[:, 0]
+    displacement[:, 2] += yz_displacement[:, 1]
+    return displacement / np.float32(3)
 
 
 @handle_empty_array("keypoints")

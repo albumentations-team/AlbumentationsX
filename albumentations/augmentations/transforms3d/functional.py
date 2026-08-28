@@ -15,7 +15,7 @@ from typing import Any, Literal, cast
 import cv2
 import numpy as np
 import torch
-from albucore import remap3d, resize3d, warp_affine3d
+from albucore import clip, remap3d, resize3d, warp_affine3d
 
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.utils import handle_empty_array
@@ -331,6 +331,22 @@ def elastic_transform_3d(
             sampler.release_sampling_grid()
 
 
+def _clip_interpolated_float_volume(
+    result: VolumeType | torch.Tensor,
+    original_numpy_dtype: np.dtype[Any] | None,
+    original_tensor_dtype: torch.dtype | None,
+    interpolation: int,
+    is_mask: bool,
+) -> VolumeType | torch.Tensor:
+    if is_mask or interpolation == cv2.INTER_NEAREST:
+        return result
+    if isinstance(result, np.ndarray) and original_numpy_dtype == np.dtype(np.float32):
+        return clip(result, np.dtype(np.float32), inplace=True)
+    if isinstance(result, torch.Tensor) and original_tensor_dtype == torch.float32:
+        return result.clamp_(0.0, 1.0)
+    return result
+
+
 def remap_3d(
     volume: VolumeType | torch.Tensor,
     sampling_grid: np.ndarray,
@@ -377,6 +393,13 @@ def remap_3d(
         interpolation=interpolation,
         border_mode=border_mode,
         border_value=fill,
+    )
+    result = _clip_interpolated_float_volume(
+        result,
+        original_numpy_dtype,
+        original_tensor_dtype,
+        interpolation,
+        is_mask,
     )
     if needs_mask_promotion:
         if isinstance(result, np.ndarray):

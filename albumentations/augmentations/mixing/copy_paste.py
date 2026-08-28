@@ -1181,13 +1181,13 @@ class CopyAndPaste(DualTransform):
         mask: ImageType,
         paste_alpha: np.ndarray | None,
         paste_donor_mask: np.ndarray | None,
+        paste_instance_masks: np.ndarray | None,
         **params: Any,
     ) -> ImageType:
         if paste_alpha is None:
             return mask
         if paste_donor_mask is not None:
             result = mask.copy()
-            paste_instance_masks = params.get("paste_instance_masks")
             if paste_instance_masks is not None:
                 paste_region = np.any(paste_instance_masks > 0, axis=0)
             else:
@@ -1297,6 +1297,10 @@ class CopyAndPaste(DualTransform):
         keypoints: np.ndarray,
         paste_alpha: np.ndarray | None,
         paste_keypoints: np.ndarray | None,
+        paste_surviving_indices: np.ndarray | None,
+        paste_surviving_ids_ordered: list[int] | None,
+        paste_primary_instance_count: int | None,
+        paste_instance_ids: list[int] | None,
         **params: Any,
     ) -> np.ndarray:
         if paste_alpha is None:
@@ -1306,10 +1310,10 @@ class CopyAndPaste(DualTransform):
             keypoints,
             paste_alpha,
             paste_keypoints,
-            params.get("paste_surviving_indices"),
-            params.get("paste_surviving_ids_ordered"),
-            params.get("paste_primary_instance_count"),
-            params.get("paste_instance_ids"),
+            paste_surviving_indices,
+            paste_surviving_ids_ordered,
+            paste_primary_instance_count,
+            paste_instance_ids,
             keypoint_processor.params.label_fields or [],
         )
 

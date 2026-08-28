@@ -17,7 +17,6 @@ from ._color_shared import (
     ImageOnlyTransform,
     ImageType,
     albucore,
-    batch_transform,
     check_range_bounds,
     cv2,
     fpixel,
@@ -234,10 +233,6 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
             plasma_pattern,
         )
 
-    @batch_transform("spatial")
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
-        return self.apply(images, **params)
-
 
 class PlasmaShadow(ImageOnlyTransform):
     """Plasma fractal (Diamond-Square) shadow: organic darkening. shadow_intensity_range, roughness.
@@ -397,10 +392,6 @@ class PlasmaShadow(ImageOnlyTransform):
         **params: Any,
     ) -> ImageType:
         return fpixel.apply_plasma_shadow(img, intensity, plasma_pattern)
-
-    @batch_transform("spatial")
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
-        return self.apply(images, **params)
 
 
 class Illumination(ImageOnlyTransform):
@@ -610,6 +601,9 @@ class Illumination(ImageOnlyTransform):
                 params={
                     "intensity": intensity,
                     "angle": angle,
+                    "corner": None,
+                    "center": None,
+                    "sigma": None,
                 }
             )
         if self.mode == "corner":
@@ -617,7 +611,10 @@ class Illumination(ImageOnlyTransform):
             return SampledParams(
                 params={
                     "intensity": intensity,
+                    "angle": None,
                     "corner": corner,
+                    "center": None,
+                    "sigma": None,
                 }
             )
 
@@ -629,31 +626,30 @@ class Illumination(ImageOnlyTransform):
         return SampledParams(
             params={
                 "intensity": intensity,
+                "angle": None,
+                "corner": None,
                 "center": (x, y),
                 "sigma": sigma,
             }
         )
 
-    def apply(self, img: ImageType, **params: Any) -> ImageType:
-        if self.mode == "linear":
-            return fpixel.apply_linear_illumination(
-                img,
-                intensity=params["intensity"],
-                angle=params["angle"],
-            )
-        if self.mode == "corner":
-            return fpixel.apply_corner_illumination(
-                img,
-                intensity=params["intensity"],
-                corner=params["corner"],
-            )
-
-        return fpixel.apply_gaussian_illumination(
-            img,
-            intensity=params["intensity"],
-            center=params["center"],
-            sigma=params["sigma"],
-        )
+    def apply(
+        self,
+        img: ImageType,
+        intensity: float,
+        angle: float | None,
+        corner: Literal[0, 1, 2, 3] | None,
+        center: tuple[float, float] | None,
+        sigma: float | None,
+        **params: Any,
+    ) -> ImageType:
+        if self.mode == "linear" and angle is not None:
+            return fpixel.apply_linear_illumination(img, intensity=intensity, angle=angle)
+        if self.mode == "corner" and corner is not None:
+            return fpixel.apply_corner_illumination(img, intensity=intensity, corner=corner)
+        if self.mode == "gaussian" and center is not None and sigma is not None:
+            return fpixel.apply_gaussian_illumination(img, intensity=intensity, center=center, sigma=sigma)
+        raise RuntimeError(f"Illumination sampled parameters are incompatible with mode {self.mode!r}")
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
         return fpixel.apply_illumination_batch(images, self.mode, **params)

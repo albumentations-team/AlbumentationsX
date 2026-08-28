@@ -2207,11 +2207,14 @@ def test_spatter_apply_to_images_matches_inherited_fallback(mode, dtype, seed, b
                     [[[-1 / 255, 0.5 / 255, 1.5 / 255], [254.5 / 255, 255.5 / 255, 2]]],
                     dtype=np.float32,
                 ),
+                "non_mud": None,
+                "mud": None,
             },
         ),
         (
             "mud",
             {
+                "drops": None,
                 "non_mud": np.array([[[1, 0.5, 2], [-1, 1, 1]]], dtype=np.float32),
                 "mud": np.array(
                     [[[-1 / 255, 0.5 / 255, -0.5 / 255], [2, -0.5 / 255, 0.5 / 255]]],
@@ -2241,10 +2244,16 @@ def test_spatter_apply_to_images_float32_clipping_vectors(mode):
     images = np.array([[[[-0.25, 0.25, 1.25]]]], dtype=np.float32)
     transform = A.Spatter(mode=mode, p=1.0)
     if mode == "rain":
-        params = {"mode": mode, "drops": np.array([[[-0.5, 0.5, 0.5]]], dtype=np.float32)}
+        params = {
+            "mode": mode,
+            "drops": np.array([[[-0.5, 0.5, 0.5]]], dtype=np.float32),
+            "non_mud": None,
+            "mud": None,
+        }
     else:
         params = {
             "mode": mode,
+            "drops": None,
             "non_mud": np.array([[[2, 2, 2]]], dtype=np.float32),
             "mud": np.array([[[-0.5, 0.25, -0.25]]], dtype=np.float32),
         }
@@ -2282,10 +2291,16 @@ def test_spatter_apply_to_images_switches_at_working_set_guard(
     monkeypatch.setattr(ImageOnlyTransform, "apply_to_images", fallback)
     transform = A.Spatter(mode=mode, p=1.0)
     if mode == "rain":
-        params = {"mode": mode, "drops": np.zeros((height, width, 3), dtype=np.float32)}
+        params = {
+            "mode": mode,
+            "drops": np.zeros((height, width, 3), dtype=np.float32),
+            "non_mud": None,
+            "mud": None,
+        }
     else:
         params = {
             "mode": mode,
+            "drops": None,
             "non_mud": np.ones((height, width, 3), dtype=np.float32),
             "mud": np.zeros((height, width, 3), dtype=np.float32),
         }
@@ -2309,7 +2324,7 @@ def test_spatter_apply_to_images_preserves_empty_batch_identity(dtype):
     images = np.empty((0, 17, 19, 3), dtype=dtype)
     transform = A.Spatter(p=1.0)
 
-    assert transform.apply_to_images(images) is images
+    assert transform.apply_to_images(images, mode="rain", drops=None, non_mud=None, mud=None) is images
     assert A.Compose([transform], seed=137, strict=True)(images=images)["images"] is images
 
 
@@ -2327,7 +2342,13 @@ def test_spatter_apply_to_images_rejects_non_rgb_batches(shape):
     transform = A.Spatter(p=1.0)
 
     with pytest.raises(ValueError, match="This transformation expects 3-channel images"):
-        transform.apply_to_images(images, mode="rain", drops=np.zeros((*shape[1:3], 3), dtype=np.float32))
+        transform.apply_to_images(
+            images,
+            mode="rain",
+            drops=np.zeros((*shape[1:3], 3), dtype=np.float32),
+            non_mud=None,
+            mud=None,
+        )
 
 
 @pytest.mark.parametrize("mode", ["rain", "mud"])

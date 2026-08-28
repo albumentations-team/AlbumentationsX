@@ -1070,9 +1070,9 @@ class AdditiveNoise(ImageOnlyTransform):
         self,
         img: ImageType,
         noise_map: np.ndarray,
+        patches: np.ndarray | None,
         **params: Any,
     ) -> ImageType:
-        patches = params.get("patches")
         if patches is not None:
             return fpixel.add_noise_by_patches(img, noise_map, patches)
         return fpixel.add_noise(img, noise_map)
@@ -1158,7 +1158,7 @@ class AdditiveNoise(ImageOnlyTransform):
                 max_value=max_value,
                 py_random=sampling.py_random,
             )
-            return {"noise_map": noise_map}
+            return {"noise_map": noise_map, "patches": None}
 
         if self.spatial_mode == "patch":
             patch_shape = cast("tuple[int, int, int]", shape)
@@ -1191,7 +1191,7 @@ class AdditiveNoise(ImageOnlyTransform):
             max_value=max_value,
             random_generator=sampling.random_generator,
         )
-        return {"noise_map": noise_map}
+        return {"noise_map": noise_map, "patches": None}
 
 
 class SaltAndPepper(_FullVolumeNoiseTransform):

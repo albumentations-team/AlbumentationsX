@@ -77,6 +77,34 @@ def test_apply_length_ignores_comments_and_docstrings_but_enforces_code_lines() 
     assert "AXG003" in ids
 
 
+def test_transform_apply_methods_must_name_sampled_parameters_they_consume() -> None:
+    diagnostics = rule_ids(
+        {
+            "albumentations/augmentations/example.py": """
+class DualTransform: pass
+class BaseExample(DualTransform):
+    def apply(self, image, **params):
+        return image + params["offset"]
+    def apply_to_mask(self, mask, **params):
+        return mask if params.get("keep_mask") else mask * 0
+""",
+        },
+    )
+    assert diagnostics.count("AXG025") == 2
+    assert "AXG025" not in rule_ids(
+        {
+            "albumentations/augmentations/example.py": """
+class DualTransform: pass
+class Example(DualTransform):
+    def apply(self, image, offset, **params):
+        return image + offset
+    def apply_to_mask(self, mask, keep_mask, **params):
+        return mask if keep_mask else mask * 0
+""",
+        },
+    )
+
+
 def test_naming_ranges_removed_hooks_and_serialization_rules() -> None:
     ids = rule_ids(
         {

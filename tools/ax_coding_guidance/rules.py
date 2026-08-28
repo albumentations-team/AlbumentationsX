@@ -196,6 +196,72 @@ def rule_apply_defaults(index: SourceIndex) -> list[Diagnostic]:
     return result
 
 
+class _SampledParameterAccessChecker(ast.NodeVisitor):
+    """Collect direct reads from an apply method's variadic keyword mapping."""
+
+    def __init__(self, parameter_name: str) -> None:
+        self.parameter_name = parameter_name
+        self.accesses: list[ast.Subscript | ast.Call] = []
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        return
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        return
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        return
+
+    def visit_Subscript(self, node: ast.Subscript) -> None:
+        if isinstance(node.value, ast.Name) and node.value.id == self.parameter_name:
+            self.accesses.append(node)
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if (
+            isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == self.parameter_name
+        ):
+            self.accesses.append(node)
+        self.generic_visit(node)
+
+
+def _sampled_parameter_name(node: ast.Subscript | ast.Call) -> str | None:
+    if isinstance(node, ast.Subscript):
+        return node.slice.value if isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str) else None
+    if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+        return node.args[0].value
+    return None
+
+
+def rule_explicit_apply_parameters(index: SourceIndex) -> list[Diagnostic]:
+    """Require transform hooks to name every sampled parameter they consume."""
+    result: list[Diagnostic] = []
+    for info in index.classes.values():
+        if (
+            info.is_framework_root
+            or not index.is_descendant(info, TRANSFORM_ROOTS)
+            or not info.file.key.startswith(("albumentations/augmentations/", "albumentations/pytorch/"))
+        ):
+            continue
+        for method_name, node in _method_targets(info):
+            if node.args.kwarg is None:
+                continue
+            checker = _SampledParameterAccessChecker(node.args.kwarg.arg)
+            for statement in node.body:
+                checker.visit(statement)
+            for access in checker.accesses:
+                parameter_name = _sampled_parameter_name(access)
+                message = (
+                    f"sampled parameter '{parameter_name}' must be declared explicitly in {method_name}"
+                    if parameter_name is not None
+                    else f"{method_name} must not read its variadic sampled-parameter mapping directly"
+                )
+                result.append(_d("AXG025", info, access, message, f"{info.name}.{method_name}"))
+    return result
+
+
 def _docstring_lines(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[int]:
     if (
         not node.body
@@ -204,7 +270,8 @@ def _docstring_lines(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[int]:
         or not isinstance(node.body[0].value.value, str)
     ):
         return set()
-    return set(range(node.body[0].lineno, node.body[0].end_lineno + 1))
+    end = node.body[0].end_lineno or node.body[0].lineno
+    return set(range(node.body[0].lineno, end + 1))
 
 
 def rule_apply_length(index: SourceIndex) -> list[Diagnostic]:
@@ -1301,6 +1368,7 @@ def run_all(index: SourceIndex) -> list[Diagnostic]:
     checks = (
         rule_init_schema_defaults,
         rule_apply_defaults,
+        rule_explicit_apply_parameters,
         rule_apply_length,
         rule_sampling_signature,
         rule_sampling_plan_contract,

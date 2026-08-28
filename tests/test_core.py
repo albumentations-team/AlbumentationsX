@@ -136,6 +136,24 @@ def test_image_only_transform(image):
             np.testing.assert_array_equal(data["mask"], mask)
 
 
+@pytest.mark.parametrize(
+    ("handler_name", "shape"),
+    [
+        ("apply_to_images", (2, 5, 7, 1)),
+        ("apply_to_volume", (2, 5, 7, 1)),
+    ],
+)
+def test_base_batch_handlers_forward_positional_parameters(handler_name: str, shape: tuple[int, ...]) -> None:
+    class TransformWithRequiredArguments(DualTransform):
+        def apply(self, image: np.ndarray, multiplier: int, offset: int, **params: Any) -> np.ndarray:
+            return image * multiplier + offset
+
+    source = np.ones(shape, dtype=np.int16)
+    actual = getattr(TransformWithRequiredArguments(p=1.0), handler_name)(source, 2, 137)
+
+    np.testing.assert_array_equal(actual, source * 2 + 137)
+
+
 @pytest.mark.parametrize("image", IMAGES)
 def test_dual_transform(image):
     mask = image.copy()

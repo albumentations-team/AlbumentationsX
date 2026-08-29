@@ -15,6 +15,7 @@ import albumentations.augmentations.geometric.functional as fgeometric
 import albumentations.augmentations.pixel.functional as fpixel
 from albumentations.augmentations.pixel import _functional_noise as fnoise
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import SampledParams
 from albumentations.core.transforms_interface import BasicTransform
 from tests.conftest import (
     IMAGES,
@@ -575,7 +576,7 @@ def test_illumination_default_gaussian_preserves_seeded_draw_order():
         expected_spot[2],
     )
 
-    applied_params = transform.get_applied_params()
+    applied_params = SampledParams.from_dict(transform.get_applied_params()).params
     assert applied_params["intensity"] == expected_spot[3]
     assert applied_params["center"] == expected_spot[:2]
     assert applied_params["sigma"] == expected_spot[2]
@@ -631,7 +632,8 @@ def test_illumination_both_samples_each_gaussian_spot_effect_independently():
     pipeline = A.Compose([transform], seed=137, save_applied_params=True)
 
     pipeline(image=image)
-    signs = [spot[3] > 0 for spot in transform.get_applied_params()["spots"]]
+    applied_params = SampledParams.from_dict(transform.get_applied_params()).params
+    signs = [spot[3] > 0 for spot in applied_params["spots"]]
 
     assert signs == [False, True, True]
 

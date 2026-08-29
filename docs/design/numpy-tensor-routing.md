@@ -114,6 +114,10 @@ Complex, quantized, and floating Tensor dtypes other than `float32` are rejected
 Nested `Compose`, `OneOf`, `SomeOf`, `Sequential`, and `ReplayCompose` nodes do not create representation boundaries.
 Each applied leaf selects its own route.
 
+`SelectiveChannelTransform` uses an image-only local fallback. When it applies to a Tensor image, it converts that
+image to HWC NumPy for its existing channel-selection route and children, then restores a C,H,W Tensor before returning.
+The outer `Compose` retains ownership of root normalization and annotation processors.
+
 ```mermaid
 flowchart LR
     I["Canonical target values"] --> P{"Leaf applies?"}

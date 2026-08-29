@@ -51,7 +51,9 @@ from .tensor import (
     TENSOR_CHANNEL_AXIS,
     TENSOR_TARGETS,
     numpy_to_tensor_annotation,
+    numpy_to_tensor_spatial,
     tensor_to_numpy_annotation,
+    tensor_to_numpy_spatial,
     validate_tensor_input,
     validate_tensor_metadata_input,
 )
@@ -3857,6 +3859,11 @@ class SelectiveChannelTransform(BaseCompose):
             return data
 
         image = data["image"]
+        tensor_image = isinstance(image, torch.Tensor)
+        if tensor_image:
+            data = data.copy()
+            data["image"] = tensor_to_numpy_spatial(image, "image")
+            image = data["image"]
         sub_image = np.ascontiguousarray(image[:, :, self.channels])
 
         def build_snapshot(sub_data: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -3864,7 +3871,8 @@ class SelectiveChannelTransform(BaseCompose):
             output_image = image.copy()
             for channel_index, channel in zip(self.channels, cv2.split(sub_data["image"]), strict=True):
                 output_image[:, :, channel_index] = channel
-            snapshot["image"] = np.ascontiguousarray(output_image)
+            snapshot_image = np.ascontiguousarray(output_image)
+            snapshot["image"] = numpy_to_tensor_spatial(snapshot_image, "image") if tensor_image else snapshot_image
             return snapshot
 
         if trace is None:
@@ -3892,7 +3900,8 @@ class SelectiveChannelTransform(BaseCompose):
         output_image = image.copy()
         for channel_index, channel in zip(self.channels, cv2.split(sub_image), strict=True):
             output_image[:, :, channel_index] = channel
-        data["image"] = np.ascontiguousarray(output_image)
+        output_image = np.ascontiguousarray(output_image)
+        data["image"] = numpy_to_tensor_spatial(output_image, "image") if tensor_image else output_image
         self._emit_trace_composition(trace)
         return data
 

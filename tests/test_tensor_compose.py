@@ -449,6 +449,51 @@ def test_tensor_3d_pipeline_keeps_native_and_fallback_routes_composable() -> Non
 
 
 @pytest.mark.parametrize(
+    ("image", "channels"),
+    [
+        (
+            torch.arange(3 * 4 * 5, dtype=torch.uint8).reshape(3, 4, 5),
+            (1,),
+        ),
+        (
+            torch.arange(4 * 5, dtype=torch.uint8).reshape(4, 5),
+            (0,),
+        ),
+    ],
+)
+def test_selective_channel_transform_uses_tensor_numpy_fallback(
+    image: torch.Tensor,
+    channels: tuple[int, ...],
+) -> None:
+    source = image.clone()
+    result = A.Compose(
+        [A.SelectiveChannelTransform([A.InvertImg(p=1.0)], channels=channels, p=1.0)],
+        strict=True,
+    )(image=image)["image"]
+
+    assert isinstance(result, torch.Tensor)
+    expected = 255 - source if source.ndim == 2 else source.clone()
+    if source.ndim == 3:
+        expected[list(channels)] = 255 - expected[list(channels)]
+    torch.testing.assert_close(result, expected)
+    torch.testing.assert_close(image, source)
+
+
+def test_selective_channel_transform_trace_snapshot_preserves_tensor_representation() -> None:
+    image = torch.arange(3 * 4 * 5, dtype=torch.uint8).reshape(3, 4, 5)
+    traced = A.Compose(
+        [A.SelectiveChannelTransform([A.InvertImg(p=1.0)], channels=(1,), p=1.0)],
+        strict=True,
+    ).run_with_trace(image=image, options=A.TraceOptions(snapshot_targets=("image",)))
+
+    snapshot = traced.records[0].snapshot["image"]
+    assert isinstance(snapshot, torch.Tensor)
+    expected = image.clone()
+    expected[1] = 255 - expected[1]
+    torch.testing.assert_close(snapshot, expected)
+
+
+@pytest.mark.parametrize(
     "transform",
     [
         A.Affine3D(p=1.0),

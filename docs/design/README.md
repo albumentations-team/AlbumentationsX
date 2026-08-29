@@ -38,6 +38,11 @@ parameter.
 Implemented contract for the greenfield 2D elastic transform: bounded cubic B-spline coefficient grids, synchronized
 targets, certificate-bounded keypoint inversion, and separate constructor, applied-config, and `ReplayCompose` persistence rules.
 
+### [ElasticTransform3D](elastic-transform3d.md)
+
+Implemented true 3D elastic deformation from compact orthogonal cubic control planes, one `remap3d` call per raster target,
+a native CPU Tensor route for one channel, and a measured NumPy bridge for multi-channel volumes.
+
 ### [Generated Transform Target Contracts](transform-target-contracts.md)
 
 Coverage contract for the shared transform-case registry and reusable target profiles.

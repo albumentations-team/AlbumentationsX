@@ -7,9 +7,9 @@ all synchronized targets. The field is sampled from a compact cubic B-spline
 coefficient lattice. Map construction therefore depends on the lattice and the
 output shape, not on a full-resolution random-noise sample.
 
-True 3D elastic deformation is a separate follow-up. The current transform
-applies its 2D XY map to every depth slice. A future 3D transform will wait for
-a tested dense 3D remap primitive in Albucore.
+For deformation that also moves voxels along depth, use
+[ElasticTransform3D](elastic-transform3d.md). `ElasticTransform` deliberately
+keeps its slice-consistent XY contract for volumes.
 
 ## Public contract
 

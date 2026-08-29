@@ -14,6 +14,7 @@ import numpy as np
 import torch
 
 import albumentations as A
+from albumentations.core.utils import get_volume_shape
 from tests.helpers.contract_data import (
     ContractDataFactory,
     make_target_empty_hbb_data,
@@ -133,7 +134,7 @@ def _assert_volume_mask3d(
         depth_axis = -3 if isinstance(volume, torch.Tensor) else 0
         assert volume.shape[depth_axis] == source["volume"].shape[depth_axis]
         assert mask3d.shape[-3] == source["mask3d"].shape[-3]
-    spatial_shape = volume.shape[-3:] if isinstance(volume, torch.Tensor) else volume.shape[:3]
+    spatial_shape = get_volume_shape(volume)
     assert spatial_shape == mask3d.shape[-3:]
     assert volume.dtype == source["volume"].dtype
     assert mask3d.dtype == source["mask3d"].dtype

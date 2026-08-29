@@ -295,6 +295,11 @@ class ElasticTransform(BaseRemapTransform):
         `ReplayCompose` stores the compact sampled coefficient lattice and replays it for the same
         spatial shape. Applied configuration fixes the realized magnitude but samples a new lattice.
 
+    See Also:
+        - ElasticTransform3D: Applies coupled XY, XZ, and YZ cubic fields to volumetric data and XYZ keypoints.
+        - GridDistortion: Uses a rectilinear grid when piecewise-linear deformation fits the data.
+        - OpticalDistortion: Simulates lens-like radial distortion in camera images.
+
     Examples:
         >>> import numpy as np
         >>> import albumentations as A
@@ -401,13 +406,12 @@ class ElasticTransform(BaseRemapTransform):
                 }
             )
 
-        random_values = sampling.random_generator.random((*self.control_grid_shape, 2), dtype=np.float32)
         radius = np.float32(magnitude * min(height - 1, width - 1))
-        vector_radius = radius * np.sqrt(random_values[..., 0])
-        angle = np.float32(2 * np.pi) * random_values[..., 1]
-        control_coefficients = np.empty((*self.control_grid_shape, 2), dtype=np.float32)
-        control_coefficients[..., 0] = vector_radius * np.cos(angle)
-        control_coefficients[..., 1] = vector_radius * np.sin(angle)
+        control_coefficients = fgeometric.sample_elastic_control_coefficients(
+            self.control_grid_shape,
+            radius,
+            sampling.random_generator,
+        )
         return SampledParams(
             params={
                 "displacement_magnitude": magnitude,

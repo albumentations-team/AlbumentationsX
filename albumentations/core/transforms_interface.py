@@ -65,7 +65,7 @@ from .type_definitions import (
     Targets,
     VolumeType,
 )
-from .utils import format_args
+from .utils import format_args, get_volume_shape
 
 __all__ = [
     "BasicTransform",
@@ -1161,14 +1161,20 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
     @staticmethod
     def _shared_shape_from_data_key(key: str, value: Any) -> tuple[int, ...]:
+        if key in {"volume", "mask3d"}:
+            _, height, width = get_volume_shape(value)
+            channel_count = value.shape[0] if isinstance(value, torch.Tensor) else value.shape[-1]
+            return (
+                (height, width, channel_count)
+                if isinstance(value, torch.Tensor) or value.ndim == 4
+                else (height, width)
+            )
         if not isinstance(value, torch.Tensor):
             return value.shape if key in {"image", "mask"} else value.shape[1:]
         if key in {"image", "mask"}:
             return value.shape[1], value.shape[2], value.shape[0]
         if key in {"images", "masks"}:
             return value.shape[2], value.shape[3], value.shape[1]
-        if key in {"volume", "mask3d"}:
-            return value.shape[2], value.shape[3], value.shape[0]
         return value.shape[1:]
 
     def _extract_shared_shape_from_data(self, data: dict[str, Any]) -> tuple[int, ...] | None:

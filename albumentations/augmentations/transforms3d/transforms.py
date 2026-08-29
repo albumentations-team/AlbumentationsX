@@ -7,6 +7,7 @@ such as spatial dimensions, apply dropout effects, and perform symmetry operatio
 interface and implements specific 3D augmentation logic.
 """
 
+from collections.abc import Mapping
 from typing import Annotated, Any, ClassVar, Final, Literal, cast
 
 import numpy as np
@@ -39,6 +40,7 @@ __all__ = [
     "CenterCrop3D",
     "CoarseDropout3D",
     "CubicSymmetry",
+    "ElasticTransform3D",
     "Flip3D",
     "GridShuffle3D",
     "Pad3D",
@@ -255,6 +257,221 @@ class Affine3D(Transform3D):
 
     def apply_to_keypoints(self, keypoints: np.ndarray, matrix: np.ndarray, **params: Any) -> np.ndarray:
         return f3d.keypoints_affine_3d(keypoints, matrix)
+
+
+class ElasticTransform3D(Transform3D):
+    """Apply a smooth bounded 3D elastic deformation from compact cubic control planes, useful for volumetric
+    segmentation and anatomy-shape robustness.
+
+    The transform samples XY, XZ, and YZ cubic B-spline coefficient planes, averages their embedded displacement
+    fields, and resamples each raster target once through Albucore `remap3d`. The same compact field drives volume,
+    `mask3d`, and XYZ keypoint geometry. `displacement_range` scales coefficients by the shortest active voxel-center
+    span, so the policy transfers across volume sizes without a dense noise or smoothing pass.
+
+    Args:
+        displacement_range (tuple[float, float]): Inclusive relative coefficient-radius range. Default: `(0.02, 0.05)`.
+        control_grid_shape (tuple[int, int]): Cubic coefficient rows and columns for each plane. Default:
+            `(7, 7)`.
+        interpolation (Literal[0, 1]): Volume interpolation: `cv2.INTER_NEAREST` or `cv2.INTER_LINEAR`. Default:
+            `cv2.INTER_LINEAR`.
+        mask_interpolation (Literal[0, 1]): `mask3d` interpolation: `cv2.INTER_NEAREST` or `cv2.INTER_LINEAR`.
+            Default: `cv2.INTER_NEAREST`.
+        border_mode (Literal[0, 1]): Border policy: `cv2.BORDER_CONSTANT` or `cv2.BORDER_REPLICATE`. Default:
+            `cv2.BORDER_CONSTANT`.
+        fill (tuple[float, ...] | float): Constant fill for volume channels. Default: `0`.
+        fill_mask (tuple[float, ...] | float): Constant fill for `mask3d`. Default: `0`.
+        p (float): Probability of applying the transform. Default: `0.5`.
+
+    Targets:
+        volume, mask3d, keypoints
+
+    Image types:
+        uint8, float32
+
+    Notes:
+        - The constructor enforces `2 * high * sqrt((rows - 3)^2 + (columns - 3)^2) < 0.75`, which bounds the
+          deformation's Lipschitz constant below one.
+        - Replay stores compact coefficients and requires the same `(depth, height, width)` shape. Applied
+          configuration fixes only the realized magnitude and samples fresh coefficient planes.
+        - CPU Tensor volumes run natively for every channel count and retain their `(C, D, H, W)` layout.
+        - This transform changes voxel-index coordinates. Physical spacing, orientation metadata, and 3D bounding
+          boxes are outside its contract.
+
+    See Also:
+        - ElasticTransform: Applies the same bounded cubic field policy to 2D images and annotations.
+        - Affine3D: Applies global rotation, scale, and translation when local elastic deformation is unnecessary.
+
+    Examples:
+        >>> import albumentations as A
+        >>> import cv2
+        >>> import numpy as np
+        >>> volume = np.random.default_rng(137).random((16, 64, 96, 1), dtype=np.float32)
+        >>> mask3d = np.zeros((16, 64, 96), dtype=np.uint8)
+        >>> keypoints = np.array([[48.0, 32.0, 8.0]], dtype=np.float32)
+        >>> keypoint_labels = [3]
+        >>> transform = A.Compose([
+        ...     A.ElasticTransform3D(
+        ...         displacement_range=(0.02, 0.05),
+        ...         control_grid_shape=(7, 7),
+        ...         interpolation=cv2.INTER_LINEAR,
+        ...         mask_interpolation=cv2.INTER_NEAREST,
+        ...         p=1.0,
+        ...     ),
+        ... ], keypoint_params=A.KeypointParams(coord_format="xyz", label_fields=["keypoint_labels"]))
+        >>> result = transform(
+        ...     volume=volume,
+        ...     mask3d=mask3d,
+        ...     keypoints=keypoints,
+        ...     keypoint_labels=keypoint_labels,
+        ... )
+        >>> result["volume"].shape, result["mask3d"].shape, result["keypoint_labels"]
+        ((16, 64, 96, 1), (16, 64, 96), [3])
+
+    """
+
+    _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
+
+    class InitSchema(BaseTransformInitSchema):
+        displacement_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0)),
+            AfterValidator(nondecreasing),
+        ]
+        control_grid_shape: tuple[int, int]
+        interpolation: Literal[0, 1]
+        mask_interpolation: Literal[0, 1]
+        border_mode: Literal[0, 1]
+        fill: tuple[float, ...] | float
+        fill_mask: tuple[float, ...] | float
+
+        @field_validator("control_grid_shape")
+        @classmethod
+        def _validate_control_grid_shape(cls, value: tuple[int, int]) -> tuple[int, int]:
+            if len(value) != 2 or min(value) < 4:
+                raise ValueError("control_grid_shape must contain two dimensions, each at least 4")
+            return value
+
+        @model_validator(mode="after")
+        def _validate_topology_bound(self) -> Self:
+            rows, columns = self.control_grid_shape
+            high = self.displacement_range[1]
+            bound = 2 * high * float(np.sqrt((rows - 3) ** 2 + (columns - 3) ** 2))
+            if bound >= 0.75:
+                raise ValueError(
+                    "displacement_range and control_grid_shape violate the strict topology bound: "
+                    "2 * high * sqrt((rows - 3)^2 + (columns - 3)^2) must be less than 0.75",
+                )
+            return self
+
+    def __init__(
+        self,
+        displacement_range: tuple[float, float] = (0.02, 0.05),
+        control_grid_shape: tuple[int, int] = (7, 7),
+        interpolation: Literal[0, 1] = CV2_INTER_LINEAR,
+        mask_interpolation: Literal[0, 1] = CV2_INTER_NEAREST,
+        border_mode: Literal[0, 1] = CV2_BORDER_CONSTANT,
+        fill: tuple[float, ...] | float = 0,
+        fill_mask: tuple[float, ...] | float = 0,
+        p: float = 0.5,
+    ):
+        super().__init__(p=p)
+        self.displacement_range = displacement_range
+        self.control_grid_shape = control_grid_shape
+        self.interpolation = interpolation
+        self.mask_interpolation = mask_interpolation
+        self.border_mode = border_mode
+        self.fill = fill
+        self.fill_mask = fill_mask
+
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
+        sampling: SamplingContext,
+    ) -> SampledParams:
+        del params, data
+        volume_shape = _sampling_volume_shape(targets)
+        raster_target_count = len(targets.by_canonical_type("volume")) + len(targets.by_canonical_type("mask3d"))
+        low, high = self.displacement_range
+        magnitude = low if low == high else sampling.py_random.uniform(low, high)
+        sampling.applied_overrides["displacement_range"] = (magnitude, magnitude)
+        if magnitude == 0:
+            return SampledParams(
+                params={
+                    "sampler": f3d.ElasticTransform3DSampler({}, volume_shape, raster_target_count),
+                }
+            )
+
+        shortest_active_span = min(axis_length - 1 for axis_length in volume_shape if axis_length > 1)
+        coefficient_radius = magnitude * shortest_active_span
+        control_coefficients = {
+            plane: fgeometric.sample_elastic_control_coefficients(
+                self.control_grid_shape,
+                coefficient_radius,
+                sampling.random_generator,
+            ).tolist()
+            for plane in ("xy", "xz", "yz")
+        }
+        return SampledParams(
+            params={
+                "sampler": f3d.ElasticTransform3DSampler(
+                    control_coefficients,
+                    volume_shape,
+                    raster_target_count,
+                ),
+            }
+        )
+
+    def apply_to_volume(
+        self,
+        volume: VolumeType | torch.Tensor,
+        sampler: Mapping[str, Any],
+        **params: Any,
+    ) -> VolumeType:
+        return cast(
+            "VolumeType",
+            f3d.elastic_transform_3d(
+                volume,
+                sampler,
+                self.interpolation,
+                self.border_mode,
+                self.fill,
+            ),
+        )
+
+    def apply_to_mask3d(
+        self,
+        mask3d: VolumeType | torch.Tensor,
+        sampler: Mapping[str, Any],
+        **params: Any,
+    ) -> VolumeType:
+        return cast(
+            "VolumeType",
+            f3d.elastic_transform_3d(
+                mask3d,
+                sampler,
+                self.mask_interpolation,
+                self.border_mode,
+                self.fill_mask,
+                is_mask=True,
+            ),
+        )
+
+    def apply_to_keypoints(
+        self,
+        keypoints: np.ndarray,
+        sampler: Mapping[str, Any],
+        **params: Any,
+    ) -> np.ndarray:
+        control_coefficients = sampler["control_coefficients"]
+        if not control_coefficients:
+            return keypoints
+        return f3d.remap_elastic_keypoints_3d(
+            keypoints,
+            control_coefficients,
+            tuple(sampler["volume_shape"]),
+        )
 
 
 class Anisotropy3D(VolumeOnlyTransform):
@@ -1630,7 +1847,7 @@ class CoarseDropout3D(Transform3D):
             tuple[np.ndarray, np.ndarray, np.ndarray]: Arrays of hole dimensions (depths, heights, widths)
 
         """
-        depth, height, width = volume_shape[:3]
+        depth, height, width = volume_shape
 
         hole_depths = np.maximum(1, np.ceil(depth * sampling.random_generator.uniform(*depth_range, size=size))).astype(
             int,
@@ -1679,7 +1896,7 @@ class CoarseDropout3D(Transform3D):
             sampling=sampling,
         )
 
-        depth, height, width = volume_shape[:3]
+        depth, height, width = volume_shape
 
         z_min = sampling.random_generator.integers(0, depth - hole_depths + 1, size=num_holes)
         y_min = sampling.random_generator.integers(0, height - hole_heights + 1, size=num_holes)

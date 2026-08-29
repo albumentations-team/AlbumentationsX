@@ -9,15 +9,18 @@ specifically designed for 3D data.
 import math
 import random
 from collections.abc import Mapping
+from copy import deepcopy
 from typing import Any, Literal, cast
 
 import cv2
 import numpy as np
 import torch
-from albucore import resize3d, warp_affine3d
+from albucore import clip, remap3d, resize3d, warp_affine3d
 
+from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.utils import handle_empty_array
 from albumentations.core.type_definitions import NUM_VOLUME_DIMENSIONS, ImageType, VolumeType
+from albumentations.core.utils import get_volume_shape
 
 AxisValues3D = Mapping[Literal["x", "y", "z"], float] | Mapping[str, float]
 
@@ -84,11 +87,11 @@ def create_affine_transformation_matrix_3d(
     )
 
 
-def _prepare_numpy_affine_3d_volume(
+def _prepare_numpy_resampled_volume(
     volume: VolumeType,
     is_mask: bool,
 ) -> tuple[VolumeType, np.dtype[Any], bool, bool]:
-    """Prepare a NumPy volume for Albucore's affine router, adding a mask channel and promoting integer masks so
+    """Prepare a NumPy volume for an Albucore resampling router, adding a mask channel and promoting integer masks so
     source dtype is restored after resampling.
     """
     is_channel_less = volume.ndim == NUM_VOLUME_DIMENSIONS - 1
@@ -100,11 +103,11 @@ def _prepare_numpy_affine_3d_volume(
     return working_volume, original_dtype, is_channel_less, needs_mask_promotion
 
 
-def _prepare_tensor_affine_3d_volume(
+def _prepare_tensor_resampled_volume(
     volume: torch.Tensor,
     is_mask: bool,
 ) -> tuple[torch.Tensor, torch.dtype, bool, bool]:
-    """Prepare a CPU Tensor volume for Albucore's affine router, adding a mask channel and promoting integer masks
+    """Prepare a CPU Tensor volume for an Albucore resampling router, adding a mask channel and promoting integer masks
     so source dtype is restored after resampling.
     """
     is_channel_less = volume.ndim == NUM_VOLUME_DIMENSIONS - 1
@@ -138,7 +141,7 @@ def affine_3d(
             original_numpy_dtype,
             is_channel_less_numpy,
             needs_mask_promotion,
-        ) = _prepare_numpy_affine_3d_volume(
+        ) = _prepare_numpy_resampled_volume(
             volume,
             is_mask,
         )
@@ -150,7 +153,7 @@ def affine_3d(
             original_tensor_dtype,
             is_channel_less_tensor,
             needs_mask_promotion,
-        ) = _prepare_tensor_affine_3d_volume(
+        ) = _prepare_tensor_resampled_volume(
             volume,
             is_mask,
         )
@@ -184,6 +187,328 @@ def affine_3d(
         return result[..., 0]
     if is_channel_less_tensor:
         return result[0]
+    return result
+
+
+def _normalized_axis(length: int) -> np.ndarray:
+    axis = np.arange(length, dtype=np.float32)
+    axis *= np.float32(2.0 / length)
+    axis += np.float32(1.0 / length - 1.0)
+    return axis
+
+
+def _add_elastic_plane(
+    sampling_grid: np.ndarray,
+    control_coefficients: np.ndarray,
+    dense_shape: tuple[int, int],
+    broadcast_axis: int,
+    coordinate_axes: tuple[int, int],
+    component_scales: tuple[np.float32, np.float32],
+) -> None:
+    dense_plane = fgeometric.expand_control_grid(control_coefficients, dense_shape)
+    for component_index in range(2):
+        dense_plane[component_index] *= component_scales[component_index]
+        sampling_grid[..., coordinate_axes[component_index]] += np.expand_dims(
+            dense_plane[component_index],
+            axis=broadcast_axis,
+        )
+
+
+def _as_elastic_control_coefficients(control_coefficients: Mapping[str, Any]) -> dict[str, np.ndarray]:
+    return {plane: np.asarray(coefficients, dtype=np.float32) for plane, coefficients in control_coefficients.items()}
+
+
+def create_elastic_grid_3d(
+    control_coefficients: Mapping[str, Any],
+    volume_shape: tuple[int, int, int],
+) -> np.ndarray:
+    """Build one normalized 3D pull grid from compact C2 control planes for volumetric deformation without dense
+    displacement or meshgrid allocations.
+
+    Args:
+        control_coefficients (Mapping[str, Any]): Active XY, XZ, and YZ cubic coefficient planes.
+        volume_shape (tuple[int, int, int]): Output `(depth, height, width)` shape.
+
+    Returns:
+        np.ndarray: Float32 normalized `(depth, height, width, 3)` pull coordinates in `(x, y, z)` order.
+
+    """
+    control_coefficients = _as_elastic_control_coefficients(control_coefficients)
+    depth, height, width = volume_shape
+    sampling_grid = np.empty((depth, height, width, 3), dtype=np.float32)
+    sampling_grid[..., 0] = _normalized_axis(width)
+    sampling_grid[..., 1] = _normalized_axis(height)[np.newaxis, :, np.newaxis]
+    sampling_grid[..., 2] = _normalized_axis(depth)[:, np.newaxis, np.newaxis]
+
+    if not control_coefficients:
+        return sampling_grid
+
+    plane_count = np.float32(3)
+    depth_scale = np.float32(2.0 / (depth * plane_count))
+    height_scale = np.float32(2.0 / (height * plane_count))
+    width_scale = np.float32(2.0 / (width * plane_count))
+    _add_elastic_plane(
+        sampling_grid,
+        control_coefficients["xy"],
+        sampling_grid.shape[1:3],
+        0,
+        (0, 1),
+        (width_scale, height_scale),
+    )
+    _add_elastic_plane(
+        sampling_grid,
+        control_coefficients["xz"],
+        (sampling_grid.shape[0], sampling_grid.shape[2]),
+        1,
+        (0, 2),
+        (width_scale, depth_scale),
+    )
+    _add_elastic_plane(
+        sampling_grid,
+        control_coefficients["yz"],
+        sampling_grid.shape[:2],
+        2,
+        (1, 2),
+        (height_scale, depth_scale),
+    )
+    return sampling_grid
+
+
+class ElasticTransform3DSampler(dict[str, Any]):
+    """Carry serializable elastic coefficients and one invocation-local sampling grid."""
+
+    __slots__ = ("_remaining_grid_uses", "sampling_grid")
+
+    def __init__(
+        self,
+        control_coefficients: Mapping[str, Any],
+        volume_shape: tuple[int, int, int],
+        raster_target_count: int,
+    ) -> None:
+        super().__init__(control_coefficients=control_coefficients, volume_shape=volume_shape)
+        self.sampling_grid = (
+            None if not control_coefficients else create_elastic_grid_3d(control_coefficients, volume_shape)
+        )
+        self._remaining_grid_uses = raster_target_count
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> dict[str, Any]:
+        return deepcopy(dict(self), memo)
+
+    def release_sampling_grid(self) -> None:
+        self._remaining_grid_uses -= 1
+        if self._remaining_grid_uses == 0:
+            self.sampling_grid = None
+
+
+def elastic_transform_3d(
+    volume: VolumeType | torch.Tensor,
+    sampler: Mapping[str, Any],
+    interpolation: int,
+    border_mode: int,
+    fill: float | tuple[float, ...] | None,
+    *,
+    is_mask: bool = False,
+) -> VolumeType | torch.Tensor:
+    """Build and apply a compact elastic pull field to one volume or mask."""
+    source_shape = get_volume_shape(volume)
+    recorded_shape = tuple(sampler["volume_shape"])
+    if source_shape != recorded_shape:
+        raise ValueError(
+            f"ElasticTransform3D replay requires the same spatial shape {recorded_shape}, got {source_shape}",
+        )
+    control_coefficients = sampler["control_coefficients"]
+    if not control_coefficients:
+        return volume
+    sampling_grid = getattr(sampler, "sampling_grid", None)
+    uses_cached_grid = sampling_grid is not None
+    if not uses_cached_grid:
+        sampling_grid = create_elastic_grid_3d(control_coefficients, recorded_shape)
+    try:
+        return remap_3d(volume, sampling_grid, interpolation, border_mode, fill, is_mask=is_mask)
+    finally:
+        if uses_cached_grid and isinstance(sampler, ElasticTransform3DSampler):
+            sampler.release_sampling_grid()
+
+
+def _clip_interpolated_float_volume(
+    result: VolumeType | torch.Tensor,
+    original_numpy_dtype: np.dtype[Any] | None,
+    original_tensor_dtype: torch.dtype | None,
+    interpolation: int,
+    is_mask: bool,
+) -> VolumeType | torch.Tensor:
+    if is_mask or interpolation == cv2.INTER_NEAREST:
+        return result
+    if isinstance(result, np.ndarray) and original_numpy_dtype == np.dtype(np.float32):
+        return clip(result, np.dtype(np.float32), inplace=True)
+    if isinstance(result, torch.Tensor) and original_tensor_dtype == torch.float32:
+        return result.clamp_(0.0, 1.0)
+    return result
+
+
+def remap_3d(
+    volume: VolumeType | torch.Tensor,
+    sampling_grid: np.ndarray,
+    interpolation: int,
+    border_mode: int,
+    fill: float | tuple[float, ...] | None,
+    *,
+    is_mask: bool = False,
+) -> VolumeType | torch.Tensor:
+    """Apply one prebuilt normalized 3D pull grid through Albucore while retaining channel-less mask semantics and
+    supported NumPy or CPU Tensor containers.
+
+    Args:
+        volume (VolumeType | torch.Tensor): Public NumPy volume or CPU Tensor volume or mask.
+        sampling_grid (np.ndarray): Normalized float32 `(D, H, W, 3)` pull grid.
+        interpolation (int): Nearest or trilinear interpolation flag.
+        border_mode (int): Constant or replicate border flag.
+        fill (float | tuple[float, ...] | None): Constant scalar or per-channel border value.
+        is_mask (bool): Whether to restore an integer channel-less mask after sampling.
+
+    Returns:
+        VolumeType | torch.Tensor: Sampled volume or mask with the caller's public representation.
+
+    """
+    if isinstance(volume, np.ndarray):
+        working_volume, original_numpy_dtype, is_channel_less_numpy, needs_mask_promotion = (
+            _prepare_numpy_resampled_volume(volume, is_mask)
+        )
+        original_tensor_dtype = None
+        is_channel_less_tensor = False
+    elif isinstance(volume, torch.Tensor):
+        working_volume, original_tensor_dtype, is_channel_less_tensor, needs_mask_promotion = (
+            _prepare_tensor_resampled_volume(volume, is_mask)
+        )
+        original_numpy_dtype = None
+        is_channel_less_numpy = False
+    else:
+        msg = f"remap_3d expects a NumPy array or CPU torch.Tensor, got {type(volume).__name__}"
+        raise TypeError(msg)
+
+    result = remap3d(
+        working_volume,
+        sampling_grid,
+        interpolation=interpolation,
+        border_mode=border_mode,
+        border_value=fill,
+    )
+    result = _clip_interpolated_float_volume(
+        result,
+        original_numpy_dtype,
+        original_tensor_dtype,
+        interpolation,
+        is_mask,
+    )
+    if needs_mask_promotion:
+        if isinstance(result, np.ndarray):
+            if original_numpy_dtype is None:
+                raise RuntimeError("NumPy remap result requires a NumPy source dtype")
+            result = np.rint(result).astype(original_numpy_dtype, copy=False)
+        else:
+            if original_tensor_dtype is None:
+                raise RuntimeError("Tensor remap result requires a Tensor source dtype")
+            result = torch.round(result).to(original_tensor_dtype)
+
+    if is_channel_less_numpy:
+        return result[..., 0]
+    if is_channel_less_tensor:
+        return result[0]
+    return result
+
+
+def _elastic_plane_displacement(
+    points: np.ndarray,
+    control_coefficients: Mapping[str, np.ndarray],
+    volume_shape: tuple[int, int, int],
+) -> np.ndarray:
+    displacement = np.zeros((len(points), 3), dtype=np.float64)
+    if not control_coefficients:
+        return displacement
+
+    for plane, point_axes, control_shape, displacement_axes in (
+        ("xy", slice(0, 2), volume_shape[1:], slice(0, 2)),
+        ("xz", (0, 2), (volume_shape[0], volume_shape[2]), (0, 2)),
+        ("yz", slice(1, 3), volume_shape[:2], slice(1, 3)),
+    ):
+        displacement[:, displacement_axes] += fgeometric.evaluate_control_grid(
+            points[:, point_axes],
+            control_coefficients[plane],
+            control_shape,
+        )
+    return displacement / np.float32(3)
+
+
+@handle_empty_array("keypoints")
+def remap_elastic_keypoints_3d(
+    keypoints: np.ndarray,
+    control_coefficients: Mapping[str, Any],
+    volume_shape: tuple[int, int, int],
+    tolerance: float = 1e-3,
+) -> np.ndarray:
+    """Invert a bounded 3D elastic pull field for XYZ keypoints with a fixed-point solver and strict forward
+    residual, keeping every trailing attribute intact.
+
+    Args:
+        keypoints (np.ndarray): XYZ keypoints with optional trailing attributes.
+        control_coefficients (Mapping[str, Any]): Active compact cubic control planes.
+        volume_shape (tuple[int, int, int]): `(depth, height, width)` source shape.
+        tolerance (float): Maximum accepted forward residual in voxel units.
+
+    Returns:
+        np.ndarray: Keypoints in output coordinates; unconverged or out-of-domain rows have `-1` spatial coordinates.
+
+    """
+    control_coefficients = _as_elastic_control_coefficients(control_coefficients)
+    source_points = np.asarray(keypoints[:, :3], dtype=np.float64)
+    transformed_points = source_points.copy()
+    active_points = np.isfinite(source_points).all(axis=1)
+    for _ in range(96):
+        with np.errstate(invalid="ignore", over="ignore"):
+            updated_points = source_points - _elastic_plane_displacement(
+                transformed_points,
+                control_coefficients,
+                volume_shape,
+            )
+        active_points &= np.isfinite(updated_points).all(axis=1)
+        if (
+            active_points.any()
+            and np.max(
+                np.abs(updated_points[active_points] - transformed_points[active_points]),
+                initial=0.0,
+            )
+            <= tolerance * 0.1
+        ):
+            transformed_points = updated_points
+            break
+        transformed_points = updated_points
+        transformed_points[~active_points] = np.nan
+        if not active_points.any():
+            break
+
+    residual = np.full(len(source_points), np.inf, dtype=np.float64)
+    if active_points.any():
+        valid_points = transformed_points[active_points]
+        residual[active_points] = np.max(
+            np.abs(
+                valid_points
+                + _elastic_plane_displacement(valid_points, control_coefficients, volume_shape)
+                - source_points[active_points],
+            ),
+            axis=1,
+        )
+    depth, height, width = volume_shape
+    valid = np.isfinite(residual) & (residual <= tolerance)
+    valid &= (
+        (transformed_points[:, 0] >= -tolerance)
+        & (transformed_points[:, 0] <= width + tolerance)
+        & (transformed_points[:, 1] >= -tolerance)
+        & (transformed_points[:, 1] <= height + tolerance)
+        & (transformed_points[:, 2] >= -tolerance)
+        & (transformed_points[:, 2] <= depth + tolerance)
+    )
+    result = keypoints.copy()
+    result[:, :3] = np.where(valid[:, np.newaxis], transformed_points, -1.0).astype(result.dtype, copy=False)
     return result
 
 
@@ -233,10 +558,7 @@ def anisotropy_3d(
     NumPy applies antialiasing while shrinking; PyTorch does not yet provide 5D trilinear antialiasing, so Tensor input
     uses the non-antialiased native route until upstream support is available.
     """
-    source_shape = cast(
-        "tuple[int, int, int]",
-        tuple(volume.shape[1:]) if isinstance(volume, torch.Tensor) else volume.shape[:3],
-    )
+    source_shape = get_volume_shape(volume)
     if source_shape == downsample_shape:
         return volume
 

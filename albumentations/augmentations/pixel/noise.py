@@ -1469,18 +1469,12 @@ class FilmGrain(_FullVolumeNoiseTransform):
         groups: list[TargetParams] = []
         for views in targets.group_image_like_by(
             lambda view: (
-                tuple((view.descriptor.shape or ())[:3])
-                if view.canonical_type == "volume"
-                else tuple(view.descriptor.spatial_shape or ()),
+                tuple(view.descriptor.spatial_shape or ()),
                 _sampling_family(view),
             ),
         ):
             view = views[0]
-            spatial_shape = (
-                tuple(view.descriptor.shape[:3])
-                if view.canonical_type == "volume" and view.descriptor.shape is not None
-                else tuple(view.descriptor.spatial_shape or ())
-            )
+            spatial_shape = tuple(view.descriptor.spatial_shape or ())
             groups.append(
                 TargetParams(
                     targets=tuple(item.name for item in views),

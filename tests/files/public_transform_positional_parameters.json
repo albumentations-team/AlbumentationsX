@@ -3,6 +3,7 @@
   "AdvancedBlur": ["blur_range", "sigma_x_range", "sigma_y_range", "rotate_range", "beta_range", "noise_range", "p"],
   "Affine": ["scale", "translate_percent", "translate_px", "rotate", "shear", "interpolation", "mask_interpolation", "fit_output", "keep_ratio", "rotate_method", "balanced_scale", "border_mode", "fill", "fill_mask", "p"],
   "Affine3D": ["rotate_range", "scale_range", "translate_percent_range", "interpolation", "mask_interpolation", "border_mode", "fill", "fill_mask", "p"],
+  "ElasticTransform3D": ["displacement_range", "control_grid_shape", "interpolation", "mask_interpolation", "border_mode", "fill", "fill_mask", "p"],
   "Anisotropy3D": ["axes", "num_axes_range", "downscale_factor_range", "antialias", "p"],
   "AnnotationArtifacts": ["element_types", "element_probabilities", "count_range", "text_length_range", "font_scale_range", "thickness_range", "size_ratio_range", "line_length_ratio_range", "tip_length_range", "corner_prob", "black_white_prob", "p"],
   "AtLeastOneBBoxRandomCrop": ["height", "width", "erosion_factor", "p"],

@@ -426,26 +426,16 @@ def _elastic_plane_displacement(
     if not control_coefficients:
         return displacement
 
-    xy_displacement = fgeometric.evaluate_control_grid(
-        points[:, :2],
-        control_coefficients["xy"],
-        volume_shape[1:],
-    )
-    displacement[:, :2] += xy_displacement
-    xz_displacement = fgeometric.evaluate_control_grid(
-        points[:, (0, 2)],
-        control_coefficients["xz"],
-        (volume_shape[0], volume_shape[2]),
-    )
-    displacement[:, 0] += xz_displacement[:, 0]
-    displacement[:, 2] += xz_displacement[:, 1]
-    yz_displacement = fgeometric.evaluate_control_grid(
-        points[:, 1:3],
-        control_coefficients["yz"],
-        volume_shape[:2],
-    )
-    displacement[:, 1] += yz_displacement[:, 0]
-    displacement[:, 2] += yz_displacement[:, 1]
+    for plane, point_axes, control_shape, displacement_axes in (
+        ("xy", slice(0, 2), volume_shape[1:], slice(0, 2)),
+        ("xz", (0, 2), (volume_shape[0], volume_shape[2]), (0, 2)),
+        ("yz", slice(1, 3), volume_shape[:2], slice(1, 3)),
+    ):
+        displacement[:, displacement_axes] += fgeometric.evaluate_control_grid(
+            points[:, point_axes],
+            control_coefficients[plane],
+            control_shape,
+        )
     return displacement / np.float32(3)
 
 

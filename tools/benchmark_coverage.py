@@ -40,6 +40,11 @@ from benchmarks.test_batch_matrix import (  # noqa: E402
     IMAGE_BATCH_TRANSFORMS,
     MASK_BATCH_CASES,
     MASK_BATCH_TRANSFORMS,
+    PLASMA_BRIGHTNESS_CONTRAST_DIRECT_CASES,
+    PLASMA_BRIGHTNESS_CONTRAST_IMAGE_CASES,
+    PLASMA_BRIGHTNESS_CONTRAST_PEAK_MEMORY_CASES,
+    PLASMA_BRIGHTNESS_CONTRAST_TRANSFORMS,
+    PLASMA_BRIGHTNESS_CONTRAST_VOLUME_CASES,
     RANDOM_SHADOW_DIRECT_CASES,
     RANDOM_SHADOW_VOLUME_CASES,
     RANDOM_TONE_CURVE_DIRECT_IMAGE_CASES,
@@ -260,6 +265,9 @@ BATCH_ALIAS_TO_TRANSFORM = {
     "illumination_linear": "Illumination",
     **{name: "MedianBlur" for name, _ in MEDIAN_BLUR_CASES},
     "normalize": "Normalize",
+    "plasma_brightness_contrast": "PlasmaBrightnessContrast",
+    "plasma_brightness_contrast_brightness_only": "PlasmaBrightnessContrast",
+    "plasma_brightness_contrast_zero": "PlasmaBrightnessContrast",
     "random_brightness_contrast": "RandomBrightnessContrast",
     "random_rotate90": "RandomRotate90",
     "random_shadow": "RandomShadow",
@@ -327,6 +335,7 @@ MEMORY_BENCHMARKS = (
     "peakmem_mosaic_small_rgb",
     "peakmem_median_blur_large_float32",
     "peakmem_normalize_large_rgb",
+    "peakmem_plasma_brightness_contrast_batch_large_multichannel",
     "peakmem_random_shadow_batch_large_multichannel",
     "peakmem_rician_volume_medium",
     "peakmem_resize_large_rgb",
@@ -348,6 +357,7 @@ MEMORY_COVERED_TRANSFORMS = frozenset(
         "MedianBlur",
         "Normalize",
         "PadIfNeeded3D",
+        "PlasmaBrightnessContrast",
         "RandomBrightnessContrast",
         "RandomShadow",
         "RicianNoise",
@@ -430,6 +440,15 @@ ASV_BENCHMARKS = {
     "batch_image": "benchmarks.test_batch_matrix.TimeImageBatchMatrix.time_transform",
     "batch_illumination_direct": "benchmarks.test_batch_matrix.TimeIlluminationDirectBatchMatrix.time_apply_to_images",
     "batch_mask": "benchmarks.test_batch_matrix.TimeMaskBatchMatrix.time_transform",
+    "batch_plasma_brightness_contrast_direct": (
+        "benchmarks.test_batch_matrix.TimeBatchPlasmaBrightnessContrastDirectMatrix.time_apply_to_images"
+    ),
+    "batch_plasma_brightness_contrast_image": (
+        "benchmarks.test_batch_matrix.TimeBatchPlasmaBrightnessContrastImageMatrix.time_transform"
+    ),
+    "batch_plasma_brightness_contrast_volume": (
+        "benchmarks.test_batch_matrix.TimeBatchPlasmaBrightnessContrastVolumeMatrix.time_transform"
+    ),
     "batch_random_shadow_direct": "benchmarks.test_batch_matrix.TimeRandomShadowDirectBatchMatrix.time_apply_to_images",
     "batch_random_shadow_volume": "benchmarks.test_batch_matrix.TimeRandomShadowVolumeBatchMatrix.time_transform",
     "batch_random_tone_curve_direct_image": (
@@ -447,6 +466,7 @@ ASV_BENCHMARKS = {
     "family_matrix_geometry": "benchmarks.test_family_matrix.TimeGeometryFullMatrix.time_transform",
     "family_matrix_pixel": "benchmarks.test_family_matrix.TimePixelFullMatrix.time_transform",
     "memory": "benchmarks.test_family_matrix.PeakMemoryHotPaths",
+    "memory_plasma_brightness_contrast": "benchmarks.test_batch_matrix.PeakMemoryPlasmaBrightnessContrastBatchMatrix",
     "memory_random_shadow": "benchmarks.test_batch_matrix.PeakMemoryRandomShadowBatchMatrix",
     "memory_spatter": "benchmarks.test_batch_matrix.PeakMemorySpatterBatchMatrix",
     "parameter_sensitivity": "benchmarks.test_parameter_sensitivity.TimeParameterSensitivity.time_transform",
@@ -463,6 +483,7 @@ ASV_BENCHMARKS = {
 }
 
 MEMORY_BENCHMARK_KEYS_BY_TRANSFORM = {
+    "PlasmaBrightnessContrast": "memory_plasma_brightness_contrast",
     "RandomShadow": "memory_random_shadow",
     "Spatter": "memory_spatter",
 }
@@ -513,7 +534,7 @@ VOLUME_SIZE_ORDER = tuple(VOLUME_SIZES)
 DTYPE_ORDER = tuple(DTYPES)
 CHANNEL_ORDER = CHANNELS
 ANNOTATION_COUNT_ORDER = (10, 100, 1000)
-BATCH_SIZE_ORDER = (2, 4, 8, 16)
+BATCH_SIZE_ORDER = (1, 2, 4, 5, 8, 16)
 
 AXIS_ORDERS: Mapping[str, tuple[Any, ...]] = {
     "annotation_counts": ANNOTATION_COUNT_ORDER,
@@ -570,6 +591,7 @@ def _coverage_layer_sets() -> dict[str, set[str]]:
     annotation_scaling = _mapped_names(ANNOTATION_ALIAS_TO_TRANSFORM, ANNOTATION_TRANSFORMS)
     batch_matrix = _mapped_names(BATCH_ALIAS_TO_TRANSFORM, IMAGE_BATCH_TRANSFORMS)
     batch_matrix |= _mapped_names(BATCH_ALIAS_TO_TRANSFORM, MASK_BATCH_TRANSFORMS)
+    batch_matrix |= _mapped_names(BATCH_ALIAS_TO_TRANSFORM, PLASMA_BRIGHTNESS_CONTRAST_TRANSFORMS)
     parameter_sensitivity = _mapped_names(
         PARAMETER_SENSITIVITY_ALIAS_TO_TRANSFORM,
         PARAMETER_SENSITIVITY_TRANSFORMS,
@@ -846,6 +868,17 @@ def _volumetric_matrix_scenario(case: Mapping[str, str], route: str, transform_n
 def _memory_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
     """Return scenario metadata for a peak-memory case."""
     case_id = case["case_id"]
+    if transform_name == "PlasmaBrightnessContrast":
+        memory_route, dtype_name, branch = case_id.split("|")
+        return {
+            "batch_size": 1 if branch == "normal_n1" else 16,
+            "dtype": dtype_name,
+            "memory_branch": branch,
+            "memory_case": case_id,
+            "memory_route": memory_route,
+            "scope": "memory",
+            "targets": ["images"],
+        }
     return {"memory_case": case_id, "scope": "memory", "targets": _memory_targets(case_id)}
 
 
@@ -1090,6 +1123,21 @@ def _add_direct_kernel_cases(cases: dict[str, list[dict[str, str]]]) -> None:
                 )
 
 
+def _add_plasma_memory_cases(cases: dict[str, list[dict[str, str]]]) -> None:
+    benchmark = (
+        f"{ASV_BENCHMARKS['memory_plasma_brightness_contrast']}."
+        "peakmem_plasma_brightness_contrast_batch_large_multichannel"
+    )
+    for case_id in PLASMA_BRIGHTNESS_CONTRAST_PEAK_MEMORY_CASES:
+        _add_asv_case(
+            cases,
+            "PlasmaBrightnessContrast",
+            benchmark=benchmark,
+            case_id=case_id,
+            layer="memory",
+        )
+
+
 def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
     cases: dict[str, list[dict[str, str]]] = defaultdict(list)
     for name in asv_case_ids():
@@ -1159,6 +1207,27 @@ def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
     )
     _add_matrix_cases(
         cases,
+        benchmark=ASV_BENCHMARKS["batch_plasma_brightness_contrast_direct"],
+        case_ids=PLASMA_BRIGHTNESS_CONTRAST_DIRECT_CASES,
+        layer="batch_matrix",
+        name_map=BATCH_ALIAS_TO_TRANSFORM,
+    )
+    _add_matrix_cases(
+        cases,
+        benchmark=ASV_BENCHMARKS["batch_plasma_brightness_contrast_image"],
+        case_ids=PLASMA_BRIGHTNESS_CONTRAST_IMAGE_CASES,
+        layer="batch_matrix",
+        name_map=BATCH_ALIAS_TO_TRANSFORM,
+    )
+    _add_matrix_cases(
+        cases,
+        benchmark=ASV_BENCHMARKS["batch_plasma_brightness_contrast_volume"],
+        case_ids=PLASMA_BRIGHTNESS_CONTRAST_VOLUME_CASES,
+        layer="batch_matrix",
+        name_map=BATCH_ALIAS_TO_TRANSFORM,
+    )
+    _add_matrix_cases(
+        cases,
         benchmark=ASV_BENCHMARKS["batch_random_shadow_direct"],
         case_ids=RANDOM_SHADOW_DIRECT_CASES,
         layer="batch_matrix",
@@ -1212,6 +1281,7 @@ def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
                 case_id=case_id,
                 layer="memory",
             )
+    _add_plasma_memory_cases(cases)
     for case_id in PYTORCH_IMAGE_CASES:
         _add_asv_case(
             cases,

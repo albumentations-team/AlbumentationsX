@@ -418,14 +418,22 @@ class TransformInvocationState:
     applied_config: dict[str, Any] | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class ChannelRestorationState:
+    """Keep original object identity with the normalized optional-channel value."""
+
+    canonical_target: str
+    original_value: Any
+    normalized_value: Any
+
+
 @dataclass(slots=True)
 class ComposeInvocationState:
     """Stores grayscale normalization and instance-binding details for one Compose call. It prevents temporary target
     metadata from leaking into another sample.
     """
 
-    added_channel_dim: dict[str, bool] = field(default_factory=dict)
-    added_channel_canonical: dict[str, str] = field(default_factory=dict)
+    channel_restorations: dict[str, ChannelRestorationState] = field(default_factory=dict)
     instance_count: int | None = None
     repack_after_processors: bool = False
 
@@ -462,6 +470,7 @@ class InvocationContext:
     random_stream_reserver: Callable[[], _ReservedRandomStreams] | None = None
     collect_applied: bool = False
     root_key: object | None = None
+    has_tensor_inputs: bool | None = None
     _py_random: random.Random | None = None
     _random_generator: np.random.Generator | None = None
     _reserved_random_streams: _ReservedRandomStreams | None = None

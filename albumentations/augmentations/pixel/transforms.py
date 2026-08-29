@@ -1365,7 +1365,7 @@ class Dithering(ImageOnlyTransform):
             per_item_noise_shape = (height, width, 1) if self.color_mode == "grayscale" else (height, width, channels)
             if view.canonical_type not in {"images", "volume"}:
                 item_count = 1
-            elif view.descriptor.layout in {"images_clhw", "volume_cdhw"}:
+            elif view.descriptor.layout == "volume_cdhw":
                 item_count = shape[1]
             else:
                 item_count = shape[0]
@@ -1387,18 +1387,22 @@ class Dithering(ImageOnlyTransform):
             )
         return SampledParams(params={}, target_params=tuple(groups))
 
-    def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
-        random_noise = params.pop("random_noise", None)
+    def apply_to_images(
+        self,
+        images: ImageType,
+        random_noise: np.ndarray | None,
+        *args: Any,
+        **params: Any,
+    ) -> ImageType:
         if isinstance(random_noise, np.ndarray) and random_noise.ndim == images.ndim:
             result = np.empty_like(images)
             for index, image in enumerate(images):
                 result[index] = self.apply(image, random_noise=random_noise[index], **params)
             return result
-        if random_noise is not None:
-            params["random_noise"] = random_noise
-        else:
-            params["random_noise"] = None
-        return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
+        return self._apply_to_batch_same_shape(
+            images,
+            lambda image: self.apply(image, random_noise=random_noise, **params),
+        )
 
 
 class Halftone(ImageOnlyTransform):

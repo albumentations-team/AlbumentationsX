@@ -1310,16 +1310,32 @@ class Spatter(ImageOnlyTransform):
     def apply(
         self,
         img: ImageType,
-        **params: dict[str, Any],
+        mode: Literal["rain", "mud"],
+        drops: np.ndarray | None,
+        non_mud: np.ndarray | None,
+        mud: np.ndarray | None,
+        **params: Any,
     ) -> ImageType:
         non_rgb_error(img)
 
-        if params["mode"] == "rain":
-            return fpixel.spatter_rain(img, params["drops"])
+        if mode == "rain":
+            if drops is None:
+                raise RuntimeError("Spatter rain mode requires drops")
+            return fpixel.spatter_rain(img, drops)
 
-        return fpixel.spatter_mud(img, params["non_mud"], params["mud"])
+        if non_mud is None or mud is None:
+            raise RuntimeError("Spatter mud mode requires mud parameters")
+        return fpixel.spatter_mud(img, non_mud, mud)
 
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+    def apply_to_images(
+        self,
+        images: ImageType,
+        mode: Literal["rain", "mud"],
+        drops: np.ndarray | None,
+        non_mud: np.ndarray | None,
+        mud: np.ndarray | None,
+        **params: Any,
+    ) -> ImageType:
         if len(images) == 0:
             return images
 
@@ -1327,15 +1343,19 @@ class Spatter(ImageOnlyTransform):
             raise ValueError("This transformation expects 3-channel images")
 
         non_rgb_error(images)
-        fallback_threshold = _SPATTER_BATCH_FALLBACK_WORKING_SET_BYTES.get((params["mode"], images.dtype.name))
+        fallback_threshold = _SPATTER_BATCH_FALLBACK_WORKING_SET_BYTES.get((mode, images.dtype.name))
         working_set = images.size * np.dtype(np.float32).itemsize
         if fallback_threshold is not None and working_set >= fallback_threshold:
-            return ImageOnlyTransform.apply_to_images(self, images, **params)
+            return super().apply_to_images(images, mode=mode, drops=drops, non_mud=non_mud, mud=mud, **params)
 
-        if params["mode"] == "rain":
-            return fpixel.spatter_rain_batch(images, params["drops"])
+        if mode == "rain":
+            if drops is None:
+                raise RuntimeError("Spatter rain mode requires drops")
+            return fpixel.spatter_rain_batch(images, drops)
 
-        return fpixel.spatter_mud_batch(images, params["non_mud"], params["mud"])
+        if non_mud is None or mud is None:
+            raise RuntimeError("Spatter mud mode requires mud parameters")
+        return fpixel.spatter_mud_batch(images, non_mud, mud)
 
     def sample_parameters(
         self,
@@ -1383,6 +1403,7 @@ class Spatter(ImageOnlyTransform):
             liquid_layer[liquid_layer < cutout_threshold] = 0
             if mode == "rain":
                 group_params = fpixel.get_rain_params(liquid_layer=liquid_layer, color=color, intensity=intensity)
+                group_params.update({"non_mud": None, "mud": None})
             else:
                 group_params = fpixel.get_mud_params(
                     liquid_layer=liquid_layer,
@@ -1392,6 +1413,7 @@ class Spatter(ImageOnlyTransform):
                     intensity=intensity,
                     random_generator=sampling.random_generator,
                 )
+                group_params["drops"] = None
             groups.append(_weather_group(views, group_params))
         return SampledParams(params={"mode": mode}, target_params=tuple(groups))
 

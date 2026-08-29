@@ -1,5 +1,6 @@
 import copy
 import random
+from collections.abc import Callable
 from functools import partial
 from typing import Any
 
@@ -462,12 +463,12 @@ def test_illumination_explicit_grayscale_channel(mode):
 @pytest.mark.parametrize(
     ("mode", "params"),
     [
-        ("linear", {"intensity": 0.13, "angle": 37.0}),
-        ("linear", {"intensity": -0.13, "angle": 37.0}),
-        ("corner", {"intensity": 0.13, "corner": 2}),
-        ("corner", {"intensity": -0.13, "corner": 2}),
-        ("gaussian", {"intensity": 0.13, "center": (0.37, 0.61), "sigma": 0.43}),
-        ("gaussian", {"intensity": -0.13, "center": (0.37, 0.61), "sigma": 0.43}),
+        ("linear", {"intensity": 0.13, "angle": 37.0, "corner": None, "center": None, "sigma": None}),
+        ("linear", {"intensity": -0.13, "angle": 37.0, "corner": None, "center": None, "sigma": None}),
+        ("corner", {"intensity": 0.13, "angle": None, "corner": 2, "center": None, "sigma": None}),
+        ("corner", {"intensity": -0.13, "angle": None, "corner": 2, "center": None, "sigma": None}),
+        ("gaussian", {"intensity": 0.13, "angle": None, "corner": None, "center": (0.37, 0.61), "sigma": 0.43}),
+        ("gaussian", {"intensity": -0.13, "angle": None, "corner": None, "center": (0.37, 0.61), "sigma": 0.43}),
     ],
 )
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
@@ -493,9 +494,9 @@ def test_illumination_batch_helper_matches_per_image(mode, params, dtype, channe
 @pytest.mark.parametrize(
     ("mode", "params"),
     [
-        ("linear", {"intensity": 0.13, "angle": 37.0}),
-        ("corner", {"intensity": 0.13, "corner": 2}),
-        ("gaussian", {"intensity": 0.13, "center": (0.37, 0.61), "sigma": 0.43}),
+        ("linear", {"intensity": 0.13, "angle": 37.0, "corner": None, "center": None, "sigma": None}),
+        ("corner", {"intensity": 0.13, "angle": None, "corner": 2, "center": None, "sigma": None}),
+        ("gaussian", {"intensity": 0.13, "angle": None, "corner": None, "center": (0.37, 0.61), "sigma": 0.43}),
     ],
 )
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
@@ -1103,6 +1104,38 @@ def test_auto_contrast_batch_handles_non_contiguous_read_only_input(
 
     np.testing.assert_array_equal(data, data_before)
     np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("target", ["images", "volume"])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize(
+    "transform_factory",
+    [
+        partial(A.PlasmaBrightnessContrast, brightness_range=(0.2, 0.2), contrast_range=(0.3, 0.3), p=1.0),
+        partial(A.PlasmaShadow, shadow_intensity_range=(0.4, 0.4), p=1.0),
+        partial(A.HEStain, method="preset", preset="standard", p=1.0),
+        partial(A.RandomGridShuffle, grid=(2, 3), p=1.0),
+    ],
+)
+def test_removed_batch_transform_routes_match_per_image(
+    target: str,
+    dtype: type[np.generic],
+    transform_factory: Callable[[], BasicTransform],
+) -> None:
+    source = np.random.default_rng(137).integers(0, 256, (2, 8, 12, 3), dtype=np.uint8)
+    data = source[:, :, ::2, :]
+    if dtype == np.float32:
+        data = data.astype(np.float32) / 255.0
+    data.setflags(write=False)
+    data_before = data.copy()
+
+    actual = A.Compose([transform_factory()], seed=137, strict=True)(**{target: data})[target]
+    expected = np.stack(
+        [A.Compose([transform_factory()], seed=137, strict=True)(image=image)["image"] for image in data],
+    )
+
+    np.testing.assert_array_equal(data, data_before)
+    np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-6)
 
 
 def test_random_brightness_contrast_torchvision_mode_safe_output_uses_combined_coefficients():

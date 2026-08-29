@@ -9,7 +9,6 @@ import cv2
 import numpy as np
 from albucore import (
     MAX_VALUES_BY_DTYPE,
-    batch_transform,
     get_num_channels,
     is_grayscale_image,
     is_rgb_image,
@@ -61,7 +60,6 @@ __all__ = [
     "Sequence",
     "VolumeType",
     "albucore",
-    "batch_transform",
     "cast",
     "check_range_bounds",
     "cv2",

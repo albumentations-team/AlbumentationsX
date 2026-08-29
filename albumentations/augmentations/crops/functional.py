@@ -19,6 +19,7 @@ from albumentations.core.bbox_utils import (
     normalize_bboxes,
 )
 from albumentations.core.type_definitions import ImageType
+from albumentations.core.utils import get_volume_shape
 
 __all__ = [
     "crop",
@@ -370,7 +371,8 @@ def volume_crop_yx(
         ValueError: If crop coordinates are invalid.
 
     """
-    _, height, width = volume.shape[:3]
+    volume_shape = get_volume_shape(volume)
+    _, height, width = volume_shape
     if x_max <= x_min or y_max <= y_min:
         raise ValueError(
             "Crop coordinates must satisfy min < max. Got: "
@@ -381,7 +383,7 @@ def volume_crop_yx(
         raise ValueError(
             "Crop coordinates must be within image dimensions (H, W). Got: "
             f"(x_min={x_min}, y_min={y_min}, x_max={x_max}, y_max={y_max}) "
-            f"for volume shape {volume.shape[:3]}",
+            f"for volume shape {volume_shape}",
         )
 
     # Crop along H (axis 1) and W (axis 2)

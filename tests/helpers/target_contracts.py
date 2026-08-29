@@ -5,11 +5,20 @@ from __future__ import annotations
 import copy
 import json
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
+import torch
 
 import albumentations as A
+from albumentations.core.tensor import (
+    TENSOR_ANNOTATION_TARGETS,
+    TENSOR_CHANNELLESS_RANKS,
+    TENSOR_TARGETS,
+    tensor_to_numpy_spatial,
+)
 from tests.helpers.applied_config import ReplayProfile
 from tests.helpers.contract_assertions import assert_contract_values_equal
 from tests.helpers.target_profiles import TARGET_CONTRACT_PROFILES, ProfileCost, TargetProfile
@@ -70,6 +79,99 @@ EXTENDED_TARGET_CONTRACT_PAIRS = tuple(
     for profile in TARGET_CONTRACT_PROFILES
     if profile.cost is ProfileCost.EXTENDED and _supports_profile(case, profile)
 )
+
+_TENSOR_EXTENDED_PROFILE_IDS = frozenset(
+    {
+        "float-image-mask",
+        "grayscale-image-mask",
+        "multispectral-image-mask",
+        "images-batch",
+        "masks-batch",
+        "noncontiguous-image-mask",
+    },
+)
+TENSOR_TARGET_CONTRACT_PAIRS = (
+    *CORE_TARGET_CONTRACT_PAIRS,
+    *(pair for pair in EXTENDED_TARGET_CONTRACT_PAIRS if pair.profile.profile_id in _TENSOR_EXTENDED_PROFILE_IDS),
+)
+
+
+def _numpy_target_to_tensor(value: Any, target: str | None) -> Any:
+    if not isinstance(value, np.ndarray):
+        return value
+    if target is None or target in TENSOR_ANNOTATION_TARGETS:
+        return torch.from_numpy(value)
+    if target in {"image", "mask"}:
+        return torch.from_numpy(value if value.ndim == 2 else np.moveaxis(value, -1, 0))
+    if target in {"images", "masks"}:
+        return torch.from_numpy(value if value.ndim == 3 else np.moveaxis(value, -1, 1))
+    if target in {"volume", "mask3d"}:
+        return torch.from_numpy(value if value.ndim == 3 else np.moveaxis(value, -1, 0))
+    return value
+
+
+def _tensor_target_to_numpy(value: Any, target: str | None) -> Any:
+    if not isinstance(value, torch.Tensor):
+        return value
+    if target is None or target in TENSOR_ANNOTATION_TARGETS:
+        return value.numpy()
+    if value.ndim == TENSOR_CHANNELLESS_RANKS.get(target):
+        return value.numpy()
+    return tensor_to_numpy_spatial(value, target)
+
+
+def _convert_contract_data(
+    data: dict[str, Any],
+    transform: A.BasicTransform,
+    convert: Callable[[Any, str | None], Any],
+) -> dict[str, Any]:
+    converted = copy.deepcopy(data)
+    for data_name, value in data.items():
+        canonical_target = transform._additional_targets.get(data_name, data_name)
+        if canonical_target in TENSOR_TARGETS:
+            converted[data_name] = convert(value, canonical_target)
+    return converted
+
+
+def _assert_tensor_result_containers(
+    source: dict[str, Any],
+    result: dict[str, Any],
+    transform: A.BasicTransform,
+) -> None:
+    for data_name, value in source.items():
+        canonical_target = transform._additional_targets.get(data_name, data_name)
+        if canonical_target in TENSOR_TARGETS and isinstance(value, torch.Tensor):
+            assert isinstance(result[data_name], torch.Tensor)
+
+
+def run_tensor_target_cluster_contract(case: TransformContractCase, profile: TargetProfile, seed: int) -> None:
+    """Replay one generated NumPy case with equivalent public Tensor targets."""
+    source = case.make_data(np.random.default_rng(seed), profile.data_factory)
+    numpy_data = copy.deepcopy(source)
+    transform = case.transform_cls(**copy.deepcopy(dict(case.init_kwargs)), p=1)
+    tensor_data = _convert_contract_data(source, transform, _numpy_target_to_tensor)
+    tensor_snapshot = copy.deepcopy(tensor_data)
+    compose_kwargs = copy.deepcopy(dict(profile.compose_kwargs))
+    numpy_pipeline = A.ReplayCompose(
+        [case.transform_cls(**copy.deepcopy(dict(case.init_kwargs)), p=1)],
+        **compose_kwargs,
+    )
+    numpy_pipeline.set_random_seed(seed)
+
+    numpy_result = numpy_pipeline(**numpy_data)
+    tensor_result = A.ReplayCompose.replay(numpy_result["replay"], **tensor_data)
+
+    assert_contract_values_equal(tensor_data, tensor_snapshot, "tensor_input")
+    _assert_tensor_result_containers(tensor_data, tensor_result, transform)
+    profile.assert_result(case, tensor_snapshot, tensor_result)
+
+    comparable_tensor_result = _convert_contract_data(tensor_result, transform, _tensor_target_to_numpy)
+    for key in source:
+        expected = numpy_result[key]
+        canonical_target = transform._additional_targets.get(key, key)
+        if canonical_target in TENSOR_ANNOTATION_TARGETS and isinstance(expected, np.ndarray):
+            expected = expected.astype(np.float32, copy=False)
+        assert_contract_values_equal(comparable_tensor_result[key], expected, key)
 
 
 def run_target_cluster_contract(case: TransformContractCase, profile: TargetProfile, seed: int) -> None:

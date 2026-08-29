@@ -873,6 +873,7 @@ class CropAndPad(DualTransform):
         crop_params: tuple[int, int, int, int] | None,
         pad_params: tuple[int, int, int, int] | None,
         fill: tuple[float, ...] | float,
+        shape: tuple[int, int],
         **params: Any,
     ) -> ImageType:
         result = fcrops.crop_and_pad(
@@ -880,7 +881,7 @@ class CropAndPad(DualTransform):
             crop_params,
             pad_params,
             fill,
-            params["shape"][:2],
+            shape[:2],
             self.interpolation,
             self.border_mode,
             self.keep_size,
@@ -905,6 +906,7 @@ class CropAndPad(DualTransform):
         crop_params: tuple[int, int, int, int] | None,
         pad_params: tuple[int, int, int, int] | None,
         fill_mask: tuple[float, ...] | float,
+        shape: tuple[int, int],
         **params: Any,
     ) -> ImageType:
         return fcrops.crop_and_pad(
@@ -912,7 +914,7 @@ class CropAndPad(DualTransform):
             crop_params,
             pad_params,
             fill_mask,
-            params["shape"][:2],
+            shape[:2],
             self.mask_interpolation,
             self.border_mode,
             self.keep_size,
@@ -924,9 +926,10 @@ class CropAndPad(DualTransform):
         crop_params: tuple[int, int, int, int] | None,
         pad_params: tuple[int, int, int, int] | None,
         result_shape: tuple[int, int],
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
-        return fcrops.crop_and_pad_bboxes(bboxes, crop_params, pad_params, params["shape"][:2], result_shape)
+        return fcrops.crop_and_pad_bboxes(bboxes, crop_params, pad_params, shape[:2], result_shape)
 
     def apply_to_keypoints(
         self,
@@ -934,13 +937,14 @@ class CropAndPad(DualTransform):
         crop_params: tuple[int, int, int, int] | None,
         pad_params: tuple[int, int, int, int] | None,
         result_shape: tuple[int, int],
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
         return fcrops.crop_and_pad_keypoints(
             keypoints,
             crop_params,
             pad_params,
-            params["shape"][:2],
+            shape[:2],
             result_shape,
             self.keep_size,
         )

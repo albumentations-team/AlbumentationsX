@@ -284,3 +284,49 @@ class TimeTensorNativeAffine3D:
 
     def peakmem_tensor_direct(self, case_id: str) -> None:
         self.tensor_direct(volume=self.tensor)
+
+
+class TimeTensorElasticTransform3D:
+    """Benchmark native Tensor `ElasticTransform3D(volume=...)` across the supported volume matrix."""
+
+    params = (TENSOR_NATIVE_VOLUME_CASES,)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        size_name, channels, dtype_name = _parse_image_case(case_id)
+        self.volume = make_volume(size_name, channels, dtype_from_name(dtype_name))
+        self.mask3d = make_mask3d(size_name)
+        self.tensor = torch.from_numpy(np.ascontiguousarray(self.volume.transpose(3, 0, 1, 2)))
+        self.tensor_mask3d = torch.from_numpy(self.mask3d)
+        transform_kwargs = {
+            "displacement_range": (0.05, 0.05),
+            "control_grid_shape": (7, 7),
+            "p": 1.0,
+        }
+        elastic = albumentations.ElasticTransform3D(**transform_kwargs)
+        self.numpy_direct = albumentations.Compose([elastic], seed=137, strict=True)
+        self.numpy_model_ready = albumentations.Compose(
+            [elastic, albumentations.ToTensor3D(p=1.0)],
+            seed=137,
+            strict=True,
+        )
+        self.tensor_direct = albumentations.Compose(
+            [albumentations.ElasticTransform3D(**transform_kwargs)],
+            seed=137,
+            strict=True,
+        )
+
+    def time_numpy_direct(self, case_id: str) -> None:
+        self.numpy_direct(volume=self.volume)
+
+    def time_numpy_model_ready(self, case_id: str) -> None:
+        self.numpy_model_ready(volume=self.volume, mask3d=self.mask3d)
+
+    def time_tensor_direct(self, case_id: str) -> None:
+        self.tensor_direct(volume=self.tensor)
+
+    def time_tensor_and_mask3d(self, case_id: str) -> None:
+        self.tensor_direct(volume=self.tensor, mask3d=self.tensor_mask3d)
+
+    def peakmem_tensor_direct(self, case_id: str) -> None:
+        self.tensor_direct(volume=self.tensor)

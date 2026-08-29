@@ -205,16 +205,10 @@ class BaseDropout(DualTransform):
         # We can reuse the same logic
         return self.apply_to_images(volume, holes, seed, **params)
 
-    def apply_to_mask3d(  # type: ignore[override]
-        self,
-        mask: VolumeType,
-        holes: np.ndarray,
-        seed: int,
-        **params: Any,
-    ) -> VolumeType:
+    def apply_to_mask3d(self, mask3d: VolumeType, holes: np.ndarray, seed: int, **params: Any) -> VolumeType:
         if self.fill_mask is None or holes.size == 0:
-            return mask
-        return cutout_on_volume(mask, holes, self.fill_mask, np.random.default_rng(seed))
+            return mask3d
+        return cutout_on_volume(mask3d, holes, self.fill_mask, np.random.default_rng(seed))
 
     def apply_to_mask(self, mask: ImageType, holes: np.ndarray, seed: int, **params: Any) -> ImageType:
         if self.fill_mask is None or holes.size == 0:
@@ -225,6 +219,7 @@ class BaseDropout(DualTransform):
         self,
         bboxes: np.ndarray,
         holes: np.ndarray,
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
         if holes.size == 0:
@@ -233,7 +228,7 @@ class BaseDropout(DualTransform):
         if processor is None:
             return bboxes
 
-        image_shape = params["shape"][:2]
+        image_shape = shape[:2]
         denormalized_bboxes = denormalize_bboxes(bboxes, image_shape)
 
         return normalize_bboxes(
@@ -390,6 +385,7 @@ class PixelDropout(DualTransform):
         self,
         bboxes: np.ndarray,
         drop_mask: np.ndarray | None,
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
         if drop_mask is None or self.per_channel:
@@ -399,7 +395,7 @@ class PixelDropout(DualTransform):
         if processor is None:
             return bboxes
 
-        image_shape = params["shape"][:2]
+        image_shape = shape[:2]
 
         denormalized_bboxes = denormalize_bboxes(bboxes, image_shape)
         result = fdropout.mask_dropout_bboxes(

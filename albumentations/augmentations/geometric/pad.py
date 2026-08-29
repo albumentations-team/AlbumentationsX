@@ -260,10 +260,11 @@ class Pad(DualTransform):
         pad_bottom: int,
         pad_left: int,
         pad_right: int,
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
-        image_shape = params["shape"][:2]
-        bboxes_np = denormalize_bboxes(bboxes, params["shape"])
+        image_shape = shape[:2]
+        bboxes_np = denormalize_bboxes(bboxes, shape)
 
         result = fgeometric.pad_bboxes(
             bboxes_np,
@@ -275,7 +276,7 @@ class Pad(DualTransform):
             image_shape=image_shape,
         )
 
-        rows, cols = params["shape"][:2]
+        rows, cols = shape[:2]
         return normalize_bboxes(
             result,
             (rows + pad_top + pad_bottom, cols + pad_left + pad_right),
@@ -288,6 +289,7 @@ class Pad(DualTransform):
         pad_bottom: int,
         pad_left: int,
         pad_right: int,
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
         return fgeometric.pad_keypoints(
@@ -297,7 +299,7 @@ class Pad(DualTransform):
             pad_left,
             pad_right,
             self.border_mode,
-            image_shape=params["shape"][:2],
+            image_shape=shape[:2],
         )
 
     def apply_to_images(

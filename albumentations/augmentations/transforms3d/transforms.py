@@ -71,20 +71,6 @@ def _sampling_volume_shape(targets: TargetSet) -> tuple[int, int, int]:
     return targets.require_aligned_spatial_shape(NUM_DIMENSIONS)
 
 
-def _sample_elastic_control_coefficients(
-    control_grid_shape: tuple[int, int],
-    coefficient_radius: float,
-    random_generator: np.random.Generator,
-) -> np.ndarray:
-    random_values = random_generator.random((*control_grid_shape, 2), dtype=np.float32)
-    vector_radius = np.float32(coefficient_radius) * np.sqrt(random_values[..., 0])
-    angle = np.float32(2 * np.pi) * random_values[..., 1]
-    control_coefficients = np.empty((*control_grid_shape, 2), dtype=np.float32)
-    control_coefficients[..., 0] = vector_radius * np.cos(angle)
-    control_coefficients[..., 1] = vector_radius * np.sin(angle)
-    return control_coefficients
-
-
 class Affine3D(Transform3D):
     """Apply a sampled 3D affine mapping to volume and mask3d by rotating, scaling, and shifting
     voxel coordinates for robust medical-imaging augmentation.
@@ -423,7 +409,7 @@ class ElasticTransform3D(Transform3D):
         shortest_active_span = min(axis_length - 1 for axis_length in volume_shape if axis_length > 1)
         coefficient_radius = magnitude * shortest_active_span
         control_coefficients = {
-            plane: _sample_elastic_control_coefficients(
+            plane: fgeometric.sample_elastic_control_coefficients(
                 self.control_grid_shape,
                 coefficient_radius,
                 sampling.random_generator,

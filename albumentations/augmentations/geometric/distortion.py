@@ -406,13 +406,12 @@ class ElasticTransform(BaseRemapTransform):
                 }
             )
 
-        random_values = sampling.random_generator.random((*self.control_grid_shape, 2), dtype=np.float32)
         radius = np.float32(magnitude * min(height - 1, width - 1))
-        vector_radius = radius * np.sqrt(random_values[..., 0])
-        angle = np.float32(2 * np.pi) * random_values[..., 1]
-        control_coefficients = np.empty((*self.control_grid_shape, 2), dtype=np.float32)
-        control_coefficients[..., 0] = vector_radius * np.cos(angle)
-        control_coefficients[..., 1] = vector_radius * np.sin(angle)
+        control_coefficients = fgeometric.sample_elastic_control_coefficients(
+            self.control_grid_shape,
+            radius,
+            sampling.random_generator,
+        )
         return SampledParams(
             params={
                 "displacement_magnitude": magnitude,

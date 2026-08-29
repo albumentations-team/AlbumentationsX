@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
+import torch
 
 
 def _array_difference(actual: Any, expected: np.ndarray, path: str) -> str | None:
@@ -14,6 +15,16 @@ def _array_difference(actual: Any, expected: np.ndarray, path: str) -> str | Non
         return f"{path} changed array metadata from {expected.dtype}/{expected.shape} to {actual.dtype}/{actual.shape}"
     if not np.array_equal(actual, expected):
         return f"{path} array contents changed"
+    return None
+
+
+def _tensor_difference(actual: Any, expected: torch.Tensor, path: str) -> str | None:
+    if type(actual) is not torch.Tensor:
+        return f"{path} changed type from Tensor to {type(actual).__name__}"
+    if actual.dtype != expected.dtype or actual.shape != expected.shape:
+        return f"{path} changed Tensor metadata from {expected.dtype}/{expected.shape} to {actual.dtype}/{actual.shape}"
+    if not torch.equal(actual, expected):
+        return f"{path} Tensor contents changed"
     return None
 
 
@@ -45,6 +56,8 @@ def find_contract_difference(actual: Any, expected: Any, path: str = "value") ->
     """Return the first structural or value difference between transport-safe values."""
     if isinstance(expected, np.ndarray):
         return _array_difference(actual, expected, path)
+    if isinstance(expected, torch.Tensor):
+        return _tensor_difference(actual, expected, path)
     if isinstance(expected, dict):
         return _mapping_difference(actual, expected, path)
     if isinstance(expected, (list, tuple)):

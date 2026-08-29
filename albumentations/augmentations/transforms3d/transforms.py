@@ -10,6 +10,7 @@ interface and implements specific 3D augmentation logic.
 from typing import Annotated, Any, ClassVar, Final, Literal, cast
 
 import numpy as np
+import torch
 from albucore import resize3d
 from pydantic import AfterValidator, field_validator, model_validator
 from typing_extensions import Self
@@ -143,8 +144,6 @@ class Affine3D(Transform3D):
     """
 
     _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
-    _supports_cpu_tensor = True
-    _cpu_tensor_targets = frozenset({"volume", "mask3d"})
 
     class InitSchema(BaseTransformInitSchema):
         rotate_range: AxisRanges3D
@@ -224,7 +223,7 @@ class Affine3D(Transform3D):
 
     def apply_to_volume(
         self,
-        volume: VolumeType,
+        volume: VolumeType | torch.Tensor,
         matrix: np.ndarray,
         output_shape: tuple[int, int, int],
         **params: Any,
@@ -236,7 +235,7 @@ class Affine3D(Transform3D):
 
     def apply_to_mask3d(
         self,
-        mask3d: VolumeType,
+        mask3d: VolumeType | torch.Tensor,
         matrix: np.ndarray,
         output_shape: tuple[int, int, int],
         **params: Any,
@@ -299,9 +298,6 @@ class Anisotropy3D(VolumeOnlyTransform):
         (32, 128, 128, 1)
 
     """
-
-    _supports_cpu_tensor = True
-    _cpu_tensor_targets = frozenset({"volume", "mask3d"})
 
     class InitSchema(BaseTransformInitSchema):
         axes: tuple[AxisIndex3D, ...]
@@ -368,7 +364,7 @@ class Anisotropy3D(VolumeOnlyTransform):
 
     def apply_to_volume(
         self,
-        volume: VolumeType,
+        volume: VolumeType | torch.Tensor,
         downsample_shape: tuple[int, int, int],
         **params: Any,
     ) -> VolumeType:
@@ -431,8 +427,6 @@ class Resize3D(Transform3D):
     """
 
     _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
-    _supports_cpu_tensor = True
-    _cpu_tensor_targets = frozenset({"volume"})
 
     class InitSchema(BaseTransformInitSchema):
         size: Annotated[tuple[int, int, int], AfterValidator(check_range_bounds(1, None))]
@@ -460,7 +454,7 @@ class Resize3D(Transform3D):
     ) -> SampledParams:
         return SampledParams(params={"source_shape": _sampling_volume_shape(targets)})
 
-    def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
+    def apply_to_volume(self, volume: VolumeType | torch.Tensor, **params: Any) -> VolumeType:
         return cast("VolumeType", resize3d(volume, self.size, self.interpolation))
 
     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:

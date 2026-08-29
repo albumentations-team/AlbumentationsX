@@ -96,7 +96,7 @@ def test_resize_3d_matches_trilinear_reference():
     np.testing.assert_allclose(result, expected, rtol=2e-4, atol=3e-5)
 
 
-def test_resize_3d_supports_cpu_tensor_volume():
+def test_resize_3d_accepts_tensor_volume():
     volume = np.random.default_rng(137).random((3, 4, 5, 2), dtype=np.float32)
     tensor = torch.from_numpy(np.ascontiguousarray(volume.transpose(3, 0, 1, 2)))
 

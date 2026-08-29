@@ -5,8 +5,10 @@ import albumentations as A
 from tests.helpers.target_contracts import (
     CORE_TARGET_CONTRACT_PAIRS,
     EXTENDED_TARGET_CONTRACT_PAIRS,
+    TENSOR_TARGET_CONTRACT_PAIRS,
     TargetContractPair,
     run_target_cluster_contract,
+    run_tensor_target_cluster_contract,
 )
 from tests.helpers.target_profiles import TARGET_PROFILES_BY_ID
 from tests.helpers.transform_cases import ALL_DUAL_TRANSFORM_CONTRACT_CASES
@@ -21,6 +23,11 @@ def test_core_target_cluster_contract(pair: TargetContractPair) -> None:
 @pytest.mark.parametrize("pair", EXTENDED_TARGET_CONTRACT_PAIRS, ids=lambda pair: pair.pair_id)
 def test_extended_target_cluster_contract(pair: TargetContractPair) -> None:
     run_target_cluster_contract(pair.case, pair.profile, seed=137)
+
+
+@pytest.mark.parametrize("pair", TENSOR_TARGET_CONTRACT_PAIRS, ids=lambda pair: f"tensor-{pair.pair_id}")
+def test_tensor_target_cluster_contract(pair: TargetContractPair) -> None:
+    run_tensor_target_cluster_contract(pair.case, pair.profile, seed=137)
 
 
 def test_target_contract_ids_are_unique() -> None:

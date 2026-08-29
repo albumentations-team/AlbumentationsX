@@ -158,10 +158,11 @@ class BaseRemapTransform(DualTransform):
         bboxes: np.ndarray,
         map_x: np.ndarray,
         map_y: np.ndarray,
+        shape: tuple[int, int],
+        bbox_type: Literal["hbb", "obb"],
         **params: Any,
     ) -> np.ndarray:
-        image_shape = params["shape"][:2]
-        bbox_type = params["bbox_type"]
+        image_shape = shape[:2]
         bboxes_denorm = denormalize_bboxes(bboxes, image_shape)
         bboxes_returned = fgeometric.remap_bboxes(
             bboxes_denorm,
@@ -253,11 +254,12 @@ class BaseDistortion(BaseRemapTransform):
         keypoints: np.ndarray,
         map_x: np.ndarray,
         map_y: np.ndarray,
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
         if self.keypoint_remapping_method == "direct":
-            return fgeometric.remap_keypoints(keypoints, map_x, map_y, params["shape"])
-        return fgeometric.remap_keypoints_via_mask(keypoints, map_x, map_y, params["shape"])
+            return fgeometric.remap_keypoints(keypoints, map_x, map_y, shape)
+        return fgeometric.remap_keypoints_via_mask(keypoints, map_x, map_y, shape)
 
 
 class ElasticTransform(BaseRemapTransform):
@@ -292,6 +294,11 @@ class ElasticTransform(BaseRemapTransform):
         The constructor enforces `2 * high * sqrt((rows - 3)^2 + (columns - 3)^2) < 0.75`.
         `ReplayCompose` stores the compact sampled coefficient lattice and replays it for the same
         spatial shape. Applied configuration fixes the realized magnitude but samples a new lattice.
+
+    See Also:
+        - ElasticTransform3D: Applies coupled XY, XZ, and YZ cubic fields to volumetric data and XYZ keypoints.
+        - GridDistortion: Uses a rectilinear grid when piecewise-linear deformation fits the data.
+        - OpticalDistortion: Simulates lens-like radial distortion in camera images.
 
     Examples:
         >>> import numpy as np
@@ -399,13 +406,12 @@ class ElasticTransform(BaseRemapTransform):
                 }
             )
 
-        random_values = sampling.random_generator.random((*self.control_grid_shape, 2), dtype=np.float32)
         radius = np.float32(magnitude * min(height - 1, width - 1))
-        vector_radius = radius * np.sqrt(random_values[..., 0])
-        angle = np.float32(2 * np.pi) * random_values[..., 1]
-        control_coefficients = np.empty((*self.control_grid_shape, 2), dtype=np.float32)
-        control_coefficients[..., 0] = vector_radius * np.cos(angle)
-        control_coefficients[..., 1] = vector_radius * np.sin(angle)
+        control_coefficients = fgeometric.sample_elastic_control_coefficients(
+            self.control_grid_shape,
+            radius,
+            sampling.random_generator,
+        )
         return SampledParams(
             params={
                 "displacement_magnitude": magnitude,
@@ -462,12 +468,13 @@ class ElasticTransform(BaseRemapTransform):
         self,
         keypoints: np.ndarray,
         control_coefficients: np.ndarray,
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
         return fgeometric.remap_elastic_keypoints(
             keypoints,
             control_coefficients,
-            params["shape"][:2],
+            shape[:2],
         )
 
 

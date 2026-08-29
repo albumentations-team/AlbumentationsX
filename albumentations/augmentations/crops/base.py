@@ -134,9 +134,10 @@ class BaseCrop(DualTransform):
         self,
         bboxes: np.ndarray,
         crop_coords: tuple[int, int, int, int],
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
-        return fcrops.crop_bboxes_by_coords(bboxes, crop_coords, params["shape"][:2])
+        return fcrops.crop_bboxes_by_coords(bboxes, crop_coords, shape[:2])
 
     def apply_to_keypoints(
         self,
@@ -415,13 +416,13 @@ class BaseCropAndPad(BaseCrop):
             "pad_right": w_pad_right,
         }
 
-    def apply(
+    def apply(  # type: ignore[override]  # pyrefly: ignore[bad-override]
         self,
         img: ImageType,
         crop_coords: tuple[int, int, int, int],
+        pad_params: dict[str, int] | None,
         **params: Any,
     ) -> ImageType:
-        pad_params = params.get("pad_params")
         if pad_params is not None:
             img = fgeometric.pad_with_params(
                 img,
@@ -434,13 +435,13 @@ class BaseCropAndPad(BaseCrop):
             )
         return BaseCrop.apply(self, img, crop_coords, **params)
 
-    def apply_to_mask(
+    def apply_to_mask(  # type: ignore[override]  # pyrefly: ignore[bad-override]
         self,
         mask: ImageType,
         crop_coords: Any,
+        pad_params: dict[str, int] | None,
         **params: Any,
     ) -> ImageType:
-        pad_params = params.get("pad_params")
         if pad_params is not None:
             mask = fgeometric.pad_with_params(
                 mask,
@@ -454,13 +455,13 @@ class BaseCropAndPad(BaseCrop):
         # Note' that super().apply would apply the padding twice as it is looped to this.apply
         return BaseCrop.apply(self, mask, crop_coords=crop_coords, **params)
 
-    def apply_to_images(
+    def apply_to_images(  # type: ignore[override]  # pyrefly: ignore[bad-override]
         self,
         images: ImageType,
         crop_coords: tuple[int, int, int, int],
+        pad_params: dict[str, int] | None,
         **params: Any,
     ) -> ImageType:
-        pad_params = params.get("pad_params")
         if pad_params is not None:
             images = fcrops.pad_along_axes(
                 images,
@@ -475,13 +476,13 @@ class BaseCropAndPad(BaseCrop):
             )
         return BaseCrop.apply_to_images(self, images, crop_coords, **params)
 
-    def apply_to_mask3d(
+    def apply_to_mask3d(  # type: ignore[override]  # pyrefly: ignore[bad-override]
         self,
         mask3d: VolumeType,
         crop_coords: tuple[int, int, int, int],
+        pad_params: dict[str, int] | None,
         **params: Any,
     ) -> VolumeType:
-        pad_params = params.get("pad_params")
         if pad_params is not None:
             mask3d = fcrops.pad_along_axes(
                 mask3d,
@@ -496,14 +497,15 @@ class BaseCropAndPad(BaseCrop):
             )
         return BaseCrop.apply_to_images(self, mask3d, crop_coords, **params)
 
-    def apply_to_bboxes(
+    def apply_to_bboxes(  # type: ignore[override]  # pyrefly: ignore[bad-override]
         self,
         bboxes: np.ndarray,
         crop_coords: tuple[int, int, int, int],
+        pad_params: dict[str, int] | None,
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
-        pad_params = params.get("pad_params")
-        image_shape = params["shape"][:2]
+        image_shape = shape[:2]
 
         if pad_params is not None:
             # First denormalize bboxes to absolute coordinates
@@ -527,21 +529,20 @@ class BaseCropAndPad(BaseCrop):
 
             bboxes_np = normalize_bboxes(bboxes_np, padded_shape)
 
-            params["shape"] = padded_shape
-
-            return BaseCrop.apply_to_bboxes(self, bboxes_np, crop_coords, **params)
+            return BaseCrop.apply_to_bboxes(self, bboxes_np, crop_coords, shape=padded_shape, **params)
 
         # If no padding, use original function behavior
-        return BaseCrop.apply_to_bboxes(self, bboxes, crop_coords, **params)
+        return BaseCrop.apply_to_bboxes(self, bboxes, crop_coords, shape=shape, **params)
 
-    def apply_to_keypoints(
+    def apply_to_keypoints(  # type: ignore[override]  # pyrefly: ignore[bad-override]
         self,
         keypoints: np.ndarray,
         crop_coords: tuple[int, int, int, int],
+        pad_params: dict[str, int] | None,
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
-        pad_params = params.get("pad_params")
-        image_shape = params["shape"][:2]
+        image_shape = shape[:2]
 
         if pad_params is not None:
             # Calculate padded dimensions
@@ -560,9 +561,9 @@ class BaseCropAndPad(BaseCrop):
             )
 
             # Update image shape for subsequent crop operation
-            params = {**params, "shape": (padded_height, padded_width)}
+            shape = (padded_height, padded_width)
 
-        return BaseCrop.apply_to_keypoints(self, keypoints, crop_coords, **params)
+        return BaseCrop.apply_to_keypoints(self, keypoints, crop_coords, shape=shape, **params)
 
 
 class BaseRandomSizedCropInitSchema(BaseTransformInitSchema):
@@ -762,9 +763,10 @@ class _BaseRandomSizedCrop(DualTransform):
         self,
         bboxes: np.ndarray,
         crop_coords: tuple[int, int, int, int],
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
-        return fcrops.crop_bboxes_by_coords(bboxes, crop_coords, params["shape"])
+        return fcrops.crop_bboxes_by_coords(bboxes, crop_coords, shape)
 
     def apply_to_keypoints(
         self,

@@ -1,4 +1,4 @@
-"""CPU Tensor boundary tests for the Tensor-native Compose foundation."""
+"""Public CPU Tensor routing contracts for :class:`albumentations.Compose`."""
 
 from typing import Any
 
@@ -7,572 +7,688 @@ import pytest
 import torch
 
 import albumentations as A
-from albumentations.core import composition
+from albumentations.core import transforms_interface
+from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.transforms_interface import ImageOnlyTransform
 from albumentations.core.utils import get_image_data, get_shape, get_volume_shape
 
 
 class _TensorProbe(ImageOnlyTransform):
-    """Private test transform that proves Compose carries Tensor values to dispatch."""
-
-    _supports_cpu_tensor = True
+    """A complete leaf-local Tensor route used to verify native dispatch."""
 
     def __init__(self) -> None:
         super().__init__(p=1.0)
-        self.seen_shapes: list[tuple[int, ...]] = []
+        self.seen: list[tuple[type[Any], tuple[int, ...]]] = []
 
     def apply(self, image: torch.Tensor, **params: Any) -> torch.Tensor:
-        self.seen_shapes.append(params["shape"])
+        self.seen.append((type(image), params["shape"]))
         return image + 1
 
     def apply_to_images(self, images: torch.Tensor, **params: Any) -> torch.Tensor:
-        self.seen_shapes.append(params["shape"])
+        self.seen.append((type(images), params["shape"]))
         return images + 1
 
     def apply_to_volume(self, volume: torch.Tensor, **params: Any) -> torch.Tensor:
-        self.seen_shapes.append(params["shape"])
+        self.seen.append((type(volume), params["shape"]))
         return volume + 1
 
 
 class _NumpyOnlyProbe(ImageOnlyTransform):
-    """Private probe that accepts a Tensor caller only through Compose's whole-pipeline NumPy route."""
+    """A user-style transform that gains Tensor support through the base fallback."""
 
+    def __init__(self) -> None:
+        super().__init__(p=1.0)
+        self.seen: list[tuple[type[Any], tuple[int, ...]]] = []
+
+    def apply(self, image: np.ndarray, **params: Any) -> np.ndarray:
+        self.seen.append((type(image), image.shape))
+        return image + 1
+
+
+class _NegativeStrideProbe(ImageOnlyTransform):
     def __init__(self) -> None:
         super().__init__(p=1.0)
 
     def apply(self, image: np.ndarray, **params: Any) -> np.ndarray:
-        assert isinstance(image, np.ndarray)
-        return image + 1
+        return image[:, ::-1]
+
+
+class _TargetsAsParamsProbe(ImageOnlyTransform):
+    def __init__(self) -> None:
+        super().__init__(p=1.0)
+        self.seen: np.ndarray | None = None
+
+    @property
+    def targets_as_params(self) -> list[str]:
+        return ["offset"]
+
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
+        sampling: SamplingContext,
+    ) -> SampledParams:
+        self.seen = data["offset"]
+        return SampledParams(params={"offset": int(self.seen[0])})
+
+    def apply(self, image: np.ndarray, offset: int, **params: Any) -> np.ndarray:
+        return image + offset
+
+
+class _TensorSubclass(torch.Tensor):
+    """A deliberately unsupported Tensor subclass for boundary validation."""
+
+
+@pytest.mark.parametrize(
+    ("target", "value"),
+    [
+        ("image", torch.zeros((11, 13), dtype=torch.float32)),
+        ("image", torch.zeros((3, 11, 13), dtype=torch.uint8)),
+        ("images", torch.zeros((2, 3, 11, 13), dtype=torch.float32)),
+        ("volume", torch.zeros((3, 5, 11, 13), dtype=torch.uint8)),
+        ("mask", torch.zeros((11, 13), dtype=torch.int16)),
+        ("mask", torch.zeros((2, 11, 13), dtype=torch.float32)),
+        ("masks", torch.zeros((2, 11, 13), dtype=torch.uint8)),
+        ("masks", torch.zeros((2, 3, 11, 13), dtype=torch.int16)),
+        ("mask3d", torch.zeros((5, 11, 13), dtype=torch.uint8)),
+        ("mask3d", torch.zeros((2, 5, 11, 13), dtype=torch.float32)),
+    ],
+)
+def test_noop_preserves_supported_tensor_object(target: str, value: torch.Tensor) -> None:
+    result = A.Compose([A.NoOp(p=1.0)], strict=True)(**{target: value})[target]
+
+    assert result is value
+
+
+@pytest.mark.parametrize(
+    ("target", "shape"),
+    [
+        ("mask", (11, 13)),
+        ("masks", (2, 11, 13)),
+        ("mask3d", (5, 11, 13)),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.uint8, torch.int16, torch.float32])
+def test_tensor_masks_accept_all_declared_public_dtypes(
+    target: str,
+    shape: tuple[int, ...],
+    dtype: torch.dtype,
+) -> None:
+    value = torch.zeros(shape, dtype=dtype)
+
+    assert A.Compose([])(**{target: value})[target] is value
+
+
+@pytest.mark.parametrize(
+    "dtype",
+    [torch.uint8, torch.int16, torch.float32],
+)
+@pytest.mark.parametrize("target", ["mask", "masks", "mask3d"])
+def test_tensor_mask_crop_fallback_preserves_every_accepted_dtype_exactly(target: str, dtype: torch.dtype) -> None:
+    if target == "mask":
+        value = torch.arange(25).reshape(5, 5).to(dtype)
+        result = A.Compose([A.CenterCrop(height=3, width=3, p=1.0)], strict=True)(
+            image=torch.zeros((1, 5, 5), dtype=torch.uint8),
+            mask=value,
+        )[target]
+        expected = value[1:4, 1:4]
+    elif target == "masks":
+        value = torch.arange(2 * 25).reshape(2, 5, 5).to(dtype)
+        result = A.Compose([A.CenterCrop(height=3, width=3, p=1.0)], strict=True)(
+            image=torch.zeros((1, 5, 5), dtype=torch.uint8),
+            masks=value,
+        )[target]
+        expected = value[:, 1:4, 1:4]
+    else:
+        value = torch.arange(5 * 5 * 5).reshape(5, 5, 5).to(dtype)
+        result = A.Compose([A.CenterCrop3D(size=(3, 3, 3), p=1.0)], strict=True)(
+            volume=torch.zeros((1, 5, 5, 5), dtype=torch.uint8),
+            mask3d=value,
+        )[target]
+        expected = value[1:4, 1:4, 1:4]
+
+    assert result.dtype == dtype
+    torch.testing.assert_close(result, expected)
+
+
+@pytest.mark.parametrize(
+    ("target", "value", "message"),
+    [
+        ("images", torch.zeros((3, 11, 13), dtype=torch.uint8), "must have shape"),
+        ("volume", torch.zeros((5, 11, 13), dtype=torch.uint8), "must have shape"),
+        ("image", torch.zeros((3, 11, 13), dtype=torch.int64), "dtype one of"),
+        ("mask", torch.zeros((11, 13), dtype=torch.bool), "dtype one of"),
+        ("mask", torch.zeros((11, 13), dtype=torch.int8), "dtype one of"),
+        ("mask", torch.zeros((11, 13), dtype=torch.int32), "dtype one of"),
+        ("mask", torch.zeros((11, 13), dtype=torch.int64), "dtype one of"),
+        ("mask", torch.zeros((11, 13), dtype=torch.uint16), "dtype one of"),
+        ("mask", torch.zeros((11, 13), dtype=torch.uint32), "dtype one of"),
+        ("mask", torch.zeros((11, 13), dtype=torch.uint64), "dtype one of"),
+        ("mask", torch.zeros((11, 13), dtype=torch.float64), "dtype one of"),
+        ("bboxes", torch.zeros((1, 4), dtype=torch.int64), "dtype one of"),
+        ("keypoints", torch.zeros((1, 2, 1), dtype=torch.float32), "must have shape"),
+        ("image", torch.zeros((3, 11, 13), dtype=torch.float32, requires_grad=True), "requires_grad=False"),
+        ("image", torch.zeros((3, 11, 13), dtype=torch.uint8).to_sparse(), "torch.strided"),
+        ("image", torch.zeros((3, 11, 13), dtype=torch.uint8).as_subclass(_TensorSubclass), "plain torch.Tensor"),
+    ],
+)
+def test_tensor_boundary_rejects_unsupported_inputs_before_execution(
+    target: str,
+    value: torch.Tensor,
+    message: str,
+) -> None:
+    with pytest.raises((TypeError, ValueError), match=message):
+        A.Compose([_NumpyOnlyProbe()], strict=True)(**{target: value})
+
+
+@pytest.mark.parametrize(
+    "pipeline",
+    [
+        lambda: A.Compose([A.ToTensorV2(p=1.0)], strict=True),
+        lambda: A.Compose([A.Sequential([A.ToTensorV2(p=1.0)], p=1.0)], strict=True),
+        lambda: A.Compose([A.OneOf([A.ToTensor3D(p=1.0)], p=1.0)], strict=True),
+    ],
+)
+def test_tensor_input_rejects_tensor_terminal_anywhere_in_the_graph(pipeline: Any) -> None:
+    with pytest.raises(TypeError, match="accept NumPy input only"):
+        pipeline()(image=torch.zeros((3, 11, 13), dtype=torch.uint8))
+
+
+@pytest.mark.parametrize("terminal", [A.ToTensorV2(p=1.0), A.ToTensor3D(p=1.0)])
+@pytest.mark.parametrize("p", [0.0, 1.0])
+def test_tensor_terminal_rejects_direct_tensor_calls(terminal: A.BasicTransform, p: float) -> None:
+    terminal.p = p
+
+    with pytest.raises(TypeError, match="accept NumPy input only"):
+        terminal(image=torch.zeros((3, 11, 13), dtype=torch.uint8))
 
 
 @pytest.mark.parametrize(
     ("target", "shape", "expected_shape"),
     [
         ("image", (3, 11, 13), (11, 13, 3)),
-        ("images", (3, 5, 11, 13), (11, 13, 3)),
+        ("images", (5, 3, 11, 13), (11, 13, 3)),
         ("volume", (3, 7, 11, 13), (11, 13, 3)),
     ],
 )
-def test_compose_preserves_cpu_tensor_representation_and_logical_shape(
+def test_tensor_aware_leaf_receives_canonical_tensor_layout(
     target: str,
     shape: tuple[int, ...],
     expected_shape: tuple[int, ...],
 ) -> None:
     probe = _TensorProbe()
-    tensor = torch.zeros(shape, dtype=torch.uint8)
+    value = torch.zeros(shape, dtype=torch.uint8)
 
-    result = A.Compose([probe], strict=True)(**{target: tensor})
+    result = A.Compose([probe], strict=True)(**{target: value})[target]
 
-    assert isinstance(result[target], torch.Tensor)
-    assert result[target].shape == tensor.shape
-    assert result[target].dtype == tensor.dtype
-    torch.testing.assert_close(result[target], tensor + 1)
-    assert probe.seen_shapes == [expected_shape]
+    torch.testing.assert_close(result, value + 1)
+    assert probe.seen == [(torch.Tensor, expected_shape)]
 
 
-def test_empty_compose_preserves_cpu_tensor_identity() -> None:
-    tensor = torch.zeros((3, 11, 13), dtype=torch.float32)
+def test_numpy_pipeline_never_enters_tensor_adapters(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail(*args: object, **kwargs: object) -> None:
+        raise AssertionError("NumPy input entered a Tensor adapter")
 
-    result = A.Compose([])(image=tensor)
+    monkeypatch.setattr(transforms_interface, "tensor_to_numpy_spatial", fail)
+    monkeypatch.setattr(transforms_interface, "numpy_to_tensor_spatial", fail)
+    image = np.arange(5 * 7 * 3, dtype=np.uint8).reshape(5, 7, 3)
 
-    assert result["image"] is tensor
+    result = A.Compose([A.CenterCrop(height=3, width=5, p=1.0), A.HorizontalFlip(p=1.0)], strict=True)(image=image)
 
-
-def test_noop_preserves_non_contiguous_cpu_tensor_without_copy() -> None:
-    tensor = torch.arange(3 * 11 * 13, dtype=torch.float32).reshape(3, 11, 13)[:, :, ::2]
-    assert not tensor.is_contiguous()
-
-    result = A.Compose([A.NoOp(p=1.0)], strict=True)(image=tensor)
-
-    assert result["image"] is tensor
-    assert not result["image"].is_contiguous()
+    np.testing.assert_array_equal(result["image"], image[1:4, 1:6][:, ::-1])
 
 
-def test_tensor_additional_target_uses_channel_first_shape_contract() -> None:
-    probe = _TensorProbe()
-    image = torch.zeros((3, 11, 13), dtype=torch.uint8)
-    image2 = torch.full((3, 11, 13), 7, dtype=torch.uint8)
-    compose = A.Compose([probe], additional_targets={"image2": "image"}, strict=True)
+def test_leaf_does_not_bridge_tensor_targets_it_passes_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail(*args: object, **kwargs: object) -> None:
+        raise AssertionError("pass-through target entered a Tensor adapter")
 
-    result = compose(image=image, image2=image2)
+    monkeypatch.setattr(transforms_interface, "tensor_to_numpy_spatial", fail)
+    monkeypatch.setattr(transforms_interface, "numpy_to_tensor_spatial", fail)
+    image = np.zeros((5, 7, 3), dtype=np.uint8)
+    mask = torch.zeros((5, 7), dtype=torch.uint8)
 
-    torch.testing.assert_close(result["image"], image + 1)
-    torch.testing.assert_close(result["image2"], image2 + 1)
-    assert probe.seen_shapes == [(11, 13, 3), (11, 13, 3)]
+    result = A.Compose([A.RandomBrightnessContrast(p=1.0)], strict=True)(image=image, mask=mask)
 
-
-def test_tensor_nested_compose_uses_declared_child_capability() -> None:
-    tensor = torch.zeros((3, 11, 13), dtype=torch.float32)
-    compose = A.Compose([A.Sequential([_TensorProbe()], p=1.0)], strict=True)
-
-    result = compose(image=tensor)
-
-    torch.testing.assert_close(result["image"], tensor + 1)
+    assert isinstance(result["image"], np.ndarray)
+    assert result["mask"] is mask
 
 
-@pytest.mark.parametrize("dtype", [torch.uint8, torch.float32])
-@pytest.mark.parametrize("channels", [1, 3])
-def test_noop_preserves_tensor_image_sequences(dtype: torch.dtype, channels: int) -> None:
-    images = torch.zeros((channels, 5, 11, 13), dtype=dtype)
+def test_numpy_only_user_transform_uses_a_leaf_local_tensor_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    conversions: list[str] = []
+    to_numpy = transforms_interface.tensor_to_numpy_spatial
+    to_tensor = transforms_interface.numpy_to_tensor_spatial
 
-    result = A.Compose([A.NoOp(p=1.0)], strict=True)(images=images)["images"]
+    def track_to_numpy(value: torch.Tensor, target: str) -> np.ndarray:
+        conversions.append(f"to_numpy:{target}")
+        return to_numpy(value, target)
 
-    assert isinstance(result, torch.Tensor)
-    assert result.data_ptr() == images.data_ptr()
-    assert result.shape == images.shape
-    assert result.dtype == images.dtype
+    def track_to_tensor(value: np.ndarray, target: str) -> torch.Tensor:
+        conversions.append(f"to_tensor:{target}")
+        return to_tensor(value, target)
 
+    monkeypatch.setattr(transforms_interface, "tensor_to_numpy_spatial", track_to_numpy)
+    monkeypatch.setattr(transforms_interface, "numpy_to_tensor_spatial", track_to_tensor)
+    first, second = _NumpyOnlyProbe(), _NumpyOnlyProbe()
+    image = torch.zeros((3, 5, 7), dtype=torch.uint8)
 
-@pytest.mark.parametrize(
-    ("target", "value"),
-    [
-        ("images", np.zeros((2, 11, 13, 3), dtype=np.uint8)),
-        ("masks", np.zeros((2, 11, 13, 3), dtype=np.uint8)),
-        ("volume", np.zeros((2, 11, 13, 3), dtype=np.uint8)),
-    ],
-)
-def test_noop_preserves_numpy_batch_target_without_copy(target: str, value: np.ndarray) -> None:
-    result = A.Compose([A.NoOp(p=1.0)], strict=True)(**{target: value})[target]
+    result = A.Compose([first, second], strict=True)(image=image)["image"]
 
-    assert result is value
-
-
-def test_nested_compose_preserves_tensor_annotations() -> None:
-    image = torch.zeros((3, 11, 13), dtype=torch.uint8)
-    bboxes = torch.tensor([[1, 1, 5, 4]], dtype=torch.float32)
-    keypoints = torch.tensor([[2, 3]], dtype=torch.float32)
-    compose = A.Compose(
-        [A.Compose([A.NoOp(p=1.0)], strict=True)],
-        bbox_params=A.BboxParams(coord_format="pascal_voc"),
-        keypoint_params=A.KeypointParams(coord_format="xy"),
-        strict=True,
-    )
-
-    result = compose(image=image, bboxes=bboxes, keypoints=keypoints)
-
-    for target, expected in (("image", image), ("bboxes", bboxes), ("keypoints", keypoints)):
-        assert isinstance(result[target], torch.Tensor)
-        torch.testing.assert_close(result[target], expected)
+    torch.testing.assert_close(result, image + 2)
+    assert first.seen == [(np.ndarray, (5, 7, 3))]
+    assert second.seen == [(np.ndarray, (5, 7, 3))]
+    assert conversions == ["to_numpy:image", "to_tensor:image", "to_numpy:image", "to_tensor:image"]
 
 
-@pytest.mark.parametrize("terminal", [A.ToTensorV2(p=1.0), A.ToTensor3D(p=1.0)])
-def test_tensor_rejects_legacy_terminal_transforms(terminal: A.BasicTransform) -> None:
-    with pytest.raises(TypeError, match="remove ToTensorV2 or ToTensor3D"):
-        A.Compose([terminal])(image=torch.zeros((3, 11, 13), dtype=torch.uint8))
+def test_lambda_tensor_input_uses_its_numpy_handler() -> None:
+    seen: list[type[Any]] = []
+
+    def add_one(image: np.ndarray, **params: Any) -> np.ndarray:
+        seen.append(type(image))
+        return image + 1
+
+    image = torch.zeros((3, 5, 7), dtype=torch.uint8)
+    result = A.Compose([A.Lambda(image=add_one, p=1.0)], strict=True)(image=image)["image"]
+
+    assert seen == [np.ndarray]
+    torch.testing.assert_close(result, image + 1)
+
+
+def test_tensor_fallback_accepts_noncontiguous_input() -> None:
+    image = torch.arange(3 * 7 * 5, dtype=torch.uint8).reshape(3, 7, 5).transpose(1, 2)
+
+    result = A.Compose([A.CenterCrop(height=3, width=5, p=1.0)], strict=True)(image=image)["image"]
+
+    assert not image.is_contiguous()
+    torch.testing.assert_close(result, image[:, 1:4, 1:6])
+
+
+def test_tensor_fallback_materializes_negative_stride_numpy_output() -> None:
+    image = torch.arange(3 * 5 * 7, dtype=torch.uint8).reshape(3, 5, 7)
+
+    result = A.Compose([_NegativeStrideProbe()], strict=True)(image=image)["image"]
+
+    torch.testing.assert_close(result, torch.flip(image, (-1,)))
 
 
 @pytest.mark.parametrize(
-    ("tensor", "message"),
+    "transform",
     [
-        (torch.zeros((11, 13), dtype=torch.uint8), "must have shape"),
-        (torch.zeros((3, 11, 13), dtype=torch.int64), "dtype one of"),
-        (torch.zeros((3, 11, 13), dtype=torch.float32, requires_grad=True), "requires_grad=False"),
+        A.Compose([], strict=True),
+        A.Compose([A.CenterCrop(height=3, width=5, p=1.0)], p=0.0, strict=True),
+        A.Compose([A.CenterCrop(height=3, width=5, p=0.0)], strict=True),
     ],
 )
-def test_tensor_boundary_rejects_invalid_image_contract(tensor: torch.Tensor, message: str) -> None:
-    with pytest.raises((TypeError, ValueError), match=message):
-        A.Compose([])(image=tensor)
+def test_unapplied_tensor_pipeline_preserves_object_identity(transform: A.Compose) -> None:
+    image = torch.zeros((3, 5, 7), dtype=torch.uint8)
+
+    assert transform(image=image)["image"] is image
 
 
-@pytest.mark.parametrize(
-    ("target", "tensor", "message"),
-    [
-        ("mask", torch.zeros((1, 11, 13), dtype=torch.uint8), "must have shape"),
-        ("masks", torch.zeros((11, 13), dtype=torch.uint8), "must have shape"),
-        ("bboxes", torch.zeros((1, 4), dtype=torch.int64), "dtype one of"),
-        ("keypoints", torch.zeros((1, 2, 1), dtype=torch.float32), "must have shape"),
-    ],
-)
-def test_tensor_boundary_rejects_invalid_annotation_contract(
-    target: str,
-    tensor: torch.Tensor,
-    message: str,
-) -> None:
-    with pytest.raises((TypeError, ValueError), match=message):
-        A.Compose([])(
-            image=torch.zeros((3, 11, 13), dtype=torch.uint8),
-            **{target: tensor},
-        )
+def test_mixed_target_containers_are_independent_through_numpy_fallback() -> None:
+    image = torch.arange(3 * 5 * 7, dtype=torch.uint8).reshape(3, 5, 7)
+    mask = np.arange(5 * 7, dtype=np.uint8).reshape(5, 7)
+
+    result = A.Compose([A.CenterCrop(height=3, width=5, p=1.0)], strict=True)(image=image, mask=mask)
+
+    assert isinstance(result["image"], torch.Tensor)
+    assert isinstance(result["mask"], np.ndarray)
+    torch.testing.assert_close(result["image"], image[:, 1:4, 1:6])
+    np.testing.assert_array_equal(result["mask"], mask[1:4, 1:6])
 
 
-@pytest.mark.parametrize(
-    ("target", "shape", "dtype"),
-    [
-        ("mask", (11, 13), torch.int64),
-        ("masks", (2, 11, 13), torch.int64),
-        ("mask3d", (2, 11, 13), torch.int64),
-        ("mask", (11, 13), torch.int32),
-        ("masks", (2, 11, 13), torch.int32),
-        ("mask3d", (2, 11, 13), torch.int32),
-        ("mask", (11, 13), torch.bool),
-        ("masks", (2, 11, 13), torch.bool),
-        ("mask3d", (2, 11, 13), torch.bool),
-    ],
-)
-def test_tensor_boundary_rejects_unsupported_mask_dtypes(
-    target: str,
-    shape: tuple[int, ...],
-    dtype: torch.dtype,
-) -> None:
-    with pytest.raises(TypeError, match="dtype one of"):
-        A.Compose([])(
-            image=torch.zeros((3, 11, 13), dtype=torch.uint8),
-            **{target: torch.zeros(shape, dtype=dtype)},
-        )
-
-
-def test_noop_preserves_tensor_spatial_targets_at_compose_boundary() -> None:
-    image = torch.arange(3 * 5 * 7, dtype=torch.float32).reshape(3, 5, 7)
-    mask = torch.arange(5 * 7, dtype=torch.uint8).reshape(5, 7)
+def test_tensor_fallback_preserves_optional_mask_rank_and_annotation_containers() -> None:
+    image = torch.arange(3 * 5 * 7, dtype=torch.uint8).reshape(3, 5, 7)
+    mask = torch.arange(5 * 7, dtype=torch.int16).reshape(5, 7)
     masks = torch.arange(2 * 5 * 7, dtype=torch.uint8).reshape(2, 5, 7)
     bboxes = torch.tensor([[1.0, 1.0, 5.0, 4.0]], dtype=torch.float32)
     keypoints = torch.tensor([[2.0, 3.0]], dtype=torch.float32)
-    compose = A.Compose(
-        [A.NoOp(p=1.0)],
+    transform = A.Compose(
+        [A.CenterCrop(height=3, width=5, p=1.0)],
         bbox_params=A.BboxParams(coord_format="pascal_voc"),
         keypoint_params=A.KeypointParams(coord_format="xy"),
         strict=True,
     )
 
-    result = compose(image=image, mask=mask, masks=masks, bboxes=bboxes, keypoints=keypoints)
+    result = transform(image=image, mask=mask, masks=masks, bboxes=bboxes, keypoints=keypoints)
 
-    for target, expected in {
-        "image": image,
-        "mask": mask,
-        "masks": masks,
-        "bboxes": bboxes,
-        "keypoints": keypoints,
-    }.items():
-        assert isinstance(result[target], torch.Tensor)
-        torch.testing.assert_close(result[target], expected)
+    torch.testing.assert_close(result["image"], image[:, 1:4, 1:6])
+    torch.testing.assert_close(result["mask"], mask[1:4, 1:6])
+    torch.testing.assert_close(result["masks"], masks[:, 1:4, 1:6])
+    torch.testing.assert_close(result["bboxes"], torch.tensor([[0.0, 0.0, 4.0, 3.0]]))
+    torch.testing.assert_close(result["keypoints"], torch.tensor([[1.0, 2.0]]))
+    assert result["mask"].ndim == 2
+    assert result["masks"].ndim == 3
 
 
-def test_noop_preserves_tensor_volume_and_mask3d_without_numpy_batch_dispatch() -> None:
-    volume = torch.arange(3 * 5 * 7 * 9, dtype=torch.float32).reshape(3, 5, 7, 9)
-    mask3d = torch.zeros((5, 7, 9), dtype=torch.uint8)
+def test_channel_changing_transform_keeps_a_tensor_channel_axis() -> None:
+    image = torch.arange(5 * 7, dtype=torch.uint8).reshape(5, 7)
 
-    result = A.Compose([A.NoOp(p=1.0)], strict=True)(volume=volume, mask3d=mask3d)
+    result = A.Compose([A.ToRGB(p=1.0)], strict=True)(image=image)["image"]
 
-    assert result["volume"] is volume
-    assert result["mask3d"] is mask3d
-
-
-def test_flip3d_tensor_compose_preserves_volume_mask_and_semantic_mapping() -> None:
-    volume = torch.arange(3 * 4 * 5, dtype=torch.float32).reshape(1, 3, 4, 5)
-    mask3d = (torch.arange(3 * 4 * 5, dtype=torch.uint8).reshape(3, 4, 5) % 2) + 2
-
-    result = A.Compose(
-        [A.Flip3D(flip_axes=(2,), p=1.0)],
-        semantic_mask_label_mappings={"Flip3D": {2: 3, 3: 2}},
-        strict=True,
-    )(volume=volume, mask3d=mask3d)
-
-    expected_mask3d = torch.flip(mask3d, dims=(2,))
-    expected_mask3d = torch.where(expected_mask3d == 2, 3, 2).to(dtype=mask3d.dtype)
-    assert isinstance(result["volume"], torch.Tensor)
-    assert isinstance(result["mask3d"], torch.Tensor)
-    assert result["volume"].dtype == volume.dtype
-    assert result["mask3d"].dtype == mask3d.dtype
-    torch.testing.assert_close(result["volume"], torch.flip(volume, dims=(3,)))
-    torch.testing.assert_close(result["mask3d"], expected_mask3d)
+    assert result.shape == (3, 5, 7)
+    torch.testing.assert_close(result[0], image)
+    torch.testing.assert_close(result[1], image)
+    torch.testing.assert_close(result[2], image)
 
 
-@pytest.mark.parametrize("dtype", [torch.uint8, torch.float32])
-@pytest.mark.parametrize("group_element", ["e", "r90", "r180", "r270", "v", "hvt", "h", "t"])
-@pytest.mark.parametrize("strided", [False, True])
-def test_square_symmetry_volume_tensor_compose_stays_on_direct_route(
+@pytest.mark.parametrize(
+    ("transform_cls", "expected"),
+    [
+        (A.HorizontalFlip, lambda value: torch.flip(value, (-1,))),
+        (A.VerticalFlip, lambda value: torch.flip(value, (-2,))),
+        (A.Transpose, lambda value: value.transpose(-1, -2)),
+    ],
+)
+@pytest.mark.parametrize(
+    ("target", "shape"),
+    [
+        ("image", (3, 5, 7)),
+        ("images", (2, 3, 5, 7)),
+        ("volume", (2, 4, 5, 7)),
+        ("mask", (5, 7)),
+        ("masks", (2, 5, 7)),
+        ("mask3d", (4, 5, 7)),
+    ],
+)
+def test_existing_flip_tensor_paths_stay_native(
     monkeypatch: pytest.MonkeyPatch,
-    dtype: torch.dtype,
-    group_element: str,
-    strided: bool,
+    transform_cls: type[A.DualTransform],
+    expected: Any,
+    target: str,
+    shape: tuple[int, ...],
 ) -> None:
-    volume = torch.arange(2 * 3 * 5 * 5, dtype=dtype).reshape(2, 3, 5, 5)
-    mask3d = torch.arange(3 * 5 * 5, dtype=torch.uint8).reshape(3, 5, 5)
-    if strided:
-        volume = volume.transpose(-2, -1)
-        mask3d = mask3d.transpose(-2, -1)
+    def fail(*args: object, **kwargs: object) -> None:
+        raise AssertionError("native Tensor flip entered the NumPy fallback")
 
-    def fail_on_numpy_bridge(*args: object, **kwargs: object) -> None:
-        raise AssertionError("SquareSymmetry volume Tensor route entered the NumPy bridge")
+    monkeypatch.setattr(transforms_interface, "tensor_to_numpy_spatial", fail)
+    value = torch.arange(int(np.prod(shape)), dtype=torch.uint8).reshape(shape)
 
-    monkeypatch.setattr(composition, "tensor_to_numpy_spatial", fail_on_numpy_bridge)
-    result = A.Compose([A.SquareSymmetry(group_element=group_element, p=1.0)], strict=True)(
+    result = A.Compose([transform_cls(p=1.0)], strict=True)(**{target: value})[target]
+
+    torch.testing.assert_close(result, expected(value))
+
+
+@pytest.mark.parametrize(
+    ("target", "shape"),
+    [
+        ("images", (2, 3, 5, 7)),
+        ("volume", (2, 4, 5, 7)),
+        ("mask3d", (4, 5, 7)),
+    ],
+)
+def test_d4_tensor_handlers_stay_native(
+    monkeypatch: pytest.MonkeyPatch,
+    target: str,
+    shape: tuple[int, ...],
+) -> None:
+    def fail(*args: object, **kwargs: object) -> None:
+        raise AssertionError("native Tensor D4 handler entered the NumPy fallback")
+
+    monkeypatch.setattr(transforms_interface, "tensor_to_numpy_spatial", fail)
+    value = torch.arange(int(np.prod(shape)), dtype=torch.uint8).reshape(shape)
+
+    result = A.Compose([A.D4(group_element="r90", p=1.0)], strict=True)(**{target: value})[target]
+
+    torch.testing.assert_close(result, value.rot90(1, (-2, -1)))
+
+
+def test_tensor_3d_pipeline_keeps_native_and_fallback_routes_composable() -> None:
+    volume = torch.arange(2 * 4 * 5 * 7, dtype=torch.float32).reshape(2, 4, 5, 7)
+    mask3d = torch.arange(4 * 5 * 7, dtype=torch.int16).reshape(4, 5, 7)
+
+    result = A.Compose([A.Flip3D(flip_axes=(2,), p=1.0), A.CenterCrop3D(size=(2, 3, 5), p=1.0)], strict=True)(
         volume=volume,
         mask3d=mask3d,
     )
 
-    expected_volume = _d4_tensor_reference(volume, group_element)
-    expected_mask3d = _d4_tensor_reference(mask3d, group_element)
-    assert result["volume"].dtype == volume.dtype
-    assert result["mask3d"].dtype == mask3d.dtype
-    assert result["volume"].stride() == expected_volume.stride()
-    assert result["mask3d"].stride() == expected_mask3d.stride()
-    torch.testing.assert_close(result["volume"], expected_volume)
-    torch.testing.assert_close(result["mask3d"], expected_mask3d)
-
-
-def _d4_tensor_reference(value: torch.Tensor, group_element: str) -> torch.Tensor:
-    match group_element:
-        case "e":
-            result = value
-        case "r90":
-            result = torch.rot90(value, 1, (-2, -1))
-        case "r180":
-            result = torch.rot90(value, 2, (-2, -1))
-        case "r270":
-            result = torch.rot90(value, 3, (-2, -1))
-        case "v":
-            result = torch.flip(value, (-2,))
-        case "hvt":
-            result = torch.transpose(torch.flip(value, (-2, -1)), -2, -1)
-        case "h":
-            result = torch.flip(value, (-1,))
-        case "t":
-            result = torch.transpose(value, -2, -1)
-        case _:
-            raise AssertionError(f"Unexpected D4 group element: {group_element}")
-    return result
-
-
-def test_tensor_compose_combines_3d_transforms() -> None:
-    volume = torch.arange(3 * 4 * 5, dtype=torch.float32).reshape(1, 3, 4, 5)
-    mask3d = (torch.arange(3 * 4 * 5, dtype=torch.uint8).reshape(3, 4, 5) % 2) + 2
-    transforms = [
-        A.Flip3D(flip_axes=(2,), p=1.0),
-        A.CenterCrop3D(size=(2, 3, 4), p=1.0),
-    ]
-    tensor_compose = A.Compose(
-        transforms,
-        semantic_mask_label_mappings={"Flip3D": {2: 3, 3: 2}},
-        strict=True,
-    )
-    numpy_compose = A.Compose(
-        transforms,
-        semantic_mask_label_mappings={"Flip3D": {2: 3, 3: 2}},
-        strict=True,
-    )
-
-    result = tensor_compose(volume=volume, mask3d=mask3d)
-    expected = numpy_compose(
-        volume=volume.permute(1, 2, 3, 0).numpy(),
-        mask3d=mask3d.numpy(),
-    )
-
-    assert isinstance(result["volume"], torch.Tensor)
-    assert isinstance(result["mask3d"], torch.Tensor)
-    expected_volume = torch.from_numpy(np.ascontiguousarray(expected["volume"])).permute(3, 0, 1, 2)
-    expected_mask3d = torch.from_numpy(np.ascontiguousarray(expected["mask3d"]))
-    torch.testing.assert_close(result["volume"], expected_volume)
-    torch.testing.assert_close(result["mask3d"], expected_mask3d)
-
-
-def test_tensor_compose_bridges_numpy_2d_targets_and_annotations() -> None:
-    image = torch.arange(5 * 5 * 7, dtype=torch.uint8).reshape(5, 5, 7)
-    images = torch.arange(5 * 2 * 5 * 7, dtype=torch.uint8).reshape(5, 2, 5, 7)
-    mask = torch.arange(5 * 7, dtype=torch.uint8).reshape(5, 7)
-    masks = torch.arange(2 * 5 * 7, dtype=torch.uint8).reshape(2, 5, 7)
-    bboxes = torch.tensor([[1, 1, 5, 4]], dtype=torch.float32)
-    keypoints = torch.tensor([[2, 3]], dtype=torch.float32)
-    compose_kwargs = {
-        "bbox_params": A.BboxParams(coord_format="pascal_voc"),
-        "keypoint_params": A.KeypointParams(coord_format="xy"),
-        "strict": True,
-    }
-    tensor_result = A.Compose([A.CenterCrop(height=3, width=5, p=1.0)], **compose_kwargs)(
-        image=image,
-        images=images,
-        mask=mask,
-        masks=masks,
-        bboxes=bboxes,
-        keypoints=keypoints,
-    )
-    numpy_result = A.Compose([A.CenterCrop(height=3, width=5, p=1.0)], **compose_kwargs)(
-        image=image.permute(1, 2, 0).numpy(),
-        images=images.permute(1, 2, 3, 0).numpy(),
-        mask=mask.numpy(),
-        masks=masks.numpy(),
-        bboxes=bboxes.numpy(),
-        keypoints=keypoints.numpy(),
-    )
-
-    expected_image = torch.from_numpy(np.ascontiguousarray(numpy_result["image"])).permute(2, 0, 1)
-    expected_images = torch.from_numpy(np.ascontiguousarray(numpy_result["images"])).permute(3, 0, 1, 2)
-    torch.testing.assert_close(tensor_result["image"], expected_image)
-    torch.testing.assert_close(tensor_result["images"], expected_images)
-    for target in ("mask", "masks", "bboxes", "keypoints"):
-        assert isinstance(tensor_result[target], torch.Tensor)
-        expected = torch.from_numpy(np.ascontiguousarray(numpy_result[target])).to(dtype=tensor_result[target].dtype)
-        torch.testing.assert_close(tensor_result[target], expected)
-
-
-def test_tensor_compose_bridges_nested_numpy_transform() -> None:
-    image = torch.arange(3 * 5 * 7, dtype=torch.uint8).reshape(3, 5, 7)
-    tensor_compose = A.Compose(
-        [A.Sequential([A.CenterCrop(height=3, width=5, p=1.0)], p=1.0)],
-        strict=True,
-    )
-    numpy_compose = A.Compose(
-        [A.Sequential([A.CenterCrop(height=3, width=5, p=1.0)], p=1.0)],
-        strict=True,
-    )
-
-    result = tensor_compose(image=image)["image"]
-    expected = numpy_compose(image=image.permute(1, 2, 0).numpy())["image"]
-
-    assert isinstance(result, torch.Tensor)
-    torch.testing.assert_close(result, torch.from_numpy(np.ascontiguousarray(expected)).permute(2, 0, 1))
-
-
-def test_tensor_compose_bridges_all_selectable_oneof_branches() -> None:
-    image = torch.arange(3 * 5 * 7, dtype=torch.uint8).reshape(3, 5, 7)
-
-    result = A.Compose([A.OneOf([_NumpyOnlyProbe()], p=1.0)], strict=True)(image=image)["image"]
-
-    assert isinstance(result, torch.Tensor)
-    torch.testing.assert_close(result, image + 1)
+    torch.testing.assert_close(result["volume"], torch.flip(volume, (-1,))[:, 1:3, 1:4, 1:6])
+    torch.testing.assert_close(result["mask3d"], torch.flip(mask3d, (-1,))[1:3, 1:4, 1:6])
+    assert result["mask3d"].dtype == torch.int16
 
 
 @pytest.mark.parametrize(
-    ("image", "mask"),
+    ("image", "channels"),
     [
-        (torch.zeros((3, 11, 13), dtype=torch.uint8), np.zeros((11, 13), dtype=np.uint8)),
-        (np.zeros((11, 13, 3), dtype=np.uint8), torch.zeros((11, 13), dtype=torch.uint8)),
+        (
+            torch.arange(3 * 4 * 5, dtype=torch.uint8).reshape(3, 4, 5),
+            (1,),
+        ),
+        (
+            torch.arange(4 * 5, dtype=torch.uint8).reshape(4, 5),
+            (0,),
+        ),
     ],
 )
-def test_tensor_boundary_rejects_mixed_spatial_representations(image: Any, mask: Any) -> None:
-    with pytest.raises(TypeError, match="cannot be mixed across spatial targets"):
-        A.Compose([])(image=image, mask=mask)
+def test_selective_channel_transform_uses_tensor_numpy_fallback(
+    image: torch.Tensor,
+    channels: tuple[int, ...],
+) -> None:
+    source = image.clone()
+    result = A.Compose(
+        [A.SelectiveChannelTransform([A.InvertImg(p=1.0)], channels=channels, p=1.0)],
+        strict=True,
+    )(image=image)["image"]
+
+    assert isinstance(result, torch.Tensor)
+    expected = 255 - source if source.ndim == 2 else source.clone()
+    if source.ndim == 3:
+        expected[list(channels)] = 255 - expected[list(channels)]
+    torch.testing.assert_close(result, expected)
+    torch.testing.assert_close(image, source)
 
 
-def test_tensor_boundary_rejects_numpy_bbox_with_tensor_image() -> None:
-    with pytest.raises(TypeError, match="must also be Tensors"):
-        A.Compose([])(
-            image=torch.zeros((3, 11, 13), dtype=torch.uint8),
-            bboxes=[[1.0, 1.0, 5.0, 4.0]],
-        )
+def test_selective_channel_transform_trace_snapshot_preserves_tensor_representation() -> None:
+    image = torch.arange(3 * 4 * 5, dtype=torch.uint8).reshape(3, 4, 5)
+    traced = A.Compose(
+        [A.SelectiveChannelTransform([A.InvertImg(p=1.0)], channels=(1,), p=1.0)],
+        strict=True,
+    ).run_with_trace(image=image, options=A.TraceOptions(snapshot_targets=("image",)))
+
+    snapshot = traced.records[0].snapshot["image"]
+    assert isinstance(snapshot, torch.Tensor)
+    expected = image.clone()
+    expected[1] = 255 - expected[1]
+    torch.testing.assert_close(snapshot, expected)
 
 
-def test_tensor_shape_helpers_follow_channel_first_images_sequence_and_volume_contracts() -> None:
+@pytest.mark.parametrize(
+    "transform",
+    [
+        A.Affine3D(p=1.0),
+        A.Anisotropy3D(axes=(0,), num_axes_range=(1, 1), downscale_factor_range=(2.0, 2.0), p=1.0),
+        A.Resize3D(size=(2, 3, 5), p=1.0),
+    ],
+)
+def test_existing_3d_tensor_backends_stay_native(
+    monkeypatch: pytest.MonkeyPatch,
+    transform: A.BasicTransform,
+) -> None:
+    def fail(*args: object, **kwargs: object) -> None:
+        raise AssertionError("native Tensor 3D transform entered the NumPy fallback")
+
+    monkeypatch.setattr(transforms_interface, "tensor_to_numpy_spatial", fail)
+    volume = torch.arange(2 * 4 * 5 * 7, dtype=torch.float32).reshape(2, 4, 5, 7)
+
+    result = A.Compose([transform], strict=True)(volume=volume)["volume"]
+
+    assert isinstance(result, torch.Tensor)
+
+
+def test_nested_and_selectable_compositions_use_leaf_fallback() -> None:
+    image = torch.zeros((3, 5, 7), dtype=torch.uint8)
+    nested = A.Compose([A.Sequential([_NumpyOnlyProbe()], p=1.0)], strict=True)
+    selected = A.Compose([A.OneOf([_NumpyOnlyProbe()], p=1.0)], strict=True)
+    sampled = A.Compose([A.SomeOf([_NumpyOnlyProbe()], n=1, p=1.0)], strict=True)
+
+    torch.testing.assert_close(nested(image=image)["image"], image + 1)
+    torch.testing.assert_close(selected(image=image)["image"], image + 1)
+    torch.testing.assert_close(sampled(image=image)["image"], image + 1)
+
+
+def test_direct_container_uses_tensor_fallback_without_a_compose_root() -> None:
+    image = torch.arange(3 * 5 * 7, dtype=torch.uint8).reshape(3, 5, 7)
+    transform = A.OneOf([A.CenterCrop(height=3, width=5, p=1.0)], p=1.0)
+
+    result = transform(image=image)["image"]
+
+    torch.testing.assert_close(result, image[:, 1:4, 1:6])
+
+
+def test_direct_leaf_rejects_optional_channel_tensor_rank() -> None:
+    with pytest.raises(TypeError, match="pass optional-channel inputs through Compose"):
+        A.HorizontalFlip(p=1.0)(image=torch.zeros((5, 7), dtype=torch.uint8))
+
+
+def test_replay_compose_replays_tensor_leaf_fallback() -> None:
+    image = torch.arange(3 * 5 * 7, dtype=torch.uint8).reshape(3, 5, 7)
+    transform = A.ReplayCompose([A.CenterCrop(height=3, width=5, p=1.0)], strict=True)
+
+    first = transform(image=image)
+    replayed = A.ReplayCompose.replay(first["replay"], image=image)
+
+    torch.testing.assert_close(first["image"], image[:, 1:4, 1:6])
+    torch.testing.assert_close(replayed["image"], first["image"])
+
+
+def test_targets_as_params_adapts_tensor_reference_images_and_preserves_metadata_object() -> None:
+    image = torch.zeros((3, 5, 7), dtype=torch.uint8)
+    references = [torch.full((3, 5, 7), 255, dtype=torch.uint8)]
+    transform = A.Compose([A.HistogramMatching(blend_ratio=(1.0, 1.0), metadata_key="refs", p=1.0)], strict=True)
+
+    result = transform(image=image, refs=references)
+
+    torch.testing.assert_close(result["image"], references[0])
+    assert result["refs"] is references
+    assert result["refs"][0] is references[0]
+
+
+def test_tensor_reference_metadata_accepts_optional_channel_rank() -> None:
+    image = torch.zeros((1, 5, 7), dtype=torch.uint8)
+    references = [torch.full((5, 7), 255, dtype=torch.uint8)]
+    transform = A.Compose([A.HistogramMatching(blend_ratio=(1.0, 1.0), metadata_key="refs", p=1.0)], strict=True)
+
+    result = transform(image=image, refs=references)
+
+    torch.testing.assert_close(result["image"], references[0].unsqueeze(0))
+    assert result["refs"] is references
+
+
+def test_targets_as_params_is_the_only_declaration_needed_for_raw_tensor_metadata() -> None:
+    image = torch.zeros((1, 5, 7), dtype=torch.uint8)
+    offset = torch.tensor([3], dtype=torch.int64)
+    probe = _TargetsAsParamsProbe()
+
+    result = A.Compose([probe], strict=True)(image=image, offset=offset)
+
+    assert isinstance(probe.seen, np.ndarray)
+    assert probe.seen.dtype == np.int64
+    torch.testing.assert_close(result["image"], image + 3)
+    assert result["offset"] is offset
+
+
+def test_tensor_overlay_metadata_uses_known_target_fields_only() -> None:
+    image = torch.zeros((3, 5, 7), dtype=torch.uint8)
+    overlay = torch.full((3, 2, 3), 255, dtype=torch.uint8)
+    nested_image = torch.zeros((3, 1, 1), dtype=torch.float64)
+    bbox = torch.tensor([0.0, 0.0, 3 / 7, 2 / 5], dtype=torch.float32)
+    metadata = [{"image": overlay, "bbox": bbox, "note": {"image": nested_image}}]
+
+    result = A.Compose([A.OverlayElements(metadata_key="overlays", p=1.0)], strict=True)(
+        image=image,
+        overlays=metadata,
+    )
+
+    assert torch.count_nonzero(result["image"] == 255) == overlay.numel()
+    assert result["overlays"] is metadata
+    assert result["overlays"][0]["image"] is overlay
+    assert result["overlays"][0]["bbox"] is bbox
+    assert result["overlays"][0]["note"]["image"] is nested_image
+
+
+def test_tensor_fallback_does_not_mutate_overlay_mask_input() -> None:
+    image = torch.zeros((3, 5, 7), dtype=torch.uint8)
+    mask = torch.zeros((1, 5, 7), dtype=torch.int16)
+    metadata = [
+        {
+            "image": torch.full((3, 2, 3), 255, dtype=torch.uint8),
+            "mask": torch.ones((2, 3), dtype=torch.uint8),
+            "mask_id": 9,
+            "bbox": [0.0, 0.0, 3 / 7, 2 / 5],
+        },
+    ]
+
+    result = A.Compose([A.OverlayElements(metadata_key="overlays", p=1.0)], strict=True)(
+        image=image,
+        mask=mask,
+        overlays=metadata,
+    )
+
+    assert torch.equal(mask, torch.zeros_like(mask))
+    assert torch.count_nonzero(result["mask"] == 9) == 6
+
+
+def test_tensor_copy_paste_metadata_adapts_semantic_mask_alias() -> None:
+    image = torch.zeros((3, 8, 10), dtype=torch.uint8)
+    mask = torch.zeros((8, 10), dtype=torch.uint8)
+    donor_mask = torch.ones((3, 4), dtype=torch.uint8)
+    metadata = [
+        {
+            "image": torch.full((3, 3, 4), 255, dtype=torch.uint8),
+            "mask": donor_mask,
+            "semantic_mask": torch.full((3, 4), 7, dtype=torch.uint8),
+        },
+    ]
+
+    result = A.Compose([A.CopyAndPaste(p=1.0)], seed=137, strict=True)(
+        image=image,
+        mask=mask,
+        copy_paste_metadata=metadata,
+    )
+
+    assert isinstance(result["image"], torch.Tensor)
+    assert isinstance(result["mask"], torch.Tensor)
+    assert torch.count_nonzero(result["mask"] == 7) == donor_mask.numel()
+    assert result["copy_paste_metadata"] is metadata
+
+
+def test_tensor_crop_metadata_uses_targets_as_params_without_a_tensor_declaration() -> None:
+    image = torch.arange(3 * 8 * 10, dtype=torch.uint8).reshape(3, 8, 10)
+    cropping_bbox = torch.tensor([2, 2, 8, 6], dtype=torch.int64)
+    transform = A.Compose(
+        [A.RandomCropNearBBox(max_part_shift=(0.0, 0.0), cropping_bbox_key="crop", p=1.0)],
+        strict=True,
+    )
+
+    result = transform(image=image, crop=cropping_bbox)
+
+    assert result["image"].shape == (3, 4, 6)
+    assert result["crop"] is cropping_bbox
+
+
+def test_invalid_targets_as_params_tensor_fails_before_transform_probability() -> None:
+    transform = A.Compose([A.HistogramMatching(metadata_key="refs", p=0.0)], strict=True)
+    refs = [torch.zeros((3, 5, 7), dtype=torch.float64)]
+
+    with pytest.raises(TypeError, match=r"refs\[0\].*dtype one of"):
+        transform(image=np.zeros((5, 7, 3), dtype=np.uint8), refs=refs)
+
+
+def test_shape_helpers_use_canonical_numpy_and_tensor_volume_contracts() -> None:
     image = torch.zeros((3, 11, 13), dtype=torch.uint8)
-    images = torch.zeros((3, 5, 11, 13), dtype=torch.uint8)
+    images = torch.zeros((5, 3, 11, 13), dtype=torch.uint8)
     volume = torch.zeros((3, 7, 11, 13), dtype=torch.uint8)
+    numpy_volume = np.zeros((7, 11, 13, 3), dtype=np.uint8)
 
     assert get_shape({"image": image}) == (11, 13)
     assert get_shape({"images": images}) == (11, 13)
     assert get_shape({"volume": volume}) == (11, 13)
-    assert get_volume_shape({"volume": volume}) == (7, 11, 13)
-    assert get_image_data({"image": image}) == {
-        "dtype": torch.uint8,
-        "height": 11,
-        "width": 13,
-        "num_channels": 3,
-    }
+    assert get_volume_shape(volume) == (7, 11, 13)
+    assert get_volume_shape(numpy_volume) == (7, 11, 13)
     assert get_image_data({"images": images}) == {
         "dtype": torch.uint8,
         "height": 11,
         "width": 13,
         "num_channels": 3,
     }
-    assert get_image_data({"volume": volume}) == {
-        "dtype": torch.uint8,
-        "height": 11,
-        "width": 13,
-        "num_channels": 3,
-    }
-
-
-@pytest.mark.parametrize("dtype", [torch.uint8, torch.float32])
-@pytest.mark.parametrize("channels", [1, 3])
-def test_transpose_preserves_accepted_tensor_image_view_contract(dtype: torch.dtype, channels: int) -> None:
-    image = torch.arange(channels * 5 * 7, dtype=torch.int64).reshape(channels, 5, 7).to(dtype)
-
-    result = A.Compose([A.Transpose(p=1.0)], strict=True)(image=image)["image"]
-
-    assert isinstance(result, torch.Tensor)
-    assert result.shape == (channels, 7, 5)
-    assert result.dtype == image.dtype
-    assert result.data_ptr() == image.data_ptr()
-    assert not result.is_contiguous()
-    torch.testing.assert_close(result, image.mT)
-
-
-def test_transpose_keeps_tensor_masks_bboxes_and_keypoints_aligned_with_tensor_image() -> None:
-    image = torch.arange(3 * 5 * 7, dtype=torch.uint8).reshape(3, 5, 7)
-    numpy_image = image.permute(1, 2, 0).numpy().copy()
-    mask = np.arange(5 * 7, dtype=np.uint8).reshape(5, 7)
-    masks = np.arange(2 * 5 * 7, dtype=np.uint8).reshape(2, 5, 7)
-    mask3d = np.arange(3 * 5 * 7, dtype=np.uint8).reshape(3, 5, 7)
-    bboxes = np.array([[1, 1, 5, 4]], dtype=np.float32)
-    keypoints = np.array([[2, 3]], dtype=np.float32)
-    bbox_params = A.BboxParams(coord_format="pascal_voc")
-    keypoint_params = A.KeypointParams(coord_format="xy")
-
-    tensor_result = A.Compose(
-        [A.Transpose(p=1.0)],
-        bbox_params=bbox_params,
-        keypoint_params=keypoint_params,
-        strict=True,
-    )(
-        image=image,
-        mask=torch.from_numpy(mask.copy()),
-        masks=torch.from_numpy(masks.copy()),
-        mask3d=torch.from_numpy(mask3d.copy()),
-        bboxes=torch.from_numpy(bboxes.copy()),
-        keypoints=torch.from_numpy(keypoints.copy()),
-    )
-    numpy_result = A.Compose(
-        [A.Transpose(p=1.0)],
-        bbox_params=bbox_params,
-        keypoint_params=keypoint_params,
-        strict=True,
-    )(
-        image=numpy_image,
-        mask=mask,
-        masks=masks,
-        mask3d=mask3d,
-        bboxes=bboxes,
-        keypoints=keypoints,
-    )
-
-    torch.testing.assert_close(
-        tensor_result["image"],
-        torch.from_numpy(numpy_result["image"]).permute(2, 0, 1),
-    )
-    for target in ("mask", "masks", "mask3d", "bboxes", "keypoints"):
-        assert isinstance(tensor_result[target], torch.Tensor)
-        expected = torch.from_numpy(numpy_result[target]).to(dtype=tensor_result[target].dtype)
-        torch.testing.assert_close(tensor_result[target], expected)
-
-
-@pytest.mark.parametrize(
-    ("transform_cls", "dimensions"),
-    [
-        (A.HorizontalFlip, (-1,)),
-        (A.VerticalFlip, (-2,)),
-        (A.Transpose, None),
-    ],
-)
-@pytest.mark.parametrize(
-    ("target", "shape"),
-    [
-        ("image", (5, 3, 4)),
-        ("images", (5, 2, 3, 4)),
-        ("volume", (5, 2, 3, 4)),
-        ("mask", (3, 4)),
-        ("masks", (2, 3, 4)),
-        ("mask3d", (2, 3, 4)),
-    ],
-)
-def test_flip_transforms_support_all_tensor_spatial_targets(
-    transform_cls: type[A.DualTransform],
-    dimensions: tuple[int, ...] | None,
-    target: str,
-    shape: tuple[int, ...],
-) -> None:
-    value = torch.arange(int(np.prod(shape)), dtype=torch.uint8).reshape(shape)
-
-    result = A.Compose([transform_cls(p=1.0)], strict=True)(**{target: value})[target]
-
-    expected = value.transpose(-1, -2) if dimensions is None else torch.flip(value, dimensions)
-    assert result.dtype == value.dtype
-    torch.testing.assert_close(result, expected)

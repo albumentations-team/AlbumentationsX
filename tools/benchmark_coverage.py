@@ -238,6 +238,7 @@ SPECIAL_TARGET_ALIAS_TO_TRANSFORM = {
 VOLUME_ALIAS_TO_TRANSFORM = {
     "affine3d": "Affine3D",
     "anisotropy3d": "Anisotropy3D",
+    "elastic3d": "ElasticTransform3D",
     "center_crop3d": "CenterCrop3D",
     "coarse_dropout3d": "CoarseDropout3D",
     "cubic_symmetry": "CubicSymmetry",
@@ -289,6 +290,7 @@ DIRECT_KERNEL_TRANSFORMS = frozenset(
         "Affine",
         "Affine3D",
         "Anisotropy3D",
+        "ElasticTransform3D",
         "AutoContrast",
         "Blur",
         "CenterCrop3D",
@@ -366,7 +368,7 @@ MEMORY_COVERED_TRANSFORMS = frozenset(
 )
 
 PYTORCH_TERMINAL_TENSOR_TRANSFORMS = frozenset({"ToTensor3D", "ToTensorV2"})
-PYTORCH_NATIVE_VOLUME_TRANSFORMS = frozenset({"Affine3D", "Anisotropy3D", "Resize3D"})
+PYTORCH_NATIVE_VOLUME_TRANSFORMS = frozenset({"Affine3D", "Anisotropy3D", "ElasticTransform3D", "Resize3D"})
 PYTORCH_NATIVE_TENSOR_TRANSFORMS = PYTORCH_NATIVE_VOLUME_TRANSFORMS | frozenset({"Transpose"})
 PYTORCH_TENSOR_TRANSFORMS = PYTORCH_TERMINAL_TENSOR_TRANSFORMS | PYTORCH_NATIVE_TENSOR_TRANSFORMS
 PYTORCH_IMAGE_CASES = pytorch_tensor_benchmarks.IMAGE_CASES
@@ -378,6 +380,7 @@ DIRECT_KERNEL_CASE_PREFIXES_BY_TRANSFORM = {
     "Affine": ("bboxes_affine", "keypoints_affine"),
     "Affine3D": ("affine_3d",),
     "Anisotropy3D": ("anisotropy_3d",),
+    "ElasticTransform3D": ("elastic_3d",),
     "AutoContrast": ("auto_contrast",),
     "Blur": ("box_blur",),
     "CenterCrop3D": ("crop3d",),
@@ -471,6 +474,7 @@ ASV_BENCHMARKS = {
     "pytorch_tensor_3d": "pytorch_benchmarks.test_tensor.TimeToTensor3D",
     "pytorch_tensor_native": "pytorch_benchmarks.test_tensor.TimeTensorNativeTranspose",
     "pytorch_tensor_native_affine3d": "pytorch_benchmarks.test_tensor.TimeTensorNativeAffine3D",
+    "pytorch_tensor_native_elastic3d": "pytorch_benchmarks.test_tensor.TimeTensorElasticTransform3D",
     "pytorch_tensor_native_3d": "pytorch_benchmarks.test_tensor.TimeTensorNativeAnisotropy3D",
     "pytorch_tensor_native_resize3d": "pytorch_benchmarks.test_tensor.TimeTensorNativeResize3D",
     "reference_data": "benchmarks.test_family_matrix.TimeReferenceDataFullMatrix.time_transform",
@@ -1308,6 +1312,7 @@ def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
     for transform_name, benchmark_name in {
         "Affine3D": "pytorch_tensor_native_affine3d",
         "Anisotropy3D": "pytorch_tensor_native_3d",
+        "ElasticTransform3D": "pytorch_tensor_native_elastic3d",
         "Resize3D": "pytorch_tensor_native_resize3d",
     }.items():
         for case_id in PYTORCH_NATIVE_VOLUME_CASES:

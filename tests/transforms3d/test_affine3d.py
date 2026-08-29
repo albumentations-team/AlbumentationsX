@@ -146,10 +146,10 @@ def test_affine3d_seeded_replay_reproduces_the_sampled_matrix() -> None:
     np.testing.assert_array_equal(replay_result["volume"], first_result["volume"])
 
 
-def test_affine3d_accepts_cpu_tensor_volume_and_uint16_mask3d() -> None:
+def test_affine3d_accepts_cpu_tensor_volume_and_int16_mask3d() -> None:
     volume = np.arange(3 * 5 * 5 * 3, dtype=np.uint8).reshape(3, 5, 5, 3)
     tensor_volume = torch.from_numpy(np.ascontiguousarray(volume.transpose(3, 0, 1, 2)))
-    tensor_mask = torch.from_numpy((volume[..., 0] % 11).astype(np.uint16))
+    tensor_mask = torch.from_numpy((volume[..., 0] % 11).astype(np.int16))
     transform = A.Compose(
         [
             A.Affine3D(

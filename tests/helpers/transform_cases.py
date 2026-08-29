@@ -613,6 +613,18 @@ _BASE_CASE_SPECS: list[list[Any]] = [
     ],
     [A.Resize3D, {"size": (2, 30, 30), "interpolation": cv2.INTER_NEAREST, "mask_interpolation": cv2.INTER_LINEAR}],
     [
+        A.ElasticTransform3D,
+        {
+            "displacement_range": (0.15, 0.15),
+            "control_grid_shape": (4, 5),
+            "interpolation": cv2.INTER_LINEAR,
+            "mask_interpolation": cv2.INTER_LINEAR,
+            "border_mode": cv2.BORDER_REPLICATE,
+            "fill": 17,
+            "fill_mask": 31,
+        },
+    ],
+    [
         A.Affine3D,
         {
             "rotate_range": {"x": (-10.0, 10.0), "y": (-5.0, 5.0), "z": (-15.0, 15.0)},
@@ -888,6 +900,11 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
             "fill": 7,
             "fill_mask": 3,
         },
+    ),
+    (
+        "nearest-interpolation",
+        A.ElasticTransform3D,
+        {"interpolation": cv2.INTER_NEAREST},
     ),
     ("wide-alpha", A.Enhance, {"alpha_range": (0.2, 0.8)}),
     ("explicit-mask", A.Equalize, {"mask": np.ones((128, 128, 1), dtype=np.uint8), "mask_params": ("mask",)}),

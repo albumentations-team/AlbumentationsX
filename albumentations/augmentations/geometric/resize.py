@@ -255,16 +255,18 @@ class RandomScale(DualTransform):
         bboxes: np.ndarray,
         scale_x: float,
         scale_y: float,
+        shape: tuple[int, int],
+        bbox_type: Literal["hbb", "obb"],
         **params: Any,
     ) -> np.ndarray:
-        height, width = params["shape"][:2]
+        height, width = shape[:2]
         new_height = max(1, round(height * scale_y))
         new_width = max(1, round(width * scale_x))
         return fgeometric.resize_bboxes(
             bboxes,
             image_shape=(height, width),
             output_shape=(new_height, new_width),
-            bbox_type=params["bbox_type"],
+            bbox_type=bbox_type,
         )
 
     def apply_to_keypoints(
@@ -444,7 +446,13 @@ class BaseMaxSizeTransform(DualTransform):
 
         return fgeometric.resize(mask, (new_height, new_width), interpolation=interpolation)
 
-    def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_bboxes(
+        self,
+        bboxes: np.ndarray,
+        shape: tuple[int, int],
+        bbox_type: Literal["hbb", "obb"],
+        **params: Any,
+    ) -> np.ndarray:
         # Bounding box coordinates are scale invariant
         return bboxes
 
@@ -839,16 +847,22 @@ class Resize(DualTransform):
 
         return fgeometric.resize(mask, (self.height, self.width), interpolation=interpolation)
 
-    def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
+    def apply_to_bboxes(
+        self,
+        bboxes: np.ndarray,
+        shape: tuple[int, int],
+        bbox_type: Literal["hbb", "obb"],
+        **params: Any,
+    ) -> np.ndarray:
         return fgeometric.resize_bboxes(
             bboxes,
-            image_shape=params["shape"][:2],
+            image_shape=shape[:2],
             output_shape=(self.height, self.width),
-            bbox_type=params["bbox_type"],
+            bbox_type=bbox_type,
         )
 
-    def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
-        height, width = params["shape"][:2]
+    def apply_to_keypoints(self, keypoints: np.ndarray, shape: tuple[int, int], **params: Any) -> np.ndarray:
+        height, width = shape[:2]
         scale_x = self.width / width
         scale_y = self.height / height
         return fgeometric.keypoints_scale(keypoints, scale_x, scale_y)

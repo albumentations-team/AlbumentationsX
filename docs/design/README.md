@@ -38,6 +38,11 @@ parameter.
 Implemented contract for the greenfield 2D elastic transform: bounded cubic B-spline coefficient grids, synchronized
 targets, certificate-bounded keypoint inversion, and separate constructor, applied-config, and `ReplayCompose` persistence rules.
 
+### [ElasticTransform3D](elastic-transform3d.md)
+
+Implemented true 3D elastic deformation from compact orthogonal cubic control planes, one `remap3d` call per raster target,
+a native CPU Tensor route for one channel, and a measured NumPy bridge for multi-channel volumes.
+
 ### [Generated Transform Target Contracts](transform-target-contracts.md)
 
 Coverage contract for the shared transform-case registry and reusable target profiles.
@@ -80,14 +85,12 @@ shared CPU-only runtime profile explicitly.
 
 **Status**: Implemented. The repository uses explicit `none` and `torch-cpu` runtime profiles.
 
-### [Torch CPU Backend and Tensor-Native Compose](torch-cpu-backend-migration.md)
+### [NumPy and CPU Tensor Transform Routing](numpy-tensor-routing.md)
 
-Plan for routing compatible NumPy/OpenCV/NumKong and Torch segments through the existing `Compose`. Torch is already
-an externally managed, soft-required runtime dependency. The route planner may cross the representation boundary in
-either direction when the complete measured path does not regress.
+Current contract for per-target container preservation, canonical NumPy/Tensor layouts, and transform-level Tensor
+fallback through the existing NumPy paths.
 
-**Status**: In progress. The CPU Tensor boundary is implemented; capability routing and per-family Tensor paths remain
-planned.
+**Status**: Implemented.
 
 ## Creating New Design Documents
 

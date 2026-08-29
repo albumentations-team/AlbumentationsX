@@ -116,6 +116,21 @@ def upscale_distortion_maps(
     return dx, dy
 
 
+def sample_elastic_control_coefficients(
+    control_grid_shape: tuple[int, int],
+    coefficient_radius: float | np.float32,
+    random_generator: np.random.Generator,
+) -> np.ndarray:
+    """Sample float32 2D cubic control coefficients uniformly within a displacement-radius disk."""
+    random_values = random_generator.random((*control_grid_shape, 2), dtype=np.float32)
+    vector_radius = np.float32(coefficient_radius) * np.sqrt(random_values[..., 0])
+    angle = np.float32(2 * np.pi) * random_values[..., 1]
+    control_coefficients = np.empty((*control_grid_shape, 2), dtype=np.float32)
+    control_coefficients[..., 0] = vector_radius * np.cos(angle)
+    control_coefficients[..., 1] = vector_radius * np.sin(angle)
+    return control_coefficients
+
+
 def expand_control_grid(
     control_coefficients: np.ndarray,
     output_shape: tuple[int, int],
@@ -205,11 +220,23 @@ def _cubic_spline_weights(t: np.ndarray) -> np.ndarray:
     )
 
 
-def _evaluate_spline_field(
+def evaluate_control_grid(
     points: np.ndarray,
     control_coefficients: np.ndarray,
     image_shape: tuple[int, int],
 ) -> np.ndarray:
+    """Evaluate a continuous two-component cubic B-spline field at XY points for exact annotation geometry without
+    raster interpolation artifacts.
+
+    Args:
+        points (np.ndarray): XY coordinates with shape `(N, 2)` in pixel-index units.
+        control_coefficients (np.ndarray): Cubic coefficient grid with shape `(rows, columns, 2)`.
+        image_shape (tuple[int, int]): Dense field shape as `(height, width)`.
+
+    Returns:
+        np.ndarray: Float64 displacement vectors with shape `(N, 2)`.
+
+    """
     points64 = np.asarray(points, dtype=np.float64)
     height, width = image_shape
     control = np.asarray(control_coefficients, dtype=np.float64)
@@ -267,7 +294,7 @@ def remap_elastic_keypoints(
     active_points = finite_points.copy()
     for _ in range(96):
         with np.errstate(invalid="ignore", over="ignore"):
-            updated = points - _evaluate_spline_field(transformed_xy, control_coefficients, image_shape)
+            updated = points - evaluate_control_grid(transformed_xy, control_coefficients, image_shape)
         finite_updated = np.isfinite(updated).all(axis=1)
         active_points &= finite_updated
         if (
@@ -293,7 +320,7 @@ def remap_elastic_keypoints(
             residual[active_points] = np.max(
                 np.abs(
                     finite_transformed
-                    + _evaluate_spline_field(finite_transformed, control_coefficients, image_shape)
+                    + evaluate_control_grid(finite_transformed, control_coefficients, image_shape)
                     - finite_points_values,
                 ),
                 axis=1,
@@ -678,6 +705,7 @@ __all__ = [
     "compute_tps_weights",
     "create_elastic_maps",
     "create_piecewise_affine_maps",
+    "evaluate_control_grid",
     "expand_control_grid",
     "generate_control_points",
     "generate_distorted_grid_polygons",
@@ -685,6 +713,7 @@ __all__ = [
     "get_camera_matrix_distortion_maps",
     "get_fisheye_distortion_maps",
     "remap_elastic_keypoints",
+    "sample_elastic_control_coefficients",
     "tps_transform",
     "upscale_distortion_maps",
 ]

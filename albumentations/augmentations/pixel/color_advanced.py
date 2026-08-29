@@ -21,7 +21,6 @@ from ._color_shared import (
     FullInterpolationType,
     ImageOnlyTransform,
     ImageType,
-    batch_transform,
     check_range_bounds,
     field_validator,
     fpixel,
@@ -1063,10 +1062,6 @@ class HEStain(ImageOnlyTransform):
             augment_background=self.augment_background,
             residual_mode=self.residual_mode,
         )
-
-    @batch_transform("channel")
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
-        return self.apply(images, **params)
 
     def sample_parameters(
         self,

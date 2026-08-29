@@ -12,16 +12,20 @@ volume/`mask3d` coverage without another transform list.
 One primary mode per class also runs against the more expensive dtype, channel, batch, empty-target, memory-layout, and
 read-only profiles.
 
-The generated matrix answers two different questions:
+The generated matrix answers three questions:
 
 | Matrix | Cases | Profiles | Property under test |
 |---|---|---|---|
 | Core | Every registered mode | Applicable core profiles | A public mode executes every declared target and preserves target structure |
 | Extended | One explicit primary mode per class | Applicable extended profiles | Mode-independent dtype, channel, batch, empty-target, and memory contracts hold |
+| Tensor | Every core pair plus selected extended pairs | Equivalent plain CPU Tensor targets | Container, layout, dtype, values, replay parity, and input ownership match the NumPy case |
 
 Running every mode through the core profiles closes the gap that allowed a new mutually exclusive constructor mode to
 miss bbox, keypoint, or volume tests. Restricting extended profiles to primary modes controls runtime because these
 workloads test array representation rather than constructor branching.
+
+The Tensor matrix reuses the same cases, profile factories, applicability decisions, and `targets_as_params` metadata.
+It adds no second transform inventory.
 
 ## One configuration inventory, reusable target workloads
 
@@ -79,6 +83,10 @@ Extended profiles run one primary mode per class:
 The channel profiles use the optional `_supported_channel_counts` capability. Transforms with a real channel-count
 restriction declare it on the transform class, so the resolver remains free of transform-name branches.
 
+The Tensor matrix also runs the float32, one-channel, five-channel, `images`, `masks`, and non-contiguous extended
+profiles. The read-only profile remains NumPy-only because `torch.from_numpy()` cannot provide a writable Tensor backed
+by a read-only array.
+
 ## Applicability comes from public behavior
 
 `tests/helpers/target_contracts.py` creates a pair only when all of these conditions hold:
@@ -118,6 +126,10 @@ support cannot pass by exercising only one persistence API.
 
 `tests/helpers/contract_assertions.py` supplies the shared recursive equality and mutation diagnostics used by target,
 applied-configuration, and constructor-serialization tests.
+
+For the Tensor matrix, the runner first captures a NumPy `ReplayCompose` result. It replays the same parameters with
+equivalent Tensor targets, restores Tensor results to logical NumPy layouts, and compares every source key. Tensor
+bboxes and keypoints are compared as `float32`, which is their public Tensor dtype.
 
 ## Specialized tests keep precise semantics
 

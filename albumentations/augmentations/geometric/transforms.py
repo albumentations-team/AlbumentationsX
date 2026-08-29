@@ -11,7 +11,7 @@ from warnings import warn
 
 import cv2
 import numpy as np
-from albucore import batch_transform, is_grayscale_image, is_rgb_image, warp_affine
+from albucore import is_grayscale_image, is_rgb_image, warp_affine
 from pydantic import (
     Field,
     ValidationInfo,
@@ -46,7 +46,6 @@ from albumentations.core.type_definitions import (
     ImageType,
     InterpolationType,
     StackedMasks4D,
-    VolumeType,
 )
 
 from . import functional as fgeometric
@@ -262,12 +261,13 @@ class Perspective(DualTransform):
         matrix_bbox: np.ndarray,
         max_height: int,
         max_width: int,
+        shape: tuple[int, int],
+        bbox_type: Literal["hbb", "obb"],
         **params: Any,
     ) -> np.ndarray:
-        bbox_type = params["bbox_type"]
         return fgeometric.perspective_bboxes(
             bboxes,
-            params["shape"],
+            shape,
             matrix_bbox,
             max_width,
             max_height,
@@ -281,11 +281,12 @@ class Perspective(DualTransform):
         matrix: np.ndarray,
         max_height: int,
         max_width: int,
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
         return fgeometric.perspective_keypoints(
             keypoints,
-            params["shape"],
+            shape,
             matrix,
             max_width,
             max_height,
@@ -683,14 +684,15 @@ class Affine(DualTransform):
         bboxes: np.ndarray,
         bbox_matrix: np.ndarray,
         output_shape: tuple[int, int],
+        shape: tuple[int, int],
+        bbox_type: Literal["hbb", "obb"],
         **params: Any,
     ) -> np.ndarray:
-        bbox_type = params["bbox_type"]
         return fgeometric.bboxes_affine(
             bboxes,
             bbox_matrix,
             self.rotate_method,
-            params["shape"][:2],
+            shape[:2],
             self.border_mode,
             output_shape,
             bbox_type=bbox_type,
@@ -701,12 +703,13 @@ class Affine(DualTransform):
         keypoints: np.ndarray,
         matrix: np.ndarray,
         scale: dict[str, float],
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
         return fgeometric.keypoints_affine(
             keypoints,
             matrix,
-            params["shape"],
+            shape,
             scale,
             self.border_mode,
         )
@@ -1202,28 +1205,30 @@ class GridElasticDeform(DualTransform):
         self,
         bboxes: np.ndarray,
         generated_mesh: np.ndarray,
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
-        bboxes_denorm = denormalize_bboxes(bboxes, params["shape"][:2])
+        bboxes_denorm = denormalize_bboxes(bboxes, shape[:2])
         return normalize_bboxes(
             fgeometric.bbox_distort_image(
                 bboxes_denorm,
                 generated_mesh,
-                params["shape"][:2],
+                shape[:2],
             ),
-            params["shape"][:2],
+            shape[:2],
         )
 
     def apply_to_keypoints(
         self,
         keypoints: np.ndarray,
         generated_mesh: np.ndarray,
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
         return fgeometric.distort_image_keypoints(
             keypoints,
             generated_mesh,
-            params["shape"][:2],
+            shape[:2],
         )
 
 
@@ -1348,9 +1353,10 @@ class RandomGridShuffle(DualTransform):
         bboxes: np.ndarray,
         tiles: np.ndarray,
         mapping: list[int],
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
-        image_shape = params["shape"][:2]
+        image_shape = shape[:2]
         bboxes_denorm = denormalize_bboxes(bboxes, image_shape)
         processor = cast("BboxProcessor", self.get_processor("bboxes"))
         if processor is None:
@@ -1375,14 +1381,6 @@ class RandomGridShuffle(DualTransform):
         **params: Any,
     ) -> np.ndarray:
         return fgeometric.swap_tiles_on_keypoints(keypoints, tiles, mapping)
-
-    @batch_transform("spatial")
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
-        return self.apply(images, **params)
-
-    @batch_transform("spatial")
-    def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
-        return self.apply(mask3d, **params)
 
     def sample_parameters(
         self,
@@ -1515,9 +1513,11 @@ class Morphological(DualTransform):
         self,
         bboxes: np.ndarray,
         kernel: np.ndarray,
+        shape: tuple[int, int],
+        bbox_type: Literal["hbb", "obb"],
         **params: Any,
     ) -> np.ndarray:
-        image_shape = params["shape"]
+        image_shape = shape
 
         denormalized_boxes = denormalize_bboxes(bboxes, image_shape)
 
@@ -1526,7 +1526,7 @@ class Morphological(DualTransform):
             kernel,
             self.operation,
             image_shape,
-            bbox_type=params["bbox_type"],
+            bbox_type=bbox_type,
         )
 
         return normalize_bboxes(result, image_shape)

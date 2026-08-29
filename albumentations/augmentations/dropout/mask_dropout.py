@@ -201,7 +201,13 @@ class MaskDropout(DualTransform):
         mask[dropout_mask] = self.fill_mask
         return mask
 
-    def apply_to_bboxes(self, bboxes: np.ndarray, dropout_mask: np.ndarray | None, **params: Any) -> np.ndarray:
+    def apply_to_bboxes(
+        self,
+        bboxes: np.ndarray,
+        dropout_mask: np.ndarray | None,
+        shape: tuple[int, int],
+        **params: Any,
+    ) -> np.ndarray:
         if dropout_mask is None:
             return bboxes
 
@@ -209,7 +215,7 @@ class MaskDropout(DualTransform):
         if processor is None:
             return bboxes
 
-        image_shape = params["shape"][:2]
+        image_shape = shape[:2]
 
         denormalized_bboxes = denormalize_bboxes(bboxes, image_shape)
 

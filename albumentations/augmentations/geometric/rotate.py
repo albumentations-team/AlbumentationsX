@@ -216,17 +216,19 @@ class RandomRotate90(DualTransform):
         self,
         bboxes: np.ndarray,
         group_element: Literal["e", "r90", "r180", "r270"],
+        bbox_type: Literal["hbb", "obb"],
         **params: Any,
     ) -> np.ndarray:
-        return fgeometric.bboxes_rot90(bboxes, group_element, bbox_type=params["bbox_type"])
+        return fgeometric.bboxes_rot90(bboxes, group_element, bbox_type=bbox_type)
 
     def apply_to_keypoints(
         self,
         keypoints: np.ndarray,
         group_element: Literal["e", "r90", "r180", "r270"],
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
-        return fgeometric.keypoints_rot90(keypoints, group_element, params["shape"])
+        return fgeometric.keypoints_rot90(keypoints, group_element, shape)
 
     def apply_to_images(
         self,
@@ -399,9 +401,10 @@ class Rotate(DualTransform):
         x_max: int,
         y_min: int,
         y_max: int,
+        shape: tuple[int, int],
         **params: Any,
     ) -> ImageType:
-        height, width = params["shape"][:2]
+        height, width = shape[:2]
         img_out = warp_affine(
             img,
             matrix,
@@ -422,9 +425,10 @@ class Rotate(DualTransform):
         x_max: int,
         y_min: int,
         y_max: int,
+        shape: tuple[int, int],
         **params: Any,
     ) -> ImageType:
-        height, width = params["shape"][:2]
+        height, width = shape[:2]
         img_out = warp_affine(
             mask,
             matrix,
@@ -445,10 +449,11 @@ class Rotate(DualTransform):
         x_max: int,
         y_min: int,
         y_max: int,
+        shape: tuple[int, int],
+        bbox_type: Literal["hbb", "obb"],
         **params: Any,
     ) -> np.ndarray:
-        image_shape = params["shape"][:2]
-        bbox_type = params["bbox_type"]
+        image_shape = shape[:2]
         bboxes_out = fgeometric.bboxes_affine(
             bboxes,
             bbox_matrix,
@@ -474,12 +479,13 @@ class Rotate(DualTransform):
         x_max: int,
         y_min: int,
         y_max: int,
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
         keypoints_out = fgeometric.keypoints_affine(
             keypoints,
             matrix,
-            params["shape"][:2],
+            shape[:2],
             scale={"x": 1, "y": 1},
             border_mode=self.border_mode,
         )

@@ -28,8 +28,9 @@ composition/tensor route, or a deliberate golden compatibility contract.
   or composition helper.
 - Target support: image, images, mask, masks, bboxes, keypoints, volume,
   mask3d, and additional targets.
-- Shape contract: Compose-routed images and volume data are channel-last with an
-  explicit channel dimension.
+- Shape contract: NumPy targets are channel-last with an explicit channel dimension inside `Compose`; plain CPU Tensor
+  targets are channel-first (`CHW`, `NCHW`, or `CDHW`). Public optional-channel ranks are restored after dispatch.
+  The complete table and dtype boundary are in [the CPU Tensor routing design](../design/numpy-tensor-routing.md).
 - Dtype contract: outputs preserve documented dtype semantics for the tested
   target.
 - Channel contract: transforms document whether arbitrary channels, RGB only,

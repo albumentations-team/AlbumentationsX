@@ -916,9 +916,10 @@ class GaussianBlur(ImageOnlyTransform):
         self,
         img: ImageType,
         kernel: np.ndarray,
+        pillow_mode: bool,
         **params: Any,
     ) -> ImageType:
-        if params.get("pillow_mode", False):
+        if pillow_mode:
             return fblur.pillow_gaussian_blur(img, kernel)
         return fpixel.separable_convolve(img, kernel=kernel)
 
@@ -1664,8 +1665,15 @@ class Defocus(ImageOnlyTransform):
     ) -> ImageType:
         return fblur.defocus(img, radius, alias_blur)
 
-    def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
-        kernel = fblur.create_defocus_kernel(params["radius"], params["alias_blur"])
+    def apply_to_images(
+        self,
+        images: ImageType,
+        radius: int,
+        alias_blur: float,
+        *args: Any,
+        **params: Any,
+    ) -> ImageType:
+        kernel = fblur.create_defocus_kernel(radius, alias_blur)
         return self._apply_to_batch(images, lambda img: fpixel.convolve(img, kernel))
 
     def sample_parameters(

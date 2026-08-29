@@ -1071,9 +1071,9 @@ class AdditiveNoise(ImageOnlyTransform):
         self,
         img: ImageType,
         noise_map: np.ndarray,
+        patches: np.ndarray | None,
         **params: Any,
     ) -> ImageType:
-        patches = params.get("patches")
         if patches is not None:
             return fpixel.add_noise_by_patches(img, noise_map, patches)
         return fpixel.add_noise(img, noise_map)
@@ -1159,7 +1159,7 @@ class AdditiveNoise(ImageOnlyTransform):
                 max_value=max_value,
                 py_random=sampling.py_random,
             )
-            return {"noise_map": noise_map}
+            return {"noise_map": noise_map, "patches": None}
 
         if self.spatial_mode == "patch":
             patch_shape = cast("tuple[int, int, int]", shape)
@@ -1192,7 +1192,7 @@ class AdditiveNoise(ImageOnlyTransform):
             max_value=max_value,
             random_generator=sampling.random_generator,
         )
-        return {"noise_map": noise_map}
+        return {"noise_map": noise_map, "patches": None}
 
 
 class SaltAndPepper(_FullVolumeNoiseTransform):
@@ -1472,18 +1472,12 @@ class FilmGrain(_FullVolumeNoiseTransform):
         groups: list[TargetParams] = []
         for views in targets.group_image_like_by(
             lambda view: (
-                tuple((view.descriptor.shape or ())[:3])
-                if view.canonical_type == "volume"
-                else tuple(view.descriptor.spatial_shape or ()),
+                tuple(view.descriptor.spatial_shape or ()),
                 _sampling_family(view),
             ),
         ):
             view = views[0]
-            spatial_shape = (
-                tuple(view.descriptor.shape[:3])
-                if view.canonical_type == "volume" and view.descriptor.shape is not None
-                else tuple(view.descriptor.spatial_shape or ())
-            )
+            spatial_shape = tuple(view.descriptor.spatial_shape or ())
             groups.append(
                 TargetParams(
                     targets=tuple(item.name for item in views),

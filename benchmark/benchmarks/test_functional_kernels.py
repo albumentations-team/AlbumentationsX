@@ -57,6 +57,7 @@ FUNCTIONAL_GEOMETRY_ANNOTATION_COUNTS: Mapping[str, tuple[int, ...]] = {
 FUNCTIONAL_3D_KERNELS = (
     "affine_3d",
     "anisotropy_3d",
+    "elastic_3d",
     "resize3d",
     "crop3d",
     "pad_3d_with_params",
@@ -469,6 +470,17 @@ def _call_anisotropy_3d(benchmark: Any) -> np.ndarray:
     return f3d.anisotropy_3d(benchmark.volume, benchmark.anisotropy_downsample_shape, antialias=True)
 
 
+def _call_elastic_3d(benchmark: Any) -> np.ndarray:
+    sampling_grid = f3d.create_elastic_grid_3d(benchmark.elastic_control_coefficients, benchmark.volume.shape[:3])
+    return f3d.remap_3d(
+        benchmark.volume,
+        sampling_grid,
+        cv2.INTER_LINEAR,
+        cv2.BORDER_CONSTANT,
+        0,
+    )
+
+
 def _call_resize3d(benchmark: Any) -> np.ndarray:
     return resize3d(benchmark.volume, benchmark.resize_shape, cv2.INTER_LINEAR)
 
@@ -500,6 +512,7 @@ def _call_k_space_spike(benchmark: Any) -> np.ndarray:
 FUNCTIONAL_3D_CALLS: Mapping[str, ImageKernelCall] = {
     "affine_3d": _call_affine_3d,
     "anisotropy_3d": _call_anisotropy_3d,
+    "elastic_3d": _call_elastic_3d,
     "resize3d": _call_resize3d,
     "crop3d": _call_crop3d,
     "pad_3d_with_params": _call_pad_3d_with_params,
@@ -652,12 +665,15 @@ class TimeFunctional3DKernels:
             {"x": 3.0, "y": -2.0, "z": 5.0},
             self.volume.shape[:3],
         )
+        rng = np.random.default_rng(137 + depth + height + width)
+        self.elastic_control_coefficients = {
+            plane: rng.uniform(-0.25, 0.25, (7, 7, 2)).astype(np.float32) for plane in ("xy", "xz", "yz")
+        }
         self.crop_coords = (1, depth - 1, height // 4, height * 3 // 4, width // 4, width * 3 // 4)
         self.holes = np.array(
             [[1, height // 4, width // 4, min(depth - 1, 4), height // 2, width // 2]],
             dtype=np.int32,
         )
-        rng = np.random.default_rng(137 + depth + height + width)
         self.tiles = f3d.split_uniform_grid_3d((depth, height, width), (2, 2, 2), rng)
         shape_groups = f3d.create_shape_groups_3d(self.tiles)
         self.mapping = f3d.shuffle_tiles_within_shape_groups_3d(shape_groups, rng)

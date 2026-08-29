@@ -1548,8 +1548,6 @@ class LensFlare(ImageOnlyTransform):
 
     """
 
-    _supported_channel_counts = frozenset({3})
-
     class InitSchema(BaseTransformInitSchema):
         flare_roi: Annotated[
             tuple[float, float, float, float],

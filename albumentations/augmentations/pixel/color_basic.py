@@ -613,8 +613,6 @@ class Equalize(ImageOnlyTransform):
 
     """
 
-    _supported_channel_counts = frozenset({1, 3})
-
     class InitSchema(BaseTransformInitSchema):
         mode: Literal["cv", "pil"]
         by_channels: bool
@@ -1070,8 +1068,6 @@ class CLAHE(ImageOnlyTransform):
         - "Contrast Limited Adaptive Histogram Equalization.": https://ieeexplore.ieee.org/document/109340
 
     """
-
-    _supported_channel_counts = frozenset({1, 3})
 
     class InitSchema(BaseTransformInitSchema):
         clip_range: Annotated[

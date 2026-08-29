@@ -135,11 +135,7 @@ class BaseRemapTransform(DualTransform):
         return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
 
     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
-        return self._apply_to_batch_same_shape(
-            mask3d,
-            lambda mask: self.apply_to_mask(mask, **params),
-            target_name="mask",
-        )
+        return self._apply_to_batch_same_shape(mask3d, lambda mask: self.apply_to_mask(mask, **params))
 
     def apply_to_mask(
         self,

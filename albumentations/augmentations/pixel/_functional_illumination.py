@@ -181,9 +181,7 @@ def apply_plasma_brightness_contrast(
 
 
 def _plasma_pattern_for_batch(images: ImageType, plasma_pattern: np.ndarray) -> np.ndarray:
-    """Expand a shared two-dimensional plasma pattern once for explicit-channel batches, avoiding repeated
-    per-image materialization while retaining the single-image channel values.
-    """
+    """Expand a shared plasma pattern once for a batch with an explicit channel axis."""
     if images.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
         return plasma_pattern
 
@@ -194,9 +192,7 @@ def _plasma_pattern_for_batch(images: ImageType, plasma_pattern: np.ndarray) -> 
 
 
 def _finish_plasma_brightness_contrast_batch(work: ImageFloat32, output_dtype: np.dtype[Any]) -> ImageType:
-    """Clip an owned float32 working array and restore the batch's public dtype and contiguous layout after
-    plasma brightness and contrast arithmetic has completed.
-    """
+    """Clip and restore an owned float32 batch to the public dtype and contiguous layout."""
     if output_dtype == np.float32:
         np.clip(work, 0.0, 1.0, out=work)
         return cast("ImageType", np.ascontiguousarray(work))
@@ -209,16 +205,15 @@ def _apply_plasma_brightness_contrast_dedicated(
     contrast_factor: float,
     plasma_pattern: np.ndarray,
 ) -> ImageType:
-    """Process a small float32 batch as one array while retaining one global mean per image, reducing Python
-    dispatch where whole-batch memory traffic remains bounded.
-    """
+    """Apply brightness and contrast to a small float32 batch using one mean per image."""
     work = np.ascontiguousarray(images)
     image_pattern = _plasma_pattern_for_batch(images, plasma_pattern)
-    brightness_map = None
 
     if brightness_factor != 0:
-        brightness_map = np.multiply(image_pattern, np.float32(brightness_factor))
-        work = cast("ImageFloat32", add(work, brightness_map, inplace=True))
+        work = cast(
+            "ImageFloat32",
+            add(work, np.multiply(image_pattern, np.float32(brightness_factor)), inplace=True),
+        )
 
     if contrast_factor != 0:
         image_means = tuple(mean(image) for image in work)
@@ -238,9 +233,6 @@ def _apply_plasma_brightness_contrast_dedicated(
                     inplace=True,
                 ),
             )
-    elif brightness_map is None:
-        work = work.copy()
-
     return _finish_plasma_brightness_contrast_batch(work, images.dtype)
 
 
@@ -250,9 +242,7 @@ def _apply_plasma_brightness_contrast_loop(
     contrast_factor: float,
     plasma_pattern: np.ndarray,
 ) -> ImageType:
-    """Reuse one set of spatial maps in a preallocated per-image loop, preserving cache locality and exact
-    single-image dtype conversion and reduction semantics for larger or uint8 batches.
-    """
+    """Apply shared plasma maps in a preallocated loop for larger batches and uint8 input."""
     output_dtype = images.dtype
     result = np.empty(images.shape, dtype=output_dtype)
     image_pattern = _plasma_pattern_for_batch(images, plasma_pattern)
@@ -279,9 +269,6 @@ def _apply_plasma_brightness_contrast_loop(
                 "ImageFloat32",
                 add(work, np.multiply(image_mean, contrast_offsets), inplace=True),
             )
-        elif brightness_map is None and output_dtype == np.float32:
-            work = work.copy()
-
         result[index] = _finish_plasma_brightness_contrast_batch(work, output_dtype)
 
     return cast("ImageType", result)
@@ -293,9 +280,7 @@ def _apply_plasma_brightness_contrast_per_image(
     contrast_factor: float,
     plasma_pattern: np.ndarray,
 ) -> ImageType:
-    """Retain the single-image conversion route for small high-resolution uint8 brightness-only batches, where
-    sharing the spatial map costs more than its setup saves.
-    """
+    """Use the single-image implementation for small, high-resolution uint8 brightness-only batches."""
     return cast(
         "ImageType",
         np.stack(
@@ -321,10 +306,8 @@ def apply_plasma_brightness_contrast_batch(
     """Apply one plasma lighting pattern to an image batch while retaining independent image means and
     reusing shared spatial setup for efficient lighting augmentation.
 
-    The result matches stacking :func:`apply_plasma_brightness_contrast` over the batch. Empty batches preserve
-    identity, zero-effect batches return a clipped semantic copy, and nonzero singleton batches reuse the single-image
-    operation. Remaining inputs use a bounded whole-batch float32 kernel, a measured high-resolution uint8 fallback,
-    or a cache-local preallocated loop.
+    The result matches stacking :func:`apply_plasma_brightness_contrast` for nonzero adjustments. Empty batches
+    preserve identity; zero-effect batches are independent copies, with float32 values clipped to `[0, 1]`.
 
     Args:
         images (ImageType): Image batch in `(N, H, W, C)` format, or `(N, H, W)` for direct grayscale calls.

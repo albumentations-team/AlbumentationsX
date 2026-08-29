@@ -293,8 +293,7 @@ class ElasticTransform3D(Transform3D):
           deformation's Lipschitz constant below one.
         - Replay stores compact coefficients and requires the same `(depth, height, width)` shape. Applied
           configuration fixes only the realized magnitude and samples fresh coefficient planes.
-        - CPU Tensor volumes with one channel run natively; multi-channel volumes use Compose's NumPy bridge and
-          return a Tensor with the original layout.
+        - CPU Tensor volumes run natively for every channel count and retain their `(C, D, H, W)` layout.
         - This transform changes voxel-index coordinates. Physical spacing, orientation metadata, and 3D bounding
           boxes are outside its contract.
 
@@ -1848,7 +1847,7 @@ class CoarseDropout3D(Transform3D):
             tuple[np.ndarray, np.ndarray, np.ndarray]: Arrays of hole dimensions (depths, heights, widths)
 
         """
-        depth, height, width = volume_shape[:3]
+        depth, height, width = volume_shape
 
         hole_depths = np.maximum(1, np.ceil(depth * sampling.random_generator.uniform(*depth_range, size=size))).astype(
             int,
@@ -1897,7 +1896,7 @@ class CoarseDropout3D(Transform3D):
             sampling=sampling,
         )
 
-        depth, height, width = volume_shape[:3]
+        depth, height, width = volume_shape
 
         z_min = sampling.random_generator.integers(0, depth - hole_depths + 1, size=num_holes)
         y_min = sampling.random_generator.integers(0, height - hole_heights + 1, size=num_holes)

@@ -9,6 +9,7 @@ import albumentations as A
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.transforms3d import functional as f3d
 from albumentations.core import transforms_interface
+from albumentations.core.utils import get_volume_shape
 
 
 def _forward_elastic_point(
@@ -144,7 +145,7 @@ def test_elastic_transform3d_remap_respects_constant_volume_and_mask_fills() -> 
     mask3d = np.ones((3, 5, 7), dtype=np.uint16)
     sampling_grid = f3d.create_elastic_grid_3d(
         {plane: np.zeros((4, 4, 2), dtype=np.float32) for plane in ("xy", "xz", "yz")},
-        volume.shape[:3],
+        get_volume_shape(volume),
     )
     sampling_grid[..., 0] = 2.0
 

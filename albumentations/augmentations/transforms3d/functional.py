@@ -20,6 +20,7 @@ from albucore import clip, remap3d, resize3d, warp_affine3d
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.utils import handle_empty_array
 from albumentations.core.type_definitions import NUM_VOLUME_DIMENSIONS, ImageType, VolumeType
+from albumentations.core.utils import get_volume_shape
 
 AxisValues3D = Mapping[Literal["x", "y", "z"], float] | Mapping[str, float]
 
@@ -309,10 +310,7 @@ def elastic_transform_3d(
     is_mask: bool = False,
 ) -> VolumeType | torch.Tensor:
     """Build and apply a compact elastic pull field to one volume or mask."""
-    if isinstance(volume, torch.Tensor):
-        source_shape = tuple(volume.shape[1:] if volume.ndim == NUM_VOLUME_DIMENSIONS else volume.shape)
-    else:
-        source_shape = volume.shape[:3]
+    source_shape = get_volume_shape(volume)
     recorded_shape = tuple(sampler["volume_shape"])
     if source_shape != recorded_shape:
         raise ValueError(
@@ -570,10 +568,7 @@ def anisotropy_3d(
     NumPy applies antialiasing while shrinking; PyTorch does not yet provide 5D trilinear antialiasing, so Tensor input
     uses the non-antialiased native route until upstream support is available.
     """
-    source_shape = cast(
-        "tuple[int, int, int]",
-        tuple(volume.shape[1:]) if isinstance(volume, torch.Tensor) else volume.shape[:3],
-    )
+    source_shape = get_volume_shape(volume)
     if source_shape == downsample_shape:
         return volume
 

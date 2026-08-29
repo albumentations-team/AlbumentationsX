@@ -675,15 +675,17 @@ def test_invalid_targets_as_params_tensor_fails_before_transform_probability() -
         transform(image=np.zeros((5, 7, 3), dtype=np.uint8), refs=refs)
 
 
-def test_tensor_shape_helpers_use_nchw_and_cdhw_contracts() -> None:
+def test_shape_helpers_use_canonical_numpy_and_tensor_volume_contracts() -> None:
     image = torch.zeros((3, 11, 13), dtype=torch.uint8)
     images = torch.zeros((5, 3, 11, 13), dtype=torch.uint8)
     volume = torch.zeros((3, 7, 11, 13), dtype=torch.uint8)
+    numpy_volume = np.zeros((7, 11, 13, 3), dtype=np.uint8)
 
     assert get_shape({"image": image}) == (11, 13)
     assert get_shape({"images": images}) == (11, 13)
     assert get_shape({"volume": volume}) == (11, 13)
-    assert get_volume_shape({"volume": volume}) == (7, 11, 13)
+    assert get_volume_shape(volume) == (7, 11, 13)
+    assert get_volume_shape(numpy_volume) == (7, 11, 13)
     assert get_image_data({"images": images}) == {
         "dtype": torch.uint8,
         "height": 11,

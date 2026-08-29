@@ -7,6 +7,8 @@ from typing import Any, Literal, cast
 
 import numkong as nk
 
+from albumentations.core.utils import get_volume_shape
+
 from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
     MULTICHANNEL_LUT_LARGE_IMAGE_PIXELS,
@@ -923,7 +925,7 @@ def iso_noise_volume(
         cv2.cvtColor(image, cv2.COLOR_RGB2HLS, dst=hls_volume[depth_index])
 
     luminance_std = float(np.std(hls_volume[..., 1]))
-    volume_shape = volume.shape[:3]
+    volume_shape = get_volume_shape(volume)
     luminance_noise = random_generator.poisson(luminance_std * intensity, size=volume_shape).astype(np.float32)
     color_noise = random_generator.normal(0, color_shift * intensity, size=volume_shape).astype(np.float32)
 

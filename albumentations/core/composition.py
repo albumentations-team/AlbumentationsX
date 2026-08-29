@@ -60,7 +60,7 @@ from .tensor import (
 from .tracing import TraceOptions, TraceResult, _ExecutionTrace
 from .transforms_interface import BasicTransform, DualTransform
 from .type_definitions import StackedMasks4D, Targets
-from .utils import DataProcessor, format_args, get_shape
+from .utils import DataProcessor, format_args, get_shape, get_volume_shape
 
 __all__ = [
     "BaseCompose",
@@ -2528,7 +2528,7 @@ class Compose(BaseCompose, HubMixin):
             if data_value.ndim not in {3, 4}:  # (D,H,W) or (D,H,W,C)
                 raise TypeError(f"{data_name} must be 3D or 4D array")
             shapes.append(data_value.shape[1:3])  # H,W
-            volume_shapes.append(data_value.shape[:3])  # D,H,W
+            volume_shapes.append(get_volume_shape(data_value))
 
     @staticmethod
     def _process_tensor_data_shape(
@@ -2543,7 +2543,7 @@ class Compose(BaseCompose, HubMixin):
         if data_name in {"image", "images", "mask", "masks", "volume", "mask3d"}:
             shapes.append(tuple(data_value.shape[-2:]))
         if data_name in {"volume", "mask3d"}:
-            volume_shapes.append(tuple(data_value.shape[-3:]))
+            volume_shapes.append(get_volume_shape(data_value))
 
     def _validate_data(self, data: dict[str, Any]) -> None:
         """Validate input data keys and arguments. When strict, checks every key is in

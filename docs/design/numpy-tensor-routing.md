@@ -107,7 +107,7 @@ Complex, quantized, and floating Tensor dtypes other than `float32` are rejected
 | --- | --- |
 | Root `Compose` | Validate Tensor inputs before sampling, add optional channels, and restore public rank |
 | Annotation processors | Adapt Tensor bbox and keypoint matrices around the existing NumPy processor lifecycle |
-| `BasicTransform` | Select the route for one applied leaf and own fallback conversion |
+| `BasicTransform` | Derive a native route from the invoked handler's annotations and own fallback conversion |
 | Functional helpers and Albucore | Execute the selected NumPy or Tensor-aware operation |
 | Concrete transform | Declare targets and implement transform semantics |
 
@@ -118,7 +118,7 @@ Each applied leaf selects its own route.
 flowchart LR
     I["Canonical target values"] --> P{"Leaf applies?"}
     P -->|"No"| ID["Return unchanged values"]
-    P -->|"Yes"| R{"Complete Tensor-aware route?"}
+    P -->|"Yes"| R{"Handler accepts Tensor?"}
     R -->|"Yes"| T["Run Tensor-aware lifecycle"]
     R -->|"No Tensor targets"| N["Run NumPy lifecycle directly"]
     R -->|"No"| B1["Convert this leaf's Tensor targets to NumPy"]
@@ -142,19 +142,25 @@ their canonical inside-`Compose` layout.
 For a call that contains no Tensor targets, `BasicTransform` enters the existing NumPy lifecycle directly.
 
 For a Tensor call, the leaf collects only recognized Tensor targets that it dispatches or reads through
-`targets_as_params`. A complete Tensor-aware route may handle the call directly. Otherwise, the leaf converts those
-targets to canonical channel-last NumPy views, runs parameter extraction, sampling, target dispatch, and output
-construction through the existing lifecycle, then restores the converted outputs to Tensor.
+`targets_as_params`. A leaf runs directly only when every invoked handler accepts Tensor. Otherwise, it
+converts those targets to canonical channel-last NumPy views, runs parameter extraction, sampling, target dispatch,
+and output construction through the existing lifecycle, then restores the converted outputs to Tensor.
 
 A skipped leaf performs no conversion. Two consecutive fallback leaves may each perform their own conversion pair.
 
-### Tensor-aware routes
+### Native Tensor handlers
 
-A Tensor-aware route covers the complete leaf invocation for the supplied targets and supported channel counts. Calls
-outside that capability use the leaf-local fallback.
+`BasicTransform` derives native execution from the handler selected for each target in `targets`. A handler is native
+for Tensor input when its primary data argument includes `torch.Tensor`:
 
-The selected implementation may still use a local NumPy bridge when that complete route is faster. Tensor-aware
-describes the accepted input and output container contract, not an exclusive use of Torch kernels.
+```python
+def apply(self, image: ImageType | torch.Tensor, **params: Any) -> ImageType:
+    ...
+```
+
+Handlers without a Tensor input annotation use the leaf-local NumPy fallback. This keeps the declaration with the code
+that receives the value: no transform-level Tensor flags, target lists, channel lists, or adapters are needed. Tensor
+contract tests execute the selected paths.
 
 ### Declared metadata
 

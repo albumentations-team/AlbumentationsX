@@ -256,10 +256,10 @@ def apply(self, img: np.ndarray, **params) -> np.ndarray:
 
 - Do not add compatibility branches for channel-free inputs in `apply_*` methods or functional kernels used by
   `Compose`; the root normalizes them before dispatch and restores the public rank when the channel remains singleton.
-- A transform with no complete Tensor route receives a canonical NumPy view through the base fallback. Keep its existing
-  NumPy implementation channel-last; do not duplicate bridge logic in the transform.
-- A Tensor-aware transform must support the complete leaf lifecycle and the canonical Tensor layouts above. It may
-  decline a case and let the base fallback run the established NumPy path.
+- A handler without `torch.Tensor` in its primary input annotation receives a canonical NumPy view through the base
+  fallback. Keep its existing NumPy implementation channel-last; do not duplicate bridge logic in the transform.
+- A handler that accepts Tensor input declares `torch.Tensor` in that annotation and supports the canonical Tensor
+  layouts above. The annotation is its runtime contract.
 - It is fine to branch on `img.ndim` when selecting image, batch, and volume semantics. Do not use rank to guess where
   a channel axis is.
 
@@ -276,8 +276,8 @@ Instead, follow this preferred pattern:
    dataset or another global donor source to fill the gap.
 
 `targets_as_params` is also the complete declaration needed for CPU Tensor fallback. Do not add Tensor-specific routing
-properties to a concrete transform. The base adapter converts direct Tensor parameters to NumPy views and recognizes
-standard target fields inside donor records.
+properties, flags, target lists, or adapters to a concrete transform. The base adapter converts direct Tensor parameters
+to NumPy views and recognizes standard target fields inside donor records.
 
 Passing data via `__init__` couples the transform instance to specific data, making it less reusable and potentially breaking serialization or pipeline composition.
 

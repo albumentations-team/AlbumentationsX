@@ -68,17 +68,6 @@ TENSOR_CANONICAL_SHAPE_DESCRIPTIONS: Final[dict[str, str]] = {
     "bboxes": "(N, K)",
     "keypoints": "(N, K)",
 }
-TENSOR_METADATA_FIELD_TARGETS: Final[dict[str, str]] = {
-    "image": "image",
-    "images": "images",
-    "volume": "volume",
-    "mask": "mask",
-    "semantic_mask": "mask",
-    "masks": "masks",
-    "mask3d": "mask3d",
-    "bboxes": "bboxes",
-    "keypoints": "keypoints",
-}
 
 
 def _validate_plain_cpu_tensor(value: torch.Tensor, data_name: str) -> None:
@@ -140,6 +129,13 @@ def validate_tensor_metadata_input(value: torch.Tensor, data_name: str, target: 
         _validate_plain_cpu_tensor(value, data_name)
     else:
         validate_tensor_input(value, data_name, target)
+
+
+def tensor_metadata_field_target(name: object) -> str | None:
+    """Return the canonical target for a conventional Tensor metadata field."""
+    if name == "semantic_mask":
+        return "mask"
+    return name if isinstance(name, str) and name in TENSOR_TARGETS else None
 
 
 def tensor_metadata_to_numpy(value: torch.Tensor, target: str | None) -> NDArray[np.generic]:

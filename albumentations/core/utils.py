@@ -119,7 +119,7 @@ def get_volume_shape(data: dict[str, Any]) -> tuple[int, int, int] | None:
     return None
 
 
-def _get_shape_from_image(img: np.ndarray) -> tuple[int, int]:
+def _get_shape_from_image(img: np.ndarray | torch.Tensor) -> tuple[int, int]:
     """Extract (height, width) from a single image. Handles numpy HWC or PyTorch CHW. Private
     helper for get_shape when data has 'image' key.
     """
@@ -129,7 +129,7 @@ def _get_shape_from_image(img: np.ndarray) -> tuple[int, int]:
     return img.shape[0], img.shape[1]
 
 
-def _get_shape_from_images(imgs: np.ndarray) -> tuple[int, int]:
+def _get_shape_from_images(imgs: np.ndarray | torch.Tensor) -> tuple[int, int]:
     """Extract height and width from a NumPy NHWC batch or CPU Tensor NCHW sequence."""
     if isinstance(imgs, torch.Tensor):
         return imgs.shape[-2], imgs.shape[-1]
@@ -137,7 +137,7 @@ def _get_shape_from_images(imgs: np.ndarray) -> tuple[int, int]:
     return imgs[0].shape[0], imgs[0].shape[1]
 
 
-def _get_shape_from_volume(vol: np.ndarray) -> tuple[int, int]:
+def _get_shape_from_volume(vol: np.ndarray | torch.Tensor) -> tuple[int, int]:
     """Extract (height, width) from a single volume (D,H,W or D,H,W,C). Private helper for
     get_shape when data has 'volume' key.
     """

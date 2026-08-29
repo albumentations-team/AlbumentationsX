@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import warnings
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -16,7 +16,6 @@ import albumentations as A
 from albumentations.core.tensor import (
     TENSOR_ANNOTATION_TARGETS,
     TENSOR_CHANNELLESS_RANKS,
-    TENSOR_METADATA_FIELD_TARGETS,
     TENSOR_TARGETS,
     tensor_to_numpy_spatial,
 )
@@ -121,40 +120,6 @@ def _tensor_target_to_numpy(value: Any, target: str | None) -> Any:
     return tensor_to_numpy_spatial(value, target)
 
 
-def _convert_metadata(
-    value: Any,
-    target: str | None,
-    convert: Callable[[Any, str | None], Any],
-) -> Any:
-    if isinstance(value, (np.ndarray, torch.Tensor)):
-        return convert(value, target)
-    if isinstance(value, Mapping):
-        converted = dict(value)
-        for key, nested in value.items():
-            nested_target = TENSOR_METADATA_FIELD_TARGETS.get(key)
-            if key in TENSOR_METADATA_FIELD_TARGETS or isinstance(nested, (np.ndarray, torch.Tensor)):
-                converted[key] = _convert_metadata(nested, nested_target, convert)
-        return converted
-    if isinstance(value, list):
-        return [_convert_metadata_item(item, target, convert) for item in value]
-    if isinstance(value, tuple):
-        return tuple(_convert_metadata_item(item, target, convert) for item in value)
-    return value
-
-
-def _convert_metadata_item(
-    value: Any,
-    target: str | None,
-    convert: Callable[[Any, str | None], Any],
-) -> Any:
-    if target is not None or isinstance(value, Mapping):
-        return _convert_metadata(value, target, convert)
-    if isinstance(value, (np.ndarray, torch.Tensor)):
-        sequence_target = "image" if value.ndim in {2, 3} else None
-        return _convert_metadata(value, sequence_target, convert)
-    return value
-
-
 def _convert_contract_data(
     data: dict[str, Any],
     transform: A.BasicTransform,
@@ -162,9 +127,6 @@ def _convert_contract_data(
 ) -> dict[str, Any]:
     converted = copy.deepcopy(data)
     for data_name, value in data.items():
-        if data_name in transform.get_tensor_metadata_keys():
-            converted[data_name] = _convert_metadata(value, None, convert)
-            continue
         canonical_target = transform._additional_targets.get(data_name, data_name)
         if canonical_target in TENSOR_TARGETS:
             converted[data_name] = convert(value, canonical_target)
@@ -176,13 +138,10 @@ def _assert_tensor_result_containers(
     result: dict[str, Any],
     transform: A.BasicTransform,
 ) -> None:
-    metadata_keys = transform.get_tensor_metadata_keys()
     for data_name, value in source.items():
         canonical_target = transform._additional_targets.get(data_name, data_name)
         if canonical_target in TENSOR_TARGETS and isinstance(value, torch.Tensor):
             assert isinstance(result[data_name], torch.Tensor)
-        elif data_name in metadata_keys:
-            assert result[data_name] is value
 
 
 def run_tensor_target_cluster_contract(case: TransformContractCase, profile: TargetProfile, seed: int) -> None:
@@ -190,11 +149,7 @@ def run_tensor_target_cluster_contract(case: TransformContractCase, profile: Tar
     source = case.make_data(np.random.default_rng(seed), profile.data_factory)
     numpy_data = copy.deepcopy(source)
     transform = case.transform_cls(**copy.deepcopy(dict(case.init_kwargs)), p=1)
-    tensor_data = _convert_contract_data(
-        source,
-        transform,
-        _numpy_target_to_tensor,
-    )
+    tensor_data = _convert_contract_data(source, transform, _numpy_target_to_tensor)
     tensor_snapshot = copy.deepcopy(tensor_data)
     compose_kwargs = copy.deepcopy(dict(profile.compose_kwargs))
     numpy_pipeline = A.ReplayCompose(
@@ -210,11 +165,7 @@ def run_tensor_target_cluster_contract(case: TransformContractCase, profile: Tar
     _assert_tensor_result_containers(tensor_data, tensor_result, transform)
     profile.assert_result(case, tensor_snapshot, tensor_result)
 
-    comparable_tensor_result = _convert_contract_data(
-        tensor_result,
-        transform,
-        _tensor_target_to_numpy,
-    )
+    comparable_tensor_result = _convert_contract_data(tensor_result, transform, _tensor_target_to_numpy)
     for key in source:
         expected = numpy_result[key]
         canonical_target = transform._additional_targets.get(key, key)

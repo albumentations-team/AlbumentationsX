@@ -2151,8 +2151,11 @@ class Compose(BaseCompose, HubMixin):
         invocation: InvocationContext | None,
     ) -> dict[str, Any]:
         """Execute a validated root graph through its one public boundary."""
-        self._open_root_boundary(data, tensor_boundary_state)
-        return self._close_root_boundary(self._apply_children(data, invocation), tensor_boundary_state)
+        self.preprocess(data, tensor_boundary_state)
+        result = self.postprocess(self._apply_children(data, invocation))
+        if tensor_boundary_state.annotation_targets:
+            self._restore_tensor_annotations(result, tensor_boundary_state)
+        return result
 
     def _apply_unactivated_compiled_transforms(
         self,
@@ -2287,17 +2290,6 @@ class Compose(BaseCompose, HubMixin):
         if self.save_applied_params and self.main_compose:
             data["applied_transforms"] = []
         return tensor_boundary_state
-
-    def _open_root_boundary(self, data: dict[str, Any], tensor_boundary_state: _TensorBoundaryState) -> None:
-        """Normalize public data before graph dispatch."""
-        self.preprocess(data, tensor_boundary_state)
-
-    def _close_root_boundary(self, data: dict[str, Any], tensor_boundary_state: _TensorBoundaryState) -> dict[str, Any]:
-        """Finish root postprocessing and restore processor-owned Tensor annotations."""
-        result = self.postprocess(data)
-        if tensor_boundary_state.annotation_targets:
-            self._restore_tensor_annotations(result, tensor_boundary_state)
-        return result
 
     def _apply_children(self, data: dict[str, Any], invocation: InvocationContext | None) -> dict[str, Any]:
         """Runs child nodes and root policy in order, reusing the active invocation and resynchronizing bound instances

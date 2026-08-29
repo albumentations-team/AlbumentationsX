@@ -11,7 +11,8 @@ import inspect
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any, ClassVar, cast
+from functools import cache
+from typing import Annotated, Any, ClassVar, cast, get_args, get_type_hints
 from warnings import warn
 
 import cv2
@@ -36,10 +37,10 @@ from albumentations.core.tensor import (
     TENSOR_ANNOTATION_TARGETS,
     TENSOR_CANONICAL_RANKS,
     TENSOR_CANONICAL_SHAPE_DESCRIPTIONS,
-    TENSOR_METADATA_FIELD_TARGETS,
     TENSOR_TARGETS,
     numpy_to_tensor_annotation,
     numpy_to_tensor_spatial,
+    tensor_metadata_field_target,
     tensor_metadata_to_numpy,
     tensor_to_numpy_annotation,
     tensor_to_numpy_spatial,
@@ -133,6 +134,37 @@ class _TensorFallbackRoute:
     metadata: tuple[tuple[str, Any], ...]
 
 
+def _annotation_includes_tensor(annotation: object) -> bool:
+    return annotation is torch.Tensor or any(_annotation_includes_tensor(argument) for argument in get_args(annotation))
+
+
+@cache
+def _handler_accepts_tensor(handler: Callable[..., Any]) -> bool:
+    try:
+        type_hints = get_type_hints(handler, include_extras=True)
+        parameters = tuple(inspect.signature(handler).parameters.values())
+    except (NameError, TypeError, ValueError):
+        return False
+
+    if parameters and parameters[0].name in {"self", "cls"}:
+        parameters = parameters[1:]
+    input_parameter = next(
+        (
+            parameter
+            for parameter in parameters
+            if parameter.kind in {parameter.POSITIONAL_ONLY, parameter.POSITIONAL_OR_KEYWORD}
+        ),
+        None,
+    )
+    if input_parameter is None:
+        return False
+    return _annotation_includes_tensor(type_hints.get(input_parameter.name))
+
+
+def _handler_has_tensor_path(handler: Callable[..., Any]) -> bool:
+    return _handler_accepts_tensor(inspect.unwrap(getattr(handler, "__func__", handler)))
+
+
 def _sequence_metadata_target(value: torch.Tensor) -> str | None:
     return "image" if value.ndim in {2, 3} else None
 
@@ -149,8 +181,8 @@ def _iter_declared_metadata_tensors(
     if isinstance(value, Mapping):
         mapping_tensors: list[tuple[str, str | None, torch.Tensor]] = []
         for key, nested in value.items():
-            nested_target = TENSOR_METADATA_FIELD_TARGETS.get(key)
-            if key in TENSOR_METADATA_FIELD_TARGETS or isinstance(nested, torch.Tensor):
+            nested_target = tensor_metadata_field_target(key)
+            if nested_target is not None or isinstance(nested, torch.Tensor):
                 mapping_tensors.extend(
                     _iter_declared_metadata_tensors(nested, path=f"{path}[{key!r}]", target=nested_target),
                 )
@@ -176,8 +208,8 @@ def _metadata_to_numpy(value: Any, target: str | None = None) -> Any:
     if isinstance(value, Mapping):
         converted = dict(value)
         for key, nested in value.items():
-            nested_target = TENSOR_METADATA_FIELD_TARGETS.get(key)
-            if key in TENSOR_METADATA_FIELD_TARGETS or isinstance(nested, torch.Tensor):
+            nested_target = tensor_metadata_field_target(key)
+            if nested_target is not None or isinstance(nested, torch.Tensor):
                 converted[key] = _metadata_to_numpy(nested, nested_target)
         return converted
     if isinstance(value, list):
@@ -245,9 +277,6 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
     InitSchema: ClassVar[type[BaseTransformInitSchema]] = _BasicTransformInitSchema
     _valid_applied_config_keys_cache: ClassVar[frozenset[str] | None] = None
     _applied_replay_class: ClassVar[type["BasicTransform"] | None] = None
-    _supports_cpu_tensor: ClassVar[bool] = False
-    _cpu_tensor_targets: ClassVar[frozenset[str] | None] = None
-    _cpu_tensor_channels: ClassVar[frozenset[int] | None] = None
     _sampling_spatial_rank: ClassVar[int | None] = None
     _runtime_generated_params: ClassVar[frozenset[str]] = frozenset()
     _preserves_input_image_range: ClassVar[bool] = True  # image targets retain the input dtype's normalized range
@@ -269,42 +298,6 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
                 f"{cls.__name__} defines removed sampling hook(s): {names}. "
                 "Implement sample_parameters(params, data, targets, sampling) instead.",
             )
-
-    @property
-    def supports_cpu_tensor(self) -> bool:
-        """Return whether this leaf has a complete Tensor-aware execution path."""
-        return self._supports_cpu_tensor
-
-    @property
-    def cpu_tensor_targets(self) -> frozenset[str] | None:
-        """Return canonical targets handled by this leaf's Tensor-aware path."""
-        return self._cpu_tensor_targets
-
-    @property
-    def cpu_tensor_channels(self) -> frozenset[int] | None:
-        """Return image channel counts covered by this Tensor capability, or `None` when
-        the accepted Tensor route is independent of the channel count.
-        """
-        return self._cpu_tensor_channels
-
-    def supports_cpu_tensor_targets(self, targets: frozenset[str]) -> bool:
-        """Return whether this leaf handles every Tensor target in the current invocation."""
-        return self.supports_cpu_tensor and (
-            self._cpu_tensor_targets is None or targets.issubset(self._cpu_tensor_targets)
-        )
-
-    def supports_cpu_tensor_inputs(self, tensor_inputs: tuple[tuple[str, Any], ...]) -> bool:
-        """Check the complete Tensor-aware contract for one leaf invocation."""
-        targets = frozenset(target for target, _ in tensor_inputs)
-        if not self.supports_cpu_tensor_targets(targets):
-            return False
-        if self._cpu_tensor_channels is None:
-            return True
-        return all(
-            target not in {"image", "images", "volume"}
-            or value.shape[1 if target == "images" else 0] in self._cpu_tensor_channels
-            for target, value in tensor_inputs
-        )
 
     def _tensor_fallback_route(self, data: Mapping[str, Any]) -> _TensorFallbackRoute:
         """Collect visible Tensor targets and declared Tensor metadata for one leaf."""
@@ -370,13 +363,11 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             return not invocation.has_tensor_inputs
         return not self.targets_as_params and not any(isinstance(value, torch.Tensor) for value in data.values())
 
-    def _uses_tensor_fallback(self, data: Mapping[str, Any], route: _TensorFallbackRoute) -> bool:
+    def _uses_tensor_fallback(self, route: _TensorFallbackRoute) -> bool:
         """Return whether the complete leaf invocation must use its NumPy path."""
-        return bool(route.metadata) or bool(
-            route.targets
-            and not self.supports_cpu_tensor_inputs(
-                tuple((target, data[data_name]) for data_name, target in route.targets),
-            ),
+        return bool(route.metadata) or any(
+            data_name not in self._key2func or not _handler_has_tensor_path(self._key2func[data_name])
+            for data_name, _ in route.targets
         )
 
     @staticmethod
@@ -665,7 +656,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         if self._can_bypass_tensor_route(kwargs, invocation):
             return self._apply_sampled_in_route(state, collect_applied, invocation, **kwargs)
         route = self._tensor_fallback_route(kwargs)
-        if self._uses_tensor_fallback(kwargs, route):
+        if self._uses_tensor_fallback(route):
             result = self._apply_sampled_in_route(
                 state,
                 collect_applied,
@@ -832,7 +823,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         if self._can_bypass_tensor_route(kwargs, invocation):
             return self._apply_replay_in_route(state, **kwargs)
         route = self._tensor_fallback_route(kwargs)
-        if self._uses_tensor_fallback(kwargs, route):
+        if self._uses_tensor_fallback(route):
             result = self._apply_replay_in_route(state, **self._enter_tensor_fallback(kwargs, route))
             return self._restore_tensor_fallback(result, route)
         return self._apply_replay_in_route(state, **kwargs)
@@ -1896,11 +1887,10 @@ class NoOp(DualTransform):
 
     _targets = ALL_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})  # NoOp passes all bbox types
-    _supports_cpu_tensor = True
 
     @property
     def targets(self) -> dict[str, Callable[..., Any]]:
-        """Return identity handlers that preserve every Tensor target without the NumPy batch
+        """Return identity handlers that preserve spatial Tensor targets without the NumPy batch
         dispatch inherited by `DualTransform` for the volume route.
         """
         return {
@@ -1921,22 +1911,22 @@ class NoOp(DualTransform):
     def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
         return bboxes
 
-    def apply(self, img: ImageType, **params: Any) -> ImageType:
+    def apply(self, img: Annotated[ImageType, torch.Tensor], **params: Any) -> ImageType:
         return img
 
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+    def apply_to_images(self, images: Annotated[ImageType, torch.Tensor], **params: Any) -> ImageType:
         return images
 
-    def apply_to_mask(self, mask: ImageType, **params: Any) -> ImageType:
+    def apply_to_mask(self, mask: Annotated[ImageType, torch.Tensor], **params: Any) -> ImageType:
         return mask
 
-    def apply_to_masks(self, masks: StackedMasks4D, **params: Any) -> StackedMasks4D:
+    def apply_to_masks(self, masks: Annotated[StackedMasks4D, torch.Tensor], **params: Any) -> StackedMasks4D:
         return masks
 
-    def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
+    def apply_to_volume(self, volume: Annotated[VolumeType, torch.Tensor], **params: Any) -> VolumeType:
         return volume
 
-    def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
+    def apply_to_mask3d(self, mask3d: Annotated[VolumeType, torch.Tensor], **params: Any) -> VolumeType:
         return mask3d
 
 

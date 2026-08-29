@@ -17,8 +17,6 @@ from albumentations.core.utils import get_image_data, get_shape, get_volume_shap
 class _TensorProbe(ImageOnlyTransform):
     """A complete leaf-local Tensor route used to verify native dispatch."""
 
-    _supports_cpu_tensor = True
-
     def __init__(self) -> None:
         super().__init__(p=1.0)
         self.seen: list[tuple[type[Any], tuple[int, ...]]] = []
@@ -283,6 +281,20 @@ def test_numpy_only_user_transform_uses_a_leaf_local_tensor_fallback(monkeypatch
     assert conversions == ["to_numpy:image", "to_tensor:image", "to_numpy:image", "to_tensor:image"]
 
 
+def test_lambda_tensor_input_uses_its_numpy_handler() -> None:
+    seen: list[type[Any]] = []
+
+    def add_one(image: np.ndarray, **params: Any) -> np.ndarray:
+        seen.append(type(image))
+        return image + 1
+
+    image = torch.zeros((3, 5, 7), dtype=torch.uint8)
+    result = A.Compose([A.Lambda(image=add_one, p=1.0)], strict=True)(image=image)["image"]
+
+    assert seen == [np.ndarray]
+    torch.testing.assert_close(result, image + 1)
+
+
 def test_tensor_fallback_accepts_noncontiguous_input() -> None:
     image = torch.arange(3 * 7 * 5, dtype=torch.uint8).reshape(3, 7, 5).transpose(1, 2)
 
@@ -396,6 +408,30 @@ def test_existing_flip_tensor_paths_stay_native(
     result = A.Compose([transform_cls(p=1.0)], strict=True)(**{target: value})[target]
 
     torch.testing.assert_close(result, expected(value))
+
+
+@pytest.mark.parametrize(
+    ("target", "shape"),
+    [
+        ("images", (2, 3, 5, 7)),
+        ("volume", (2, 4, 5, 7)),
+        ("mask3d", (4, 5, 7)),
+    ],
+)
+def test_d4_tensor_handlers_stay_native(
+    monkeypatch: pytest.MonkeyPatch,
+    target: str,
+    shape: tuple[int, ...],
+) -> None:
+    def fail(*args: object, **kwargs: object) -> None:
+        raise AssertionError("native Tensor D4 handler entered the NumPy fallback")
+
+    monkeypatch.setattr(transforms_interface, "tensor_to_numpy_spatial", fail)
+    value = torch.arange(int(np.prod(shape)), dtype=torch.uint8).reshape(shape)
+
+    result = A.Compose([A.D4(group_element="r90", p=1.0)], strict=True)(**{target: value})[target]
+
+    torch.testing.assert_close(result, value.rot90(1, (-2, -1)))
 
 
 def test_tensor_3d_pipeline_keeps_native_and_fallback_routes_composable() -> None:

@@ -287,11 +287,7 @@ class TimeTensorNativeAffine3D:
 
 
 class TimeTensorElasticTransform3D:
-    """Benchmark Tensor `ElasticTransform3D(volume=...)` with the native C=1 route and C=3/C=5 NumPy bridges.
-
-    The direct Tensor route uses C,D,H,W single-volume data. Its NumPy comparison paths use
-    the matching D,H,W,C volume and the normal `ToTensor3D` handoff.
-    """
+    """Benchmark native Tensor `ElasticTransform3D(volume=...)` across the supported volume matrix."""
 
     params = (TENSOR_NATIVE_VOLUME_CASES,)
     param_names = ("case_id",)

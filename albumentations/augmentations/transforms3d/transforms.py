@@ -7,6 +7,7 @@ such as spatial dimensions, apply dropout effects, and perform symmetry operatio
 interface and implements specific 3D augmentation logic.
 """
 
+from collections.abc import Mapping
 from typing import Annotated, Any, ClassVar, Final, Literal, cast
 
 import numpy as np
@@ -330,9 +331,6 @@ class ElasticTransform3D(Transform3D):
     """
 
     _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
-    _supports_cpu_tensor = True
-    _cpu_tensor_targets = frozenset({"volume", "mask3d"})
-    _cpu_tensor_channels = frozenset({1})
 
     class InitSchema(BaseTransformInitSchema):
         displacement_range: Annotated[
@@ -428,8 +426,8 @@ class ElasticTransform3D(Transform3D):
 
     def apply_to_volume(
         self,
-        volume: VolumeType,
-        sampler: dict[str, Any],
+        volume: VolumeType | torch.Tensor,
+        sampler: Mapping[str, Any],
         **params: Any,
     ) -> VolumeType:
         return cast(
@@ -445,8 +443,8 @@ class ElasticTransform3D(Transform3D):
 
     def apply_to_mask3d(
         self,
-        mask3d: VolumeType,
-        sampler: dict[str, Any],
+        mask3d: VolumeType | torch.Tensor,
+        sampler: Mapping[str, Any],
         **params: Any,
     ) -> VolumeType:
         return cast(
@@ -464,7 +462,7 @@ class ElasticTransform3D(Transform3D):
     def apply_to_keypoints(
         self,
         keypoints: np.ndarray,
-        sampler: dict[str, Any],
+        sampler: Mapping[str, Any],
         **params: Any,
     ) -> np.ndarray:
         control_coefficients = sampler["control_coefficients"]

@@ -8,6 +8,7 @@ import torch
 import albumentations as A
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.transforms3d import functional as f3d
+from albumentations.core import transforms_interface
 
 
 def _forward_elastic_point(
@@ -258,9 +259,19 @@ def test_elastic_transform3d_applied_config_fixes_magnitude_without_storing_coef
     assert reconstructed(volume=volume)["volume"].shape == volume.shape
 
 
-def test_elastic_transform3d_tensor_volume_and_mask_use_native_route(monkeypatch: pytest.MonkeyPatch) -> None:
-    volume = np.random.default_rng(137).integers(0, 256, (7, 11, 13, 1), dtype=np.uint8)
-    mask3d = np.arange(7 * 11 * 13, dtype=np.uint16).reshape(7, 11, 13)
+@pytest.mark.parametrize("channels", (1, 3, 5))
+@pytest.mark.parametrize("dtype", (np.uint8, np.float32))
+def test_elastic_transform3d_tensor_raster_targets_use_native_route(
+    monkeypatch: pytest.MonkeyPatch,
+    channels: int,
+    dtype: type[np.uint8] | type[np.float32],
+) -> None:
+    random_generator = np.random.default_rng(137)
+    if dtype == np.uint8:
+        volume = random_generator.integers(0, 256, (7, 11, 13, channels), dtype=dtype)
+    else:
+        volume = random_generator.random((7, 11, 13, channels), dtype=dtype)
+    mask3d = np.arange(7 * 11 * 13, dtype=np.int16).reshape(7, 11, 13)
     tensor_volume = torch.from_numpy(volume).permute(3, 0, 1, 2)
     tensor_mask3d = torch.from_numpy(mask3d)
     transform_kwargs = {"displacement_range": (0.05, 0.05), "control_grid_shape": (7, 7), "p": 1.0}
@@ -268,11 +279,10 @@ def test_elastic_transform3d_tensor_volume_and_mask_use_native_route(monkeypatch
     tensor_transform = A.Compose([A.ElasticTransform3D(**transform_kwargs)], seed=137, strict=True)
 
     monkeypatch.setattr(
-        A.Compose,
-        "_bridge_tensor_data_to_numpy",
-        lambda *_args, **_kwargs: pytest.fail("ElasticTransform3D unexpectedly selected Compose's NumPy bridge"),
+        transforms_interface,
+        "tensor_to_numpy_spatial",
+        lambda *_args, **_kwargs: pytest.fail("ElasticTransform3D unexpectedly entered the NumPy fallback"),
     )
-    assert tensor_transform.transforms[0].supports_cpu_tensor is True
     numpy_result = numpy_transform(volume=volume, mask3d=mask3d)
     tensor_result = tensor_transform(volume=tensor_volume, mask3d=tensor_mask3d)
 
@@ -281,32 +291,7 @@ def test_elastic_transform3d_tensor_volume_and_mask_use_native_route(monkeypatch
     torch.testing.assert_close(
         tensor_result["volume"],
         torch.from_numpy(numpy_result["volume"]).permute(3, 0, 1, 2),
-        rtol=0,
-        atol=0,
+        rtol=1e-6,
+        atol=1e-6,
     )
     torch.testing.assert_close(tensor_result["mask3d"], torch.from_numpy(numpy_result["mask3d"]), rtol=0, atol=0)
-
-
-@pytest.mark.parametrize("channels", (3, 5))
-def test_elastic_transform3d_multichannel_tensor_volume_uses_the_numpy_bridge(
-    monkeypatch: pytest.MonkeyPatch,
-    channels: int,
-) -> None:
-    volume = np.random.default_rng(137).integers(0, 256, (7, 11, 13, channels), dtype=np.uint8)
-    tensor_volume = torch.from_numpy(volume).permute(3, 0, 1, 2)
-    transform = A.Compose([A.ElasticTransform3D(p=1.0)], seed=137, strict=True)
-    bridge_calls = 0
-    original_bridge = A.Compose._bridge_tensor_data_to_numpy
-
-    def count_bridge(self: A.Compose, *args: object, **kwargs: object) -> None:
-        nonlocal bridge_calls
-        bridge_calls += 1
-        original_bridge(self, *args, **kwargs)
-
-    monkeypatch.setattr(A.Compose, "_bridge_tensor_data_to_numpy", count_bridge)
-
-    result = transform(volume=tensor_volume)["volume"]
-
-    assert bridge_calls == 1
-    assert result.shape == tensor_volume.shape
-    assert result.dtype == tensor_volume.dtype

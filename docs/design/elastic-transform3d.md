@@ -34,11 +34,11 @@ The bound is strict. It keeps the continuous pull map in the supported no-fold r
 
 The implementation samples `2 * rows * columns` values per control plane, expands only 2D planes, and adds each result directly into the final sampling grid. It does not create dense 3D random noise, run 3D smoothing, allocate a separate dense displacement volume, create a meshgrid, or resample once per plane.
 
-### Tensor input follows the measured faster route
+### Tensor execution follows the selected handler
 
-NumPy volumes use `(D, H, W, C)`. CPU Tensor `volume` and `mask3d` inputs with one channel use `(C, D, H, W)` and `(D, H, W)` directly. Multi-channel Tensor volumes use Compose's single NumPy bridge and return in `(C, D, H, W)` layout because that route is faster or equally fast on the measured matrix.
+NumPy volumes use `(D, H, W, C)`. CPU Tensor volumes use `(C, D, H, W)`; `mask3d` accepts `(D, H, W)` or `(C, D, H, W)`. `ElasticTransform3D` declares Tensor input on its volume and mask handlers, so Albucore `remap3d` executes those targets directly for every accepted channel count. The target container and layout are unchanged at the public boundary.
 
-The current routing decision was measured on 2026-08-28 on an Apple M4 Max with Torch restricted to one CPU thread. Three ABBA pairs covered the standard `(8, 64, 64)` and `(16, 128, 128)` volumes; C=1, C=3, and C=5; and `uint8` and `float32`. C=1 stayed within 4% of the bridge. C=3 included a 14% native slowdown, and C=5 was 20–41% slower natively, so only C=1 stays direct. The Tensor ASV lane tracks the standard volume cases. A routing decision for a larger volume requires a separate ABBA run.
+The routing rule belongs to the base transform layer: it inspects the handler receiving each Tensor target. A handler without a Tensor annotation uses its existing NumPy lifecycle through a leaf-local bridge. `Compose` validates Tensor inputs and normalizes optional channels; it does not select Elastic3D's backend route.
 
 ## Implementation
 
@@ -81,7 +81,7 @@ The sampler converts the compact planes to Albucore's normalized `(x, y, z)` gri
 
 ## Testing Strategy
 
-Focused tests cover constructor validation, the strict topology boundary, every supported raster dtype path, fill behavior, target alignment, keypoint inversion, exact identity, seeded execution, strict-JSON replay, applied-configuration reconstruction, additional targets, and native Tensor output parity.
+Focused tests cover constructor validation, the strict topology boundary, every supported raster dtype path, fill behavior, target alignment, keypoint inversion, exact identity, seeded execution, strict-JSON replay, applied-configuration reconstruction, additional targets, and native Tensor output parity for one, three, and five channels.
 
 The permanent ASV coverage has two layers:
 
@@ -95,5 +95,5 @@ External MONAI and TorchIO transforms use dense Gaussian and full 3D B-spline fi
 - [Issue #327: ElasticTransform3D design](https://github.com/albumentations-team/AlbumentationsX/issues/327)
 - [Bounded 2D ElasticTransform](elastic-transform.md)
 - [Applied configuration and replay contracts](applied-config-replay-contracts.md)
-- [Torch CPU backend and Tensor-native Compose](torch-cpu-backend-migration.md)
+- [NumPy and CPU Tensor Transform Routing](numpy-tensor-routing.md)
 - [Albucore](https://github.com/albumentations-team/albucore)

@@ -309,9 +309,10 @@ def elastic_transform_3d(
     is_mask: bool = False,
 ) -> VolumeType | torch.Tensor:
     """Build and apply a compact elastic pull field to one volume or mask."""
-    source_shape = (
-        tuple(volume.shape if is_mask else volume.shape[1:]) if isinstance(volume, torch.Tensor) else volume.shape[:3]
-    )
+    if isinstance(volume, torch.Tensor):
+        source_shape = tuple(volume.shape[1:] if volume.ndim == NUM_VOLUME_DIMENSIONS else volume.shape)
+    else:
+        source_shape = volume.shape[:3]
     recorded_shape = tuple(sampler["volume_shape"])
     if source_shape != recorded_shape:
         raise ValueError(

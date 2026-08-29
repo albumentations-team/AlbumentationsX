@@ -465,24 +465,24 @@ def _describe_target_cached(
             layout, topology = ("image_chw", "image_2d") if tensor else ("image_hwc", "image_2d")
         elif canonical_type == "images":
             spatial_shape = shape[2:4] if tensor else shape[1:3]
-            channels = shape[0] if tensor else (shape[-1] if len(shape) > 3 else 1)
-            layout, topology = ("images_clhw", "batch_2d") if tensor else ("images_nhwc", "batch_2d")
+            channels = shape[1] if tensor else (shape[-1] if len(shape) > 3 else 1)
+            layout, topology = ("images_nchw", "batch_2d") if tensor else ("images_nhwc", "batch_2d")
         elif canonical_type == "volume":
             spatial_shape = shape[1:] if tensor else shape[:3]
             channels = shape[0] if tensor else (shape[-1] if len(shape) > 3 else 1)
             layout, topology = ("volume_cdhw", "volume_3d") if tensor else ("volume_dhwc", "volume_3d")
         elif canonical_type == "mask":
-            spatial_shape = shape[:2]
-            channels = shape[-1] if len(shape) > 2 else 1
-            layout, topology = "mask_hw", "mask_2d"
+            spatial_shape = shape[1:3] if tensor else shape[:2]
+            channels = shape[0] if tensor else (shape[-1] if len(shape) > 2 else 1)
+            layout, topology = ("mask_chw", "mask_2d") if tensor else ("mask_hwc", "mask_2d")
         elif canonical_type == "masks":
-            spatial_shape = shape[1:3]
-            channels = shape[-1] if len(shape) > 3 else 1
-            layout, topology = "masks_nhw", "batch_mask_2d"
+            spatial_shape = shape[2:4] if tensor else shape[1:3]
+            channels = shape[1] if tensor else (shape[-1] if len(shape) > 3 else 1)
+            layout, topology = ("masks_nchw", "batch_mask_2d") if tensor else ("masks_nhwc", "batch_mask_2d")
         elif canonical_type == "mask3d":
-            spatial_shape = shape[:3]
-            channels = shape[-1] if len(shape) > 3 else 1
-            layout, topology = "mask3d_dhw", "mask_3d"
+            spatial_shape = shape[1:] if tensor else shape[:3]
+            channels = shape[0] if tensor else (shape[-1] if len(shape) > 3 else 1)
+            layout, topology = ("mask3d_cdhw", "mask_3d") if tensor else ("mask3d_dhwc", "mask_3d")
 
     return TargetDescriptor(
         name,

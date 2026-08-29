@@ -11,6 +11,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
+import torch
 
 import albumentations as A
 from tests.helpers.contract_data import (
@@ -37,6 +38,14 @@ if TYPE_CHECKING:
 TargetAssertion = Callable[["TransformContractCase", dict[str, Any], dict[str, Any]], None]
 
 
+def _as_numpy(value: Any) -> np.ndarray:
+    return value.numpy() if isinstance(value, torch.Tensor) else np.asarray(value)
+
+
+def _image_spatial_shape(value: np.ndarray | torch.Tensor) -> tuple[int, int]:
+    return tuple(value.shape[-2:] if isinstance(value, torch.Tensor) else value.shape[:2])
+
+
 class ProfileCost(Enum):
     """Execution tier for a reusable target workload."""
 
@@ -51,13 +60,13 @@ def _assert_image_mask(
 ) -> None:
     image = result["image"]
     mask = result["mask"]
-    assert image.shape[:2] == mask.shape[:2]
+    assert _image_spatial_shape(image) == _image_spatial_shape(mask)
     assert image.dtype == source["image"].dtype
     assert mask.dtype == source["mask"].dtype
 
 
 def _assert_bbox_fields(source: dict[str, Any], result: dict[str, Any], geometry_columns: int) -> None:
-    bboxes = np.asarray(result["bboxes"])
+    bboxes = _as_numpy(result["bboxes"])
     assert len(bboxes) == len(result["bbox_labels"])
     assert len(bboxes) == len(result["bbox_scores"])
     assert set(result["bbox_labels"]) <= _collect_field_values(source, "bbox_labels")
@@ -90,7 +99,7 @@ def _collect_field_values(value: Any, field_name: str) -> set[Any]:
 def _assert_hbb(case: TransformContractCase, source: dict[str, Any], result: dict[str, Any]) -> None:
     _assert_image_mask(case, source, result)
     _assert_bbox_fields(source, result, geometry_columns=4)
-    bboxes = np.asarray(result["bboxes"])
+    bboxes = _as_numpy(result["bboxes"])
     if len(bboxes) > 0:
         assert ((bboxes >= 0) & (bboxes <= 1)).all()
 
@@ -98,14 +107,14 @@ def _assert_hbb(case: TransformContractCase, source: dict[str, Any], result: dic
 def _assert_obb(case: TransformContractCase, source: dict[str, Any], result: dict[str, Any]) -> None:
     _assert_image_mask(case, source, result)
     _assert_bbox_fields(source, result, geometry_columns=5)
-    bboxes = np.asarray(result["bboxes"])
+    bboxes = _as_numpy(result["bboxes"])
     if len(bboxes) > 0:
         assert ((bboxes[:, :4] >= 0) & (bboxes[:, :4] <= 1)).all()
 
 
 def _assert_keypoints(case: TransformContractCase, source: dict[str, Any], result: dict[str, Any]) -> None:
     _assert_image_mask(case, source, result)
-    keypoints = np.asarray(result["keypoints"])
+    keypoints = _as_numpy(result["keypoints"])
     assert keypoints.ndim == 2
     assert keypoints.shape[1] == 2
     assert len(keypoints) == len(result["keypoint_labels"])
@@ -121,9 +130,11 @@ def _assert_volume_mask3d(
     volume = result["volume"]
     mask3d = result["mask3d"]
     if not issubclass(case.transform_cls, A.Transform3D):
-        assert volume.shape[0] == source["volume"].shape[0]
-        assert mask3d.shape[0] == source["mask3d"].shape[0]
-    assert volume.shape[:3] == mask3d.shape[:3]
+        depth_axis = -3 if isinstance(volume, torch.Tensor) else 0
+        assert volume.shape[depth_axis] == source["volume"].shape[depth_axis]
+        assert mask3d.shape[-3] == source["mask3d"].shape[-3]
+    spatial_shape = volume.shape[-3:] if isinstance(volume, torch.Tensor) else volume.shape[:3]
+    assert spatial_shape == mask3d.shape[-3:]
     assert volume.dtype == source["volume"].dtype
     assert mask3d.dtype == source["mask3d"].dtype
 

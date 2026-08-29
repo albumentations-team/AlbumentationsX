@@ -48,10 +48,7 @@ def get_image_data(data: dict[str, Any]) -> dict[str, Any]:
     """Extract dtype, spatial dimensions, and channel count from the first canonical image, image batch, or
     volume in core pipelines.
 
-    Height and width skip batch/depth dimensions according to the canonical role:
-        - 'image':   H, W from shape[0], shape[1]
-        - 'images':  H, W from shape[1], shape[2]   (skip batch dim)
-        - 'volume':  H, W from shape[1], shape[2]   (skip depth dim)
+    NumPy inputs use HWC, NHWC, or DHWC layout. Tensor inputs use CHW, NCHW, or CDHW layout.
 
     Args:
         data (dict[str, Any]): Dictionary potentially containing image/volume arrays.
@@ -71,9 +68,13 @@ def get_image_data(data: dict[str, Any]) -> dict[str, Any]:
         if isinstance(array, torch.Tensor):
             if target == "image":
                 height, width = shape[1], shape[2]
+                num_channels = int(shape[0])
+            elif target == "images":
+                height, width = shape[2], shape[3]
+                num_channels = int(shape[1])
             else:
                 height, width = shape[2], shape[3]
-            num_channels = int(shape[0])
+                num_channels = int(shape[0])
         elif target == "image":
             height, width = shape[0], shape[1]
             num_channels = shape[-1]
@@ -129,11 +130,9 @@ def _get_shape_from_image(img: np.ndarray) -> tuple[int, int]:
 
 
 def _get_shape_from_images(imgs: np.ndarray) -> tuple[int, int]:
-    """Extract height and width from either a NumPy NHWC batch or a CPU Tensor C,L,H,W
-    sequence while retaining the public layout contract of each representation.
-    """
+    """Extract height and width from a NumPy NHWC batch or CPU Tensor NCHW sequence."""
     if isinstance(imgs, torch.Tensor):
-        return imgs.shape[2], imgs.shape[3]
+        return imgs.shape[-2], imgs.shape[-1]
     # Regular numpy array batch in NHWC format - take first image
     return imgs[0].shape[0], imgs[0].shape[1]
 

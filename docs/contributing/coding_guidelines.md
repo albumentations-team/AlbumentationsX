@@ -246,14 +246,22 @@ def apply(self, img: np.ndarray, **params) -> np.ndarray:
 
 ### Image and Volume Shape Invariants
 
-- Within `Compose`, images and volume data are always channel-last with an explicit channel dimension:
-  - Single image: `(H, W, C)`, including grayscale as `(H, W, 1)`
-  - Image batch: `(N, H, W, C)`
-  - Single volume: `(D, H, W, C)`
-- Do not add compatibility branches for grayscale images shaped as `(H, W)` in transform `apply_*` methods or functional
-  kernels used by `Compose`; normalize inputs before they reach transform logic.
-- It is fine to branch on `img.ndim` when selecting between image, image-batch, and single-volume logic. Do not
-  use `img.ndim` to infer whether a Compose image has channels.
+`Compose` normalizes optional channel axes before dispatch. The canonical layout depends on the caller's container:
+
+| Target family | NumPy inside `Compose` | CPU Tensor inside `Compose` |
+| --- | --- | --- |
+| image or mask | `(H, W, C)` | `(C, H, W)` |
+| images or masks | `(N, H, W, C)` | `(N, C, H, W)` |
+| volume or mask3d | `(D, H, W, C)` | `(C, D, H, W)` |
+
+- Do not add compatibility branches for channel-free inputs in `apply_*` methods or functional kernels used by
+  `Compose`; the root normalizes them before dispatch and restores the public rank when the channel remains singleton.
+- A transform with no complete Tensor route receives a canonical NumPy view through the base fallback. Keep its existing
+  NumPy implementation channel-last; do not duplicate bridge logic in the transform.
+- A Tensor-aware transform must support the complete leaf lifecycle and the canonical Tensor layouts above. It may
+  decline a case and let the base fallback run the established NumPy path.
+- It is fine to branch on `img.ndim` when selecting image, batch, and volume semantics. Do not use rank to guess where
+  a channel axis is.
 
 ### Handling Auxiliary Data via Metadata
 
@@ -266,6 +274,10 @@ Instead, follow this preferred pattern:
 3. **Access the data** inside `sample_parameters` using `data.get("your_metadata_key")`.
 4. **Define empty metadata deliberately**. A transform may no-op or use a documented fallback; it must not reach into a
    dataset or another global donor source to fill the gap.
+
+`targets_as_params` is also the complete declaration needed for CPU Tensor fallback. Do not add Tensor-specific routing
+properties to a concrete transform. The base adapter converts direct Tensor parameters to NumPy views and recognizes
+standard target fields inside donor records.
 
 Passing data via `__init__` couples the transform instance to specific data, making it less reusable and potentially breaking serialization or pipeline composition.
 

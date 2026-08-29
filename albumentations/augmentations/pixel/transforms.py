@@ -1365,7 +1365,7 @@ class Dithering(ImageOnlyTransform):
             per_item_noise_shape = (height, width, 1) if self.color_mode == "grayscale" else (height, width, channels)
             if view.canonical_type not in {"images", "volume"}:
                 item_count = 1
-            elif view.descriptor.layout in {"images_clhw", "volume_cdhw"}:
+            elif view.descriptor.layout == "volume_cdhw":
                 item_count = shape[1]
             else:
                 item_count = shape[0]

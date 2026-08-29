@@ -13,9 +13,8 @@ channel-less inputs before transform execution and restores their original layou
 changes against both forms, and assess internal transform execution using the normalized explicit-channel layouts.
 `mask3d` is a separate target and may omit the channel axis.
 
-Public Tensor inputs remain channel-first: `image` is `(C, H, W)`, `images` is `(C, L, H, W)`, and `volume` is
-`(C, D, H, W)`. Review Tensor routing against these layouts as described in
-docs/design/torch-cpu-backend-migration.md.
+Public Tensor inputs remain channel-first: `image` is `(C, H, W)`, `images` is `(N, C, H, W)`, and `volume` is
+`(C, D, H, W)`. Review Tensor routing against these layouts as described in docs/design/numpy-tensor-routing.md.
 
 For workflow, packaging, and legal changes, inspect the local policy and repository contracts. Do not propose broad
 refactors outside the pull request's scope. Cite changed file paths and line numbers for each actionable finding.

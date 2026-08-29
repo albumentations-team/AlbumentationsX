@@ -10,6 +10,7 @@ and serialization capabilities that are inherited by concrete transform implemen
 import inspect
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import Any, ClassVar, cast
 from warnings import warn
 
@@ -31,6 +32,20 @@ from albumentations.core.invocation import (
     publish_completed_transform_state,
 )
 from albumentations.core.keypoints_utils import KeypointsProcessor
+from albumentations.core.tensor import (
+    TENSOR_ANNOTATION_TARGETS,
+    TENSOR_CANONICAL_RANKS,
+    TENSOR_CANONICAL_SHAPE_DESCRIPTIONS,
+    TENSOR_METADATA_FIELD_TARGETS,
+    TENSOR_TARGETS,
+    numpy_to_tensor_annotation,
+    numpy_to_tensor_spatial,
+    tensor_metadata_to_numpy,
+    tensor_to_numpy_annotation,
+    tensor_to_numpy_spatial,
+    validate_tensor_input,
+    validate_tensor_metadata_input,
+)
 from albumentations.core.transform_params import (
     SampledParams,
     SampledParamsError,
@@ -110,6 +125,76 @@ _DISCARDED_APPLIED_OVERRIDES = _DiscardedAppliedOverrides()
 _EMPTY_APPLIED_OVERRIDES: Mapping[str, Any] = {}
 
 
+@dataclass(frozen=True, slots=True)
+class _TensorFallbackRoute:
+    """Describe one leaf-local NumPy fallback without retaining data on the transform."""
+
+    targets: tuple[tuple[str, str], ...]
+    metadata: tuple[tuple[str, Any], ...]
+
+
+def _sequence_metadata_target(value: torch.Tensor) -> str | None:
+    return "image" if value.ndim in {2, 3} else None
+
+
+def _iter_declared_metadata_tensors(
+    value: Any,
+    *,
+    path: str,
+    target: str | None = None,
+) -> tuple[tuple[str, str | None, torch.Tensor], ...]:
+    """Find Tensor values read through one `targets_as_params` key."""
+    if isinstance(value, torch.Tensor):
+        return ((path, target, value),)
+    if isinstance(value, Mapping):
+        mapping_tensors: list[tuple[str, str | None, torch.Tensor]] = []
+        for key, nested in value.items():
+            nested_target = TENSOR_METADATA_FIELD_TARGETS.get(key)
+            if key in TENSOR_METADATA_FIELD_TARGETS or isinstance(nested, torch.Tensor):
+                mapping_tensors.extend(
+                    _iter_declared_metadata_tensors(nested, path=f"{path}[{key!r}]", target=nested_target),
+                )
+        return tuple(mapping_tensors)
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, np.ndarray)):
+        sequence_tensors: list[tuple[str, str | None, torch.Tensor]] = []
+        for index, nested in enumerate(value):
+            nested_target = target
+            if nested_target is None and isinstance(nested, torch.Tensor):
+                nested_target = _sequence_metadata_target(nested)
+            if nested_target is not None or isinstance(nested, (Mapping, torch.Tensor)):
+                sequence_tensors.extend(
+                    _iter_declared_metadata_tensors(nested, path=f"{path}[{index}]", target=nested_target),
+                )
+        return tuple(sequence_tensors)
+    return ()
+
+
+def _metadata_to_numpy(value: Any, target: str | None = None) -> Any:
+    """Build the NumPy view of one value read through `targets_as_params`."""
+    if isinstance(value, torch.Tensor):
+        return tensor_metadata_to_numpy(value, target)
+    if isinstance(value, Mapping):
+        converted = dict(value)
+        for key, nested in value.items():
+            nested_target = TENSOR_METADATA_FIELD_TARGETS.get(key)
+            if key in TENSOR_METADATA_FIELD_TARGETS or isinstance(nested, torch.Tensor):
+                converted[key] = _metadata_to_numpy(nested, nested_target)
+        return converted
+    if isinstance(value, list):
+        return [_metadata_sequence_item_to_numpy(item, target) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_metadata_sequence_item_to_numpy(item, target) for item in value)
+    return value
+
+
+def _metadata_sequence_item_to_numpy(value: Any, target: str | None) -> Any:
+    if target is not None or isinstance(value, Mapping):
+        return _metadata_to_numpy(value, target)
+    if isinstance(value, torch.Tensor):
+        return _metadata_to_numpy(value, _sequence_metadata_target(value))
+    return value
+
+
 class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
     """Base class for all transforms in Albumentations. Provides core functionality for application,
     serialization, and params.
@@ -187,18 +272,12 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
     @property
     def supports_cpu_tensor(self) -> bool:
-        """Return whether this transform can run CPU Tensor inputs directly, allowing Compose to keep data in Tensor
-        form without a NumPy bridge.
-        """
+        """Return whether this leaf has a complete Tensor-aware execution path."""
         return self._supports_cpu_tensor
 
     @property
     def cpu_tensor_targets(self) -> frozenset[str] | None:
-        """Return canonical targets this transform handles directly as CPU Tensor inputs, allowing Compose to decide
-        whether to keep a Tensor route.
-
-        Compose bridges a pipeline through NumPy when its Tensor targets fall outside this set.
-        """
+        """Return canonical targets handled by this leaf's Tensor-aware path."""
         return self._cpu_tensor_targets
 
     @property
@@ -209,32 +288,130 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         return self._cpu_tensor_channels
 
     def supports_cpu_tensor_targets(self, targets: frozenset[str]) -> bool:
-        """Return whether accepted Tensor capability routes cover every caller-provided
-        canonical target before Compose samples parameters or enters transform dispatch.
-
-        `None` means that this transform's direct Tensor route is target agnostic. Transforms with a narrower route
-        declare canonical target names explicitly so Compose can choose a NumPy bridge before sampling parameters.
-        """
+        """Return whether this leaf handles every Tensor target in the current invocation."""
         return self.supports_cpu_tensor and (
             self._cpu_tensor_targets is None or targets.issubset(self._cpu_tensor_targets)
         )
 
     def supports_cpu_tensor_inputs(self, tensor_inputs: tuple[tuple[str, Any], ...]) -> bool:
-        """Check every supplied target and image channel count to decide whether this transform can run them directly
-        as CPU Tensor data.
-
-        Compose uses a False result to select its one-time NumPy bridge for the full pipeline. Transform helpers never
-        receive Tensor data through an ad hoc conversion.
-        """
+        """Check the complete Tensor-aware contract for one leaf invocation."""
         targets = frozenset(target for target, _ in tensor_inputs)
         if not self.supports_cpu_tensor_targets(targets):
             return False
         if self._cpu_tensor_channels is None:
             return True
         return all(
-            target not in {"image", "images", "volume"} or value.shape[0] in self._cpu_tensor_channels
+            target not in {"image", "images", "volume"}
+            or value.shape[1 if target == "images" else 0] in self._cpu_tensor_channels
             for target, value in tensor_inputs
         )
+
+    def _tensor_fallback_route(self, data: Mapping[str, Any]) -> _TensorFallbackRoute:
+        """Collect visible Tensor targets and declared Tensor metadata for one leaf."""
+        is_tensor_terminal = getattr(self, "_is_tensor_terminal", False)
+        targets = tuple(
+            (data_name, self._additional_targets.get(data_name, data_name))
+            for data_name, value in data.items()
+            if isinstance(value, torch.Tensor)
+            and self._additional_targets.get(data_name, data_name) in TENSOR_TARGETS
+            and (is_tensor_terminal or data_name in self._key2func or data_name in self.targets_as_params)
+        )
+        for data_name, target in targets:
+            validate_tensor_input(data[data_name], data_name, target)
+
+        metadata: list[tuple[str, Any]] = []
+        for data_name in self.get_tensor_metadata_keys():
+            if data_name not in data:
+                continue
+            metadata_value = data[data_name]
+            metadata_tensors = _iter_declared_metadata_tensors(metadata_value, path=data_name)
+            if not metadata_tensors:
+                continue
+            for path, metadata_target, value in metadata_tensors:
+                validate_tensor_metadata_input(value, path, metadata_target)
+            metadata.append((data_name, metadata_value))
+        if (targets or metadata) and is_tensor_terminal:
+            raise TypeError(
+                "ToTensorV2 and ToTensor3D accept NumPy input only; remove this transform from the pipeline",
+            )
+        for data_name, target in targets:
+            if data[data_name].ndim != TENSOR_CANONICAL_RANKS[target]:
+                raise TypeError(
+                    f"{data_name} must have canonical shape {TENSOR_CANONICAL_SHAPE_DESCRIPTIONS[target]} "
+                    "before transform dispatch; pass optional-channel inputs through Compose",
+                )
+        return _TensorFallbackRoute(targets=targets, metadata=tuple(metadata))
+
+    def get_tensor_metadata_keys(self) -> frozenset[str]:
+        """Return `targets_as_params` keys that may contain Tensor metadata."""
+        return frozenset(
+            data_name
+            for data_name in self.targets_as_params
+            if self._additional_targets.get(data_name, data_name) not in TENSOR_TARGETS
+        )
+
+    def iter_tensor_metadata_inputs(
+        self,
+        data: Mapping[str, Any],
+    ) -> tuple[tuple[str, str | None, torch.Tensor], ...]:
+        """Return Tensor values nested under declared metadata keys."""
+        result: list[tuple[str, str | None, torch.Tensor]] = []
+        for data_name in self.get_tensor_metadata_keys():
+            if data_name in data:
+                result.extend(_iter_declared_metadata_tensors(data[data_name], path=data_name))
+        return tuple(result)
+
+    def _can_bypass_tensor_route(
+        self,
+        data: Mapping[str, Any],
+        invocation: InvocationContext | None,
+    ) -> bool:
+        if invocation is not None and invocation.has_tensor_inputs is not None:
+            return not invocation.has_tensor_inputs
+        return not self.targets_as_params and not any(isinstance(value, torch.Tensor) for value in data.values())
+
+    def _uses_tensor_fallback(self, data: Mapping[str, Any], route: _TensorFallbackRoute) -> bool:
+        """Return whether the complete leaf invocation must use its NumPy path."""
+        return bool(route.metadata) or bool(
+            route.targets
+            and not self.supports_cpu_tensor_inputs(
+                tuple((target, data[data_name]) for data_name, target in route.targets),
+            ),
+        )
+
+    @staticmethod
+    def _enter_tensor_fallback(
+        data: Mapping[str, Any],
+        route: _TensorFallbackRoute,
+    ) -> dict[str, Any]:
+        numpy_data = dict(data)
+        for data_name, target in route.targets:
+            value = data[data_name]
+            numpy_data[data_name] = (
+                tensor_to_numpy_annotation(value, target)
+                if target in TENSOR_ANNOTATION_TARGETS
+                else tensor_to_numpy_spatial(value, target)
+            )
+        for data_name, value in route.metadata:
+            numpy_data[data_name] = _metadata_to_numpy(value)
+        return numpy_data
+
+    @staticmethod
+    def _restore_tensor_fallback(
+        data: dict[str, Any],
+        route: _TensorFallbackRoute,
+    ) -> dict[str, Any]:
+        for data_name, target in route.targets:
+            value = data.get(data_name)
+            if not isinstance(value, np.ndarray):
+                continue
+            data[data_name] = (
+                numpy_to_tensor_annotation(value, target)
+                if target in TENSOR_ANNOTATION_TARGETS
+                else numpy_to_tensor_spatial(value, target)
+            )
+        data.update(route.metadata)
+        return data
 
     def __init__(self, p: float = 0.5):
         self.p = p
@@ -459,11 +636,13 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         if args:
             msg = "You have to pass data to augmentations as named arguments, for example: aug(image=image)"
             raise KeyError(msg)
+        if getattr(self, "_is_tensor_terminal", False):
+            self._tensor_fallback_route(kwargs)
         if not self.replay_mode and not force_apply and self.p <= 0.0:
             return kwargs
         if self.replay_mode:
             state = invocation.transform_state(self) if invocation.collect_applied else None
-            return self._apply_replay(state, **kwargs)
+            return self._apply_replay(state, invocation=invocation, **kwargs)
 
         state = invocation.get_transform_state(self) if invocation.collect_applied else None
         if state is not None:
@@ -476,6 +655,27 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         return self._apply_sampled(state, invocation.collect_applied, invocation, **kwargs)
 
     def _apply_sampled(
+        self,
+        state: TransformInvocationState | None,
+        collect_applied: bool,
+        invocation: InvocationContext | None,
+        **kwargs: Any,
+    ) -> Any:
+        """Run one applied leaf through its Tensor-aware or NumPy fallback route."""
+        if self._can_bypass_tensor_route(kwargs, invocation):
+            return self._apply_sampled_in_route(state, collect_applied, invocation, **kwargs)
+        route = self._tensor_fallback_route(kwargs)
+        if self._uses_tensor_fallback(kwargs, route):
+            result = self._apply_sampled_in_route(
+                state,
+                collect_applied,
+                invocation,
+                **self._enter_tensor_fallback(kwargs, route),
+            )
+            return self._restore_tensor_fallback(result, route)
+        return self._apply_sampled_in_route(state, collect_applied, invocation, **kwargs)
+
+    def _apply_sampled_in_route(
         self,
         state: TransformInvocationState | None,
         collect_applied: bool,
@@ -617,12 +817,27 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         """
         return force_apply or self.p >= 1.0 or invocation.py_random.random() < self.p
 
-    def _apply_replay(self, state: TransformInvocationState | None, **kwargs: Any) -> Any:
+    def _apply_replay(
+        self,
+        state: TransformInvocationState | None,
+        *,
+        invocation: InvocationContext | None,
+        **kwargs: Any,
+    ) -> Any:
         """Applies recorded replay parameters without new sampling, preserving the optional caller-local observation
         behavior of sampled leaves.
         """
         if not self.applied_in_replay:
             return kwargs
+        if self._can_bypass_tensor_route(kwargs, invocation):
+            return self._apply_replay_in_route(state, **kwargs)
+        route = self._tensor_fallback_route(kwargs)
+        if self._uses_tensor_fallback(kwargs, route):
+            result = self._apply_replay_in_route(state, **self._enter_tensor_fallback(kwargs, route))
+            return self._restore_tensor_fallback(result, route)
+        return self._apply_replay_in_route(state, **kwargs)
+
+    def _apply_replay_in_route(self, state: TransformInvocationState | None, **kwargs: Any) -> Any:
         sampled_params = SampledParams.from_dict(deepcopy(self._replay_params))
         targets = self._build_target_set(kwargs)
         self._validate_spatial_targets(targets)
@@ -923,9 +1138,11 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
                 if view.descriptor.shape is not None:
                     shape = view.descriptor.shape
                     shared_shape: tuple[int, ...]
-                    if view.descriptor.layout == "image_chw":
+                    if view.descriptor.layout in {"image_chw", "mask_chw"}:
                         shared_shape = (shape[1], shape[2], shape[0])
-                    elif view.descriptor.layout in {"images_clhw", "volume_cdhw"}:
+                    elif view.descriptor.layout in {"images_nchw", "masks_nchw"}:
+                        shared_shape = (shape[2], shape[3], shape[1])
+                    elif view.descriptor.layout in {"volume_cdhw", "mask3d_cdhw"}:
                         shared_shape = (shape[2], shape[3], shape[0])
                     elif view.canonical_type in {"images", "volume", "masks", "mask3d"}:
                         shared_shape = shape[1:]
@@ -953,15 +1170,15 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
     @staticmethod
     def _shared_shape_from_data_key(key: str, value: Any) -> tuple[int, ...]:
-        if key == "image":
-            if isinstance(value, torch.Tensor):
-                return value.shape[1], value.shape[2], value.shape[0]
-            return value.shape
-        if key in {"images", "volume"}:
-            if isinstance(value, torch.Tensor):
-                return value.shape[2], value.shape[3], value.shape[0]
-            return value.shape[1:]
-        return value.shape if key == "mask" else value.shape[1:]
+        if not isinstance(value, torch.Tensor):
+            return value.shape if key in {"image", "mask"} else value.shape[1:]
+        if key in {"image", "mask"}:
+            return value.shape[1], value.shape[2], value.shape[0]
+        if key in {"images", "masks"}:
+            return value.shape[2], value.shape[3], value.shape[1]
+        if key in {"volume", "mask3d"}:
+            return value.shape[2], value.shape[3], value.shape[0]
+        return value.shape[1:]
 
     def _extract_shared_shape_from_data(self, data: dict[str, Any]) -> tuple[int, ...] | None:
         """Return the shared shape needed by the no-sampler execution fast path.

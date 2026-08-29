@@ -31,6 +31,7 @@ from .analytics.telemetry import get_telemetry_client
 from .bbox_utils import BboxParams, BboxProcessor
 from .hub_mixin import HubMixin
 from .invocation import (
+    ChannelRestorationState,
     ComposeInvocationState,
     InvocationContext,
     InvocationRngOwner,
@@ -47,12 +48,12 @@ from .serialization import (
 )
 from .tensor import (
     TENSOR_ANNOTATION_TARGETS,
-    TENSOR_SPATIAL_TARGETS,
+    TENSOR_CHANNEL_AXIS,
+    TENSOR_TARGETS,
     numpy_to_tensor_annotation,
-    numpy_to_tensor_spatial,
     tensor_to_numpy_annotation,
-    tensor_to_numpy_spatial,
     validate_tensor_input,
+    validate_tensor_metadata_input,
 )
 from .tracing import TraceOptions, TraceResult, _ExecutionTrace
 from .transforms_interface import BasicTransform, DualTransform
@@ -87,17 +88,14 @@ _REPLAY_PARAM_ANNOTATIONS_CACHE: dict[type, dict[str, Any]] = {}
 
 
 @dataclass(frozen=True, slots=True)
-class _TensorCallState:
-    """Keep Tensor target layouts and the NumPy bridge decision local to one Compose invocation, preventing
-    overlapping calls from sharing representation state.
-    """
+class _TensorBoundaryState:
+    """Keep Tensor annotation restoration local to one Compose invocation."""
 
+    has_tensor_inputs: bool = False
     annotation_targets: tuple[tuple[str, str], ...] = ()
-    spatial_targets: tuple[tuple[str, str], ...] = ()
-    requires_numpy_bridge: bool = False
 
 
-_EMPTY_TENSOR_CALL_STATE = _TensorCallState()
+_EMPTY_TENSOR_BOUNDARY_STATE = _TensorBoundaryState()
 
 
 def _normalize_semantic_mask_label(label: Any, label_kind: str) -> int:
@@ -364,15 +362,7 @@ class BaseCompose(InvocationRngOwner, Serializable):
     check_each_transform: tuple[DataProcessor[Any], ...] | None = None
     main_compose: bool = True
     applied_in_replay: bool = False
-    _tensor_capability_is_transparent: bool = True
     _filters_annotations_during_dispatch: bool = False
-
-    @property
-    def tensor_capability_is_transparent(self) -> bool:
-        """Return whether this composition only delegates accepted CPU Tensor work to child
-        transforms and therefore introduces no representation boundary of its own.
-        """
-        return self._tensor_capability_is_transparent
 
     @property
     def filters_annotations_during_dispatch(self) -> bool:
@@ -1842,6 +1832,8 @@ class Compose(BaseCompose, HubMixin):
             proc for proc in self.processors.values() if getattr(proc.params, "check_each_transform", False)
         )
         self._set_check_args_for_transforms(self.transforms)
+        self._tensor_metadata_keys = self._declared_tensor_metadata_keys(self.transforms)
+        self._has_tensor_terminal = self._contains_tensor_terminal(self.transforms)
 
         self.save_applied_params = save_applied_params
 
@@ -2080,7 +2072,7 @@ class Compose(BaseCompose, HubMixin):
         # Public calls never expose a completed observation from an earlier sample,
         # including when input validation fails before an invocation can open.
         clear_completed_observation()
-        tensor_call_state = self._prepare_root_input(data)
+        tensor_boundary_state = self._prepare_root_input(data)
         if not (force_apply or self.p > 0.0):
             clear_completed_observation()
             if trace is not None:
@@ -2097,13 +2089,14 @@ class Compose(BaseCompose, HubMixin):
             and not self._configured_processors
             and not self._instance_binding
             and active_invocation is None
-            and self._can_execute_unactivated_ordinary_basic(data, tensor_call_state)
+            and self._can_execute_unactivated_ordinary_basic(data, tensor_boundary_state)
         ):
             context = self._new_invocation_context(
                 collect_applied=False,
                 invocation_seed=invocation_seed,
                 prime_py_random=not force_apply and self.p < 1.0,
             )
+            context.has_tensor_inputs = tensor_boundary_state.has_tensor_inputs
             if not self._should_apply_in_context(context, force_apply=force_apply):
                 return data
             return self._apply_unactivated_compiled_transforms(data, context)
@@ -2113,13 +2106,14 @@ class Compose(BaseCompose, HubMixin):
             invocation_seed=invocation_seed,
             prime_py_random=not force_apply and self.p < 1.0,
         )
+        context.has_tensor_inputs = tensor_boundary_state.has_tensor_inputs
         context.trace_session = trace
         with context:
             if not self._should_apply_in_context(context, force_apply=force_apply):
                 if trace is not None:
                     self._emit_trace_skip(trace, _TRACE_STATUS_SKIPPED_PROBABILITY)
                 return data
-            result = self._apply_prepared_transforms(data, tensor_call_state, context)
+            result = self._apply_prepared_transforms(data, tensor_boundary_state, context)
             self._emit_trace_composition(trace)
             return result
 
@@ -2153,14 +2147,12 @@ class Compose(BaseCompose, HubMixin):
     def _apply_prepared_transforms(
         self,
         data: dict[str, Any],
-        tensor_call_state: _TensorCallState,
+        tensor_boundary_state: _TensorBoundaryState,
         invocation: InvocationContext | None,
     ) -> dict[str, Any]:
-        """Executes a validated root graph after probability, applying one Tensor boundary and restoring the public
-        result representation after child dispatch.
-        """
-        self._open_root_boundary(data, tensor_call_state)
-        return self._close_root_boundary(self._apply_children(data, invocation), tensor_call_state)
+        """Execute a validated root graph through its one public boundary."""
+        self._open_root_boundary(data, tensor_boundary_state)
+        return self._close_root_boundary(self._apply_children(data, invocation), tensor_boundary_state)
 
     def _apply_unactivated_compiled_transforms(
         self,
@@ -2194,17 +2186,17 @@ class Compose(BaseCompose, HubMixin):
     def _can_execute_unactivated_ordinary_basic(
         self,
         data: dict[str, Any],
-        tensor_call_state: _TensorCallState,
+        tensor_boundary_state: _TensorBoundaryState,
     ) -> bool:
         """Recognize a compiled native loop that needs an invocation but no ContextVar, selecting it only when
         repair, processors, tracing, and observation are absent.
 
         The loop passes its invocation to every built-in edge and sampler explicitly.
-        Its only root-local state would be grayscale repair, Tensor bridging,
+        Its only root-local state would be grayscale repair, Tensor validation,
         annotation processors, or shape validation, all of which select another
         executor.
         """
-        if not self._unactivated_compiled_graph or tensor_call_state is not _EMPTY_TENSOR_CALL_STATE:
+        if not self._unactivated_compiled_graph or tensor_boundary_state.has_tensor_inputs:
             return False
 
         shape_checked_inputs = 0
@@ -2285,34 +2277,26 @@ class Compose(BaseCompose, HubMixin):
             raise RuntimeError(msg)
         return invocation.compose_state(self)
 
-    def _prepare_root_input(self, data: dict[str, Any]) -> _TensorCallState:
+    def _prepare_root_input(self, data: dict[str, Any]) -> _TensorBoundaryState:
         """Validates one public input boundary and initializes observation storage before sampling, so invalid target
         combinations fail before random state advances.
         """
         if self._additional_targets:
             self._validate_additional_target_sources(data)
-        tensor_call_state = self._validate_tensor_inputs(data)
+        tensor_boundary_state = self._validate_tensor_inputs(data)
         if self.save_applied_params and self.main_compose:
             data["applied_transforms"] = []
-        return tensor_call_state
+        return tensor_boundary_state
 
-    def _open_root_boundary(self, data: dict[str, Any], tensor_call_state: _TensorCallState) -> None:
-        """Bridge and normalize public data once before graph dispatch, keeping child nodes free of representation
-        conversion and processor-boundary work.
-        """
-        if tensor_call_state.requires_numpy_bridge:
-            self._bridge_tensor_data_to_numpy(data, tensor_call_state)
-        self.preprocess(data, tensor_call_state)
+    def _open_root_boundary(self, data: dict[str, Any], tensor_boundary_state: _TensorBoundaryState) -> None:
+        """Normalize public data before graph dispatch."""
+        self.preprocess(data, tensor_boundary_state)
 
-    def _close_root_boundary(self, data: dict[str, Any], tensor_call_state: _TensorCallState) -> dict[str, Any]:
-        """Finish root postprocessing and restore public Tensors once after graph dispatch, leaving
-        nested containers free from representation boundaries.
-        """
+    def _close_root_boundary(self, data: dict[str, Any], tensor_boundary_state: _TensorBoundaryState) -> dict[str, Any]:
+        """Finish root postprocessing and restore processor-owned Tensor annotations."""
         result = self.postprocess(data)
-        if tensor_call_state.requires_numpy_bridge:
-            self._restore_tensor_spatial_data(result, tensor_call_state)
-        if tensor_call_state.annotation_targets:
-            self._restore_tensor_annotations(result, tensor_call_state)
+        if tensor_boundary_state.annotation_targets:
+            self._restore_tensor_annotations(result, tensor_boundary_state)
         return result
 
     def _apply_children(self, data: dict[str, Any], invocation: InvocationContext | None) -> dict[str, Any]:
@@ -2341,87 +2325,69 @@ class Compose(BaseCompose, HubMixin):
                 msg = f"Additional target '{alias}' requires canonical target '{target}' to be present."
                 raise ValueError(msg)
 
-    def _validate_tensor_inputs(self, data: dict[str, Any]) -> _TensorCallState:
-        """Validate Tensor boundary contracts before Compose samples probability or parameters,
-        ensuring each spatial target uses a single representation.
+    def _validate_tensor_inputs(self, data: dict[str, Any]) -> _TensorBoundaryState:
+        """Validate every supplied Tensor target before Compose samples probability or parameters."""
+        has_direct_tensor = any(isinstance(value, torch.Tensor) for value in data.values())
+        if not has_direct_tensor and (
+            not self._tensor_metadata_keys or not any(key in data for key in self._tensor_metadata_keys)
+        ):
+            return _EMPTY_TENSOR_BOUNDARY_STATE
 
-        A pipeline uses its direct Tensor route only when every selectable transform supports the supplied targets.
-        Otherwise, Compose bridges all spatial targets to NumPy once before dispatch and restores Tensor output after
-        postprocessing. Individual helpers never perform representation conversion.
-        """
-        if not any(isinstance(value, torch.Tensor) for value in data.values()):
-            return _EMPTY_TENSOR_CALL_STATE
-
-        tensor_targets: list[tuple[str, str, torch.Tensor]] = []
-        spatial_representations: set[str] = set()
         annotation_targets: list[tuple[str, str]] = []
-
+        has_tensor_target = False
         for data_name, value in data.items():
             canonical_name = self._additional_targets.get(data_name, data_name)
-            if isinstance(value, torch.Tensor):
-                if canonical_name in TENSOR_SPATIAL_TARGETS:
-                    tensor_targets.append((data_name, canonical_name, value))
-                    spatial_representations.add("tensor")
-                    if canonical_name in TENSOR_ANNOTATION_TARGETS:
-                        annotation_targets.append((data_name, canonical_name))
-            elif (
-                canonical_name in TENSOR_SPATIAL_TARGETS
-                and value is not None
-                and (self.main_compose or canonical_name not in TENSOR_ANNOTATION_TARGETS)
-            ):
-                spatial_representations.add("numpy")
-
-        if not tensor_targets:
-            return _EMPTY_TENSOR_CALL_STATE
-
-        for data_name, canonical_name, value in tensor_targets:
+            if not isinstance(value, torch.Tensor) or canonical_name not in TENSOR_TARGETS:
+                continue
+            has_tensor_target = True
             validate_tensor_input(value, data_name, canonical_name)
+            if canonical_name in TENSOR_ANNOTATION_TARGETS:
+                annotation_targets.append((data_name, canonical_name))
 
-        if len(spatial_representations) != 1:
+        for path, metadata_target, value in self._iter_declared_tensor_metadata_inputs(self.transforms, data):
+            has_tensor_target = True
+            validate_tensor_metadata_input(value, path, metadata_target)
+
+        if not has_tensor_target:
+            return _EMPTY_TENSOR_BOUNDARY_STATE
+        if self._has_tensor_terminal:
             raise TypeError(
-                "NumPy arrays or sequences and torch.Tensors cannot be mixed across spatial targets; "
-                "when Compose receives a Tensor image, masks, bboxes, and keypoints must also be Tensors",
+                "ToTensorV2 and ToTensor3D accept NumPy input only; remove them from this Tensor Compose pipeline",
             )
+        return _TensorBoundaryState(has_tensor_inputs=True, annotation_targets=tuple(annotation_targets))
 
-        tensor_image_inputs = tuple(
-            (canonical_name, value)
-            for _, canonical_name, value in tensor_targets
-            if canonical_name not in TENSOR_ANNOTATION_TARGETS
-        )
-        return _TensorCallState(
-            annotation_targets=tuple(annotation_targets),
-            spatial_targets=tuple((data_name, canonical_name) for data_name, canonical_name, _ in tensor_targets),
-            requires_numpy_bridge=not self._tensor_pipeline_supports_cpu_inputs(
-                self.transforms,
-                tensor_image_inputs,
-            ),
-        )
-
-    def _tensor_pipeline_supports_cpu_inputs(
-        self,
-        transforms: TransformsSeqType,
-        tensor_inputs: tuple[tuple[str, torch.Tensor], ...],
-    ) -> bool:
-        """Check whether every selectable branch can run supplied CPU Tensor targets directly without selecting
-        Compose's NumPy bridge.
-
-        A False result selects Compose's one-time NumPy bridge for the whole pipeline. This keeps arbitrary public
-        transform combinations usable with Tensor input without allowing transform helpers to create ad hoc bridges.
-        """
+    @staticmethod
+    def _declared_tensor_metadata_keys(transforms: TransformsSeqType) -> frozenset[str]:
+        """Cache metadata keys that may contain declared Tensor targets at the public boundary."""
+        keys: set[str] = set()
         for transform in transforms:
             if isinstance(transform, BaseCompose):
-                if not transform.tensor_capability_is_transparent:
-                    return False
-                if not self._tensor_pipeline_supports_cpu_inputs(transform.transforms, tensor_inputs):
-                    return False
-                continue
-            if getattr(transform, "_is_tensor_terminal", False):
-                raise TypeError(
-                    "Tensor input is already model-ready; remove ToTensorV2 or ToTensor3D from this Compose pipeline",
-                )
-            if not transform.supports_cpu_tensor_inputs(tensor_inputs):
-                return False
-        return True
+                keys.update(Compose._declared_tensor_metadata_keys(transform.transforms))
+            elif isinstance(transform, BasicTransform):
+                keys.update(transform.get_tensor_metadata_keys())
+        return frozenset(keys)
+
+    @staticmethod
+    def _iter_declared_tensor_metadata_inputs(
+        transforms: TransformsSeqType,
+        data: Mapping[str, Any],
+    ) -> Iterator[tuple[str, str | None, torch.Tensor]]:
+        """Walk only declared target-bearing metadata before the root samples randomness."""
+        for transform in transforms:
+            if isinstance(transform, BaseCompose):
+                yield from Compose._iter_declared_tensor_metadata_inputs(transform.transforms, data)
+            elif isinstance(transform, BasicTransform):
+                yield from transform.iter_tensor_metadata_inputs(data)
+
+    @staticmethod
+    def _contains_tensor_terminal(transforms: TransformsSeqType) -> bool:
+        for transform in transforms:
+            if isinstance(transform, BaseCompose):
+                if Compose._contains_tensor_terminal(transform.transforms):
+                    return True
+            elif getattr(transform, "_is_tensor_terminal", False):
+                return True
+        return False
 
     @staticmethod
     def from_applied_transforms(
@@ -2463,7 +2429,7 @@ class Compose(BaseCompose, HubMixin):
             raise ValueError(msg)
         return Compose(transforms, p=1.0, **compose_kwargs)
 
-    def preprocess(self, data: Any, tensor_call_state: _TensorCallState | None = None) -> None:
+    def preprocess(self, data: Any, tensor_boundary_state: _TensorBoundaryState | None = None) -> None:
         """Preprocess input data before applying transforms. Validates shapes (if
         is_check_shapes), validates data keys (if strict), ensures contiguous, adds channels.
         """
@@ -2483,30 +2449,23 @@ class Compose(BaseCompose, HubMixin):
 
         # Add channel dimensions first, before processors run
         self._preprocess_arrays(data)
-        tensor_call_state = tensor_call_state or _EMPTY_TENSOR_CALL_STATE
-        if tensor_call_state.annotation_targets:
-            self._bridge_tensor_annotations_to_numpy(data, tensor_call_state)
+        tensor_boundary_state = tensor_boundary_state or _EMPTY_TENSOR_BOUNDARY_STATE
+        if tensor_boundary_state.annotation_targets:
+            self._bridge_tensor_annotations_to_numpy(data, tensor_boundary_state)
         self._preprocess_processors(data)
 
-    def _bridge_tensor_annotations_to_numpy(self, data: dict[str, Any], tensor_call_state: _TensorCallState) -> None:
+    def _bridge_tensor_annotations_to_numpy(
+        self,
+        data: dict[str, Any],
+        tensor_boundary_state: _TensorBoundaryState,
+    ) -> None:
         """Convert accepted Tensor bbox and keypoint matrices once for existing NumPy-only
         processors, keeping all public annotations Tensor at Compose entry and exit.
         """
-        for data_name, canonical_name in tensor_call_state.annotation_targets:
+        for data_name, canonical_name in tensor_boundary_state.annotation_targets:
             value = data.get(data_name)
             if isinstance(value, torch.Tensor):
                 data[data_name] = tensor_to_numpy_annotation(value, canonical_name)
-
-    def _bridge_tensor_data_to_numpy(self, data: dict[str, Any], tensor_call_state: _TensorCallState) -> None:
-        """Convert all Tensor spatial targets to NumPy once before a pipeline containing a transform without a direct
-        Tensor route.
-        """
-        if not tensor_call_state.requires_numpy_bridge:
-            return
-        for data_name, canonical_name in tensor_call_state.spatial_targets:
-            value = data.get(data_name)
-            if isinstance(value, torch.Tensor):
-                data[data_name] = tensor_to_numpy_spatial(value, canonical_name)
 
     def _gather_shapes_from_data(self, data: dict[str, Any]) -> tuple[list[tuple[int, ...]], list[tuple[int, ...]]]:
         """Gather shapes from data for validation. Collects (H,W) or (D,H,W) from
@@ -2587,20 +2546,10 @@ class Compose(BaseCompose, HubMixin):
         """Append shape metadata for a validated Tensor target without converting its public
         channel-first image or channel-free mask layout to a NumPy representation.
         """
-        if data_name == "image":
-            shapes.append((data_value.shape[1], data_value.shape[2]))
-        elif data_name == "images":
-            shapes.append((data_value.shape[2], data_value.shape[3]))
-        elif data_name == "volume":
-            shapes.append((data_value.shape[2], data_value.shape[3]))
-            volume_shapes.append((data_value.shape[1], data_value.shape[2], data_value.shape[3]))
-        elif data_name == "mask":
-            shapes.append(data_value.shape[:2])
-        elif data_name == "masks":
-            shapes.append(data_value.shape[1:3])
-        elif data_name == "mask3d":
-            shapes.append(data_value.shape[1:3])
-            volume_shapes.append(data_value.shape[:3])
+        if data_name in {"image", "images", "mask", "masks", "volume", "mask3d"}:
+            shapes.append(tuple(data_value.shape[-2:]))
+        if data_name in {"volume", "mask3d"}:
+            volume_shapes.append(tuple(data_value.shape[-3:]))
 
     def _validate_data(self, data: dict[str, Any]) -> None:
         """Validate input data keys and arguments. When strict, checks every key is in
@@ -2666,12 +2615,7 @@ class Compose(BaseCompose, HubMixin):
     }
 
     def _add_grayscale_channels(self, data: dict[str, Any]) -> None:
-        """Add a trailing channel dimension to grayscale image/mask/volume entries,
-        resolving `_additional_targets` so aliased keys are handled like canonical ones.
-
-        Expands `(H, W)` to `(H, W, 1)` and the equivalent batch and 3D-mask shapes. The active invocation records
-        each expansion so postprocess strips only dimensions this call added.
-        """
+        """Normalize optional-channel public targets before transform dispatch."""
         invocation_state: ComposeInvocationState | None = None
 
         for key, value in data.items():
@@ -2679,14 +2623,23 @@ class Compose(BaseCompose, HubMixin):
             expected_ndim = self._GRAYSCALE_KEYS.get(canonical)
             if expected_ndim is None:
                 continue
-            if not isinstance(value, np.ndarray):
+            if not isinstance(value, (np.ndarray, torch.Tensor)) or value.ndim != expected_ndim:
                 continue
-            if value.ndim == expected_ndim:
-                if invocation_state is None:
-                    invocation_state = self._invocation_state()
-                invocation_state.added_channel_canonical[key] = canonical
+
+            if isinstance(value, torch.Tensor) and canonical not in TENSOR_CHANNEL_AXIS:
+                continue
+            if invocation_state is None:
+                invocation_state = self._invocation_state()
+            original_value = value
+            if isinstance(value, np.ndarray):
                 data[key] = np.expand_dims(value, axis=-1)
-                invocation_state.added_channel_dim[key] = True
+            else:
+                data[key] = value.unsqueeze(TENSOR_CHANNEL_AXIS[canonical])
+            invocation_state.channel_restorations[key] = ChannelRestorationState(
+                canonical_target=canonical,
+                original_value=original_value,
+                normalized_value=data[key],
+            )
 
     def postprocess(self, data: dict[str, Any]) -> dict[str, Any]:
         """Apply post-processing after all transforms. Runs processor postprocess and
@@ -2724,25 +2677,18 @@ class Compose(BaseCompose, HubMixin):
 
         return data
 
-    def _restore_tensor_annotations(self, data: dict[str, Any], tensor_call_state: _TensorCallState) -> None:
+    def _restore_tensor_annotations(
+        self,
+        data: dict[str, Any],
+        tensor_boundary_state: _TensorBoundaryState,
+    ) -> None:
         """Restore Tensor bbox and keypoint matrices after NumPy processing so all spatial
         targets in the public Compose result remain Tensors.
         """
-        for data_name, canonical_name in tensor_call_state.annotation_targets:
+        for data_name, canonical_name in tensor_boundary_state.annotation_targets:
             value = data.get(data_name)
             if isinstance(value, np.ndarray):
                 data[data_name] = numpy_to_tensor_annotation(value, canonical_name)
-
-    def _restore_tensor_spatial_data(self, data: dict[str, Any], tensor_call_state: _TensorCallState) -> None:
-        """Convert NumPy spatial results back to public Tensor layouts after Compose finishes a pipeline using its
-        central representation bridge.
-        """
-        if not tensor_call_state.requires_numpy_bridge:
-            return
-        for data_name, canonical_name in tensor_call_state.spatial_targets:
-            value = data.get(data_name)
-            if isinstance(value, np.ndarray) and canonical_name not in TENSOR_ANNOTATION_TARGETS:
-                data[data_name] = numpy_to_tensor_spatial(value, canonical_name)
 
     def _filter_bound_bboxes_before_postprocess(self, data: dict[str, Any]) -> None:
         """Filter bound bboxes at the final boundary and mirror their keep mask before postprocessing removes internal
@@ -2771,9 +2717,7 @@ class Compose(BaseCompose, HubMixin):
         self._resync_instance_ids(data)
 
     def _remove_grayscale_channels(self, data: dict[str, Any]) -> None:
-        """Strip a trailing grayscale channel added by NumPy preprocessing while leaving Tensor
-        masks in their public H,W or N,H,W layout unchanged.
-        """
+        """Restore optional public channel axes after transform dispatch."""
         invocation = get_current_invocation()
         if invocation is None:
             return
@@ -2781,21 +2725,29 @@ class Compose(BaseCompose, HubMixin):
         if invocation_state is None:
             return
 
-        for key, was_added in invocation_state.added_channel_dim.items():
-            if was_added and key in data:
-                value = data[key]
-                canonical = invocation_state.added_channel_canonical.get(key, key)
+        for key, restoration in invocation_state.channel_restorations.items():
+            if key not in data:
+                continue
+            value = data[key]
+            canonical = restoration.canonical_target
 
-                if isinstance(value, np.ndarray):
-                    if value.shape[-1] == 1:
-                        data[key] = np.squeeze(value, axis=-1)
-                elif (
-                    isinstance(value, torch.Tensor)
-                    and canonical in {"mask", "masks", "mask3d"}
-                    and value.shape[-1] == 1
-                ):
-                    # Terminal ToTensorV2/ToTensor3D transforms preserve their public mask-axis behavior.
-                    data[key] = torch.squeeze(value, dim=-1)
+            if value is restoration.normalized_value:
+                data[key] = restoration.original_value
+            elif isinstance(value, np.ndarray) and value.shape[-1] == 1:
+                data[key] = np.squeeze(value, axis=-1)
+            elif (
+                isinstance(value, torch.Tensor)
+                and isinstance(restoration.original_value, np.ndarray)
+                and canonical in {"mask", "masks"}
+                and value.shape[-1] == 1
+            ):
+                data[key] = torch.squeeze(value, dim=-1)
+            elif (
+                isinstance(value, torch.Tensor)
+                and not isinstance(restoration.original_value, np.ndarray)
+                and value.shape[TENSOR_CHANNEL_AXIS[canonical]] == 1
+            ):
+                data[key] = torch.squeeze(value, dim=TENSOR_CHANNEL_AXIS[canonical])
 
     def _get_user_bbox_label_fields(self) -> list[str]:
         return list(self._bbox_label_map.values())
@@ -3221,7 +3173,7 @@ class Compose(BaseCompose, HubMixin):
     ) -> None:
         if "masks" in binding and "masks" in data:
             mask = data["masks"][original_instance_idx]
-            added = self._invocation_state().added_channel_dim.get("masks", False)
+            added = "masks" in self._invocation_state().channel_restorations
             if added and mask.shape[-1] == 1:
                 mask = mask.squeeze(-1)
             inst["mask"] = mask
@@ -3865,8 +3817,6 @@ class SelectiveChannelTransform(BaseCompose):
         - Only the transform list is modified while maintaining the same channel selection behavior.
 
     """
-
-    _tensor_capability_is_transparent = False
 
     def __init__(
         self,

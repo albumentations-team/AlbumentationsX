@@ -260,6 +260,7 @@ class OverlayElements(DualTransform):
         overlay_data: list[dict[str, Any]],
         **params: Any,
     ) -> ImageType:
+        result = mask.copy()
         for data in overlay_data:
             if "mask_id" in data and data["mask_id"] is not None:
                 overlay_mask = data["overlay_mask"]
@@ -270,10 +271,10 @@ class OverlayElements(DualTransform):
                 y_max = y_min + overlay_mask.shape[0]
                 x_max = x_min + overlay_mask.shape[1]
 
-                mask_section = mask[y_min:y_max, x_min:x_max]
+                mask_section = result[y_min:y_max, x_min:x_max]
                 mask_section[overlay_mask > 0] = mask_id
 
-        return mask
+        return result
 
 
 __all__ = [

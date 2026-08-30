@@ -260,15 +260,15 @@ def test_channel_dropout_ignores_user_data_during_sampling() -> None:
     assert sum(np.all(result["image"][:, :, channel] == 0) for channel in range(3)) == 1
 
 
-def test_tensor_image_sequence_descriptor_uses_channel_first_sequence_layout() -> None:
+def test_tensor_image_sequence_descriptor_uses_nchw_layout() -> None:
     targets = TargetSet.from_data(
-        {"images": torch.zeros((3, 5, 11, 13), dtype=torch.uint8)},
+        {"images": torch.zeros((5, 3, 11, 13), dtype=torch.uint8)},
         {"images": "images"},
     )
 
     descriptor = targets.by_name("images").descriptor
 
-    assert descriptor.layout == "images_clhw"
+    assert descriptor.layout == "images_nchw"
     assert descriptor.channels == 3
     assert descriptor.spatial_shape == (11, 13)
     assert descriptor.value_scale == 255
@@ -352,7 +352,8 @@ def test_domain_adaptation_rejects_reference_with_incompatible_channels() -> Non
 @pytest.mark.parametrize("target_name", ["images", "volume"])
 def test_dithering_tensor_sampler_counts_channel_first_items(target_name: str) -> None:
     transform = A.Dithering(method="random", color_mode="per_channel", p=1.0)
-    data = {target_name: torch.zeros((3, 5, 7, 9), dtype=torch.uint8)}
+    shape = (5, 3, 7, 9) if target_name == "images" else (3, 5, 7, 9)
+    data = {target_name: torch.zeros(shape, dtype=torch.uint8)}
 
     sampled_params = transform.sample_parameters(
         *make_sampling_args(transform, data),

@@ -9,7 +9,7 @@ the transformation pipeline.
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from typing import Any, Generic, Literal, TypeVar
+from typing import Any, Generic, Literal, TypeVar, cast
 
 import numpy as np
 import torch
@@ -17,6 +17,7 @@ import torch
 from albumentations.core.label_manager import LabelManager
 
 from .serialization import Serializable
+from .type_definitions import NUM_VOLUME_DIMENSIONS
 
 
 def get_shape(data: dict[str, Any]) -> tuple[int, int]:
@@ -48,10 +49,7 @@ def get_image_data(data: dict[str, Any]) -> dict[str, Any]:
     """Extract dtype, spatial dimensions, and channel count from the first canonical image, image batch, or
     volume in core pipelines.
 
-    Height and width skip batch/depth dimensions according to the canonical role:
-        - 'image':   H, W from shape[0], shape[1]
-        - 'images':  H, W from shape[1], shape[2]   (skip batch dim)
-        - 'volume':  H, W from shape[1], shape[2]   (skip depth dim)
+    NumPy inputs use HWC, NHWC, or DHWC layout. Tensor inputs use CHW, NCHW, or CDHW layout.
 
     Args:
         data (dict[str, Any]): Dictionary potentially containing image/volume arrays.
@@ -71,14 +69,21 @@ def get_image_data(data: dict[str, Any]) -> dict[str, Any]:
         if isinstance(array, torch.Tensor):
             if target == "image":
                 height, width = shape[1], shape[2]
-            else:
+                num_channels = int(shape[0])
+            elif target == "images":
                 height, width = shape[2], shape[3]
-            num_channels = int(shape[0])
+                num_channels = int(shape[1])
+            else:
+                _, height, width = get_volume_shape(array)
+                num_channels = int(shape[0])
         elif target == "image":
             height, width = shape[0], shape[1]
             num_channels = shape[-1]
-        else:
+        elif target == "images":
             height, width = shape[1], shape[2]
+            num_channels = shape[-1]
+        else:
+            _, height, width = get_volume_shape(array)
             num_channels = shape[-1]
         return {
             "dtype": array.dtype,
@@ -89,36 +94,21 @@ def get_image_data(data: dict[str, Any]) -> dict[str, Any]:
     raise ValueError("No valid image/volume data found in data dict")
 
 
-def _volume_shape_from_array(vol: Any) -> tuple[int, int, int]:
-    """Return (D, H, W) from a single volume array, handling both torch CDHW/DHW layouts
-    and numpy DHWC/DHW layouts. Private helper for `get_volume_shape`.
+def get_volume_shape(volume: np.ndarray | torch.Tensor) -> tuple[int, int, int]:
+    """Return `(D, H, W)` from a volume in its canonical container layout.
+
+    NumPy volumes are `(D, H, W, C)` and Tensor volumes are `(C, D, H, W)` inside Compose. Channel-less `(D, H, W)`
+    arrays are retained for direct functional calls.
     """
-    if isinstance(vol, torch.Tensor):
-        return vol.shape[1], vol.shape[2], vol.shape[3]
-    return vol.shape[0], vol.shape[1], vol.shape[2]
+    if volume.ndim == NUM_VOLUME_DIMENSIONS - 1:
+        return cast("tuple[int, int, int]", tuple(volume.shape))
+    return cast(
+        "tuple[int, int, int]",
+        tuple(volume.shape[1:] if isinstance(volume, torch.Tensor) else volume.shape[:-1]),
+    )
 
 
-def get_volume_shape(data: dict[str, Any]) -> tuple[int, int, int] | None:
-    """Extract depth, height, and width dimensions from canonical volume data when present for spatial annotation
-    processing steps.
-
-    Handles PyTorch tensor layouts (CDHW) and numpy layouts (DHWC).
-
-    Args:
-        data (dict[str, Any]): Dictionary containing volume data
-
-    Returns:
-        tuple[int, int, int] | None: (depth, height, width) dimensions if volume data exists, None otherwise
-
-    """
-    volume = data.get("volume")
-    if volume is not None:
-        return _volume_shape_from_array(volume)
-
-    return None
-
-
-def _get_shape_from_image(img: np.ndarray) -> tuple[int, int]:
+def _get_shape_from_image(img: np.ndarray | torch.Tensor) -> tuple[int, int]:
     """Extract (height, width) from a single image. Handles numpy HWC or PyTorch CHW. Private
     helper for get_shape when data has 'image' key.
     """
@@ -128,24 +118,20 @@ def _get_shape_from_image(img: np.ndarray) -> tuple[int, int]:
     return img.shape[0], img.shape[1]
 
 
-def _get_shape_from_images(imgs: np.ndarray) -> tuple[int, int]:
-    """Extract height and width from either a NumPy NHWC batch or a CPU Tensor C,L,H,W
-    sequence while retaining the public layout contract of each representation.
-    """
+def _get_shape_from_images(imgs: np.ndarray | torch.Tensor) -> tuple[int, int]:
+    """Extract height and width from a NumPy NHWC batch or CPU Tensor NCHW sequence."""
     if isinstance(imgs, torch.Tensor):
-        return imgs.shape[2], imgs.shape[3]
+        return imgs.shape[-2], imgs.shape[-1]
     # Regular numpy array batch in NHWC format - take first image
     return imgs[0].shape[0], imgs[0].shape[1]
 
 
-def _get_shape_from_volume(vol: np.ndarray) -> tuple[int, int]:
+def _get_shape_from_volume(vol: np.ndarray | torch.Tensor) -> tuple[int, int]:
     """Extract (height, width) from a single volume (D,H,W or D,H,W,C). Private helper for
     get_shape when data has 'volume' key.
     """
-    if isinstance(vol, torch.Tensor):
-        return vol.shape[2], vol.shape[3]
-    # Regular numpy array in DHWC format
-    return vol.shape[1], vol.shape[2]
+    _, height, width = get_volume_shape(vol)
+    return height, width
 
 
 def format_args(args_dict: dict[str, Any]) -> str:
@@ -278,9 +264,9 @@ class DataProcessor(ABC, Generic[ParamsT]):
 
         # For xyz keypoints, get full 3D shape if available
         if hasattr(self.params, "coord_format") and self.params.coord_format == "xyz":
-            volume_shape = get_volume_shape(data)
-            if volume_shape is not None:
-                shape = volume_shape
+            volume = data.get("volume")
+            if volume is not None:
+                shape = get_volume_shape(volume)
 
         data = self._process_data_fields(data, shape, filter_already_applied=filter_already_applied)
         return self.remove_label_fields_from_data(data)

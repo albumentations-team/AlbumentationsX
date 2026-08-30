@@ -18,6 +18,7 @@ from ._functional_shared import (
     MONO_CHANNEL_DIMENSIONS,
     MULTICHANNEL_LUT_MEDIUM_IMAGE_PIXELS,
     NUM_MULTI_CHANNEL_DIMENSIONS,
+    ImageFloat32,
     ImageType,
     ImageUInt8,
     add,
@@ -28,6 +29,7 @@ from ._functional_shared import (
     clipped,
     cv2,
     float32_io,
+    from_float,
     get_num_channels,
     math,
     mean,
@@ -36,8 +38,14 @@ from ._functional_shared import (
     np,
     reduce_sum,
     sz_lut,
+    to_float,
     uint8_io,
 )
+
+_PLASMA_FLOAT32_DEDICATED_MAX_BATCH_SIZE = 4
+_PLASMA_UINT8_BRIGHTNESS_ONLY_PER_IMAGE_MAX_BATCH_SIZE = 4
+_PLASMA_UINT8_BRIGHTNESS_ONLY_PER_IMAGE_MIN_CHANNELS = 5
+_PLASMA_UINT8_BRIGHTNESS_ONLY_PER_IMAGE_MIN_PIXELS = 1024 * 1024
 
 
 def _normalize_minmax_float32(src: np.ndarray) -> np.ndarray:
@@ -170,6 +178,202 @@ def apply_plasma_brightness_contrast(
         return add(img, mean_factor, inplace=True)
 
     return img
+
+
+def _plasma_pattern_for_batch(images: ImageType, plasma_pattern: np.ndarray) -> np.ndarray:
+    """Expand a shared plasma pattern once for a batch with an explicit channel axis."""
+    if images.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
+        return plasma_pattern
+
+    channel_pattern = plasma_pattern[..., np.newaxis]
+    if images.shape[-1] == 1:
+        return channel_pattern
+    return np.broadcast_to(channel_pattern, (*plasma_pattern.shape, images.shape[-1])).copy()
+
+
+def _finish_plasma_brightness_contrast_batch(work: ImageFloat32, output_dtype: np.dtype[Any]) -> ImageType:
+    """Clip and restore an owned float32 batch to the public dtype and contiguous layout."""
+    if output_dtype == np.float32:
+        np.clip(work, 0.0, 1.0, out=work)
+        return cast("ImageType", np.ascontiguousarray(work))
+    return cast("ImageType", np.ascontiguousarray(from_float(work, target_dtype=output_dtype)))
+
+
+def _apply_plasma_brightness_contrast_dedicated(
+    images: ImageFloat32,
+    brightness_factor: float,
+    contrast_factor: float,
+    plasma_pattern: np.ndarray,
+) -> ImageType:
+    """Apply brightness and contrast to a small float32 batch using one mean per image."""
+    work = np.ascontiguousarray(images)
+    image_pattern = _plasma_pattern_for_batch(images, plasma_pattern)
+
+    if brightness_factor != 0:
+        work = cast(
+            "ImageFloat32",
+            add(work, np.multiply(image_pattern, np.float32(brightness_factor)), inplace=True),
+        )
+
+    if contrast_factor != 0:
+        image_means = tuple(mean(image) for image in work)
+        image_contrast_weights = np.add(
+            np.multiply(image_pattern, np.float32(contrast_factor)),
+            np.float32(1.0),
+        )
+        contrast_weights = image_contrast_weights[np.newaxis]
+        image_contrast_offsets = np.subtract(np.float32(1.0), image_contrast_weights)
+        work = cast("ImageFloat32", multiply(work, contrast_weights, inplace=True))
+        for index, image_mean in enumerate(image_means):
+            work[index] = cast(
+                "ImageFloat32",
+                add(
+                    work[index],
+                    np.multiply(image_mean, image_contrast_offsets),
+                    inplace=True,
+                ),
+            )
+    return _finish_plasma_brightness_contrast_batch(work, images.dtype)
+
+
+def _apply_plasma_brightness_contrast_loop(
+    images: ImageType,
+    brightness_factor: float,
+    contrast_factor: float,
+    plasma_pattern: np.ndarray,
+) -> ImageType:
+    """Apply shared plasma maps in a preallocated loop for larger batches and uint8 input."""
+    output_dtype = images.dtype
+    result = np.empty(images.shape, dtype=output_dtype)
+    image_pattern = _plasma_pattern_for_batch(images, plasma_pattern)
+    brightness_map = np.multiply(image_pattern, np.float32(brightness_factor)) if brightness_factor != 0 else None
+    contrast_weights = (
+        np.add(np.multiply(image_pattern, np.float32(contrast_factor)), np.float32(1.0))
+        if contrast_factor != 0
+        else None
+    )
+    contrast_offsets = np.subtract(np.float32(1.0), contrast_weights) if contrast_weights is not None else None
+
+    for index, image in enumerate(images):
+        work: ImageFloat32 = (
+            cast("ImageFloat32", image) if output_dtype == np.float32 else to_float(cast("ImageUInt8", image))
+        )
+
+        if brightness_map is not None:
+            work = cast("ImageFloat32", add(work, brightness_map, inplace=True))
+
+        if contrast_weights is not None and contrast_offsets is not None:
+            image_mean = mean(work)
+            work = cast("ImageFloat32", multiply(work, contrast_weights, inplace=True))
+            work = cast(
+                "ImageFloat32",
+                add(work, np.multiply(image_mean, contrast_offsets), inplace=True),
+            )
+        result[index] = _finish_plasma_brightness_contrast_batch(work, output_dtype)
+
+    return cast("ImageType", result)
+
+
+def _apply_plasma_brightness_contrast_per_image(
+    images: ImageType,
+    brightness_factor: float,
+    contrast_factor: float,
+    plasma_pattern: np.ndarray,
+) -> ImageType:
+    """Use the single-image implementation for small, high-resolution uint8 brightness-only batches."""
+    return cast(
+        "ImageType",
+        np.stack(
+            [
+                apply_plasma_brightness_contrast(
+                    image,
+                    brightness_factor,
+                    contrast_factor,
+                    plasma_pattern,
+                )
+                for image in images
+            ],
+        ),
+    )
+
+
+def apply_plasma_brightness_contrast_batch(
+    images: ImageType,
+    brightness_factor: float,
+    contrast_factor: float,
+    plasma_pattern: np.ndarray,
+) -> ImageType:
+    """Apply one plasma lighting pattern to an image batch while retaining independent image means and
+    reusing shared spatial setup for efficient lighting augmentation.
+
+    The result matches stacking :func:`apply_plasma_brightness_contrast` for nonzero adjustments. Empty batches
+    preserve identity; zero-effect batches are independent copies, with float32 values clipped to `[0, 1]`.
+
+    Args:
+        images (ImageType): Image batch in `(N, H, W, C)` format, or `(N, H, W)` for direct grayscale calls.
+        brightness_factor (float): Strength of the spatial brightness adjustment.
+        contrast_factor (float): Strength of the spatial contrast adjustment.
+        plasma_pattern (np.ndarray): Shared `(H, W)` plasma pattern with values in `[0, 1]`.
+
+    Returns:
+        ImageType: Transformed batch with the input shape and dtype.
+
+    Examples:
+        >>> images = np.full((2, 8, 8, 3), 0.5, dtype=np.float32)
+        >>> pattern = np.linspace(0, 1, 64, dtype=np.float32).reshape(8, 8)
+        >>> result = apply_plasma_brightness_contrast_batch(images, 0.2, -0.1, pattern)
+        >>> result.shape
+        (2, 8, 8, 3)
+
+    """
+    if images.shape[0] == 0:
+        return images
+
+    if brightness_factor == 0 and contrast_factor == 0:
+        if images.dtype == np.float32:
+            result: ImageType = cast("ImageFloat32", np.clip(images, 0.0, 1.0, order="C"))
+        else:
+            result = cast("ImageUInt8", np.array(images, copy=True, order="C"))
+        return result
+
+    if images.shape[0] == 1:
+        result = apply_plasma_brightness_contrast(
+            images[0],
+            brightness_factor,
+            contrast_factor,
+            plasma_pattern,
+        )
+        return result[np.newaxis]
+
+    if (
+        images.dtype == np.uint8
+        and contrast_factor == 0
+        and images.ndim > NUM_MULTI_CHANNEL_DIMENSIONS
+        and images.shape[0] <= _PLASMA_UINT8_BRIGHTNESS_ONLY_PER_IMAGE_MAX_BATCH_SIZE
+        and images.shape[1] * images.shape[2] >= _PLASMA_UINT8_BRIGHTNESS_ONLY_PER_IMAGE_MIN_PIXELS
+        and images.shape[-1] >= _PLASMA_UINT8_BRIGHTNESS_ONLY_PER_IMAGE_MIN_CHANNELS
+    ):
+        return _apply_plasma_brightness_contrast_per_image(
+            images,
+            brightness_factor,
+            contrast_factor,
+            plasma_pattern,
+        )
+
+    if images.dtype == np.float32 and images.shape[0] <= _PLASMA_FLOAT32_DEDICATED_MAX_BATCH_SIZE:
+        return _apply_plasma_brightness_contrast_dedicated(
+            cast("ImageFloat32", images),
+            brightness_factor,
+            contrast_factor,
+            plasma_pattern,
+        )
+
+    return _apply_plasma_brightness_contrast_loop(
+        images,
+        brightness_factor,
+        contrast_factor,
+        plasma_pattern,
+    )
 
 
 @clipped
@@ -1338,6 +1542,7 @@ __all__ = [
     "apply_linear_illumination",
     "apply_linear_illumination_batch",
     "apply_plasma_brightness_contrast",
+    "apply_plasma_brightness_contrast_batch",
     "apply_plasma_shadow",
     "apply_vignette",
     "auto_contrast",

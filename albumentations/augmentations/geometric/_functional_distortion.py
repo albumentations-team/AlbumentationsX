@@ -116,6 +116,21 @@ def upscale_distortion_maps(
     return dx, dy
 
 
+def sample_elastic_control_coefficients(
+    control_grid_shape: tuple[int, int],
+    coefficient_radius: float | np.float32,
+    random_generator: np.random.Generator,
+) -> np.ndarray:
+    """Sample float32 2D cubic control coefficients uniformly within a displacement-radius disk."""
+    random_values = random_generator.random((*control_grid_shape, 2), dtype=np.float32)
+    vector_radius = np.float32(coefficient_radius) * np.sqrt(random_values[..., 0])
+    angle = np.float32(2 * np.pi) * random_values[..., 1]
+    control_coefficients = np.empty((*control_grid_shape, 2), dtype=np.float32)
+    control_coefficients[..., 0] = vector_radius * np.cos(angle)
+    control_coefficients[..., 1] = vector_radius * np.sin(angle)
+    return control_coefficients
+
+
 def expand_control_grid(
     control_coefficients: np.ndarray,
     output_shape: tuple[int, int],
@@ -698,6 +713,7 @@ __all__ = [
     "get_camera_matrix_distortion_maps",
     "get_fisheye_distortion_maps",
     "remap_elastic_keypoints",
+    "sample_elastic_control_coefficients",
     "tps_transform",
     "upscale_distortion_maps",
 ]

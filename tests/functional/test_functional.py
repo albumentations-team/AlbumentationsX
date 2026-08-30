@@ -13,6 +13,7 @@ from sklearn.decomposition import NMF
 
 import albumentations.augmentations.blur.functional as fblur
 import albumentations.augmentations.geometric.functional as fgeometric
+import albumentations.augmentations.pixel._functional_illumination as fillumination
 import albumentations.augmentations.pixel._functional_torchvision as ftorchvision
 import albumentations.augmentations.pixel.functional as fpixel
 from albumentations.core.type_definitions import d4_group_elements
@@ -1858,6 +1859,214 @@ def test_plasma_pattern_statistical_properties():
     # Test distribution is roughly symmetric
     median = np.median(pattern)
     assert 0.3 <= median <= 0.7  # Wider bounds to account for randomness
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("num_channels", [1, 5])
+@pytest.mark.parametrize("batch_size", [1, 4, 8])
+@pytest.mark.parametrize(
+    ("brightness_factor", "contrast_factor"),
+    [(0.0, 0.0), (0.19, 0.0), (0.0, -0.23), (0.19, -0.23)],
+)
+def test_apply_plasma_brightness_contrast_batch_matches_per_image(
+    dtype,
+    num_channels,
+    batch_size,
+    brightness_factor,
+    contrast_factor,
+):
+    rng = np.random.default_rng(137 + num_channels + batch_size)
+    shape = (batch_size, 9, 11, num_channels)
+    if dtype == np.uint8:
+        images = rng.integers(0, 256, shape, dtype=np.uint8)
+    else:
+        images = rng.random(shape, dtype=np.float32)
+    images_before = images.copy()
+    plasma_pattern = rng.random(shape[1:3], dtype=np.float32)
+
+    actual = fpixel.apply_plasma_brightness_contrast_batch(
+        images,
+        brightness_factor,
+        contrast_factor,
+        plasma_pattern,
+    )
+    expected = np.stack(
+        [
+            fpixel.apply_plasma_brightness_contrast(
+                image,
+                brightness_factor,
+                contrast_factor,
+                plasma_pattern,
+            )
+            for image in images
+        ],
+    )
+
+    assert actual.shape == images.shape
+    assert actual.dtype == images.dtype
+    assert actual.flags.c_contiguous
+    assert actual.flags.writeable
+    assert not np.shares_memory(actual, images)
+    np.testing.assert_array_equal(images, images_before)
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_apply_plasma_brightness_contrast_batch_preserves_empty_identity(dtype):
+    images = np.empty((0, 9, 11, 3), dtype=dtype)
+    plasma_pattern = np.zeros((9, 11), dtype=np.float32)
+
+    result = fpixel.apply_plasma_brightness_contrast_batch(images, 0.19, -0.23, plasma_pattern)
+
+    assert result is images
+
+
+@pytest.mark.parametrize(
+    ("dtype", "batch_size", "brightness_factor", "contrast_factor", "expected_route"),
+    [
+        (np.uint8, 0, 0.19, -0.23, None),
+        (np.float32, 0, 0.19, -0.23, None),
+        *[(dtype, batch_size, 0.0, 0.0, None) for dtype in (np.uint8, np.float32) for batch_size in (1, 2, 4, 8, 16)],
+        (np.uint8, 1, 0.19, -0.23, "single"),
+        *[(np.uint8, batch_size, 0.19, -0.23, "loop") for batch_size in (2, 3, 4, 5, 8, 16)],
+        (np.float32, 1, 0.19, -0.23, "single"),
+        *[(np.float32, batch_size, 0.19, -0.23, "dedicated") for batch_size in (2, 3, 4)],
+        *[(np.float32, batch_size, 0.19, -0.23, "loop") for batch_size in (5, 8, 16)],
+    ],
+)
+def test_apply_plasma_brightness_contrast_batch_routes_by_dtype_and_batch_size(
+    monkeypatch,
+    dtype,
+    batch_size,
+    brightness_factor,
+    contrast_factor,
+    expected_route,
+):
+    calls = []
+
+    def dedicated(images, *args):
+        calls.append("dedicated")
+        return images.copy()
+
+    def loop(images, *args):
+        calls.append("loop")
+        return images.copy()
+
+    def single(image, *args):
+        calls.append("single")
+        return image.copy()
+
+    monkeypatch.setattr(fillumination, "_apply_plasma_brightness_contrast_dedicated", dedicated)
+    monkeypatch.setattr(fillumination, "_apply_plasma_brightness_contrast_loop", loop)
+    monkeypatch.setattr(fillumination, "apply_plasma_brightness_contrast", single)
+    images = np.zeros((batch_size, 9, 11, 3), dtype=dtype)
+    plasma_pattern = np.zeros((9, 11), dtype=np.float32)
+
+    fpixel.apply_plasma_brightness_contrast_batch(
+        images,
+        brightness_factor,
+        contrast_factor,
+        plasma_pattern,
+    )
+
+    assert calls == ([] if expected_route is None else [expected_route])
+
+
+@pytest.mark.parametrize(
+    (
+        "batch_size",
+        "height",
+        "width",
+        "num_channels",
+        "contrast_factor",
+        "expected_route",
+    ),
+    [
+        (2, 1024, 1024, 5, 0.0, "per_image"),
+        (3, 1024, 1024, 5, 0.0, "per_image"),
+        (4, 1024, 1024, 5, 0.0, "per_image"),
+        (5, 1024, 1024, 5, 0.0, "loop"),
+        (4, 512, 512, 5, 0.0, "loop"),
+        (4, 1024, 1024, 4, 0.0, "loop"),
+        (4, 1024, 1024, 5, -0.23, "loop"),
+    ],
+)
+def test_apply_plasma_brightness_contrast_batch_routes_high_resolution_uint8_brightness_only(
+    monkeypatch,
+    batch_size,
+    height,
+    width,
+    num_channels,
+    contrast_factor,
+    expected_route,
+):
+    calls = []
+
+    def per_image(images, *args):
+        calls.append("per_image")
+        return images
+
+    def loop(images, *args):
+        calls.append("loop")
+        return images
+
+    monkeypatch.setattr(fillumination, "_apply_plasma_brightness_contrast_per_image", per_image)
+    monkeypatch.setattr(fillumination, "_apply_plasma_brightness_contrast_loop", loop)
+    images = np.zeros((batch_size, height, width, num_channels), dtype=np.uint8)
+    plasma_pattern = np.zeros((height, width), dtype=np.float32)
+
+    fpixel.apply_plasma_brightness_contrast_batch(images, 0.19, contrast_factor, plasma_pattern)
+
+    assert calls == [expected_route]
+
+
+def test_apply_plasma_brightness_contrast_batch_per_image_route_preserves_output_contract(monkeypatch):
+    rng = np.random.default_rng(137)
+    source = rng.integers(0, 256, (2, 7, 18, 5), dtype=np.uint8)
+    images = source[:, :, ::2]
+    images.setflags(write=False)
+    images_before = images.copy()
+    plasma_pattern = rng.random(images.shape[1:3], dtype=np.float32)
+    monkeypatch.setattr(fillumination, "_PLASMA_UINT8_BRIGHTNESS_ONLY_PER_IMAGE_MIN_PIXELS", 1)
+
+    result = fpixel.apply_plasma_brightness_contrast_batch(images, 0.19, 0.0, plasma_pattern)
+    expected = np.stack(
+        [fpixel.apply_plasma_brightness_contrast(image, 0.19, 0.0, plasma_pattern) for image in images],
+    )
+
+    assert result.shape == images.shape
+    assert result.dtype == images.dtype
+    assert result.flags.c_contiguous
+    assert result.flags.writeable
+    assert not np.shares_memory(result, images)
+    np.testing.assert_array_equal(images, images_before)
+    np.testing.assert_array_equal(result, expected)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("num_channels", [1, 5])
+@pytest.mark.parametrize("layout", ["strided", "fortran"])
+def test_apply_plasma_brightness_contrast_batch_zero_effect_returns_semantic_copy(dtype, num_channels, layout):
+    shape = (2, 7, 18, num_channels)
+    if dtype == np.uint8:
+        source = np.arange(np.prod(shape), dtype=np.uint8).reshape(shape)
+    else:
+        source = np.linspace(-0.25, 1.25, num=np.prod(shape), dtype=np.float32).reshape(shape)
+    images = source[:, :, ::2] if layout == "strided" else np.asfortranarray(source)
+    images.setflags(write=False)
+    images_before = images.copy()
+    plasma_pattern = np.zeros(images.shape[1:3], dtype=np.float32)
+
+    result = fpixel.apply_plasma_brightness_contrast_batch(images, 0.0, 0.0, plasma_pattern)
+    expected = np.clip(images, 0.0, 1.0) if dtype == np.float32 else images
+
+    assert result.shape == images.shape
+    assert result.dtype == images.dtype
+    assert result.flags.c_contiguous
+    assert result.flags.writeable
+    assert not np.shares_memory(result, images)
+    np.testing.assert_array_equal(images, images_before)
+    np.testing.assert_array_equal(result, expected)
 
 
 @pytest.mark.parametrize(

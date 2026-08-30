@@ -153,6 +153,69 @@ def test_benchmark_coverage_details_map_illumination_modes_to_batch_matrix() -> 
     assert _case_ids_for_layer(illumination, "batch_matrix") == expected_case_ids
 
 
+def test_benchmark_coverage_details_map_plasma_brightness_contrast_issue_matrix() -> None:
+    plasma = _coverage_for("PlasmaBrightnessContrast")
+    batch_cases = [case for case in plasma["asv_cases"] if case["layer"] == "batch_matrix"]
+    batch_case_ids = {case["case_id"] for case in batch_cases}
+    memory_cases = [case for case in plasma["asv_cases"] if case["layer"] == "memory"]
+    expected_batch_case_ids = {
+        *benchmark_coverage.PLASMA_BRIGHTNESS_CONTRAST_DIRECT_CASES,
+        *benchmark_coverage.PLASMA_BRIGHTNESS_CONTRAST_IMAGE_CASES,
+        *benchmark_coverage.PLASMA_BRIGHTNESS_CONTRAST_VOLUME_CASES,
+    }
+
+    assert plasma["performance_contract"]["batch"]["status"] == "covered"
+    assert plasma["scenario_contract"]["channels"] == [1, 3, 5]
+    assert plasma["scenario_contract"]["dtypes"] == ["uint8", "float32"]
+    assert plasma["scenario_contract"]["batch_sizes"] == [1, 2, 4, 5, 8, 16, 3]
+    assert plasma["scenario_contract"]["sizes"] == ["small", "medium", "large"]
+    assert {"compose_batch", "compose_volume", "direct_batch"}.issubset(plasma["scenario_contract"]["scopes"])
+    assert {"images", "volume"}.issubset(plasma["scenario_contract"]["targets"])
+    assert len(batch_cases) == len(batch_case_ids) == len(expected_batch_case_ids) == 544
+    assert batch_case_ids == expected_batch_case_ids
+    assert Counter(case_id.split("|")[1] for case_id in batch_case_ids) == {
+        "direct_images": 252,
+        "images": 252,
+        "volume": 40,
+    }
+    assert Counter((case_id.split("|")[0], case_id.split("|")[1]) for case_id in batch_case_ids) == {
+        ("plasma_brightness_contrast", "direct_images"): 108,
+        ("plasma_brightness_contrast", "images"): 108,
+        ("plasma_brightness_contrast", "volume"): 18,
+        ("plasma_brightness_contrast_brightness_only", "direct_images"): 72,
+        ("plasma_brightness_contrast_brightness_only", "images"): 72,
+        ("plasma_brightness_contrast_zero", "direct_images"): 72,
+        ("plasma_brightness_contrast_zero", "images"): 72,
+        ("plasma_brightness_contrast_zero", "volume"): 22,
+    }
+    assert {
+        "plasma_brightness_contrast|direct_images|large|5|float32|16",
+        "plasma_brightness_contrast|direct_images|small|1|uint8|1",
+        "plasma_brightness_contrast|direct_images|small|1|uint8|4",
+        "plasma_brightness_contrast|direct_images|small|1|uint8|5",
+        "plasma_brightness_contrast|images|large|5|float32|16",
+        "plasma_brightness_contrast|images|small|1|uint8|1",
+        "plasma_brightness_contrast_zero|direct_images|large|5|float32|16",
+        "plasma_brightness_contrast_zero|images|small|1|uint8|1",
+        "plasma_brightness_contrast_brightness_only|direct_images|large|5|uint8|2",
+        "plasma_brightness_contrast_brightness_only|direct_images|large|5|uint8|4",
+        "plasma_brightness_contrast_brightness_only|images|large|5|uint8|5",
+        "plasma_brightness_contrast|volume|medium|3|float32|1",
+        "plasma_brightness_contrast_zero|volume|medium|3|float32|1",
+        "plasma_brightness_contrast_zero|volume|large|5|float32|16",
+    }.issubset(batch_case_ids)
+    assert len(memory_cases) == 12
+    assert {case["case_id"] for case in memory_cases} == set(
+        benchmark_coverage.PLASMA_BRIGHTNESS_CONTRAST_PEAK_MEMORY_CASES,
+    )
+    assert {case["benchmark"] for case in memory_cases} == {
+        (
+            "benchmarks.test_batch_matrix.PeakMemoryPlasmaBrightnessContrastBatchMatrix."
+            "peakmem_plasma_brightness_contrast_batch_large_multichannel"
+        ),
+    }
+
+
 def test_benchmark_coverage_details_map_random_shadow_issue_matrix() -> None:
     random_shadow = _coverage_for("RandomShadow")
     batch_cases = [case for case in random_shadow["asv_cases"] if case["layer"] == "batch_matrix"]

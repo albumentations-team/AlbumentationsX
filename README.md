@@ -378,20 +378,21 @@ Where:
 - Volume: 3D array of shape (D, H, W) or (D, H, W, C) where D is depth, H is height, W is width, and C is number of channels (optional)
 - Mask3D: Binary or multi-class 3D mask of shape (D, H, W) where each slice represents segmentation for the corresponding volume slice
 
-| Transform                                                                           | Volume | Mask3D | Keypoints |
-| ----------------------------------------------------------------------------------- | :----: | :----: | :-------: |
-| [Affine3D](https://albumentations.ai/explore/transform/Affine3D/)                   | ✓      | ✓      | ✓         |
-| [Anisotropy3D](https://albumentations.ai/explore/transform/Anisotropy3D/)           | ✓      |        |           |
-| [CenterCrop3D](https://albumentations.ai/explore/transform/CenterCrop3D/)           | ✓      | ✓      | ✓         |
-| [CoarseDropout3D](https://albumentations.ai/explore/transform/CoarseDropout3D/)     | ✓      | ✓      | ✓         |
-| [CubicSymmetry](https://albumentations.ai/explore/transform/CubicSymmetry/)         | ✓      | ✓      | ✓         |
-| [Flip3D](https://albumentations.ai/explore/transform/Flip3D/)                       | ✓      | ✓      | ✓         |
-| [GridShuffle3D](https://albumentations.ai/explore/transform/GridShuffle3D/)         | ✓      | ✓      | ✓         |
-| [Pad3D](https://albumentations.ai/explore/transform/Pad3D/)                         | ✓      | ✓      | ✓         |
-| [PadIfNeeded3D](https://albumentations.ai/explore/transform/PadIfNeeded3D/)         | ✓      | ✓      | ✓         |
-| [RandomCrop3D](https://albumentations.ai/explore/transform/RandomCrop3D/)           | ✓      | ✓      | ✓         |
-| [RandomRotate90_3D](https://albumentations.ai/explore/transform/RandomRotate90_3D/) | ✓      | ✓      | ✓         |
-| [Resize3D](https://albumentations.ai/explore/transform/Resize3D/)                   | ✓      | ✓      | ✓         |
+| Transform                                                                             | Volume | Mask3D | Keypoints |
+| ------------------------------------------------------------------------------------- | :----: | :----: | :-------: |
+| [Affine3D](https://albumentations.ai/explore/transform/Affine3D/)                     | ✓      | ✓      | ✓         |
+| [Anisotropy3D](https://albumentations.ai/explore/transform/Anisotropy3D/)             | ✓      |        |           |
+| [CenterCrop3D](https://albumentations.ai/explore/transform/CenterCrop3D/)             | ✓      | ✓      | ✓         |
+| [CoarseDropout3D](https://albumentations.ai/explore/transform/CoarseDropout3D/)       | ✓      | ✓      | ✓         |
+| [CubicSymmetry](https://albumentations.ai/explore/transform/CubicSymmetry/)           | ✓      | ✓      | ✓         |
+| [ElasticTransform3D](https://albumentations.ai/explore/transform/ElasticTransform3D/) | ✓      | ✓      | ✓         |
+| [Flip3D](https://albumentations.ai/explore/transform/Flip3D/)                         | ✓      | ✓      | ✓         |
+| [GridShuffle3D](https://albumentations.ai/explore/transform/GridShuffle3D/)           | ✓      | ✓      | ✓         |
+| [Pad3D](https://albumentations.ai/explore/transform/Pad3D/)                           | ✓      | ✓      | ✓         |
+| [PadIfNeeded3D](https://albumentations.ai/explore/transform/PadIfNeeded3D/)           | ✓      | ✓      | ✓         |
+| [RandomCrop3D](https://albumentations.ai/explore/transform/RandomCrop3D/)             | ✓      | ✓      | ✓         |
+| [RandomRotate90_3D](https://albumentations.ai/explore/transform/RandomRotate90_3D/)   | ✓      | ✓      | ✓         |
+| [Resize3D](https://albumentations.ai/explore/transform/Resize3D/)                     | ✓      | ✓      | ✓         |
 
 ## A few more examples of **augmentations**
 

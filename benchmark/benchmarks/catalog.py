@@ -57,6 +57,10 @@ PARAM_OVERRIDES: Mapping[str, Mapping[str, Any]] = {
         "scale_range": {"x": (1.05, 1.05), "y": (0.95, 0.95), "z": (1.0, 1.0)},
         "translate_percent_range": {"x": (0.02, 0.02), "y": (-0.02, -0.02), "z": (0.0, 0.0)},
     },
+    "ElasticTransform3D": {
+        "control_grid_shape": (7, 7),
+        "displacement_range": (0.05, 0.05),
+    },
     "CenterCrop": {"height": 96, "width": 96},
     "CenterCrop3D": {"size": (4, 48, 48)},
     "ConstrainedCoarseDropout": {"mask_indices": [1]},

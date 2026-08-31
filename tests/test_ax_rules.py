@@ -17,17 +17,29 @@ def passing_rule(_: Path, __: tuple[Path, ...]) -> int:
     return 0
 
 
+def matches_any_file(_: Path, __: tuple[Path, ...]) -> bool:
+    return True
+
+
+def matches_no_file(_: Path, __: tuple[Path, ...]) -> bool:
+    return False
+
+
+def rule(check=passing_rule) -> runner.Rule:
+    return runner.Rule(check, matches_any_file)
+
+
 def test_enabled_rule_ids_respect_pyproject(tmp_path: Path) -> None:
     write_rule_config(tmp_path, "first = false\nsecond = true\n")
     rules = {
-        "first": passing_rule,
-        "second": passing_rule,
+        "first": rule(),
+        "second": rule(),
     }
     assert runner.enabled_rule_ids(tmp_path, rules) == ("second",)
 
 
 def test_enabled_rule_ids_reject_unknown_or_non_boolean_settings(tmp_path: Path) -> None:
-    rules = {"known": passing_rule}
+    rules = {"known": rule()}
     write_rule_config(tmp_path, "unknown = true\n")
     with pytest.raises(runner.ConfigurationError, match="unknown AX rule IDs: unknown"):
         runner.enabled_rule_ids(tmp_path, rules)
@@ -39,8 +51,8 @@ def test_enabled_rule_ids_reject_unknown_or_non_boolean_settings(tmp_path: Path)
 def test_enabled_rule_ids_require_every_rule_to_be_configured(tmp_path: Path) -> None:
     write_rule_config(tmp_path, "first = true\n")
     rules = {
-        "first": passing_rule,
-        "second": passing_rule,
+        "first": rule(),
+        "second": rule(),
     }
     with pytest.raises(runner.ConfigurationError, match="missing AX rule settings: second"):
         runner.enabled_rule_ids(tmp_path, rules)
@@ -51,7 +63,7 @@ def test_repository_config_declares_every_ax_rule() -> None:
     assert runner.enabled_rule_ids(root) == tuple(runner.RULES)
 
 
-def test_run_invokes_only_enabled_rules_with_pre_commit_python_files(tmp_path: Path) -> None:
+def test_run_passes_all_changed_paths_to_enabled_rules(tmp_path: Path) -> None:
     calls: list[tuple[str, tuple[Path, ...]]] = []
 
     def check(name: str):
@@ -66,11 +78,52 @@ def test_run_invokes_only_enabled_rules_with_pre_commit_python_files(tmp_path: P
     source.parent.mkdir()
     source.write_text("", encoding="utf-8")
     rules = {
-        "first": check("first"),
-        "second": check("second"),
+        "first": rule(check("first")),
+        "second": rule(check("second")),
     }
     assert runner.run(tmp_path, ("albumentations/example.py", "tools/helper.py"), rules) == 0
-    assert calls == [("first", (source,))]
+    assert calls == [("first", (source, tmp_path / "tools/helper.py"))]
+
+
+@pytest.mark.parametrize(
+    ("filenames", "expected"),
+    [
+        (("README.md",), ("readme-transform-docs",)),
+        (("docs/guide.md",), ()),
+        (("pyproject.toml",), ("public-transform-docstrings",)),
+        (("tests/test_rules.py",), ("docstring-format",)),
+        (("tools/ax_coding_guidance/example.py",), ("coding-guidance",)),
+        ((".pre-commit-config.yaml",), ("coding-guidance", "public-transform-docstrings")),
+        (("albumentations/example.py",), tuple(runner.RULES)),
+    ],
+)
+def test_selected_rule_ids_use_each_rule_file_scope(
+    tmp_path: Path,
+    filenames: tuple[str, ...],
+    expected: tuple[str, ...],
+) -> None:
+    write_rule_config(tmp_path, "\n".join(f"{name} = true" for name in runner.RULES))
+    paths = tuple(tmp_path / filename for filename in filenames)
+    assert runner.selected_rule_ids(tmp_path, paths) == expected
+
+
+def test_run_without_filenames_runs_every_enabled_rule(tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    def check(name: str):
+        def run(_: Path, __: tuple[Path, ...]) -> int:
+            calls.append(name)
+            return 0
+
+        return run
+
+    write_rule_config(tmp_path, "first = true\nsecond = true\n")
+    rules = {
+        "first": runner.Rule(check("first"), matches_no_file),
+        "second": runner.Rule(check("second"), matches_no_file),
+    }
+    assert runner.run(tmp_path, (), rules) == 0
+    assert calls == ["first", "second"]
 
 
 def test_docstring_paths_exclude_asv_environments_from_a_full_run(tmp_path: Path) -> None:
@@ -83,9 +136,20 @@ def test_docstring_paths_exclude_asv_environments_from_a_full_run(tmp_path: Path
     assert runner.docstring_paths(tmp_path, ()) == (source,)
 
 
+def test_docstring_paths_do_not_fall_back_for_non_python_files(tmp_path: Path) -> None:
+    readme = tmp_path / "README.md"
+    source = tmp_path / "albumentations" / "example.py"
+    source.parent.mkdir()
+    readme.write_text("", encoding="utf-8")
+    source.write_text("", encoding="utf-8")
+    assert runner.docstring_paths(tmp_path, (readme,)) == ()
+
+
 def test_pre_commit_uses_the_single_ax_rule_hook() -> None:
     config = (Path(__file__).parents[1] / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     assert config.count("id: check-ax-rules") == 1
+    hook = config.split("- id: check-ax-rules", maxsplit=1)[1].split("- id:", maxsplit=1)[0]
+    assert "files:" not in hook
     for retired_hook in (
         "check-ax-coding-guidance",
         "check-docstrings",

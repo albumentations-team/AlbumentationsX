@@ -51,8 +51,9 @@ We use pre-commit hooks to maintain consistent code quality. These hooks automat
 - Pyrefly runs through the official pre-commit hook in system mode, using the same `uv` environment as CI.
 
 AX repository checks run through one configurable hook: `pre-commit run check-ax-rules --all-files`. Its enabled
-rules are listed in `[tool.ax-rules.rules]` in `pyproject.toml`; set an entry to `false` to disable it. The
-`coding-guidance` rule emits `AXG001`–`AXG025` diagnostics for transform API, sampling, schema, naming,
+rules are listed in `[tool.ax-rules.rules]` in `pyproject.toml`; set an entry to `false` to disable it. On commit,
+each enabled rule runs only for the files in its own scope; `uv run python -m tools.ax_rules` without filenames runs
+every enabled rule. The `coding-guidance` rule emits `AXG001`–`AXG025` diagnostics for transform API, sampling, schema, naming,
 performance-shape, documentation, bbox propagation, and target-specific sampling contracts. The public
 `BboxParams.__init__(bbox_type="hbb")` compatibility default is intentional; all internal transform, processor, and
 functional calls must pass `bbox_type` explicitly. Keep design judgment and benchmark interpretation in the relevant

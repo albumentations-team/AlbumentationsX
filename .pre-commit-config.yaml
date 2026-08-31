@@ -16,7 +16,6 @@ repos:
         name: Check AlbumentationsX rules
         entry: uv run python -m tools.ax_rules
         language: system
-        files: ^((?!tools/).*\.py$|README\.md$|pyproject\.toml$|tools/(ax_coding_guidance/|ax_rules/|check_docstring_format\.py$|check_naming_conflicts\.py$|make_transforms_docs\.py$)|\.pre-commit-config\.yaml$)
       - id: verify-regression-vectors
         name: Verify regression vector contracts
         entry: uv run python -m tools.verify_regression_vectors --all

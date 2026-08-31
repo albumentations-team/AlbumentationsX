@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypeAlias
 
@@ -18,6 +19,7 @@ except ModuleNotFoundError:  # Python 3.10
 
 
 RuleCheck: TypeAlias = Callable[[Path, tuple[Path, ...]], int]
+RuleSelector: TypeAlias = Callable[[Path, tuple[Path, ...]], bool]
 
 
 class ConfigurationError(ValueError):
@@ -43,7 +45,7 @@ def _run_docstring_format(root: Path, filenames: tuple[Path, ...]) -> int:
     return int(bool(errors))
 
 
-def _run_naming_conflicts(root: Path, _: tuple[Path, ...]) -> int:
+def _run_naming_conflicts(root: Path, _filenames: tuple[Path, ...]) -> int:
     _, _, conflicts = check_naming_conflicts.find_conflicts(str(root / "albumentations"))
     if not conflicts:
         return 0
@@ -68,12 +70,58 @@ def _run_readme_transform_docs(root: Path, _: tuple[Path, ...]) -> int:
     return 0
 
 
-RULES: dict[str, RuleCheck] = {
-    "coding-guidance": _run_coding_guidance,
-    "docstring-format": _run_docstring_format,
-    "naming-conflicts": _run_naming_conflicts,
-    "public-transform-docstrings": _run_public_transform_docstrings,
-    "readme-transform-docs": _run_readme_transform_docs,
+def _relative_paths(root: Path, filenames: tuple[Path, ...]) -> tuple[str, ...]:
+    return tuple(path.relative_to(root).as_posix() for path in filenames)
+
+
+def _matches_coding_guidance(root: Path, filenames: tuple[Path, ...]) -> bool:
+    return any(
+        path in {".pre-commit-config.yaml", "tests/test_ax_coding_guidance.py"}
+        or path.startswith(("albumentations/", "tools/ax_coding_guidance/"))
+        for path in _relative_paths(root, filenames)
+    )
+
+
+def _python_source_paths(root: Path, filenames: tuple[Path, ...]) -> tuple[Path, ...]:
+    return tuple(
+        path for path in filenames if path.suffix == ".py" and not path.relative_to(root).is_relative_to("tools")
+    )
+
+
+def _matches_docstring_format(root: Path, filenames: tuple[Path, ...]) -> bool:
+    return bool(_python_source_paths(root, filenames))
+
+
+def _matches_naming_conflicts(root: Path, filenames: tuple[Path, ...]) -> bool:
+    return any(path.startswith("albumentations/") and path.endswith(".py") for path in _relative_paths(root, filenames))
+
+
+def _matches_public_transform_docstrings(root: Path, filenames: tuple[Path, ...]) -> bool:
+    return any(
+        path in {".pre-commit-config.yaml", "pyproject.toml", "tests/test_docstrings.py"}
+        or path.startswith("albumentations/")
+        for path in _relative_paths(root, filenames)
+    )
+
+
+def _matches_readme_transform_docs(root: Path, filenames: tuple[Path, ...]) -> bool:
+    return any(path == "README.md" or path.startswith("albumentations/") for path in _relative_paths(root, filenames))
+
+
+@dataclass(frozen=True)
+class Rule:
+    """A repository check and the changed files that require it."""
+
+    check: RuleCheck
+    applies_to: RuleSelector
+
+
+RULES: dict[str, Rule] = {
+    "coding-guidance": Rule(_run_coding_guidance, _matches_coding_guidance),
+    "docstring-format": Rule(_run_docstring_format, _matches_docstring_format),
+    "naming-conflicts": Rule(_run_naming_conflicts, _matches_naming_conflicts),
+    "public-transform-docstrings": Rule(_run_public_transform_docstrings, _matches_public_transform_docstrings),
+    "readme-transform-docs": Rule(_run_readme_transform_docs, _matches_readme_transform_docs),
 }
 
 
@@ -97,7 +145,7 @@ def _read_rule_settings(root: Path) -> Mapping[str, Any]:
     return rules
 
 
-def enabled_rule_ids(root: Path, rules: Mapping[str, RuleCheck] = RULES) -> tuple[str, ...]:
+def enabled_rule_ids(root: Path, rules: Mapping[str, Rule] = RULES) -> tuple[str, ...]:
     """Return the explicitly configured AX rule IDs."""
     settings = _read_rule_settings(root)
     unknown = sorted(set(settings) - set(rules))
@@ -112,25 +160,26 @@ def enabled_rule_ids(root: Path, rules: Mapping[str, RuleCheck] = RULES) -> tupl
     return tuple(name for name in rules if settings[name])
 
 
-def _source_paths(root: Path, filenames: Iterable[str]) -> tuple[Path, ...]:
+def _changed_paths(root: Path, filenames: Iterable[str]) -> tuple[Path, ...]:
     paths: list[Path] = []
+    root = root.resolve()
     for filename in filenames:
         path = Path(filename)
         if not path.is_absolute():
             path = root / path
+        path = path.resolve()
         try:
-            relative = path.resolve().relative_to(root.resolve())
+            path.relative_to(root)
         except ValueError:
             continue
-        if path.suffix == ".py" and relative.parts and relative.parts[0] != "tools":
-            paths.append(path)
+        paths.append(path)
     return tuple(paths)
 
 
 def docstring_paths(root: Path, filenames: tuple[Path, ...]) -> tuple[Path, ...]:
     """Return changed Python files or the repository's owned docstring sources."""
     if filenames:
-        return filenames
+        return _python_source_paths(root, filenames)
     return tuple(
         path
         for source_dir in ("albumentations", "benchmark", "tests")
@@ -140,15 +189,30 @@ def docstring_paths(root: Path, filenames: tuple[Path, ...]) -> tuple[Path, ...]
     )
 
 
-def run(root: Path, filenames: Iterable[str] = (), rules: Mapping[str, RuleCheck] = RULES) -> int:
+def selected_rule_ids(
+    root: Path,
+    filenames: tuple[Path, ...],
+    rules: Mapping[str, Rule] = RULES,
+    *,
+    run_all: bool = False,
+) -> tuple[str, ...]:
+    """Return enabled rules that apply to the current invocation."""
+    enabled = enabled_rule_ids(root, rules)
+    if run_all:
+        return enabled
+    return tuple(name for name in enabled if rules[name].applies_to(root, filenames))
+
+
+def run(root: Path, filenames: Iterable[str] = (), rules: Mapping[str, Rule] = RULES) -> int:
     """Run every enabled rule and return a pre-commit compatible status."""
-    source_paths = _source_paths(root, filenames)
+    supplied_filenames = tuple(filenames)
+    changed_paths = _changed_paths(root, supplied_filenames)
     try:
-        selected = enabled_rule_ids(root, rules)
+        selected = selected_rule_ids(root, changed_paths, rules, run_all=not supplied_filenames)
     except ConfigurationError as exc:
         print(f"AXR configuration error: {exc}", file=sys.stderr)
         return 2
-    failures = [name for name in selected if rules[name](root, source_paths)]
+    failures = [name for name in selected if rules[name].check(root, changed_paths)]
     return int(bool(failures))
 
 

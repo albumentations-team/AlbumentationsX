@@ -65,6 +65,15 @@ def find_conflicts(base_dir: str = "albumentations") -> tuple[set[str], set[str]
     return module_names, defined_names, conflicts
 
 
+def print_conflicts(conflicts: set[str]) -> None:
+    """Print the established remediation for module/export conflicts."""
+    print("⚠️ Naming conflicts detected between modules and defined names:", file=sys.stderr)
+    for conflict in sorted(conflicts):
+        print(f"  - '{conflict}' is both a module name and a function/class", file=sys.stderr)
+    print("\nThese conflicts can cause problems with tools like Hydra that use direct module paths.")
+    print("Consider renaming either the module or the function/class.")
+
+
 def main():
     """Main entry point for the script."""
     base_dir = "albumentations"
@@ -76,11 +85,7 @@ def main():
     _, _, conflicts = find_conflicts(base_dir)
 
     if conflicts:
-        print("⚠️ Naming conflicts detected between modules and defined names:", file=sys.stderr)
-        for conflict in sorted(conflicts):
-            print(f"  - '{conflict}' is both a module name and a function/class", file=sys.stderr)
-        print("\nThese conflicts can cause problems with tools like Hydra that use direct module paths.")
-        print("Consider renaming either the module or the function/class.")
+        print_conflicts(conflicts)
         sys.exit(1)
 
     print("✅ No naming conflicts detected between modules and defined names.")

@@ -126,4 +126,4 @@ representation test before changing the implementation.
 3. Vary the representation property that drives materialization: shape, channels, dtype scale, layout, topology, or
    content. A test that only checks output shape does not prove the plan is target-correct.
 4. Assert the structured replay payload and verify replay does not sample again.
-5. Run `check-ax-coding-guidance`, the focused transform tests, and the full quality gate.
+5. Run `check-ax-rules`, the focused transform tests, and the full quality gate.

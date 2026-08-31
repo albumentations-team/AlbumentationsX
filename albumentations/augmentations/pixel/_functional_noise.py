@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal, cast
 
-import torch
+from scipy import fft
 
 from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
@@ -824,9 +824,8 @@ def k_space_spike(
     axes = tuple(range(1, ndim + 1)) if is_batch else tuple(range(ndim))
     axis_sizes = tuple(img.shape[axis] for axis in axes)
 
-    tensor = torch.from_numpy(np.ascontiguousarray(img))
-    spectrum = torch.fft.rfftn(tensor, dim=axes)
-    max_amplitudes = torch.abs(spectrum).amax(dim=axes, keepdim=True)
+    spectrum = cast("np.ndarray", fft.rfftn(np.ascontiguousarray(img), axes=axes, workers=1))
+    max_amplitudes = np.abs(spectrum).max(axis=axes, keepdims=True)
     half_axis = ndim - 1
 
     def folded(coords: tuple[int, ...]) -> tuple[int, ...]:
@@ -852,7 +851,8 @@ def k_space_spike(
             for bin_coords in {folded(coords), folded(mirror)}:
                 spectrum[index_for(bin_coords, channel)] += amplitude
 
-    return np.clip(torch.fft.irfftn(spectrum, s=axis_sizes, dim=axes).numpy(), 0.0, 1.0)
+    reconstructed = cast("np.ndarray", fft.irfftn(spectrum, s=axis_sizes, axes=axes, workers=1))
+    return np.clip(reconstructed, 0.0, 1.0)
 
 
 def _spike_injections(spikes: np.ndarray) -> list[tuple[tuple[int, ...], int | None]]:

@@ -257,9 +257,10 @@ def test_batch_and_volume_reuse_one_spike_realization() -> None:
 
     result = transform(images=images, volume=volume)
 
-    # Batch items share one spike realization; a 3D volume spike is a plane wave, so
-    # depth slices legitimately differ from each other but stay finite and in range.
-    np.testing.assert_array_equal(result["images"][0], result["images"][1])
+    # Batch items share one spike realization. SciPy may round their batched FFTs differently
+    # at float32 precision; a 3D volume spike is a plane wave, so depth slices legitimately
+    # differ from each other but stay finite and in range.
+    np.testing.assert_allclose(result["images"][0], result["images"][1], rtol=1e-6, atol=2e-7)
     assert result["volume"].shape == volume.shape
     assert np.isfinite(result["volume"]).all()
 

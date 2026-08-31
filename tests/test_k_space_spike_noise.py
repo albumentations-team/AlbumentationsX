@@ -48,6 +48,26 @@ def test_k_space_spike_injects_known_frequency_peak() -> None:
     assert np.isfinite(out).all()
 
 
+@pytest.mark.parametrize(
+    ("spike", "stored_bin"),
+    [
+        (np.array([[1, 1]]), (1, 1)),
+        (np.array([[1, 7]]), (7, 1)),
+    ],
+)
+def test_k_space_spike_interior_frequency_uses_one_rfft_bin(spike: np.ndarray, stored_bin: tuple[int, int]) -> None:
+    img = _flat(8, 8, 0.5)
+    a = 0.25 * np.abs(np.fft.rfftn(img, axes=(0, 1))).max()
+
+    out = fpixel.k_space_spike(img, spike, 0.25)
+
+    diff = np.fft.rfftn(out, axes=(0, 1)) - np.fft.rfftn(img, axes=(0, 1))
+    index = (*stored_bin, 0)
+    np.testing.assert_allclose(diff[index], a, atol=1e-4)
+    diff[index] = 0
+    assert np.abs(diff).max() < 1e-3
+
+
 def test_k_space_spike_dc_self_conjugate_single_injection() -> None:
     img = _flat(8, 8, 0.5)
     # max|F| of a flat 0.5 field is 8 * 8 * 0.5 = 32; a = 0.25 * 32 = 8.
@@ -124,6 +144,17 @@ def test_k_space_spike_per_channel_amplitude_scales_per_channel_max() -> None:
     np.testing.assert_allclose(out[..., 0], expected_ch0, atol=1e-6)
     np.testing.assert_allclose(out[..., 1], expected_ch1, atol=1e-6)
     np.testing.assert_allclose(out[..., 2], expected_ch2, atol=1e-6)
+
+
+@pytest.mark.parametrize("spikes", [np.array([[1, 0]]), np.array([[[1, 0]]])])
+def test_k_space_spike_batch_scales_amplitudes_per_image(spikes: np.ndarray) -> None:
+    images = np.stack([_flat(8, 8, 0.0), _flat(8, 8, 0.5)])
+
+    out = fpixel.k_space_spike(images, spikes, 0.25)
+
+    np.testing.assert_array_equal(out[0], images[0])
+    expected = np.broadcast_to(0.5 + 0.25 * _cos_rows(8, 1), (8, 8))
+    np.testing.assert_allclose(out[1, :, :, 0], expected, atol=1e-6)
 
 
 def test_k_space_spike_reconstruction_is_real_and_hermitian() -> None:

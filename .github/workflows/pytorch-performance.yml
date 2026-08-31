@@ -65,6 +65,7 @@ jobs:
           "$BASELINE_REF" "$CANDIDATE_REF" \
           2>&1 | tee "$GITHUB_WORKSPACE/pytorch-benchmark-evidence/asv-continuous.txt" || ASV_EXIT_CODE=$?
         printf '%s\n' "$ASV_EXIT_CODE" > "$GITHUB_WORKSPACE/pytorch-benchmark-evidence/asv-continuous-exit-code.txt"
+        exit "$ASV_EXIT_CODE"
     - name: Summarize PyTorch tensor comparison
       if: always()
       run: |

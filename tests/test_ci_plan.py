@@ -41,6 +41,14 @@ def test_readme_runs_package_and_legal_checks_without_product_tests() -> None:
     assert not plan.checks["compatibility"]
 
 
+def test_legal_change_runs_package_and_legal_checks() -> None:
+    plan = build_plan(["LICENSE"])
+
+    assert plan.checks["legal"]
+    assert plan.checks["package"]
+    assert not plan.checks["compatibility"]
+
+
 def test_runtime_plan_keeps_matrix_and_core_tensor_coverage() -> None:
     plan = build_plan(["albumentations/core/composition.py"])
 

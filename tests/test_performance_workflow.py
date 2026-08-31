@@ -70,6 +70,7 @@ def test_pytorch_performance_is_manual_only() -> None:
     assert "git describe --tags --abbrev=0 --match '[0-9]*' \"$CANDIDATE_REF^\"" in text
     assert "continue-on-error" not in text
     assert "--allow-missing" not in text
+    assert 'exit "$ASV_EXIT_CODE"' in text
 
 
 def test_asv_install_commands_are_separate_cpu_torch_steps() -> None:

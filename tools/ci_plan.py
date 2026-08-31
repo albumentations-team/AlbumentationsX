@@ -221,7 +221,7 @@ def _select_policy_checks(checks: dict[str, bool], domains: set[str]) -> None:
     checks["dependency_audit"] = bool(domains & {"dependencies", "packaging", "unknown"})
     checks["workflow_audit"] = bool(domains & {"workflows", "unknown"})
     checks["legal"] = bool(domains & {"legal", "dependencies", "packaging", "unknown"})
-    checks["package"] = bool(domains & {"dependencies", "packaging", "unknown"})
+    checks["package"] = bool(domains & {"legal", "dependencies", "packaging", "unknown"})
 
 
 def _select_everything(checks: dict[str, bool]) -> None:

@@ -528,3 +528,10 @@ check_references = true
 check_type_consistency = true
 exclude_files = [ "__init__.py" ]
 verbose = false
+
+[tool.ax-rules.rules]
+coding-guidance = true
+docstring-format = true
+naming-conflicts = true
+public-transform-docstrings = true
+readme-transform-docs = true

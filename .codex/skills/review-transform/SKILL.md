@@ -26,8 +26,8 @@ Run these checks in order. Report issues with severity: 🔴 Critical, 🟡 Impo
 
 ## 3. Mechanical AX contracts (🔴 Critical)
 
-Run `pre-commit run check-ax-coding-guidance --all-files` first. Report a failing `AXG` diagnostic exactly; otherwise
-record that the hook passed. Keep the deterministic contract and its exceptions in
+Run `pre-commit run check-ax-rules --all-files` first. Report a failing `AXG` diagnostic exactly; otherwise record
+that the hook passed. Keep the deterministic contract and its exceptions in
 `docs/contributing/coding_guidelines.md`.
 
 Use human review for what the hook cannot decide: whether constructor fields express a coherent public API, whether

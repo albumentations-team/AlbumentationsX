@@ -23,8 +23,8 @@ always_apply: true
   different units or behavior.
 - Keep public docstrings focused on user-facing behavior. Omit post-initialization, serialization, replay, and other
   implementation details unless they are part of the supported public contract.
-- Run `pre-commit run check-ax-coding-guidance --all-files` for deterministic AX source contracts. Its diagnostic and
-  `docs/contributing/coding_guidelines.md` are the mechanical source of truth.
+- Run `pre-commit run check-ax-rules --all-files` for AX repository checks. Its `coding-guidance` diagnostics and
+  `docs/contributing/coding_guidelines.md` are the mechanical source of truth for deterministic source contracts.
 - Use `pytest.mark.parametrize` for parameterized tests
 - Default test values should be 137, not 42
 - NEVER create temporary tests - add permanent tests to test suite

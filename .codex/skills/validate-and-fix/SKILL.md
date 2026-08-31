@@ -25,8 +25,8 @@ change beyond the version uses the corresponding dependency, artifact, and insta
 4. **If a selected command fails**: fix the issue, then repeat that command. Do not expand the validation scope unless the
    failure proves that the initial scope was incomplete.
 
-For transform or guidance changes, the focused mechanical check is
-`pre-commit run check-ax-coding-guidance --all-files`. Keep deterministic contract details in
+For transform or guidance changes, the focused mechanical check is `pre-commit run check-ax-rules --all-files`.
+Keep deterministic contract details in
 `docs/contributing/coding_guidelines.md`; keep design and benchmark review in the applicable skill.
 
 Before handoff, check `git status --short`. `pre-commit run --all-files` omits untracked files, so run `pre-commit`

@@ -189,6 +189,7 @@ ci-quality = [
 ci-types = [
   "mypy>=2.3.0",
   "opencv-python-headless>=5.0.0.93",
+  "pre-commit>=4.6.2",
   "pyrefly>=1.2.0",
   "types-PyYAML>=6.0.12.20260724",
   "types-setuptools>=84.0.0.20260812",

@@ -42,6 +42,7 @@ def test_targeted_comparison_is_explicitly_requested_and_can_reproduce_changed_f
     assert "--profile release-core" in run_text
     assert 'CANDIDATE_REF="${INPUT_CANDIDATE_REF:-HEAD}"' in run_text
     assert "git describe --tags --abbrev=0 --match '[0-9]*' \"$CANDIDATE_REF^\"" in run_text
+    assert 'exit "$ASV_EXIT_CODE"' in run_text
     assert not re.search(r"asv --config asv\.conf\.json\s+run\b", run_text)
 
 

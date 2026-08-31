@@ -142,6 +142,11 @@ def test_version_increase_selects_release_preflight() -> None:
     assert plan.checks["compatibility"]
 
 
+def test_version_decrease_fails_closed() -> None:
+    with pytest.raises(ValueError, match="Project version must not decrease"):
+        build_plan(["pyproject.toml"], base_version="2.3.3", head_version="2.3.2")
+
+
 def test_version_only_release_selects_only_preflight(tmp_path: Path) -> None:
     base_pyproject = tmp_path / "base-pyproject.toml"
     head_pyproject = tmp_path / "head-pyproject.toml"

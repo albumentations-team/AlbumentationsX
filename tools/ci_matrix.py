@@ -113,7 +113,7 @@ CI_DEPENDENCY_GROUPS = {
     "ci-security": {"pip-audit", "zizmor"},
     "ci-test": {"defusedxml", "opencv-python-headless", "pytest", "pytest-xdist"},
     "ci-torch-cpu": {"torch"},
-    "ci-types": {"mypy", "opencv-python-headless", "pyrefly"},
+    "ci-types": {"mypy", "opencv-python-headless", "pre-commit", "pyrefly"},
 }
 CI_RUNTIME_PROFILES = frozenset({"none", "torch-cpu"})
 TORCH_RUNTIME_JOBS = {

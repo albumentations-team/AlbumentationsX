@@ -168,6 +168,7 @@ ci-torch-cpu = [
 ci-types = [
     { name = "mypy" },
     { name = "opencv-python-headless" },
+    { name = "pre-commit" },
     { name = "pyrefly" },
     { name = "types-pyyaml" },
     { name = "types-setuptools" },
@@ -302,6 +303,7 @@ ci-torch-cpu = [{ name = "torch", specifier = ">=2.13.0", index = "https://downl
 ci-types = [
     { name = "mypy", specifier = ">=2.3.0" },
     { name = "opencv-python-headless", specifier = ">=5.0.0.93" },
+    { name = "pre-commit", specifier = ">=4.6.2" },
     { name = "pyrefly", specifier = ">=1.2.0" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20260724" },
     { name = "types-setuptools", specifier = ">=84.0.0.20260812" },

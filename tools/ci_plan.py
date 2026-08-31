@@ -251,7 +251,8 @@ def _version_change(base_version: str | None, head_version: str | None) -> str:
     if parsed_head > parsed_base:
         return "increase"
     if parsed_head < parsed_base:
-        return "decrease"
+        msg = f"Project version must not decrease: {base_version} -> {head_version}"
+        raise ValueError(msg)
     return "unchanged"
 
 
@@ -450,7 +451,6 @@ def _write_summary(path: Path, plan: CIPlan) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--path", action="append", default=[], help="Changed path; may be repeated.")
     parser.add_argument("--paths-file", type=Path, help="File containing changed paths.")
     parser.add_argument("--github-files-json", type=Path, help="Paginated GitHub pull-request files JSON.")
     parser.add_argument("--null", action="store_true", help="Read the paths file as NUL-delimited data.")

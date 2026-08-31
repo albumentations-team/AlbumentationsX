@@ -16,6 +16,7 @@ import torch
 import albumentations as A
 from albumentations.core.utils import get_volume_shape
 from tests.helpers.contract_data import (
+    TARGET_VOLUME_SHAPE,
     ContractDataFactory,
     make_target_empty_hbb_data,
     make_target_empty_keypoint_data,
@@ -23,7 +24,6 @@ from tests.helpers.contract_data import (
     make_target_grayscale_image_mask_data,
     make_target_hbb_data,
     make_target_image_batch_data,
-    make_target_image_data,
     make_target_image_mask_data,
     make_target_keypoint_data,
     make_target_mask_batch_data,
@@ -32,13 +32,13 @@ from tests.helpers.contract_data import (
     make_target_obb_data,
     make_target_readonly_image_mask_data,
     make_target_volume_data,
-    make_target_volume_only_data,
 )
 
 if TYPE_CHECKING:
     from tests.helpers.transform_cases import TransformContractCase
 
 TargetAssertion = Callable[["TransformContractCase", dict[str, Any], dict[str, Any]], None]
+PrimaryDataAdapter = Callable[[ContractDataFactory, np.random.Generator], dict[str, Any]]
 
 
 def _as_numpy(value: Any) -> np.ndarray:
@@ -171,6 +171,24 @@ def _assert_volume_shape(case: TransformContractCase, source: dict[str, Any], re
     assert get_volume_shape(volume) == get_volume_shape(source["volume"])
 
 
+def _primary_image(data_factory: ContractDataFactory, rng: np.random.Generator) -> np.ndarray:
+    image = data_factory(rng)["image"]
+    return image if image.ndim == 3 else image[..., None]
+
+
+def _image_from_primary_data(data_factory: ContractDataFactory, rng: np.random.Generator) -> dict[str, Any]:
+    return {"image": _primary_image(data_factory, rng)}
+
+
+def _images_from_primary_data(data_factory: ContractDataFactory, rng: np.random.Generator) -> dict[str, Any]:
+    return {"images": np.stack([_primary_image(data_factory, rng) for _ in range(2)])}
+
+
+def _volume_from_primary_data(data_factory: ContractDataFactory, rng: np.random.Generator) -> dict[str, Any]:
+    depth = TARGET_VOLUME_SHAPE[0]
+    return {"volume": np.stack([_primary_image(data_factory, rng) for _ in range(depth)])}
+
+
 def _assert_masks(case: TransformContractCase, source: dict[str, Any], result: dict[str, Any]) -> None:
     masks = result["masks"]
     assert masks.ndim == 3
@@ -184,17 +202,20 @@ class TargetProfile:
 
     profile_id: str
     required_targets: frozenset[str]
-    data_factory: ContractDataFactory
+    data_factory: ContractDataFactory | None
     assert_result: TargetAssertion
     compose_kwargs: Mapping[str, Any] = field(default_factory=dict)
     cost: ProfileCost = ProfileCost.CORE
     bbox_type: Literal["hbb", "obb"] | None = None
     empty_targets: frozenset[str] = frozenset()
     channel_count: int | None = 3
+    primary_data_adapter: PrimaryDataAdapter | None = None
 
     def __post_init__(self) -> None:
         if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", self.profile_id):
             raise ValueError(f"Invalid target profile_id: {self.profile_id!r}")
+        if (self.data_factory is None) == (self.primary_data_adapter is None):
+            raise ValueError(f"{self.profile_id}: provide exactly one data factory")
         object.__setattr__(self, "compose_kwargs", MappingProxyType(copy.deepcopy(dict(self.compose_kwargs))))
 
 
@@ -340,20 +361,23 @@ IMAGE_ONLY_TENSOR_TARGET_PROFILES = (
     TargetProfile(
         profile_id="image",
         required_targets=frozenset({"image"}),
-        data_factory=make_target_image_data,
+        data_factory=None,
         assert_result=_assert_image_shape,
+        primary_data_adapter=_image_from_primary_data,
     ),
     TargetProfile(
         profile_id="images-batch",
         required_targets=frozenset({"images"}),
-        data_factory=make_target_image_batch_data,
+        data_factory=None,
         assert_result=_assert_images_shape,
+        primary_data_adapter=_images_from_primary_data,
     ),
     TargetProfile(
         profile_id="volume",
         required_targets=frozenset({"volume"}),
-        data_factory=make_target_volume_only_data,
+        data_factory=None,
         assert_result=_assert_volume_shape,
+        primary_data_adapter=_volume_from_primary_data,
     ),
 )
 

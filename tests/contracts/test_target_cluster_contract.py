@@ -5,8 +5,10 @@ import albumentations as A
 from tests.helpers.target_contracts import (
     CORE_TARGET_CONTRACT_PAIRS,
     EXTENDED_TARGET_CONTRACT_PAIRS,
+    TENSOR_IMAGE_ONLY_TARGET_CONTRACT_PAIRS,
     TENSOR_TARGET_CONTRACT_PAIRS,
     TargetContractPair,
+    make_target_contract_data,
     run_target_cluster_contract,
     run_tensor_target_cluster_contract,
 )
@@ -54,6 +56,19 @@ def test_every_primary_image_only_transform_case_has_tensor_target_coverage() ->
     missing = expected_pairs - covered_pairs
 
     assert not missing, f"ImageOnlyTransform Tensor target coverage is missing: {sorted(missing)}"
+
+
+@pytest.mark.parametrize("pair", TENSOR_IMAGE_ONLY_TARGET_CONTRACT_PAIRS, ids=lambda pair: pair.pair_id)
+def test_image_only_tensor_profiles_preserve_primary_image_data(pair: TargetContractPair) -> None:
+    primary_image = pair.case.primary_data_factory(np.random.default_rng(137))["image"]
+    source = make_target_contract_data(pair.case, pair.profile, np.random.default_rng(137))
+    target_name = next(iter(pair.profile.required_targets))
+    target = source[target_name]
+    image = target if target_name == "image" else target[0]
+    expected_image = primary_image if primary_image.ndim == 3 else primary_image[..., None]
+
+    assert image.dtype == expected_image.dtype
+    np.testing.assert_array_equal(image, expected_image)
 
 
 def test_every_target_profile_is_collected() -> None:

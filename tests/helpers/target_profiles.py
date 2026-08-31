@@ -23,6 +23,7 @@ from tests.helpers.contract_data import (
     make_target_grayscale_image_mask_data,
     make_target_hbb_data,
     make_target_image_batch_data,
+    make_target_image_data,
     make_target_image_mask_data,
     make_target_keypoint_data,
     make_target_mask_batch_data,
@@ -31,6 +32,7 @@ from tests.helpers.contract_data import (
     make_target_obb_data,
     make_target_readonly_image_mask_data,
     make_target_volume_data,
+    make_target_volume_only_data,
 )
 
 if TYPE_CHECKING:
@@ -145,6 +147,28 @@ def _assert_images(case: TransformContractCase, source: dict[str, Any], result: 
     assert images.ndim == 4
     assert images.shape[0] == source["images"].shape[0]
     assert images.dtype == source["images"].dtype
+
+
+def _assert_image_shape(case: TransformContractCase, source: dict[str, Any], result: dict[str, Any]) -> None:
+    image = result["image"]
+    assert image.ndim == source["image"].ndim
+    assert _image_spatial_shape(image) == _image_spatial_shape(source["image"])
+
+
+def _assert_images_shape(case: TransformContractCase, source: dict[str, Any], result: dict[str, Any]) -> None:
+    images = result["images"]
+    assert images.ndim == source["images"].ndim
+    assert images.shape[0] == source["images"].shape[0]
+    if isinstance(images, torch.Tensor):
+        assert images.shape[-2:] == source["images"].shape[-2:]
+    else:
+        assert images.shape[1:3] == source["images"].shape[1:3]
+
+
+def _assert_volume_shape(case: TransformContractCase, source: dict[str, Any], result: dict[str, Any]) -> None:
+    volume = result["volume"]
+    assert volume.ndim == source["volume"].ndim
+    assert get_volume_shape(volume) == get_volume_shape(source["volume"])
 
 
 def _assert_masks(case: TransformContractCase, source: dict[str, Any], result: dict[str, Any]) -> None:
@@ -308,6 +332,28 @@ TARGET_CONTRACT_PROFILES = (
         data_factory=make_target_readonly_image_mask_data,
         assert_result=_assert_image_mask,
         cost=ProfileCost.EXTENDED,
+    ),
+)
+
+
+IMAGE_ONLY_TENSOR_TARGET_PROFILES = (
+    TargetProfile(
+        profile_id="image",
+        required_targets=frozenset({"image"}),
+        data_factory=make_target_image_data,
+        assert_result=_assert_image_shape,
+    ),
+    TargetProfile(
+        profile_id="images-batch",
+        required_targets=frozenset({"images"}),
+        data_factory=make_target_image_batch_data,
+        assert_result=_assert_images_shape,
+    ),
+    TargetProfile(
+        profile_id="volume",
+        required_targets=frozenset({"volume"}),
+        data_factory=make_target_volume_only_data,
+        assert_result=_assert_volume_shape,
     ),
 )
 

@@ -1534,3 +1534,7 @@ ALL_DUAL_TRANSFORM_CONTRACT_CASES = tuple(
 PRIMARY_DUAL_TRANSFORM_CONTRACT_CASES = tuple(
     case for case in PRIMARY_TRANSFORM_CONTRACT_CASES if issubclass(case.transform_cls, A.DualTransform)
 )
+
+PRIMARY_IMAGE_ONLY_TRANSFORM_CONTRACT_CASES = tuple(
+    case for case in PRIMARY_TRANSFORM_CONTRACT_CASES if issubclass(case.transform_cls, A.ImageOnlyTransform)
+)

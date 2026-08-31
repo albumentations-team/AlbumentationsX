@@ -21,9 +21,15 @@ from albumentations.core.tensor import (
 )
 from tests.helpers.applied_config import ReplayProfile
 from tests.helpers.contract_assertions import assert_contract_values_equal
-from tests.helpers.target_profiles import TARGET_CONTRACT_PROFILES, ProfileCost, TargetProfile
+from tests.helpers.target_profiles import (
+    IMAGE_ONLY_TENSOR_TARGET_PROFILES,
+    TARGET_CONTRACT_PROFILES,
+    ProfileCost,
+    TargetProfile,
+)
 from tests.helpers.transform_cases import (
     PRIMARY_DUAL_TRANSFORM_CONTRACT_CASES,
+    PRIMARY_IMAGE_ONLY_TRANSFORM_CONTRACT_CASES,
     TRANSFORM_CONTRACT_CASES,
     TransformContractCase,
 )
@@ -41,8 +47,12 @@ class TargetContractPair:
         return f"{self.case.case_id}--{self.profile.profile_id}"
 
 
-def _supports_profile(case: TransformContractCase, profile: TargetProfile) -> bool:
-    if not issubclass(case.transform_cls, A.DualTransform):
+def _supports_profile(
+    case: TransformContractCase,
+    profile: TargetProfile,
+    transform_base: type[A.BasicTransform] = A.DualTransform,
+) -> bool:
+    if not issubclass(case.transform_cls, transform_base):
         return False
     if not case.required_targets <= profile.required_targets:
         return False
@@ -80,6 +90,13 @@ EXTENDED_TARGET_CONTRACT_PAIRS = tuple(
     if profile.cost is ProfileCost.EXTENDED and _supports_profile(case, profile)
 )
 
+TENSOR_IMAGE_ONLY_TARGET_CONTRACT_PAIRS = tuple(
+    TargetContractPair(case=case, profile=profile)
+    for case in PRIMARY_IMAGE_ONLY_TRANSFORM_CONTRACT_CASES
+    for profile in IMAGE_ONLY_TENSOR_TARGET_PROFILES
+    if _supports_profile(case, profile, A.ImageOnlyTransform)
+)
+
 _TENSOR_EXTENDED_PROFILE_IDS = frozenset(
     {
         "float-image-mask",
@@ -93,6 +110,7 @@ _TENSOR_EXTENDED_PROFILE_IDS = frozenset(
 TENSOR_TARGET_CONTRACT_PAIRS = (
     *CORE_TARGET_CONTRACT_PAIRS,
     *(pair for pair in EXTENDED_TARGET_CONTRACT_PAIRS if pair.profile.profile_id in _TENSOR_EXTENDED_PROFILE_IDS),
+    *TENSOR_IMAGE_ONLY_TARGET_CONTRACT_PAIRS,
 )
 
 

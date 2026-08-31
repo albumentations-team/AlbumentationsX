@@ -844,7 +844,8 @@ def _rfft_spike_bins(coords: tuple[int, ...], axis_sizes: tuple[int, ...]) -> tu
     """Return the stored rFFT bin or bins representing a real-valued spike pair."""
     stored_coords = _rfft_bin(coords, axis_sizes)
     last_size = axis_sizes[-1]
-    if last_size % 2 or coords[-1] not in {0, last_size // 2}:
+    is_boundary_plane = coords[-1] == 0 or (last_size % 2 == 0 and coords[-1] == last_size // 2)
+    if not is_boundary_plane:
         return (stored_coords,)
 
     mirror = tuple((size - coord) % size for size, coord in zip(axis_sizes, coords, strict=True))

@@ -68,6 +68,20 @@ def test_k_space_spike_interior_frequency_uses_one_rfft_bin(spike: np.ndarray, s
     assert np.abs(diff).max() < 1e-3
 
 
+def test_k_space_spike_odd_boundary_frequency_stores_conjugate_pair() -> None:
+    img = _flat(9, 7, 0.5)
+    a = 0.25 * np.abs(np.fft.rfftn(img, axes=(0, 1))).max()
+
+    out = fpixel.k_space_spike(img, np.array([[1, 0]]), 0.25)
+
+    diff = np.fft.rfftn(out, axes=(0, 1)) - np.fft.rfftn(img, axes=(0, 1))
+    np.testing.assert_allclose(diff[1, 0, 0], a, atol=1e-4)
+    np.testing.assert_allclose(diff[8, 0, 0], a, atol=1e-4)
+    diff[1, 0, 0] = 0
+    diff[8, 0, 0] = 0
+    assert np.abs(diff).max() < 1e-3
+
+
 def test_k_space_spike_dc_self_conjugate_single_injection() -> None:
     img = _flat(8, 8, 0.5)
     # max|F| of a flat 0.5 field is 8 * 8 * 0.5 = 32; a = 0.25 * 32 = 8.

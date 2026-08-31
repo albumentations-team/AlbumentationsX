@@ -1,4 +1,4 @@
-"""Contracts for selective pull-request CI and its stable required gates."""
+"""Contracts for the greenfield pull-request workflow."""
 
 from __future__ import annotations
 
@@ -8,17 +8,17 @@ from typing import Any
 
 import yaml
 
+from tools.ci_matrix import SUPPORTED_PYTHONS, TIER_1_OSES
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "pr.yml"
-SUPPORTED_PYTHONS = {"3.10", "3.11", "3.12", "3.13", "3.14"}
-TIER_1_OSES = {"ubuntu-latest", "windows-latest", "macos-latest"}
 
 
 def _workflow() -> dict[str, Any]:
     return yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
 
 
-def test_pr_workflow_always_starts_and_exposes_only_stable_gates() -> None:
+def test_pr_workflow_exposes_direct_required_contexts_without_aggregate_aliases() -> None:
     text = WORKFLOW_PATH.read_text(encoding="utf-8")
     trigger = text.split("permissions:", maxsplit=1)[0]
     jobs = _workflow()["jobs"]
@@ -26,15 +26,26 @@ def test_pr_workflow_always_starts_and_exposes_only_stable_gates() -> None:
     assert "paths:" not in trigger
     assert "paths-ignore:" not in trigger
     assert jobs["plan"]["name"] == "PR plan"
-    assert jobs["fast_checks"]["name"] == "Fast checks"
-    assert jobs["correctness"]["name"] == "Correctness"
-    assert jobs["security_policy"]["name"] == "Security and policy"
-    assert jobs["fast_checks"]["if"] == "${{ always() }}"
-    assert jobs["correctness"]["if"] == "${{ always() }}"
-    assert jobs["security_policy"]["if"] == "${{ always() }}"
+    assert {
+        job_id: jobs[job_id]["name"]
+        for job_id in (
+            "pre_commit_ruff",
+            "pre_commit_ruff_format",
+            "pre_commit_mypy",
+            "pre_commit_pyrefly",
+            "pre_commit_other",
+        )
+    } == {
+        "pre_commit_ruff": "Pre-commit / Ruff",
+        "pre_commit_ruff_format": "Pre-commit / Ruff format",
+        "pre_commit_mypy": "Pre-commit / mypy",
+        "pre_commit_pyrefly": "Pre-commit / Pyrefly",
+        "pre_commit_other": "Pre-commit / Other hooks",
+    }
+    assert not {"fast_checks", "correctness", "security_policy"} & set(jobs)
 
 
-def test_pr_plan_compares_base_and_head_project_versions() -> None:
+def test_pr_plan_keeps_version_comparison_for_release_preflight() -> None:
     text = WORKFLOW_PATH.read_text(encoding="utf-8")
     plan = _workflow()["jobs"]["plan"]
 
@@ -42,66 +53,57 @@ def test_pr_plan_compares_base_and_head_project_versions() -> None:
     assert plan["outputs"]["version_change"] == "${{ steps.plan.outputs.version_change }}"
     assert 'git show "${BASE_SHA}:pyproject.toml"' in text
     assert 'git show "${BASE_SHA}:uv.lock"' in text
-    assert "--base-pyproject ci-plan/base-pyproject.toml" in text
-    assert "--head-pyproject ci-plan/head-pyproject.toml" in text
-    assert "--base-lock ci-plan/base-uv.lock" in text
-    assert "--head-lock ci-plan/head-uv.lock" in text
 
 
-def test_runtime_compatibility_covers_every_supported_os_python_pair() -> None:
+def test_compatibility_is_exactly_one_job_for_each_os_python_contract() -> None:
     matrix = _workflow()["jobs"]["compatibility"]["strategy"]["matrix"]
-    pairs = set(product(matrix["operating-system"], matrix["python-version"]))
-    pairs.update((entry["operating-system"], entry["python-version"]) for entry in matrix["include"])
 
-    assert set(product(TIER_1_OSES, SUPPORTED_PYTHONS)) <= pairs
-
-
-def test_only_observed_windows_outliers_are_split() -> None:
-    includes = _workflow()["jobs"]["compatibility"]["strategy"]["matrix"]["include"]
-    shard_counts: dict[tuple[str, str], set[int]] = {}
-    for entry in includes:
-        key = (entry["operating-system"], entry["python-version"])
-        shard_counts.setdefault(key, set()).add(entry["shard-count"])
-
-    assert shard_counts[("windows-latest", "3.10")] == {1}
-    assert shard_counts[("windows-latest", "3.14")] == {1}
-    for version in ("3.11", "3.12", "3.13"):
-        assert shard_counts[("windows-latest", version)] == {2}
+    assert matrix == {
+        "operating-system": list(TIER_1_OSES),
+        "python-version": list(SUPPORTED_PYTHONS),
+    }
+    assert len(set(product(matrix["operating-system"], matrix["python-version"]))) == 15
 
 
-def test_compatibility_shard_handoff_is_portable_to_macos_bash() -> None:
+def test_test_handoffs_are_portable() -> None:
     text = WORKFLOW_PATH.read_text(encoding="utf-8")
-    compatibility = text.split("\n  compatibility:\n", maxsplit=1)[1].split("\n  coverage:\n", maxsplit=1)[0]
+    compatibility = text.split("\n  compatibility:\n", maxsplit=1)[1].split("\n  targeted:\n", maxsplit=1)[0]
+    targeted = text.split("\n  targeted:\n", maxsplit=1)[1].split("\n  pytorch:\n", maxsplit=1)[0]
 
     assert "mapfile" not in compatibility
     assert "xargs -0 python -m pytest" in compatibility
-
-
-def test_targeted_test_handoff_is_portable_to_macos_bash() -> None:
-    text = WORKFLOW_PATH.read_text(encoding="utf-8")
-    targeted = text.split("\n  targeted:\n", maxsplit=1)[1].split("\n  pytorch:\n", maxsplit=1)[0]
-
     assert "mapfile" not in targeted
     assert "xargs -0 python -m pytest" in targeted
 
 
-def test_coverage_and_pytorch_are_not_duplicated_across_matrix_cells() -> None:
+def test_coverage_only_and_duplicate_product_paths_are_removed() -> None:
     text = WORKFLOW_PATH.read_text(encoding="utf-8")
-    compatibility = text.split("\n  compatibility:\n", maxsplit=1)[1].split("\n  coverage:\n", maxsplit=1)[0]
 
-    assert "--cov=albumentations" not in compatibility
-    assert text.count("--cov=albumentations") == 1
-    assert "tests/test_benchmark_coverage.py" in text
-    assert "tests/test_serialization.py" in text
+    for retired in ("codecov/", "CODECOV_TOKEN", "--cov=", "\n  coverage:\n", "\n  primary:\n", "\n  install_smoke:\n"):
+        assert retired not in text
+    assert "tests/test_benchmark_coverage.py" not in text
+    assert "tests/test_serialization.py" not in text
+
+
+def test_pre_commit_hooks_are_partitioned_without_direct_tool_bypasses() -> None:
+    text = WORKFLOW_PATH.read_text(encoding="utf-8")
+
+    for command in (
+        "pre-commit run ruff --all-files --show-diff-on-failure",
+        "pre-commit run ruff-format --all-files --show-diff-on-failure",
+        "pre-commit run mypy --all-files --show-diff-on-failure",
+        "pre-commit run pyrefly-check --all-files --show-diff-on-failure",
+        "pre-commit run --all-files --show-diff-on-failure",
+    ):
+        assert command in text
+    assert "SKIP: ruff,ruff-format,mypy,pyrefly-check" in text
+    assert "tools.quality_gate" not in text
 
 
 def test_every_importing_pr_job_explicitly_selects_cpu_torch() -> None:
     expected_groups = {
-        "markdown": "ci-quality",
-        "contracts": "ci-quality",
+        "pre_commit_other": "ci-quality",
         "compatibility": "ci-test",
-        "coverage": "ci-test",
-        "primary": "ci-test",
         "targeted": "ci-test",
         "pytorch": "ci-test",
         "release_preflight": "ci-release",
@@ -111,58 +113,26 @@ def test_every_importing_pr_job_explicitly_selects_cpu_torch() -> None:
         job = _workflow()["jobs"][job_name]
         setup_step = next(step for step in job["steps"] if step.get("uses") == "./.github/actions/setup-ci")
 
-        assert setup_step["with"] == {
-            "python-version": setup_step["with"]["python-version"],
-            "dependency-group": expected_group,
-            "runtime-profile": "torch-cpu",
-        }
+        assert setup_step["with"]["dependency-group"] == expected_group
+        assert setup_step["with"]["runtime-profile"] == "torch-cpu"
 
 
-def test_install_smoke_uses_the_shared_two_phase_torch_contract() -> None:
-    workflow = _workflow()
-    workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")
-    install_smoke = workflow["jobs"]["install_smoke"]
-    release_preflight = workflow["jobs"]["release_preflight"]
-    install_smoke_text = "\n".join(str(step.get("run", "")) for step in install_smoke["steps"])
-    release_smoke_text = "\n".join(str(step.get("run", "")) for step in release_preflight["steps"])
-
-    assert "tools/install_contract.py prepare" in install_smoke_text
-    assert "tools/install_contract.py prepare" in release_smoke_text
-    assert "tools/install_contract.py smoke" in install_smoke_text
-    assert "tools/install_contract.py smoke" in release_smoke_text
-    assert (
-        "albumentations-team/ci-foundation/actions/torch-cpu@6b9045dbea58026a1e8f96b0392c411934a27199" in workflow_text
-    )
-    assert "find_spec('torch')" not in install_smoke_text
-    assert "uv pip install" not in install_smoke_text
-
-
-def test_version_bump_preflight_builds_publishable_bundle_in_core_profile() -> None:
+def test_release_preflight_retains_clean_install_and_strict_release_evidence() -> None:
     workflow = _workflow()
     job = workflow["jobs"]["release_preflight"]
     upload_step = next(step for step in job["steps"] if step["name"] == "Upload publishable release bundle")
     run_text = "\n".join(str(step.get("run", "")) for step in job["steps"])
-    policy_run_text = "\n".join(str(step.get("run", "")) for step in workflow["jobs"]["security_policy"]["steps"])
 
     assert job["if"] == "needs.plan.outputs.release_preflight == 'true'"
-    assert job["permissions"] == {"contents": "read"}
-    assert "dependency-group: ci-release" in WORKFLOW_PATH.read_text(encoding="utf-8")
-    assert 'uv build --out-dir "${RUNNER_TEMP}/release-bundle/dist"' in run_text
-    assert "${{ runner.temp }}/release-bundle/" in WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert "tools/install_contract.py prepare" in run_text
+    assert "tools/install_contract.py smoke" in run_text
     assert upload_step["with"]["include-hidden-files"] is True
-    assert "tools.release_bundle finalize" in run_text
-    assert "python -m tools.performance_budget summarize" in run_text
-    assert "python tools/performance_budget.py" not in run_text
-    assert "--core-only" in run_text
     assert "asv --config asv.conf.json continuous" in run_text
-    assert "--profile stf-core" in run_text
-    assert "benchmark-asv-summary.json" in run_text
-    assert "benchmark-baseline-sha.txt" in run_text
-    assert "benchmark-candidate-sha.txt" in run_text
+    assert "--profile release-core" in run_text
     assert "--require-comparison" in run_text
     assert "--fail-on-release-blockers" in run_text
-    assert "--check performance_core" in run_text
-    assert "release-preflight=${{ needs.release_preflight.result }}" in policy_run_text
+    assert "asv --config asv.conf.json check" not in run_text
+    assert "--allow-missing" not in run_text
 
 
 def test_obsolete_unconditional_pr_workflows_are_removed() -> None:

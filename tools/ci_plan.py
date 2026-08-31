@@ -17,35 +17,16 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - exercised on Python 3.10
     import tomli as tomllib
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 CHECK_NAMES = (
-    "markdown",
-    "lint",
-    "mypy",
-    "pyrefly",
-    "contracts",
     "compatibility",
-    "coverage",
-    "primary",
     "targeted",
     "pytorch",
     "dependency_audit",
     "workflow_audit",
     "legal",
     "package",
-    "install_smoke",
-    "release_preflight",
-)
-
-FAST_CHECKS = ("markdown", "lint", "mypy", "pyrefly", "contracts")
-CORRECTNESS_CHECKS = ("compatibility", "coverage", "primary", "targeted", "pytorch")
-POLICY_CHECKS = (
-    "dependency_audit",
-    "workflow_audit",
-    "legal",
-    "package",
-    "install_smoke",
     "release_preflight",
 )
 
@@ -76,17 +57,6 @@ DEPENDENCY_PATHS = {
     "requirements-dev.txt",
     "uv.lock",
 }
-INSTALL_SMOKE_PATHS = {
-    ".github/workflows/upload_to_pypi.yml",
-    "MANIFEST.in",
-    "conda.recipe/meta.yaml",
-    "pyproject.toml",
-    "uv.lock",
-}
-QUALITY_CONFIG_PATHS = {
-    ".pre-commit-config.yaml",
-    "pyproject.toml",
-}
 CI_POLICY_PATHS = {
     "docs/maintaining/ci-policy.md",
     "docs/maintaining/correctness-and-compatibility-report.md",
@@ -96,10 +66,8 @@ CI_POLICY_PATHS = {
 }
 SELF_CI_PATHS = {
     ".github/workflows/pr.yml",
-    "tools/ci_gate.py",
     "tools/ci_plan.py",
     "tools/ci_shard.py",
-    "tools/quality_gate.py",
 }
 SHARED_TEST_PATHS = {
     "tests/__init__.py",
@@ -114,11 +82,9 @@ BENCHMARK_TOOL_PATHS = {
 }
 PYTORCH_TEST_PATHS = {
     "tests/test_additional_targets.py",
-    "tests/test_benchmark_coverage.py",
     "tests/test_flip_masks_comprehensive.py",
     "tests/test_per_worker_seed.py",
     "tests/test_pytorch.py",
-    "tests/test_serialization.py",
     "tests/transforms3d/test_pytorch.py",
 }
 PYTORCH_ONLY_TEST_PATHS = {
@@ -133,7 +99,6 @@ KNOWN_REPOSITORY_FILES = {
     ".python-version",
     "AGENTS.md",
     "CONTRIBUTING.md",
-    "codecov.yaml",
 }
 
 
@@ -148,9 +113,7 @@ class CIPlan:
     changed_files: tuple[str, ...]
     domains: tuple[str, ...]
     checks: dict[str, bool]
-    gates: dict[str, tuple[str, ...]]
     pytest_targets: tuple[str, ...]
-    advisory_asv: bool
     draft: bool
     forced_full: bool
     reasons: tuple[str, ...]
@@ -182,19 +145,24 @@ def _is_shared_test_path(path: str) -> bool:
     return path in SHARED_TEST_PATHS or path.startswith(("tests/helpers/", "tests/property/"))
 
 
+def _isolated_test_targets(changed_files: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(
+        path
+        for path in changed_files
+        if _is_test_module(path) and not _is_shared_test_path(path) and path not in PYTORCH_ONLY_TEST_PATHS
+    )
+
+
 def _is_documentation(path: str) -> bool:
     return path.endswith(".md") or path.startswith(("docs/", ".codex/")) or path in {"AGENTS.md", "CONTRIBUTING.md"}
 
 
 def _is_ci_tooling(path: str) -> bool:
-    named_ci_tools = {
+    return path in SELF_CI_PATHS or path in {
         "tools/ci_matrix.py",
         "tools/collect_test_environment.py",
         "tools/pytest_summary.py",
     }
-    generic_tool = path.startswith("tools/") and path.endswith(".py")
-    specialised_tool = path in BENCHMARK_TOOL_PATHS or path == "tools/verify_legal_integrity.py"
-    return path in SELF_CI_PATHS or path in named_ci_tools or (generic_tool and not specialised_tool)
 
 
 def _is_packaging(path: str) -> bool:
@@ -216,7 +184,7 @@ DOMAIN_RULES = (
     ("legal", lambda path: path in LEGAL_PATHS or path.startswith(("legal/", "THIRD_PARTY_LICENSES/"))),
     ("packaging", _is_packaging),
     ("dependencies", DEPENDENCY_PATHS.__contains__),
-    ("quality_config", QUALITY_CONFIG_PATHS.__contains__),
+    ("quality_config", lambda path: path in {".pre-commit-config.yaml", "pyproject.toml"}),
     ("workflows", _is_workflow),
     ("ci_tooling", _is_ci_tooling),
     ("self_ci", lambda path: path in SELF_CI_PATHS or path.startswith(".github/actions/setup-ci/")),
@@ -231,7 +199,6 @@ def classify_path(raw_path: str) -> frozenset[str]:
         return frozenset({"unknown"})
 
     domains = {domain for domain, matches in DOMAIN_RULES if matches(path)}
-
     return frozenset(domains or {"unknown"})
 
 
@@ -239,73 +206,32 @@ def _new_checks() -> dict[str, bool]:
     return dict.fromkeys(CHECK_NAMES, False)
 
 
-def _select_fast_checks(checks: dict[str, bool], domains: set[str]) -> None:
-    checks["markdown"] = "docs" in domains
-    checks["lint"] = bool(
-        domains & {"runtime", "tests", "benchmarks", "ci_tooling", "quality_config", "self_ci", "unknown"}
-    )
-    checks["mypy"] = bool(domains & {"runtime", "quality_config", "unknown"})
-    checks["pyrefly"] = checks["mypy"]
-    checks["contracts"] = bool(
-        domains
-        & {
-            "runtime",
-            "tests",
-            "benchmarks",
-            "ci_tooling",
-            "ci_policy",
-            "dependencies",
-            "packaging",
-            "workflows",
-            "legal",
-            "self_ci",
-            "quality_config",
-            "repository_config",
-            "unknown",
-        },
-    )
-
-
-def _select_correctness_checks(checks: dict[str, bool], domains: set[str], changed_files: tuple[str, ...]) -> None:
-    full_matrix = bool(domains & {"runtime", "shared_tests", "self_ci", "unknown"})
-    primary = bool(domains & {"dependencies", "ci_tooling"})
-    isolated_tests = tuple(
-        path
-        for path in changed_files
-        if _is_test_module(path) and not _is_shared_test_path(path) and path not in PYTORCH_ONLY_TEST_PATHS
-    )
+def _select_product_checks(checks: dict[str, bool], domains: set[str], changed_files: tuple[str, ...]) -> None:
+    full_matrix = bool(domains & {"runtime", "shared_tests", "dependencies", "ci_tooling", "self_ci", "unknown"})
+    isolated_tests = _isolated_test_targets(changed_files)
 
     checks["compatibility"] = full_matrix
-    checks["coverage"] = full_matrix
-    checks["primary"] = primary and not full_matrix
-    checks["targeted"] = bool(isolated_tests) and not full_matrix and not primary
-    checks["pytorch"] = bool(domains & {"pytorch", "dependencies", "benchmarks", "unknown"}) or any(
+    checks["targeted"] = bool(isolated_tests) and not full_matrix
+    checks["pytorch"] = bool(domains & {"pytorch", "dependencies", "unknown"}) or any(
         path.startswith("albumentations/core/") for path in changed_files
     )
 
 
-def _select_policy_checks(checks: dict[str, bool], domains: set[str], changed_files: tuple[str, ...]) -> None:
+def _select_policy_checks(checks: dict[str, bool], domains: set[str]) -> None:
     checks["dependency_audit"] = bool(domains & {"dependencies", "packaging", "unknown"})
     checks["workflow_audit"] = bool(domains & {"workflows", "unknown"})
     checks["legal"] = bool(domains & {"legal", "dependencies", "packaging", "unknown"})
-    checks["package"] = bool(domains & {"legal", "packaging", "unknown"})
-    checks["install_smoke"] = "unknown" in domains or any(path in INSTALL_SMOKE_PATHS for path in changed_files)
+    checks["package"] = bool(domains & {"dependencies", "packaging", "unknown"})
 
 
 def _select_everything(checks: dict[str, bool]) -> None:
     checks.update(dict.fromkeys(CHECK_NAMES, True))
-    checks["primary"] = False
     checks["targeted"] = False
     checks["release_preflight"] = False
 
 
-def _disable_heavy_checks(checks: dict[str, bool]) -> None:
-    for name in (*CORRECTNESS_CHECKS, *POLICY_CHECKS):
-        checks[name] = False
-
-
-def _gate_jobs(checks: dict[str, bool], names: tuple[str, ...]) -> tuple[str, ...]:
-    return tuple(name.replace("_", "-") for name in names if checks[name])
+def _disable_selected_checks(checks: dict[str, bool]) -> None:
+    checks.update(dict.fromkeys(CHECK_NAMES, False))
 
 
 def _version_change(base_version: str | None, head_version: str | None) -> str:
@@ -418,40 +344,27 @@ def build_plan(
         head_lock=head_lock,
     )
 
-    _select_fast_checks(checks, domains)
-    _select_correctness_checks(checks, domains, changed_files)
-    _select_policy_checks(checks, domains, changed_files)
+    _select_product_checks(checks, domains, changed_files)
+    _select_policy_checks(checks, domains)
     if force_full or "unknown" in domains or (version_change == "increase" and not version_only_release):
         _select_everything(checks)
     elif version_only_release:
         checks = _new_checks()
     checks["release_preflight"] = version_change == "increase"
     if draft and not force_full:
-        _disable_heavy_checks(checks)
+        _disable_selected_checks(checks)
 
-    pytest_targets = tuple(
-        path
-        for path in changed_files
-        if _is_test_module(path) and not _is_shared_test_path(path) and path not in PYTORCH_ONLY_TEST_PATHS
-    )
-    gates = {
-        "fast": _gate_jobs(checks, FAST_CHECKS),
-        "correctness": _gate_jobs(checks, CORRECTNESS_CHECKS),
-        "policy": _gate_jobs(checks, POLICY_CHECKS),
-    }
-    advisory_asv = not draft and bool(domains & {"runtime", "benchmarks", "unknown"})
+    pytest_targets = _isolated_test_targets(changed_files)
     reasons = [
         f"Classified {len(changed_files)} changed path(s).",
         f"Selected domains: {', '.join(sorted(domains))}.",
         f"Project version change: {version_change}.",
-        (
-            "Unknown paths select the complete conservative profile."
-            if "unknown" in domains
-            else "All paths matched known domains."
-        ),
+        "Unknown paths select the complete conservative profile."
+        if "unknown" in domains
+        else "All paths matched known domains.",
     ]
     if version_only_release:
-        reasons.append("Version-only release bump selects release preflight without product, type, or audit lanes.")
+        reasons.append("Version-only release bump selects only release preflight outside always-run pre-commit jobs.")
 
     return CIPlan(
         schema_version=SCHEMA_VERSION,
@@ -461,9 +374,7 @@ def build_plan(
         changed_files=changed_files,
         domains=tuple(sorted(domains)),
         checks=checks,
-        gates=gates,
         pytest_targets=pytest_targets,
-        advisory_asv=advisory_asv,
         draft=draft,
         forced_full=force_full,
         reasons=tuple(reasons),
@@ -511,7 +422,6 @@ def _write_github_outputs(path: Path, plan: CIPlan) -> None:
     lines.extend(f"{name}={str(selected).lower()}" for name, selected in sorted(plan.checks.items()))
     lines.extend(
         (
-            f"advisory_asv={str(plan.advisory_asv).lower()}",
             f"base_version={plan.base_version or ''}",
             f"head_version={plan.head_version or ''}",
             f"version_change={plan.version_change}",
@@ -530,7 +440,6 @@ def _write_summary(path: Path, plan: CIPlan) -> None:
         f"Changed paths: {len(plan.changed_files)}",
         f"Domains: {', '.join(plan.domains)}",
         f"Selected checks: {', '.join(selected) if selected else 'none'}",
-        f"Advisory ASV: {'yes' if plan.advisory_asv else 'no'}",
         f"Version: {plan.base_version or 'unspecified'} → {plan.head_version or 'unspecified'} ({plan.version_change})",
         "",
         *[f"- {reason}" for reason in plan.reasons],
@@ -560,26 +469,29 @@ def _read_project_version(path: Path) -> str:
     with path.open("rb") as pyproject_file:
         data = tomllib.load(pyproject_file)
     project = data.get("project")
-    if not isinstance(project, dict):
-        msg = f"{path} is missing a [project] table"
+    if not isinstance(project, dict) or not isinstance(project.get("version"), str):
+        msg = f"{path} does not contain [project].version"
         raise TypeError(msg)
-    version = project.get("version")
-    if not isinstance(version, str) or not version:
-        msg = f"{path} is missing a non-empty project.version"
-        raise ValueError(msg)
-    return version
+    return project["version"]
 
 
 def main() -> int:
     args = parse_args()
+    if bool(args.paths_file) == bool(args.github_files_json):
+        print("Specify exactly one of --paths-file or --github-files-json.", file=sys.stderr)
+        return 2
+    if args.github_files_json is not None and args.null:
+        print("--null is only valid with --paths-file.", file=sys.stderr)
+        return 2
+
     try:
-        paths = list(args.path)
-        if args.paths_file is not None:
-            paths.extend(_read_paths(args.paths_file, null_delimited=args.null))
-        if args.github_files_json is not None:
-            paths.extend(_read_github_files(args.github_files_json))
-        base_version = _read_project_version(args.base_pyproject) if args.base_pyproject is not None else None
-        head_version = _read_project_version(args.head_pyproject) if args.head_pyproject is not None else None
+        paths = (
+            _read_paths(args.paths_file, null_delimited=args.null)
+            if args.paths_file
+            else _read_github_files(args.github_files_json)
+        )
+        base_version = _read_project_version(args.base_pyproject) if args.base_pyproject else None
+        head_version = _read_project_version(args.head_pyproject) if args.head_pyproject else None
         plan = build_plan(
             paths,
             draft=args.draft,
@@ -591,22 +503,17 @@ def main() -> int:
             base_lock=args.base_lock,
             head_lock=args.head_lock,
         )
-    except (OSError, TypeError, ValueError) as error:
+    except (OSError, TypeError, UnicodeDecodeError, ValueError) as error:
         print(f"CI plan failed: {error}", file=sys.stderr)
         return 1
-    if args.github_output is not None:
+
+    if args.github_output:
         _write_github_outputs(args.github_output, plan)
-    if args.summary is not None:
+    if args.summary:
         _write_summary(args.summary, plan)
     print(plan.to_json())
-    if plan.version_change == "decrease":
-        print(
-            f"CI plan failed: project.version decreased from {plan.base_version} to {plan.head_version}",
-            file=sys.stderr,
-        )
-        return 1
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

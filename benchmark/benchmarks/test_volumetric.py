@@ -23,6 +23,9 @@ class TimeVolumetricTransforms:
     def peakmem_center_crop3d(self) -> None:
         self.center_crop(volume=self.volume)
 
+    def peakmem_pad_if_needed3d(self) -> None:
+        self.pad(volume=self.volume)
+
 
 class TimeGaussianBlur3D:
     """Benchmark true-3D Gaussian blur through its public Compose route."""

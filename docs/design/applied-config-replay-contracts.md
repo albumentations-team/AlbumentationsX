@@ -235,7 +235,7 @@ or target-specific modes still need separate named cases when one non-default va
 
 ## CI policy
 
-`python -m tools.quality_gate contracts` includes:
+The `pre-commit` contract partition includes:
 
 ```text
 pytest -q tests/contracts
@@ -253,7 +253,7 @@ Local commands:
 uv run pytest -q tests/contracts
 uv run pytest -q tests/property/test_applied_config_replay.py --hypothesis-profile=ci-fast
 uv run pytest -q tests/test_serialization.py
-uv run python -m tools.quality_gate fast
+pre-commit run --all-files --show-diff-on-failure
 ```
 
 ## Contributor workflow

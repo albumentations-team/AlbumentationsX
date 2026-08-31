@@ -165,7 +165,6 @@ ci-test = [
   "pillow>=12.3.0",
   "pyvips[binary]>=3.1.1",
   "pytest>=9.1.1",
-  "pytest-cov>=7.1.0",
   "pytest-mock>=3.15.1",
   "pytest-randomly>=4.1.0",
   "pytest-xdist>=3.8.0",
@@ -484,24 +483,6 @@ tests-root = "tests"
 test-framework = "pytest"
 ignore-paths = [  ]
 formatter-cmds = [ "ruff check --exit-zero --fix $file", "ruff format $file" ]
-
-[tool.coverage.run]
-source = ["albumentations"]
-omit = [
-    "*/tests/*",
-    "*/test_*.py",
-    "*/__pycache__/*",
-    "*/site-packages/*",
-]
-branch = true
-
-[tool.coverage.report]
-precision = 2
-show_missing = true
-skip_covered = false
-
-[tool.coverage.xml]
-output = "coverage.xml"
 
 [tool.pytest.ini_options]
 minversion = "9.0"

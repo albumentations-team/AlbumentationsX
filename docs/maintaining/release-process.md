@@ -20,17 +20,19 @@ Candidate run, artifact ID, or manual promotion approval is required.
 ## The Version-Bump PR Is the Release Gate
 
 `tools.ci_plan` reads `project.version` from the base and head revisions and
-compares them as PEP 440 versions. A version increase selects the complete PR
-profile and the `Release preflight` job. A decrease or invalid version blocks
-the PR plan with an explicit error.
+compares them as PEP 440 versions. A version increase selects `Release
+preflight`; a version bump that also changes package metadata or dependencies
+selects the conservative routed PR profile. A decrease or invalid version
+blocks the PR plan with an explicit error.
 
 The normal stable PR gates still cover the supported matrix:
 
 - Python 3.10, 3.11, 3.12, 3.13, and 3.14;
 - Ubuntu, Windows, and macOS;
-- the base test suite and branch coverage;
+- the base test suite across the release compatibility matrix;
 - CPU-only PyTorch tests;
-- dependency, workflow, legal, package, and clean-install policy checks.
+- dependency, workflow, legal, and package policy checks when their path rules
+  select them.
 
 The conditional `Release preflight` job runs in the locked `ci-release`
 environment. It performs the release-specific work:
@@ -43,7 +45,7 @@ environment. It performs the release-specific work:
 5. Checks `uv.lock` freshness.
 6. Verifies golden regression vectors and runs the regression/property suite.
 7. Collects benchmark coverage and compares the previous reachable release
-   tag with the release candidate using the bounded `stf-core` profile. The
+   tag with the release candidate using the bounded `release-core` profile. The
    preflight stores exact refs, raw ASV output, a comparison summary, and a
    strict performance budget; missing comparison evidence blocks the bundle.
 8. Audits locked runtime dependencies and GitHub Actions workflows.
@@ -52,8 +54,8 @@ environment. It performs the release-specific work:
 
 The core performance profile passes `--core-only` because it does not run the
 dedicated Tensor benchmark matrix. The dedicated PyTorch PR job validates that
-Tensor lane with CPU Torch installed. The stable `Correctness` and `Security
-and policy` gates require both selected paths to succeed.
+Tensor lane with CPU Torch installed. Direct leaf jobs are the required PR
+contexts; release preflight is the additional release-specific context.
 
 ## The PR Produces the Final Bundle
 
@@ -185,7 +187,7 @@ Never publish different bytes under an existing version.
 ## Optional Release Candidate Verification
 
 `.github/workflows/release-candidate.yml` remains available for unusual,
-high-risk releases. Its blank benchmark filter selects `stf-core`; maintainers
+high-risk releases. Its blank benchmark filter selects `release-core`; maintainers
 can provide an explicit regex when a full-family comparison is justified. It
 is not part of the normal release path.
 

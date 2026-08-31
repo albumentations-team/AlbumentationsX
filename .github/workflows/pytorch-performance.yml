@@ -1,8 +1,6 @@
 name: PyTorch Tensor Performance
 
 on:
-  schedule:
-    - cron: "53 4 * * 2"
   workflow_dispatch:
     inputs:
       baseline_ref:
@@ -21,7 +19,6 @@ jobs:
   pytorch_tensor_asv:
     name: PyTorch tensor benchmark evidence
     runs-on: ubuntu-latest
-    continue-on-error: true
     timeout-minutes: 20
     steps:
     - name: Checkout
@@ -42,9 +39,6 @@ jobs:
     - name: Register PyTorch ASV machine profile
       working-directory: benchmark
       run: asv --config asv-pytorch.conf.json machine --yes
-    - name: Check PyTorch benchmark suite importability
-      working-directory: benchmark
-      run: asv --config asv-pytorch.conf.json check --verbose
     - name: Compare PyTorch tensor benchmarks
       working-directory: benchmark
       env:
@@ -78,7 +72,7 @@ jobs:
         python tools/asv_summary.py \
           --input pytorch-benchmark-evidence/asv-continuous.txt \
           --output pytorch-benchmark-evidence/benchmark-asv-summary.json \
-          --asv-exit-code "${ASV_EXIT_CODE:-1}" --allow-missing
+          --asv-exit-code "${ASV_EXIT_CODE:-1}"
     - name: Upload PyTorch benchmark artifacts
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

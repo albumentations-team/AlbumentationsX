@@ -27,3 +27,6 @@ class TimeMixingTransforms:
 
     def time_mosaic(self) -> None:
         self.transform(image=self.image, mosaic_metadata=self.metadata)
+
+    def peakmem_mosaic(self) -> None:
+        self.transform(image=self.image, mosaic_metadata=self.metadata)

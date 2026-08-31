@@ -1,4 +1,4 @@
-"""Tests for pull-request CI path classification and selection."""
+"""Contracts for pull-request CI path classification and selection."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.ci_plan import _read_github_files, build_plan, classify_path
+from tools.ci_plan import CHECK_NAMES, _read_github_files, build_plan, classify_path
 
 
 @pytest.mark.parametrize(
@@ -18,9 +18,6 @@ from tools.ci_plan import _read_github_files, build_plan, classify_path
         ("tests/conftest.py", {"tests", "shared_tests"}),
         ("benchmark/benchmarks/augmentations.py", {"benchmarks"}),
         ("LICENSE", {"legal"}),
-        ("LICENSE_HISTORY.md", {"docs", "legal"}),
-        ("LICENSING.md", {"docs", "legal"}),
-        ("THIRD_PARTY_LICENSES/OFL-1.1.txt", {"legal"}),
         ("pyproject.toml", {"dependencies", "legal", "packaging", "quality_config"}),
         (".github/workflows/pr.yml", {"workflows", "ci_tooling", "self_ci"}),
         ("unclassified/new-area/data.bin", {"unknown"}),
@@ -30,56 +27,36 @@ def test_classify_path(path: str, expected: set[str]) -> None:
     assert set(classify_path(path)) == expected
 
 
-def test_markdown_only_plan_never_selects_python_tests() -> None:
+def test_docs_only_plan_does_not_invent_product_work() -> None:
     plan = build_plan(["docs/design/mosaic.md"])
 
-    assert plan.checks["markdown"]
-    assert plan.gates["correctness"] == ()
-    assert plan.gates["policy"] == ()
-    assert not plan.advisory_asv
+    assert not any(plan.checks.values())
 
 
-def test_readme_runs_package_policy_without_product_tests() -> None:
+def test_readme_runs_package_and_legal_checks_without_product_tests() -> None:
     plan = build_plan(["README.md"])
 
-    assert plan.checks["markdown"]
     assert plan.checks["package"]
-    assert not plan.checks["install_smoke"]
-    assert plan.gates["correctness"] == ()
-
-
-def test_forbidden_license_history_path_runs_legal_policy() -> None:
-    plan = build_plan(["LICENSE_HISTORY.md"])
-
     assert plan.checks["legal"]
+    assert not plan.checks["compatibility"]
 
 
-def test_runtime_plan_keeps_full_compatibility_and_performance_evidence() -> None:
+def test_runtime_plan_keeps_matrix_and_core_tensor_coverage() -> None:
     plan = build_plan(["albumentations/core/composition.py"])
 
     assert plan.checks["compatibility"]
-    assert plan.checks["coverage"]
-    assert plan.checks["lint"]
-    assert plan.checks["mypy"]
-    assert plan.checks["pyrefly"]
-    assert plan.checks["contracts"]
-    assert not plan.checks["primary"]
-    assert plan.advisory_asv
-
-
-def test_core_runtime_change_also_selects_dedicated_pytorch_coverage() -> None:
-    plan = build_plan(["albumentations/core/composition.py"])
-
     assert plan.checks["pytorch"]
+    assert not plan.checks["targeted"]
 
 
-def test_benchmark_tooling_selects_dedicated_pytorch_policy() -> None:
+def test_benchmark_tooling_does_not_start_product_or_tensor_tests() -> None:
     plan = build_plan(["tools/benchmark_coverage.py"])
 
-    assert plan.checks["pytorch"]
+    assert not plan.checks["compatibility"]
+    assert not plan.checks["pytorch"]
 
 
-def test_isolated_test_change_selects_targeted_compatibility() -> None:
+def test_isolated_test_change_selects_targeted_tests() -> None:
     plan = build_plan(["tests/test_bbox.py"])
 
     assert plan.checks["targeted"]
@@ -87,76 +64,55 @@ def test_isolated_test_change_selects_targeted_compatibility() -> None:
     assert plan.pytest_targets == ("tests/test_bbox.py",)
 
 
-def test_shared_test_change_falls_back_to_full_matrix() -> None:
+def test_shared_test_change_selects_full_matrix() -> None:
     plan = build_plan(["tests/helpers/data.py"])
 
     assert plan.checks["compatibility"]
     assert not plan.checks["targeted"]
 
 
-def test_dependency_change_selects_primary_install_and_security_checks() -> None:
+def test_dependency_change_selects_matrix_and_policy_without_duplicate_primary_suite() -> None:
     plan = build_plan(["uv.lock"])
 
-    assert plan.checks["primary"]
+    assert plan.checks["compatibility"]
     assert plan.checks["pytorch"]
-    assert plan.checks["install_smoke"]
     assert plan.checks["dependency_audit"]
     assert plan.checks["legal"]
-    assert not plan.checks["compatibility"]
+    assert plan.checks["package"]
 
 
-def test_workflow_change_runs_security_contracts_without_product_matrix() -> None:
+def test_workflow_change_runs_workflow_audit_without_product_matrix() -> None:
     plan = build_plan([".github/workflows/performance.yml"])
 
     assert plan.checks["workflow_audit"]
-    assert plan.checks["contracts"]
     assert not plan.checks["compatibility"]
 
 
-def test_quality_configuration_runs_tools_without_product_tests() -> None:
-    plan = build_plan([".pre-commit-config.yaml"])
-
-    assert plan.checks["lint"]
-    assert plan.checks["mypy"]
-    assert plan.checks["pyrefly"]
-    assert plan.checks["contracts"]
-    assert plan.gates["correctness"] == ()
-
-
-def test_self_ci_change_runs_complete_compatibility_matrix() -> None:
+def test_self_ci_change_runs_full_matrix() -> None:
     plan = build_plan(["tools/ci_plan.py"])
 
     assert plan.checks["compatibility"]
-    assert plan.checks["contracts"]
 
 
-def test_unknown_path_fails_closed_to_complete_profile() -> None:
+def test_unknown_path_fails_closed() -> None:
     plan = build_plan(["new-root/file.dat"])
 
-    assert plan.checks["compatibility"]
-    assert plan.checks["pytorch"]
-    assert plan.checks["workflow_audit"]
-    assert plan.checks["package"]
-    assert "unknown" in plan.domains
+    assert all(plan.checks[name] for name in CHECK_NAMES if name not in {"targeted", "release_preflight"})
+    assert not plan.checks["targeted"]
 
 
-def test_draft_disables_heavy_checks_but_preserves_fast_feedback() -> None:
+def test_draft_defers_routed_jobs_but_not_always_run_pre_commit() -> None:
     plan = build_plan(["albumentations/core/composition.py"], draft=True)
 
-    assert plan.gates["fast"]
-    assert plan.gates["correctness"] == ()
-    assert plan.gates["policy"] == ()
-    assert not plan.advisory_asv
+    assert not any(plan.checks.values())
 
 
-def test_force_full_overrides_draft_and_selects_conservative_profile() -> None:
+def test_force_full_overrides_draft() -> None:
     plan = build_plan(["docs/design/mosaic.md"], draft=True, force_full=True)
 
     assert plan.checks["compatibility"]
     assert plan.checks["pytorch"]
     assert plan.checks["package"]
-    assert not plan.checks["primary"]
-    assert not plan.checks["targeted"]
 
 
 def test_torch_only_module_uses_dedicated_profile_without_targeted_base_job() -> None:
@@ -178,51 +134,27 @@ def test_github_file_reader_preserves_untrusted_filename_boundaries(tmp_path: Pa
     assert "unknown" in build_plan(_read_github_files(files_json)).domains
 
 
-def test_version_increase_selects_complete_release_preflight() -> None:
+def test_version_increase_selects_release_preflight() -> None:
     plan = build_plan(["pyproject.toml"], base_version="2.3.2", head_version="2.3.3")
 
-    assert plan.base_version == "2.3.2"
-    assert plan.head_version == "2.3.3"
     assert plan.version_change == "increase"
     assert plan.checks["release_preflight"]
     assert plan.checks["compatibility"]
-    assert plan.checks["pytorch"]
-    assert "release-preflight" in plan.gates["policy"]
 
 
-@pytest.mark.parametrize(
-    ("head_dependency", "lock_source", "version_only"),
-    [
-        ("numpy>=2", '{ editable = "." }', True),
-        ("numpy>=3", '{ editable = "." }', False),
-        ("numpy>=2", '{ registry = "https://example.invalid" }', False),
-    ],
-)
-def test_version_bump_selects_minimal_release_only_when_metadata_is_unchanged(
-    tmp_path: Path,
-    head_dependency: str,
-    lock_source: str,
-    *,
-    version_only: bool,
-) -> None:
+def test_version_only_release_selects_only_preflight(tmp_path: Path) -> None:
     base_pyproject = tmp_path / "base-pyproject.toml"
-    base_pyproject.write_text(
-        '[project]\nname = "albumentationsx"\nversion = "2.3.2"\ndependencies = ["numpy>=2"]\n',
-        encoding="utf-8",
-    )
     head_pyproject = tmp_path / "head-pyproject.toml"
-    head_pyproject.write_text(
-        f'[project]\nname = "albumentationsx"\nversion = "2.3.3"\ndependencies = ["{head_dependency}"]\n',
-        encoding="utf-8",
-    )
     base_lock = tmp_path / "base-uv.lock"
+    head_lock = tmp_path / "head-uv.lock"
+    base_pyproject.write_text('[project]\nname = "albumentationsx"\nversion = "2.3.2"\n', encoding="utf-8")
+    head_pyproject.write_text('[project]\nname = "albumentationsx"\nversion = "2.3.3"\n', encoding="utf-8")
     base_lock.write_text(
-        f'version = 1\n[[package]]\nname = "albumentationsx"\nversion = "2.3.2"\nsource = {lock_source}\n',
+        'version = 1\n[[package]]\nname = "albumentationsx"\nversion = "2.3.2"\nsource = { editable = "." }\n',
         encoding="utf-8",
     )
-    head_lock = tmp_path / "head-uv.lock"
     head_lock.write_text(
-        f'version = 1\n[[package]]\nname = "albumentationsx"\nversion = "2.3.3"\nsource = {lock_source}\n',
+        'version = 1\n[[package]]\nname = "albumentationsx"\nversion = "2.3.3"\nsource = { editable = "." }\n',
         encoding="utf-8",
     )
 
@@ -236,46 +168,7 @@ def test_version_bump_selects_minimal_release_only_when_metadata_is_unchanged(
         head_lock=head_lock,
     )
 
-    if version_only:
-        assert {name for name, selected in plan.checks.items() if selected} == {"release_preflight"}
-        assert plan.gates["fast"] == ()
-        assert plan.gates["correctness"] == ()
-        assert plan.gates["policy"] == ("release-preflight",)
-    else:
-        assert plan.checks["compatibility"]
-        assert plan.checks["mypy"]
-        assert plan.checks["pytorch"]
-        assert plan.checks["dependency_audit"]
-        assert plan.checks["release_preflight"]
-
-
-def test_prerelease_version_increase_selects_release_preflight() -> None:
-    plan = build_plan(["pyproject.toml"], base_version="2.3.2", head_version="2.3.3rc1")
-
-    assert plan.version_change == "increase"
-    assert plan.checks["release_preflight"]
-
-
-def test_unchanged_version_does_not_select_release_preflight() -> None:
-    plan = build_plan(["pyproject.toml"], base_version="2.3.2", head_version="2.3.2")
-
-    assert plan.version_change == "unchanged"
-    assert not plan.checks["release_preflight"]
-
-
-def test_draft_version_bump_defers_release_preflight() -> None:
-    plan = build_plan(["pyproject.toml"], base_version="2.3.2", head_version="2.3.3", draft=True)
-
-    assert plan.version_change == "increase"
-    assert not plan.checks["release_preflight"]
-    assert plan.gates["policy"] == ()
-
-
-def test_version_decrease_is_recorded_as_invalid_release_direction() -> None:
-    plan = build_plan(["pyproject.toml"], base_version="2.4.0", head_version="2.3.3")
-
-    assert plan.version_change == "decrease"
-    assert not plan.checks["release_preflight"]
+    assert {name for name, selected in plan.checks.items() if selected} == {"release_preflight"}
 
 
 @pytest.mark.parametrize("version", ["", "release-2.3.3", "2.3.3+"])

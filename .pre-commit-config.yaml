@@ -1,15 +1,3 @@
-ci:
-  autofix_commit_msg: |
-    [pre-commit.ci] auto fixes from pre-commit.com hooks
-
-    for more information, see https://pre-commit.ci
-  autofix_prs: true
-  autoupdate_branch: ''
-  autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'
-  autoupdate_schedule: weekly
-  skip: [ ]
-  submodules: false
-
 repos:
   - repo: local
     hooks:
@@ -41,7 +29,7 @@ repos:
         entry: uv run python -m tools.benchmark_coverage check
         language: system
         pass_filenames: false
-        files: ^(albumentations/|benchmark/|tools/(benchmark_coverage|performance_budget|quality_gate)\.py)
+        files: ^(albumentations/|benchmark/|tools/(benchmark_coverage|performance_budget)\.py)
       - id: check-compose-policy-and-tracing-contracts
         name: Check Compose policy and tracing contracts
         entry: uv run pytest -q tests/contracts/test_composition_serialization_contracts.py tests/test_composition_tracing.py

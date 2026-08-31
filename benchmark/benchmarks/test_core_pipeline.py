@@ -6,6 +6,8 @@ import albumentations
 from benchmarks.common import (
     ANNOTATION_COUNTS,
     IMAGE_PARAMS,
+    RELEASE_CORE_ANNOTATION_COUNTS,
+    RELEASE_CORE_IMAGE_PARAMS,
     make_batch,
     make_hbb_bboxes,
     make_image,
@@ -18,7 +20,7 @@ from benchmarks.common import (
 class TimeCorePipeline:
     """Benchmark core Compose and ReplayCompose execution paths."""
 
-    params = IMAGE_PARAMS
+    params = RELEASE_CORE_IMAGE_PARAMS
     param_names = ("size_name", "channels")
 
     def setup(self, size_name: str, channels: int) -> None:
@@ -86,10 +88,16 @@ class TimeCorePipeline:
         self.single(images=self.images)
 
 
+class TimeComposeFullMatrix(TimeCorePipeline):
+    """Run the full input-size and channel matrix for local PR evidence."""
+
+    params = IMAGE_PARAMS
+
+
 class TimeCorePipelineTargetProcessors:
     """Benchmark bbox/keypoint processor overhead with a no-op transform."""
 
-    params = (ANNOTATION_COUNTS,)
+    params = (RELEASE_CORE_ANNOTATION_COUNTS,)
     param_names = ("count",)
 
     def setup(self, count: int) -> None:
@@ -115,6 +123,12 @@ class TimeCorePipelineTargetProcessors:
 
     def time_bbox_keypoint_processor_roundtrip(self, count: int) -> None:
         self.transform(**self.data)
+
+
+class TimeTargetProcessorScaling(TimeCorePipelineTargetProcessors):
+    """Measure annotation-count scaling for local PR evidence."""
+
+    params = (ANNOTATION_COUNTS,)
 
 
 class TimeCorePipelineTracing:

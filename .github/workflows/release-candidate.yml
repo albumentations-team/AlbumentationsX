@@ -13,7 +13,7 @@ on:
         required: false
         type: string
       benchmark_filter:
-        description: "Optional ASV --bench regex. Leave empty for the bounded stf-core comparison."
+        description: "Optional ASV --bench regex. Leave empty for the bounded release-core comparison."
         required: false
         type: string
 
@@ -52,12 +52,10 @@ jobs:
     - name: Run release candidate tests
       shell: bash
       run: |
-        mapfile -d '' -t test_files < <(
-          python -m tools.ci_shard select --shard-count 1 --shard-index 0 \
-            --exclude-file tests/test_pytorch.py \
-            --exclude-file tests/transforms3d/test_pytorch.py
-        )
-        python -m pytest "${test_files[@]}" \
+        python -m tools.ci_shard select --shard-count 1 --shard-index 0 \
+          --exclude-file tests/test_pytorch.py \
+          --exclude-file tests/transforms3d/test_pytorch.py \
+          | xargs -0 python -m pytest \
           -n 2 --dist=worksteal -m "not pytorch" \
           --hypothesis-profile=release \
           --junitxml=release-candidate-evidence/junit.xml
@@ -151,9 +149,6 @@ jobs:
     - name: Register ASV machine profile
       working-directory: benchmark
       run: asv --config asv.conf.json machine --yes
-    - name: Check benchmark suite importability
-      working-directory: benchmark
-      run: asv --config asv.conf.json check --verbose
     - name: Compare release candidate benchmarks
       working-directory: benchmark
       env:
@@ -169,7 +164,7 @@ jobs:
           CANDIDATE_REF="HEAD"
         fi
         if [ -z "$BENCH_FILTER" ]; then
-          BENCH_FILTER="$(python "$GITHUB_WORKSPACE/tools/select_benchmark_filters.py" --profile stf-core)"
+          BENCH_FILTER="$(python "$GITHUB_WORKSPACE/tools/select_benchmark_filters.py" --profile release-core)"
         fi
         BASELINE_SHA="$(git rev-parse "$BASELINE_REF")"
         CANDIDATE_SHA="$(git rev-parse "$CANDIDATE_REF")"

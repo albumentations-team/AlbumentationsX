@@ -61,7 +61,7 @@ this document and the hook instead of restating the AXG catalog.
 - Before handing off Python changes, run the fast local quality gate:
 
   ```bash
-  uv run python -m tools.quality_gate fast
+  pre-commit run --all-files --show-diff-on-failure
   ```
 
 - Changes to support metadata, CI workflows, release docs, or correctness-report

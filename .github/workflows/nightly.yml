@@ -31,12 +31,10 @@ jobs:
       shell: bash
       run: |
         mkdir -p nightly-evidence
-        mapfile -d '' -t test_files < <(
-          python -m tools.ci_shard select --shard-count 1 --shard-index 0 \
-            --exclude-file tests/test_pytorch.py \
-            --exclude-file tests/transforms3d/test_pytorch.py
-        )
-        python -m pytest "${test_files[@]}" \
+        python -m tools.ci_shard select --shard-count 1 --shard-index 0 \
+          --exclude-file tests/test_pytorch.py \
+          --exclude-file tests/transforms3d/test_pytorch.py \
+          | xargs -0 python -m pytest \
           -n 2 --dist=worksteal -m "not pytorch" \
           --hypothesis-profile=ci-fast \
           --junitxml=nightly-evidence/junit.xml
@@ -91,7 +89,7 @@ jobs:
         numpy==2.2.6
         scipy==1.15.3
         pydantic==2.12.4
-        albucore==0.2.14
+        albucore==0.2.16
         opencv-python-headless==5.0.0.93
         hypothesis
         pytest

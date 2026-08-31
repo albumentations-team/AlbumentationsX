@@ -116,13 +116,13 @@ pytest
 For a faster local gate before handing work off, run:
 
 ```bash
-uv run python -m tools.quality_gate fast
+pre-commit run --all-files --show-diff-on-failure
 ```
 
 With the pip fallback:
 
 ```bash
-python -m tools.quality_gate fast
+pre-commit run --all-files --show-diff-on-failure
 ```
 
 ### Verification Infrastructure Commands

@@ -18,7 +18,6 @@ prune tests
 prune tools
 prune benchmark
 prune conda.recipe
-prune codecov.yaml
 prune pre-commit-config.yaml
 prune .github
 prune requirements-dev.txt

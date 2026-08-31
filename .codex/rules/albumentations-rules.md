@@ -30,8 +30,7 @@ always_apply: true
 - NEVER create temporary tests - add permanent tests to test suite
 - For transform configuration, replay, target coverage, runtime performance, Torch, CI, or licensing work, use the
   matching project skill and its linked design document. These rules do not restate their contracts.
-- After Python or quality-gate config edits, run `uv run python tools/quality_gate.py fast` before marking work
-  complete when the environment can support it.
+- For Python, pre-commit, or CI edits, use `validate-and-fix` to select and run the focused validation.
 
 ## License and CLA Integrity
 - Use SPDX `AGPL-3.0-only` consistently; do not silently change it to an

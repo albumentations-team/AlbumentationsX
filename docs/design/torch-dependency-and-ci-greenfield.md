@@ -89,7 +89,7 @@ who wants the CI runtime adds `--group ci-torch-cpu` explicitly.
 
 | Tool group | Purpose | Torch selected by the group |
 | --- | --- | --- |
-| `ci-test` | pytest, xdist, coverage, Hypothesis, test libraries, headless OpenCV | No |
+| `ci-test` | pytest, xdist, Hypothesis, test libraries, headless OpenCV | No |
 | `ci-quality` | Ruff, pre-commit, mypy, and repository contracts | No |
 | `ci-types` | Pyrefly, typing tools, and stubs | No |
 | `ci-security` | dependency and workflow auditors | No |
@@ -102,22 +102,23 @@ who wants the CI runtime adds `--group ci-torch-cpu` explicitly.
 | --- | --- | --- |
 | Link-only Markdown, lint, typing, package, audit, legal, and static docs | matching tool group | `none` |
 | Repository contracts | `ci-quality` | `torch-cpu` |
-| Compatibility, coverage, primary, targeted, and Tensor tests | `ci-test` | `torch-cpu` |
+| Compatibility, targeted, and Tensor tests | `ci-test` | `torch-cpu` |
 | ASV evidence and timing | `ci-benchmark` | `torch-cpu` |
 | Release correctness | `ci-release` | `torch-cpu` |
 | Lower-bound test environment | explicit lower bounds | CPU runtime tool |
 | Autodoc, doctests, executed examples, and notebooks | docs tool group | `torch-cpu` |
 
-The PR Markdown job runs the generated transform-table check, which imports
-package code and therefore selects `torch-cpu`. Link-only Markdown and static
-documentation work remain `none`. Any standalone documentation workflow that
-imports package code must likewise select `torch-cpu`.
+The `Pre-commit / Other hooks` partition runs the generated transform-table
+check, which imports package code and therefore selects `torch-cpu`. Link-only
+Markdown and static documentation work remain `none`. Any standalone
+documentation workflow that imports package code must likewise select
+`torch-cpu`.
 
 ## Clean-wheel contract
 
 `tools/install_contract.py` owns the package-specific half of the
-cross-platform clean install check used by PR smoke jobs and release preflight.
-It performs this state machine in a temporary virtual environment:
+cross-platform clean install check used by release preflight. It performs this
+state machine in a temporary virtual environment:
 
 1. Install the built AlbumentationsX wheel and one OpenCV distribution.
 2. Verify that Torch and CUDA/NVIDIA distributions are absent.
@@ -164,7 +165,7 @@ The architecture is correct when all of the following remain true:
   CUDA, or MPS Torch does not initialize an accelerator;
 - package-importing CI jobs use CPU Torch and report no CUDA/NVIDIA packages;
 - non-importing CI and static documentation work stay Torch-free;
-- package smoke validates both states from a clean wheel; and
+- release preflight validates both states from a clean wheel; and
 - the CI matrix validator, workflow tests, install contract, and selected PR
   checks pass at the same head SHA.
 

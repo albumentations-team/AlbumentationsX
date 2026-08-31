@@ -1,228 +1,130 @@
 # CI policy
 
-AlbumentationsX pull-request CI optimizes for merge-ready wall time while
-preserving the supported compatibility guarantee. The workflow always starts,
-classifies the changed paths, and runs only the checks that can produce useful
-signal for those paths. Every selected job must name a concrete failure it can
-expose. Unknown paths fail closed to the complete profile.
+AlbumentationsX uses the shortest CI graph that can expose a real regression.
+The pull-request workflow always starts its router and its five pre-commit
+partitions. Product, package, and policy jobs run only when the changed paths
+can affect their result. Unknown paths select the conservative profile.
 
-The implementation lives in `.github/workflows/pr.yml`. Routing is owned by
-`tools/ci_plan.py`; stable gate aggregation is owned by `tools/ci_gate.py`.
+The implementation lives in [`.github/workflows/pr.yml`](../../.github/workflows/pr.yml).
+`tools/ci_plan.py` owns path routing. Direct job names are the branch-protection
+contexts; there are no aggregate gate aliases.
 
-## Required pull-request gates
+## Required pull-request contexts
 
-Repository rules should require these repository-owned jobs, not conditional
-leaf jobs:
+Require these repository-owned contexts and the external `license/cla` check:
 
 - `PR / PR plan`
-- `PR / Fast checks`
-- `PR / Correctness`
-- `PR / Security and policy`
+- `PR / Pre-commit / Ruff`
+- `PR / Pre-commit / Ruff format`
+- `PR / Pre-commit / mypy`
+- `PR / Pre-commit / Pyrefly`
+- `PR / Pre-commit / Other hooks`
 
-The plan job always reports. Each aggregate gate also always reports and fails
-closed when a selected leaf is missing, skipped, cancelled, or failed. A leaf
-that the router did not select may be skipped without leaving the pull request
-waiting for a status that will never arrive.
+For a runtime or shared-test change, also require every visible
+`Compatibility (<OS>, Python <version>)` context and `PyTorch tests`. Package
+and policy contexts are required only when their path rule selects them. CodeQL,
+Antigravity review, and performance workflows are advisory because their path
+filters or explicit triggers can correctly skip them.
 
-Keep the external CLA check. CodeQL is advisory, so do not require either
-language-specific analysis check. A skipped path-scoped CodeQL workflow must
-never leave a pull request waiting for a required status. Do not require
-advisory ASV jobs or AI-review jobs.
+## Pre-commit ownership
 
-Direct pushes to `main` are outside the maintenance policy and should be
-blocked by the repository ruleset. Repository workflows use pull-request,
-scheduled, manual, and release events instead of `push` events. CodeQL is the
-exception: its scoped `push` trigger updates default-branch alerts after a
-merged pull request.
-
-## Path-based selection
-
-The router applies additive domains: a mixed change receives the union of the
-relevant checks. These are the normal profiles:
-
-| Changed paths | Required work | Work intentionally skipped |
-| --- | --- | --- |
-| Ordinary Markdown | Changed-file Markdown hooks; CPU runtime when the transform-table generator runs | pytest, typing, packaging, security audits |
-| CI policy Markdown | Markdown hooks and repository contracts | product pytest |
-| Runtime source | Ruff, mypy, Pyrefly, contracts, full 3 × 5 compatibility, one coverage lane | package builds and workflow audit |
-| Isolated test module | Changed module on the primary and OS/version boundary lanes | full product matrix |
-| Shared pytest infrastructure | Full 3 × 5 compatibility | unrelated package and workflow policy jobs |
-| PyTorch source or tests | Dedicated CPU-only PyTorch job plus relevant base checks | CUDA or MPS Torch installation in CI |
-| Dependency metadata or lockfile | Primary suite, PyTorch, dependency audit, legal/package checks, clean install matrix | ASV timing comparison |
-| Packaging or legal inputs | Source legal verification, wheel/sdist verification, metadata check, clean installs when relevant | product compatibility matrix |
-| Version-only release (`pyproject.toml` and `uv.lock`) | Release preflight | Ruff, mypy, Pyrefly, contracts, product tests, standalone audit, package, legal, and install jobs |
-| `.github/**` | Repository contracts and `zizmor` | product pytest unless the PR workflow/router itself changed |
-| Benchmark source or tooling | Benchmark contracts and advisory ASV evidence | product pytest |
-| Unknown path | Complete conservative profile | Nothing |
-
-Draft pull requests run the selected fast feedback only. Moving a pull request
-to ready-for-review starts its selected correctness and policy work. The
-`full-ci` label overrides draft routing and selects the complete conservative
-profile.
-
-## Compatibility and wall time
-
-Runtime changes retain every supported operating-system and Python pair:
-
-- Ubuntu, Windows, and macOS;
-- Python 3.10, 3.11, 3.12, 3.13, and 3.14;
-- the locked `ci-test` dependency profile.
-
-Compatibility jobs do not collect coverage. Every pytest lane explicitly uses
-the CPU-only Torch runtime because pytest imports `tests/conftest.py` before it
-applies the `not pytorch` marker. Branch coverage runs once on Ubuntu and Python
-3.12. PyTorch-marked tests run once in the same CPU-only runtime profile.
-
-Windows 3.11, 3.12, and 3.13 are split into two duration-balanced test-file
-shards because the measured baseline exceeded two minutes. The committed
-weights live in `ci/test-durations.json`; `tools/ci_shard.py` assigns every
-discovered test file exactly once and gives new files a deterministic fallback
-weight. Other compatibility pairs stay unsharded.
-
-All pytest lanes use two xdist workers with the `worksteal` scheduler. The
-workflow cancels obsolete runs when a newer commit updates the same pull
-request.
-
-The operational targets are:
-
-| Pull-request class | Required p50 | Required p95 |
-| --- | ---: | ---: |
-| Ordinary Markdown only | 20s | 45s |
-| Workflow, legal, or benchmark infrastructure | 30s | 60s |
-| Runtime Python | 90s | 120s |
-| Dependency, packaging, or PyTorch | 120s | 180s |
-
-Measure from the latest pull-request event until every required gate is final,
-including queue time. Two-minute parallel jobs are acceptable; an irrelevant
-job or a missing required status is not.
-
-## Purpose-specific environments
-
-CI jobs choose one locked tool group and one runtime profile through
-`.github/actions/setup-ci/action.yml`. That local action owns the AX dependency
-group mapping. It delegates Python and uv bootstrap to the pinned ci-foundation
-action, then runs the local locked sync. The default `none` runtime does not
-install Torch. `torch-cpu` adds `ci-torch-cpu` in the same locked sync and
-delegates verification to ci-foundation, which rejects CUDA and NVIDIA
-distributions without calling accelerator APIs. The local action records the
-selected profile in environment evidence.
-
-- `ci-test`: base pytest suite and optional test libraries;
-- `ci-quality`: Ruff, pre-commit, the isolated mypy hook, and repository contracts;
-- `ci-types`: Pyrefly and standalone typing tools;
-- `ci-security`: pip-audit and zizmor;
-- `ci-package`: build, twine, and legal verifier tests;
-- `ci-benchmark`: ASV;
-- `ci-release`: version-bump preflight, final distributions, release evidence,
-  and bundle tooling.
-- `ci-torch-cpu`: the one validated CPU-only Torch floor and package index.
-
-The contributor-facing `dev` group includes tools but no Torch runtime. CI must
-not sync the broad `dev` group. Package builds, dependency audits, source legal
-checks, link-only Markdown checks, and static documentation work use `none`.
-The Markdown leaf selects `torch-cpu` because its transform-table generator
-imports AlbumentationsX. A clean-wheel install contract first proves the
-Torch-free error and then installs the shared CPU profile before importing
-AlbumentationsX.
-
-## ASV performance evidence
-
-ASV means **airspeed velocity**, the Python benchmark framework used under
-`benchmark/`. It is unrelated to Python abstract syntax trees.
-
-The lightweight `ASV benchmark evidence` job validates benchmark catalog
-coverage and benchmark-suite importability. It runs only when runtime,
-benchmark, performance-workflow, or benchmark-policy files change. Actual
-before/after timing runs for pull requests require the `run-performance` label;
-scheduled and manual workflows can also run them.
-
-Performance jobs remain advisory while hosted-runner variance is being
-measured. If performance becomes blocking, introduce one stable always-reported
-`Performance` gate with documented thresholds. Never make a conditional ASV
-leaf globally required.
-
-## Security, legal, and release coverage
-
-The pull-request workflow routes dependency audit, workflow audit, source legal
-verification, artifact verification, and clean install smoke tests by path.
-A version-only release changes exactly `[project].version` and the matching
-editable-package version in `uv.lock`; the router compares the base and head
-metadata to prove that condition. It selects only release preflight, which
-creates and verifies the publishable bundle. A version bump that also changes
-metadata or locked dependencies selects the complete profile. The later
-`release: published` workflow verifies and delivers that bundle without
-repeating the release checks.
-The scheduled Security workflow still runs dependency audit, `zizmor`, and
-OpenSSF Scorecard evidence independently of pull-request routing.
-
-Nightly and release-candidate workflows run the complete 3 × 5 base suite.
-They also retain lower-bound, property/regression, optional-extra, PyTorch,
-performance, and release artifact evidence where appropriate.
-
-The Performance workflow separates benchmark coverage from timed comparisons.
-Every runtime pull request runs the advisory `pr-core` comparison from its base
-commit to the checked-out merge commit. A `run-performance` label selects the
-changed-family comparison. The Tuesday schedule compares the previous release
-tag with the exact `main` commit using `stf-core`; it does not run the
-catalog-wide matrices as one timed job. Manual runs use `stf-core` when no
-filter is supplied, while a full-family comparison requires an explicit filter.
-The version-bump `Release preflight` runs the same `stf-core` comparison and
-fails if its release bundle lacks comparison evidence or contains a stable
-release-blocking regression.
-
-CodeQL uses two path-scoped advanced workflows. `codeql-python.yml` runs for
-Python source, stubs, or CodeQL configuration changes. `codeql-actions.yml`
-runs for GitHub Actions and composite-action changes. Ordinary Markdown and
-`.codex` documentation changes start neither workflow. Both workflows run
-after a matching pull request or push to `main`, once each week, and on manual
-dispatch.
-
-GitHub Default Setup must remain disabled. It suppresses advanced workflows
-and blocks their SARIF uploads. CodeQL check names remain advisory because a
-path filter correctly skips the language that cannot produce signal.
-
-## Antigravity pull-request reviews
-
-`Antigravity PR Checks` is advisory and outside merge-ready wall time. It runs
-for non-draft, same-repository pull requests whose paths select source, tests,
-workflows, legal policy, or unknown high-risk changes. Ordinary Markdown and
-dependency-only changes do not invoke the model.
-
-The thin `pull_request_target` caller supplies the local trigger, cloud
-variables, and data-only review policy to the pinned ci-foundation reusable
-workflow. The foundation checks out only the trusted base revision. Gemini
-receives pull-request metadata and diff as untrusted review data, has read-only
-repository tools, and has no shell or pull-request write token. A separate
-publisher job posts the one-day review artifact.
-
-Configure these repository variables:
-
-| Name | Value |
-| --- | --- |
-| `ANTIGRAVITY_GCP_PROJECT_ID` | `albumentations` |
-| `ANTIGRAVITY_GCP_LOCATION` | `global` |
-| `ANTIGRAVITY_GCP_SERVICE_ACCOUNT` | `antigravity-pr-review@albumentations.iam.gserviceaccount.com` |
-| `ANTIGRAVITY_GCP_WIF_PROVIDER` | `projects/663083315901/locations/global/workloadIdentityPools/github-actions/providers/albumentationsx-pr-review` |
-
-The Workload Identity provider condition must match repository ID
-`1005218687`, owner ID `57894582`, event `pull_request_target`, and base
-branch `main`. It must also match the caller workflow ref
-`albumentations-team/AlbumentationsX/.github/workflows/antigravity-pr-checks.yml@refs/heads/main`
-and the reusable-workflow claim
-`albumentations-team/ci-foundation/.github/workflows/antigravity-review.yml@6b9045dbea58026a1e8f96b0392c411934a27199`.
-
-## Local validation and evidence
-
-Use the same repository-owned commands locally:
+Every configured hook runs through pre-commit exactly once. The four expensive
+hooks have their own parallel jobs; the fifth job runs every remaining hook:
 
 ```bash
-uv run python -m tools.ci_matrix check
-uv run python -m tools.ci_shard check
-uv run python -m tools.quality_gate fast
+pre-commit run ruff --all-files --show-diff-on-failure
+pre-commit run ruff-format --all-files --show-diff-on-failure
+pre-commit run mypy --all-files --show-diff-on-failure
+pre-commit run pyrefly-check --all-files --show-diff-on-failure
+SKIP=ruff,ruff-format,mypy,pyrefly-check pre-commit run --all-files --show-diff-on-failure
 ```
 
-Test lanes should retain JUnit XML and compact summaries where practical.
-Always-run evidence steps may pass `--allow-incomplete` to
-`tools/pytest_summary.py` so early failures still produce explicit evidence.
-Release reports remain strict and require complete test, environment,
-benchmark, performance-budget, and security evidence.
+CI does not invoke Ruff, mypy, or Pyrefly directly. This keeps local and remote
+quality rules identical. The `Other hooks` partition owns repository contracts,
+lock freshness, benchmark catalog validation, regression vectors, legal checks,
+Markdown links, generated documentation, syntax checks, and secret detection.
+
+## Product-test routing
+
+| Changed area | Selected jobs |
+| --- | --- |
+| Runtime source, shared test infrastructure, dependency metadata, CI router, or unknown path | Complete 3 × 5 compatibility matrix |
+| Core runtime or PyTorch source; dedicated PyTorch tests; dependency metadata | Dedicated CPU-only PyTorch tests |
+| Isolated non-PyTorch test module | Targeted tests on the boundary platforms |
+| Workflow-only change | GitHub Actions hardening audit |
+| Legal, package, or dependency metadata | Source legal check, package build/metadata check, and relevant dependency audit |
+| Version-only release bump | Release preflight only, outside always-run pre-commit jobs |
+
+The matrix is fifteen distinct jobs: Ubuntu, Windows, and macOS on Python 3.10,
+3.11, 3.12, 3.13, and 3.14. Each job runs the complete non-PyTorch suite with
+two xdist workers and `--hypothesis-profile=ci-fast`. There are no Windows shard
+aliases and no duplicate primary suite.
+
+PyTorch-only files are excluded from the base suite and run once in a dedicated
+Ubuntu/Python 3.12 CPU-Torch job. This prevents a marker-specific regression
+from being silently absent while avoiding duplicate base-suite cases.
+
+Draft PRs keep the five pre-commit partitions and defer routed jobs. The
+`full-ci` label overrides that deferral.
+
+## Removed work
+
+Codecov is not part of AlbumentationsX CI. The repository has no Codecov action,
+token, XML artifact, `pytest-cov` dependency, coverage configuration, or
+coverage-only test run. Benchmark catalog coverage is unrelated: it verifies
+that public transform families have owned performance cases and remains a
+pre-commit contract.
+
+The workflow also has no `Fast checks`, `Correctness`, or `Security and policy`
+aggregation jobs. A failing leaf is already the actionable result; a second job
+only delays the final status and hides the failing owner.
+
+## Release performance evidence
+
+Scheduled and release ASV comparisons run the fixed `release-core` profile. It has
+21 named runtime and peak-memory cases at `256×256`, RGB, and `uint8`; target
+processor evidence uses exactly 10 bounding boxes and 10 keypoints. The profile
+adds representative transform families rather than a size, channel, or
+annotation-count matrix, so weekly wall time stays bounded.
+
+The Performance workflow runs timed ASV only when a maintainer applies the
+`run-performance` label or starts it manually. That route is for reproducing a
+specific report, not for routine PR timing. Scheduled and release-preflight
+comparisons register an ASV machine, compare a real baseline with a candidate,
+and fail if the comparison evidence is missing. The manual PyTorch Tensor ASV
+workflow has no schedule.
+
+For a PR that changes a hot path or claims a performance or memory result, the
+author runs the affected `512×512` and/or `1024×1024` benchmark cases locally
+and records the following in the PR description:
+
+1. Command and exact ASV filter.
+2. Baseline and candidate SHAs.
+3. Hardware, operating system, Python, dependency versions, and CPU-thread
+   settings.
+4. Selected larger-input cases and their before/after result.
+
+No remote workflow expands to larger input sizes implicitly. A maintainer may
+use `run-performance` only when a remote reproduction is useful.
+
+## CodeQL and environments
+
+CodeQL Python runs for Python, stub, or CodeQL-configuration paths. CodeQL
+Actions runs only for `.github/actions/**` and `.github/workflows/**`; both also
+run weekly and on manual dispatch. Direct pushes to `main` are blocked by the
+ruleset, except for these path-scoped CodeQL alert refreshes.
+
+Each job selects a locked dependency group through `setup-ci`. Jobs that import
+AlbumentationsX also select `torch-cpu`; static package, security, and typing
+jobs stay Torch-free. CI never syncs the broad `dev` group.
+
+## Local validation
+
+```bash
+uv lock --check
+uv run python -m tools.ci_matrix check
+pre-commit run --all-files --show-diff-on-failure
+```
+
+Run the relevant test module or ASV filter in addition to these commands. Do
+not describe an unrun command as evidence.

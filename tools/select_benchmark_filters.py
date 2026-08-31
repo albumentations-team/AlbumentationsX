@@ -6,20 +6,30 @@ import argparse
 from pathlib import Path
 
 PROFILE_PATTERNS = {
-    "pr-core": ("TimeCorePipeline",),
-    "stf-core": (
-        "TimeCatalogTransformSmoke",
-        "TimeCorePipeline",
-        "peakmem_resize_large_rgb",
-        "peakmem_normalize_large_rgb",
-        "peakmem_batch_pipeline_medium_rgb",
-        "peakmem_mosaic_small_rgb",
-        "peakmem_copy_paste_small_rgb",
-        "peakmem_volume_pad_medium",
+    "release-core": (
+        "TimeCorePipeline.time_single_transform_compose",
+        "TimeCorePipeline.time_skip_transform_compose",
+        "TimeCorePipeline.time_noop_compose",
+        "TimeCorePipeline.time_noop_probability_compose",
+        "TimeCorePipeline.time_multi_transform_compose",
+        "TimeCorePipelineTargetProcessors.time_bbox_keypoint_processor_roundtrip",
+        "TimeGeometricTransforms.time_horizontal_flip",
+        "TimeGeometricTransforms.time_resize",
+        "TimeGeometricTransforms.time_pad_if_needed",
+        "TimeGeometricTransforms.time_affine",
+        "TimeGeometricTransforms.peakmem_affine",
+        "TimePixelTransforms.time_random_brightness_contrast",
+        "TimePixelTransforms.time_gaussian_blur",
+        "TimePixelTransforms.time_normalize",
+        "TimePixelTransforms.peakmem_normalize",
+        "TimeMixingTransforms.time_mosaic",
+        "TimeMixingTransforms.peakmem_mosaic",
+        "TimeVolumetricTransforms.time_center_crop3d",
+        "TimeVolumetricTransforms.time_pad_if_needed3d",
+        "TimeVolumetricTransforms.peakmem_center_crop3d",
+        "TimeVolumetricTransforms.peakmem_pad_if_needed3d",
     ),
 }
-
-BASELINE_PATTERNS = frozenset({"TimeBatch", "TimeCatalogTransformSmoke", "TimeCorePipeline"})
 
 PATH_RULES: tuple[tuple[tuple[str, ...], frozenset[str]], ...] = (
     (
@@ -30,7 +40,7 @@ PATH_RULES: tuple[tuple[tuple[str, ...], frozenset[str]], ...] = (
             "albumentations/core/transforms_interface.py",
             "albumentations/core/utils.py",
         ),
-        frozenset({"TimeBatch", "TimeCatalogTransformSmoke", "TimeCorePipeline"}),
+        frozenset({"TimeBatch", "TimeCatalogTransformSmoke", "TimeComposeFullMatrix", "TimeCorePipeline"}),
     ),
     (
         (
@@ -110,7 +120,9 @@ PATTERN_ORDER = (
     "PeakMemory",
     "TimeBatch",
     "TimeCatalogTransformSmoke",
+    "TimeComposeFullMatrix",
     "TimeCorePipeline",
+    "TimeTargetProcessorScaling",
     "TimeParameterSensitivity",
     "TimeGeometryFullMatrix",
     "TimePixelFullMatrix",
@@ -136,10 +148,12 @@ def _matches_prefix(path: str, prefixes: tuple[str, ...]) -> bool:
 
 def select_benchmark_patterns(changed_paths: list[str]) -> tuple[str, ...]:
     """Return ASV regex fragments for the changed repository paths."""
-    patterns = set(BASELINE_PATTERNS)
-    normalized_paths = [_normalized_path(path) for path in changed_paths if _normalized_path(path)]
+    patterns: set[str] = set()
 
-    for path in normalized_paths:
+    for raw_path in changed_paths:
+        path = _normalized_path(raw_path)
+        if not path:
+            continue
         for prefixes, path_patterns in PATH_RULES:
             if _matches_prefix(path, prefixes):
                 patterns.update(path_patterns)
@@ -176,7 +190,7 @@ def _read_changed_paths(path: Path) -> list[str]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--profile", choices=("pr-core", "stf-core", "changed"), required=True)
+    parser.add_argument("--profile", choices=("release-core", "changed"), required=True)
     parser.add_argument("paths", nargs="*", help="changed repository paths")
     parser.add_argument(
         "--changed-files",
@@ -195,7 +209,10 @@ def main() -> int:
     if args.profile != "changed" and args.changed_files is not None:
         raise SystemExit(f"--profile {args.profile} does not accept --changed-files")
     changed_paths = _read_changed_paths(args.changed_files) if args.changed_files is not None else None
-    print(select_profile_regex(args.profile, changed_paths))
+    benchmark_regex = select_profile_regex(args.profile, changed_paths)
+    if not benchmark_regex:
+        raise SystemExit("No ASV benchmark family matches the changed paths; choose an explicit --bench filter.")
+    print(benchmark_regex)
     return 0
 
 

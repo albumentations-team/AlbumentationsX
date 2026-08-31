@@ -40,7 +40,7 @@ both mypy and Pyrefly.
 - For CI, workflow, support-policy, or dependency-profile changes, also run:
   - `uv run python -m tools.ci_matrix check`
   - `uv run python -m tools.ci_shard check`
-  - `uv run pytest -q tests/test_ci_plan.py tests/test_ci_gate.py tests/test_ci_shard.py tests/test_pr_workflow.py`
+  - `uv run pytest -q tests/test_ci_plan.py tests/test_ci_shard.py tests/test_pr_workflow.py`
   - `uv run zizmor --format=plain --min-severity=medium --min-confidence=medium .github`
 - For legal or packaging workflow changes, follow the `license-integrity` skill and verify built wheel/sdist artifacts.
 

@@ -164,7 +164,7 @@ Use these commands for fast feedback:
 uv run pytest -q tests/contracts/test_target_cluster_contract.py -W error::RuntimeWarning
 uv run pytest -n auto -q tests/contracts/test_target_cluster_contract.py
 uv run pytest -q tests/contracts tests/test_serialization.py
-uv run python -m tools.quality_gate fast
+pre-commit run --all-files --show-diff-on-failure
 ```
 
 ## Completion invariants

@@ -18,22 +18,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
-      plan_json: ${{ steps.plan.outputs.plan }}
-      markdown: ${{ steps.plan.outputs.markdown }}
-      lint: ${{ steps.plan.outputs.lint }}
-      mypy: ${{ steps.plan.outputs.mypy }}
-      pyrefly: ${{ steps.plan.outputs.pyrefly }}
-      contracts: ${{ steps.plan.outputs.contracts }}
       compatibility: ${{ steps.plan.outputs.compatibility }}
-      coverage: ${{ steps.plan.outputs.coverage }}
-      primary: ${{ steps.plan.outputs.primary }}
       targeted: ${{ steps.plan.outputs.targeted }}
       pytorch: ${{ steps.plan.outputs.pytorch }}
       dependency_audit: ${{ steps.plan.outputs.dependency_audit }}
       workflow_audit: ${{ steps.plan.outputs.workflow_audit }}
       legal: ${{ steps.plan.outputs.legal }}
       package: ${{ steps.plan.outputs.package }}
-      install_smoke: ${{ steps.plan.outputs.install_smoke }}
       release_preflight: ${{ steps.plan.outputs.release_preflight }}
       pytest_targets: ${{ steps.plan.outputs.pytest_targets }}
       version_change: ${{ steps.plan.outputs.version_change }}
@@ -86,10 +77,8 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  markdown:
-    name: Markdown
-    needs: plan
-    if: needs.plan.outputs.markdown == 'true'
+  pre_commit_ruff:
+    name: Pre-commit / Ruff
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -100,19 +89,11 @@ jobs:
         with:
           python-version: "3.12"
           dependency-group: ci-quality
-          runtime-profile: torch-cpu
-      - name: Download changed paths
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          name: pr-ci-plan
-          path: ci-plan
-      - name: Check changed Markdown
-        run: python -m tools.quality_gate markdown --paths-file ci-plan/changed-files.z --null
+      - name: Run Ruff hook
+        run: pre-commit run ruff --all-files --show-diff-on-failure
 
-  lint:
-    name: Ruff and formatting
-    needs: plan
-    if: needs.plan.outputs.lint == 'true'
+  pre_commit_ruff_format:
+    name: Pre-commit / Ruff format
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -123,30 +104,26 @@ jobs:
         with:
           python-version: "3.12"
           dependency-group: ci-quality
-      - name: Run Ruff and formatting checks
-        run: python -m tools.quality_gate lint
+      - name: Run Ruff format hook
+        run: pre-commit run ruff-format --all-files --show-diff-on-failure
 
-  mypy:
-    name: mypy
-    needs: plan
-    if: needs.plan.outputs.mypy == 'true'
+  pre_commit_mypy:
+    name: Pre-commit / mypy
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - name: Set up typing environment
+      - name: Set up quality environment
         uses: ./.github/actions/setup-ci
         with:
           python-version: "3.12"
           dependency-group: ci-quality
-      - name: Run mypy
-        run: python -m tools.quality_gate mypy
+      - name: Run mypy hook
+        run: pre-commit run mypy --all-files --show-diff-on-failure
 
-  pyrefly:
-    name: Pyrefly
-    needs: plan
-    if: needs.plan.outputs.pyrefly == 'true'
+  pre_commit_pyrefly:
+    name: Pre-commit / Pyrefly
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -157,107 +134,38 @@ jobs:
         with:
           python-version: "3.10"
           dependency-group: ci-types
-      - name: Run Pyrefly
-        run: python -m tools.quality_gate pyrefly
+      - name: Run Pyrefly hook
+        run: pre-commit run pyrefly-check --all-files --show-diff-on-failure
 
-  contracts:
-    name: Repository contracts
-    needs: plan
-    if: needs.plan.outputs.contracts == 'true'
+  pre_commit_other:
+    name: Pre-commit / Other hooks
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - name: Set up contract environment
+      - name: Set up quality environment
         uses: ./.github/actions/setup-ci
         with:
           python-version: "3.12"
           dependency-group: ci-quality
           runtime-profile: torch-cpu
-      - name: Download changed paths
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          name: pr-ci-plan
-          path: ci-plan
-      - name: Run repository contracts
-        run: python -m tools.quality_gate contracts --paths-file ci-plan/changed-files.z --null
-
-  fast_checks:
-    name: Fast checks
-    needs: [plan, markdown, lint, mypy, pyrefly, contracts]
-    if: ${{ always() }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - name: Aggregate fast checks
+      - name: Run all remaining hooks
         env:
-          PLAN_JSON: ${{ needs.plan.outputs.plan_json }}
-        run: >-
-          python -m tools.ci_gate --gate fast --plan-json "${PLAN_JSON}"
-          --result "markdown=${{ needs.markdown.result }}"
-          --result "lint=${{ needs.lint.result }}"
-          --result "mypy=${{ needs.mypy.result }}"
-          --result "pyrefly=${{ needs.pyrefly.result }}"
-          --result "contracts=${{ needs.contracts.result }}"
+          SKIP: ruff,ruff-format,mypy,pyrefly-check
+        run: pre-commit run --all-files --show-diff-on-failure
 
   compatibility:
-    name: Compatibility (${{ matrix.operating-system }}, Python ${{ matrix.python-version }}, ${{ matrix.shard-label }})
+    name: Compatibility (${{ matrix.operating-system }}, Python ${{ matrix.python-version }})
     needs: plan
     if: needs.plan.outputs.compatibility == 'true'
     runs-on: ${{ matrix.operating-system }}
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        operating-system: [ubuntu-latest, macos-latest]
+        operating-system: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
-        shard-count: [1]
-        shard-index: [0]
-        shard-label: [full]
-        include:
-          - operating-system: windows-latest
-            python-version: "3.10"
-            shard-count: 1
-            shard-index: 0
-            shard-label: full
-          - operating-system: windows-latest
-            python-version: "3.11"
-            shard-count: 2
-            shard-index: 0
-            shard-label: 1-of-2
-          - operating-system: windows-latest
-            python-version: "3.11"
-            shard-count: 2
-            shard-index: 1
-            shard-label: 2-of-2
-          - operating-system: windows-latest
-            python-version: "3.12"
-            shard-count: 2
-            shard-index: 0
-            shard-label: 1-of-2
-          - operating-system: windows-latest
-            python-version: "3.12"
-            shard-count: 2
-            shard-index: 1
-            shard-label: 2-of-2
-          - operating-system: windows-latest
-            python-version: "3.13"
-            shard-count: 2
-            shard-index: 0
-            shard-label: 1-of-2
-          - operating-system: windows-latest
-            python-version: "3.13"
-            shard-count: 2
-            shard-index: 1
-            shard-label: 2-of-2
-          - operating-system: windows-latest
-            python-version: "3.14"
-            shard-count: 1
-            shard-index: 0
-            shard-label: full
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -267,14 +175,14 @@ jobs:
           python-version: ${{ matrix.python-version }}
           dependency-group: ci-test
           runtime-profile: torch-cpu
-      - name: Run duration-balanced base-suite shard
+      - name: Run complete base suite
         shell: bash
         run: |
           set -o pipefail
           mkdir -p ci-evidence
           python -m tools.ci_shard select \
-            --shard-count "${{ matrix.shard-count }}" \
-            --shard-index "${{ matrix.shard-index }}" \
+            --shard-count 1 \
+            --shard-index 0 \
             --exclude-file tests/test_pytorch.py \
             --exclude-file tests/transforms3d/test_pytorch.py \
             | xargs -0 python -m pytest \
@@ -299,75 +207,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: compatibility-${{ matrix.operating-system }}-${{ matrix.python-version }}-${{ matrix.shard-label }}
+          name: compatibility-${{ matrix.operating-system }}-${{ matrix.python-version }}
           path: ci-evidence/
           if-no-files-found: ignore
           retention-days: 7
-
-  coverage:
-    name: Primary coverage
-    needs: plan
-    if: needs.plan.outputs.coverage == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - name: Set up test environment
-        uses: ./.github/actions/setup-ci
-        with:
-          python-version: "3.12"
-          dependency-group: ci-test
-          runtime-profile: torch-cpu
-      - name: Run base suite with branch coverage
-        shell: bash
-        run: |
-          mapfile -d '' -t test_files < <(
-            python -m tools.ci_shard select --shard-count 1 --shard-index 0 \
-              --exclude-file tests/test_pytorch.py \
-              --exclude-file tests/transforms3d/test_pytorch.py
-          )
-          python -m pytest "${test_files[@]}" \
-            -n 2 --dist=worksteal -m "not pytorch" \
-            --hypothesis-profile=ci-fast \
-            --cov=albumentations --cov-branch --cov-report=xml
-      - name: Upload coverage report
-        continue-on-error: true
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          slug: albumentations-team/AlbumentationsX
-          files: ./coverage.xml
-          disable_search: true
-          fail_ci_if_error: false
-          use_pypi: true
-          version: 11.3.1
-
-  primary:
-    name: Primary suite
-    needs: plan
-    if: needs.plan.outputs.primary == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - name: Set up test environment
-        uses: ./.github/actions/setup-ci
-        with:
-          python-version: "3.12"
-          dependency-group: ci-test
-          runtime-profile: torch-cpu
-      - name: Run complete base suite
-        shell: bash
-        run: |
-          mapfile -d '' -t test_files < <(
-            python -m tools.ci_shard select --shard-count 1 --shard-index 0 \
-              --exclude-file tests/test_pytorch.py \
-              --exclude-file tests/transforms3d/test_pytorch.py
-          )
-          python -m pytest "${test_files[@]}" \
-            -n 2 --dist=worksteal -m "not pytorch" --hypothesis-profile=ci-fast
 
   targeted:
     name: Targeted tests (${{ matrix.operating-system }}, Python ${{ matrix.python-version }})
@@ -431,32 +274,6 @@ jobs:
           tests/test_per_worker_seed.py
           tests/test_flip_masks_comprehensive.py
           tests/test_additional_targets.py
-          tests/test_benchmark_coverage.py
-          tests/test_serialization.py
-      - name: Validate optional benchmark policy
-        run: |
-          python -m tools.benchmark_coverage check
-          python -m tools.performance_budget check
-
-  correctness:
-    name: Correctness
-    needs: [plan, compatibility, coverage, primary, targeted, pytorch]
-    if: ${{ always() }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - name: Aggregate correctness checks
-        env:
-          PLAN_JSON: ${{ needs.plan.outputs.plan_json }}
-        run: >-
-          python -m tools.ci_gate --gate correctness --plan-json "${PLAN_JSON}"
-          --result "compatibility=${{ needs.compatibility.result }}"
-          --result "coverage=${{ needs.coverage.result }}"
-          --result "primary=${{ needs.primary.result }}"
-          --result "targeted=${{ needs.targeted.result }}"
-          --result "pytorch=${{ needs.pytorch.result }}"
 
   dependency_audit:
     name: Dependency audit
@@ -548,43 +365,6 @@ jobs:
       - name: Check distribution metadata
         run: twine check dist/*
 
-  install_smoke:
-    name: Install smoke (${{ matrix.operating-system }}, Python ${{ matrix.python-version }})
-    needs: plan
-    if: needs.plan.outputs.install_smoke == 'true'
-    runs-on: ${{ matrix.operating-system }}
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        operating-system: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.10", "3.14"]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - name: Set up package environment
-        uses: ./.github/actions/setup-ci
-        with:
-          python-version: ${{ matrix.python-version }}
-          dependency-group: ci-package
-      - name: Build wheel
-        run: uv build --wheel --out-dir dist
-      - name: Prepare Torch-free wheel environment
-        id: install-contract
-        run: >-
-          python tools/install_contract.py prepare
-          --wheel dist/*.whl --python "${{ matrix.python-version }}"
-      - name: Install and verify CPU-only Torch
-        uses: albumentations-team/ci-foundation/actions/torch-cpu@6b9045dbea58026a1e8f96b0392c411934a27199
-        with:
-          mode: install
-          python: ${{ steps.install-contract.outputs.python }}
-          requirement: "torch>=2.13.0"
-      - name: Smoke test wheel with CPU-only Torch
-        run: >-
-          python tools/install_contract.py smoke
-          --python "${{ steps.install-contract.outputs.python }}"
-
   release_preflight:
     name: Release preflight
     needs: plan
@@ -667,9 +447,6 @@ jobs:
       - name: Register release ASV machine profile
         working-directory: benchmark
         run: asv --config asv.conf.json machine --yes
-      - name: Check release ASV suite importability
-        working-directory: benchmark
-        run: asv --config asv.conf.json check --verbose
       - name: Compare previous release with release candidate
         working-directory: benchmark
         env:
@@ -680,7 +457,7 @@ jobs:
           BASELINE_REF="$(git describe --tags --abbrev=0 --match '[0-9]*' "$CANDIDATE_REF^")"
           BASELINE_SHA="$(git rev-parse "$BASELINE_REF")"
           CANDIDATE_SHA="$(git rev-parse "$CANDIDATE_REF")"
-          BENCH_FILTER="$(python "$GITHUB_WORKSPACE/tools/select_benchmark_filters.py" --profile stf-core)"
+          BENCH_FILTER="$(python "$GITHUB_WORKSPACE/tools/select_benchmark_filters.py" --profile release-core)"
           EVIDENCE_DIR="${RUNNER_TEMP}/release-bundle/evidence"
           printf '%s\n' "$BASELINE_REF" > "$EVIDENCE_DIR/benchmark-baseline-ref.txt"
           printf '%s\n' "$BASELINE_SHA" > "$EVIDENCE_DIR/benchmark-baseline-sha.txt"
@@ -688,7 +465,7 @@ jobs:
           printf '%s\n' "$CANDIDATE_SHA" > "$EVIDENCE_DIR/benchmark-candidate-sha.txt"
           printf '%s\n' "$BENCH_FILTER" > "$EVIDENCE_DIR/benchmark-filter.txt"
           ASV_EXIT_CODE=0
-          timeout 900 asv --config asv.conf.json continuous \
+          asv --config asv.conf.json continuous \
             --factor 1.05 --split --show-stderr \
             --attribute repeat=1 --attribute number=1 \
             --bench "$BENCH_FILTER" "$BASELINE_REF" "$CANDIDATE_REF" \
@@ -702,7 +479,7 @@ jobs:
           python tools/asv_summary.py \
             --input "$EVIDENCE_DIR/asv-continuous.txt" \
             --output "$EVIDENCE_DIR/benchmark-asv-summary.json" \
-            --asv-exit-code "${ASV_EXIT_CODE:-1}" --allow-missing
+            --asv-exit-code "${ASV_EXIT_CODE:-1}"
       - name: Classify strict release performance budget
         if: always()
         run: >
@@ -783,24 +560,3 @@ jobs:
           path: ${{ runner.temp }}/release-bundle/evidence/
           if-no-files-found: ignore
           retention-days: 14
-
-  security_policy:
-    name: Security and policy
-    needs: [plan, dependency_audit, workflow_audit, legal, package, install_smoke, release_preflight]
-    if: ${{ always() }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - name: Aggregate security and policy checks
-        env:
-          PLAN_JSON: ${{ needs.plan.outputs.plan_json }}
-        run: >-
-          python -m tools.ci_gate --gate policy --plan-json "${PLAN_JSON}"
-          --result "dependency-audit=${{ needs.dependency_audit.result }}"
-          --result "workflow-audit=${{ needs.workflow_audit.result }}"
-          --result "legal=${{ needs.legal.result }}"
-          --result "package=${{ needs.package.result }}"
-          --result "install-smoke=${{ needs.install_smoke.result }}"
-          --result "release-preflight=${{ needs.release_preflight.result }}"

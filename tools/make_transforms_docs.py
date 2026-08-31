@@ -226,19 +226,14 @@ def check_docs(
         raise ValueError(msg.strip())
 
 
-def main() -> None:
-    args = parse_args()
-    command = args.command
-    if command not in {"make", "check"}:
-        raise ValueError(f"You should provide a valid command: {{make|check}}. Got {command} instead.")
-
+def generated_transform_docs() -> tuple[str, str, str]:
+    """Return the generated README content for each transform category."""
     image_only_transforms = get_image_only_transforms_info()
     dual_transforms = get_dual_transforms_info()
     transforms_3d = get_3d_transforms_info()
 
-    image_only_transforms_links = make_transforms_targets_links(image_only_transforms)
+    image_only_transform_links = make_transforms_targets_links(image_only_transforms)
 
-    # Exclude USER_DATA - it is passthrough by default, not a spatial target
     dual_header = []
     for target in ALL_TARGETS:
         if target == Targets.BBOXES:
@@ -246,38 +241,47 @@ def main() -> None:
         else:
             dual_header.append(target.value)
 
-    dual_transforms_table = make_transforms_targets_table(
+    dual_transform_table = make_transforms_targets_table(
         dual_transforms,
         header=["Transform", *dual_header],
         targets_to_check=ALL_TARGETS,
         split_bboxes=True,
     )
-
     transforms_3d_table = make_transforms_targets_table(
         transforms_3d,
         header=["Transform"] + [target.value for target in [Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS]],
         targets_to_check=[Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS],
     )
+    return image_only_transform_links, dual_transform_table, transforms_3d_table
+
+
+def check_transform_docs(filepath: str | Path) -> None:
+    """Raise when transform documentation in ``filepath`` is out of date."""
+    check_docs(str(filepath), *generated_transform_docs())
+
+
+def main() -> None:
+    args = parse_args()
+    command = args.command
+    if command not in {"make", "check"}:
+        raise ValueError(f"You should provide a valid command: {{make|check}}. Got {command} instead.")
+
+    image_only_transform_links, dual_transform_table, transforms_3d_table = generated_transform_docs()
 
     if command == "make":
         print("===== COPY THIS TABLE TO README.MD BELOW ### Pixel-level transforms =====")
-        print(image_only_transforms_links)
+        print(image_only_transform_links)
         print("===== END OF COPY =====")
         print()
         print("===== COPY THIS TABLE TO README.MD BELOW ### Spatial-level transforms =====")
-        print(dual_transforms_table)
+        print(dual_transform_table)
         print("===== END OF COPY =====")
         print()
         print("===== COPY THIS TABLE TO README.MD BELOW ### 3D transforms =====")
         print(transforms_3d_table)
         print("===== END OF COPY =====")
     else:
-        check_docs(
-            args.filepath,
-            image_only_transforms_links,
-            dual_transforms_table,
-            transforms_3d_table,
-        )
+        check_docs(args.filepath, image_only_transform_links, dual_transform_table, transforms_3d_table)
 
 
 if __name__ == "__main__":

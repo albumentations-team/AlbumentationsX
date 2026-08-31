@@ -739,7 +739,7 @@ dispatch, and application all contribute to user-visible cost.
 
 ## Source Enforcement
 
-The implemented `check-ax-coding-guidance` rules protect the architectural boundary.
+The implemented `coding-guidance` rule in `check-ax-rules` protects the architectural boundary.
 The rule should detect:
 
 - a `sample_parameters` override returning a plain dictionary;

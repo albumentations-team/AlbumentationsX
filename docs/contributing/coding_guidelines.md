@@ -50,13 +50,14 @@ We use pre-commit hooks to maintain consistent code quality. These hooks automat
 
 - Pyrefly runs through the official pre-commit hook in system mode, using the same `uv` environment as CI.
 
-The repository-specific deterministic rules run through one package-wide hook:
-`pre-commit run check-ax-coding-guidance --all-files`. It emits `AXG001`–`AXG024` diagnostics for transform API,
-sampling, schema, naming, performance-shape, documentation, bbox propagation, and target-specific sampling contracts. The public
+AX repository checks run through one configurable hook: `pre-commit run check-ax-rules --all-files`. Its enabled
+rules are listed in `[tool.ax-rules.rules]` in `pyproject.toml`; set an entry to `false` to disable it. The
+`coding-guidance` rule emits `AXG001`–`AXG025` diagnostics for transform API, sampling, schema, naming,
+performance-shape, documentation, bbox propagation, and target-specific sampling contracts. The public
 `BboxParams.__init__(bbox_type="hbb")` compatibility default is intentional; all internal transform, processor, and
 functional calls must pass `bbox_type` explicitly. Keep design judgment and benchmark interpretation in the relevant
-review skill rather than duplicating these mechanical checks. `AGENTS.md`, `.codex/rules/`, and `.codex/skills/` point to
-this document and the hook instead of restating the AXG catalog.
+review skill rather than duplicating these mechanical checks. `AGENTS.md`, `.codex/rules/`, and `.codex/skills/` point
+to this document and the hook instead of restating the AXG catalog.
 
 - Before handing off Python changes, run the fast local quality gate:
 
@@ -420,7 +421,7 @@ those decisions from the first-target `params["shape"]` field.
 
 Every transform `apply*` method must name each sampled parameter it reads, including execution parameters such as
 `shape` and `bbox_type`. Keep `**params` only to forward parameters to another handler; do not read it with
-`params[...]` or `params.get(...)`. The `check-ax-coding-guidance` pre-commit hook enforces this rule.
+`params[...]` or `params.get(...)`. The `coding-guidance` rule in `check-ax-rules` enforces this rule.
 
 #### Keep `apply*` Methods Thin
 
@@ -435,7 +436,7 @@ lines, and standalone comments do not count; a line that contains code and an in
 infrastructure classes whose names begin with `Base` (for example, `BaseCrop` and `BaseMaxSizeTransform`) are excluded.
 Name a non-public base class `BaseX`, not `X`. This rule
 does not apply to `Compose` orchestration such as `apply_in_invocation`; it is enforced by the unified
-`check-ax-coding-guidance` pre-commit hook (`AXG003`).
+`coding-guidance` rule in `check-ax-rules` (`AXG003`).
 
 ### Parameter Generation
 
@@ -547,7 +548,7 @@ class MyTransform(ImageOnlyTransform):
         contrast_range: tuple[float, float] = (0.8, 1.2)  # ❌ No defaults in InitSchema
 ```
 
-The rule is enforced by the unified `check-ax-coding-guidance` pre-commit hook (`AXG001`). It checks nested and
+The rule is enforced by the `coding-guidance` rule in `check-ax-rules` (`AXG001`). It checks nested and
 module-level `*InitSchema` classes, follows imported schema inheritance, and does not exempt discriminator fields.
 If a transform only repeats inherited constructor inputs and explicitly forwards them, it does not need an empty schema.
 When it adds an input or changes an annotation, its non-empty schema must declare that input (`AXG020`).

@@ -70,12 +70,12 @@ For **CopyAndPaste** (one object per dict), values are scalars (one bbox, one ob
 {
     "image": src_image,
     "mask": obj_mask,
-    "bbox": [10, 20, 50, 80],        # same coord_format as BboxParams
+    "bbox": [10, 20, 50, 80],  # same coord_format as BboxParams
     "bbox_labels": {
         "class_id": 3,
         "is_crowd": 0,
     },
-    "keypoints": [[25, 40]],         # same coord_format as KeypointParams
+    "keypoints": [[25, 40]],  # same coord_format as KeypointParams
     "keypoint_labels": {
         "joint_name": "left_eye",
     },

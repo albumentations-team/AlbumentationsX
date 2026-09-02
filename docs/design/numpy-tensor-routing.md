@@ -158,8 +158,7 @@ A skipped leaf performs no conversion. Two consecutive fallback leaves may each 
 for Tensor input when its primary data argument includes `torch.Tensor`:
 
 ```python
-def apply(self, image: ImageType | torch.Tensor, **params: Any) -> ImageType:
-    ...
+def apply(self, image: ImageType | torch.Tensor, **params: Any) -> ImageType: ...
 ```
 
 Handlers without a Tensor input annotation use the leaf-local NumPy fallback. This keeps the declaration with the code

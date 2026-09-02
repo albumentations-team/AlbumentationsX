@@ -6,25 +6,28 @@ partitions. Product, package, and policy jobs run only when the changed paths
 can affect their result. Unknown paths select the conservative profile.
 
 The implementation lives in [`.github/workflows/pr.yml`](../../.github/workflows/pr.yml).
-`tools/ci_plan.py` owns path routing. Direct job names are the branch-protection
-contexts; there are no aggregate gate aliases.
+`tools/ci_plan.py` owns path routing. The stable `PR gate` context checks that
+the routed jobs match the plan; it does not run tests itself.
 
 ## Required pull-request contexts
 
 Require these repository-owned contexts and the external `license/cla` check:
 
-- `PR / PR plan`
-- `PR / Pre-commit / Ruff`
-- `PR / Pre-commit / Ruff format`
-- `PR / Pre-commit / mypy`
-- `PR / Pre-commit / Pyrefly`
-- `PR / Pre-commit / Other hooks`
+- `PR plan`
+- `Pre-commit / Ruff`
+- `Pre-commit / Ruff format`
+- `Pre-commit / mypy`
+- `Pre-commit / Pyrefly`
+- `Pre-commit / Other hooks`
+- `PR gate`
 
-For a runtime or shared-test change, also require every visible
-`Compatibility (<OS>, Python <version>)` context and `PyTorch tests`. Package
-and policy contexts are required only when their path rule selects them. CodeQL,
-Antigravity review, and performance workflows are advisory because their path
-filters or explicit triggers can correctly skip them.
+The gate requires every selected product, package, and policy job to succeed and
+requires every unselected routed job to be skipped. The visible compatibility
+and PyTorch contexts therefore remain useful evidence without being static
+ruleset entries that can block a version-only PR.
+
+CodeQL, Antigravity review, and performance workflows are advisory because their
+path filters or explicit triggers can correctly skip them.
 
 ## Pre-commit ownership
 
@@ -75,9 +78,9 @@ coverage-only test run. Benchmark catalog coverage is unrelated: it verifies
 that public transform families have owned performance cases and remains a
 pre-commit contract.
 
-The workflow also has no `Fast checks`, `Correctness`, or `Security and policy`
-aggregation jobs. A failing leaf is already the actionable result; a second job
-only delays the final status and hides the failing owner.
+The workflow has no duplicate test aggregation jobs. `PR gate` is the one
+exception: it validates routing and leaf results, which is the stable contract
+needed by branch protection when the selected leaf set changes by path.
 
 ## Release performance evidence
 

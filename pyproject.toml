@@ -165,7 +165,6 @@ ci-test = [
   "pillow>=12.3.0",
   "pyvips[binary]>=3.1.1",
   "pytest>=9.1.1",
-  "pytest-cov>=7.1.0",
   "pytest-mock>=3.15.1",
   "pytest-randomly>=4.1.0",
   "pytest-xdist>=3.8.0",
@@ -190,6 +189,7 @@ ci-quality = [
 ci-types = [
   "mypy>=2.3.0",
   "opencv-python-headless>=5.0.0.93",
+  "pre-commit>=4.6.2",
   "pyrefly>=1.2.0",
   "types-PyYAML>=6.0.12.20260724",
   "types-setuptools>=84.0.0.20260812",
@@ -485,24 +485,6 @@ test-framework = "pytest"
 ignore-paths = [  ]
 formatter-cmds = [ "ruff check --exit-zero --fix $file", "ruff format $file" ]
 
-[tool.coverage.run]
-source = ["albumentations"]
-omit = [
-    "*/tests/*",
-    "*/test_*.py",
-    "*/__pycache__/*",
-    "*/site-packages/*",
-]
-branch = true
-
-[tool.coverage.report]
-precision = 2
-show_missing = true
-skip_covered = false
-
-[tool.coverage.xml]
-output = "coverage.xml"
-
 [tool.pytest.ini_options]
 minversion = "9.0"
 testpaths = ["tests"]
@@ -546,3 +528,10 @@ check_references = true
 check_type_consistency = true
 exclude_files = [ "__init__.py" ]
 verbose = false
+
+[tool.ax-rules.rules]
+coding-guidance = true
+docstring-format = true
+naming-conflicts = true
+public-transform-docstrings = true
+readme-transform-docs = true

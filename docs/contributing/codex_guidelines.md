@@ -1,7 +1,7 @@
 # Codex Working Guide for AlbumentationsX
 
-This is a routing guide, not a second coding rulebook. Deterministic AX source contracts are owned by
-`check-ax-coding-guidance`; read its diagnostic and the canonical explanation in
+This is a routing guide, not a second coding rulebook. Deterministic AX source contracts are owned by the
+`coding-guidance` rule in `check-ax-rules`; read its diagnostic and the canonical explanation in
 `docs/contributing/coding_guidelines.md` rather than duplicating a checklist in a prompt.
 
 ## Choose the owning workflow
@@ -30,8 +30,8 @@ Read a design document only when the change enters its boundary:
 ## Work in this order
 
 1. Establish the public contract, affected routes, and the smallest validation that could disprove the change.
-2. Run `pre-commit run check-ax-coding-guidance --all-files` after a transform or guidance change. Treat a failing
-   `AXG` diagnostic as the mechanical finding; record a pass as evidence rather than inventing one.
+2. Run `pre-commit run check-ax-rules --all-files` after a transform or guidance change. Treat a failing `AXG`
+   diagnostic as the mechanical finding; record a pass as evidence rather than inventing one.
 3. Review what the hook cannot prove: public API coherence, mathematical and target semantics, replay strength,
    ownership and aliasing, the appropriate functional/Albucore boundary, and benchmark evidence.
 4. Record the commands actually run and their results. Do not describe unrun checks as evidence.

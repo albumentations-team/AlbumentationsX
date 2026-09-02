@@ -1,7 +1,7 @@
 # Generated Transform Target Contracts
 
 **Status:** Implemented
-**Scope:** public `DualTransform` execution across images, annotations, volume data, and batches
+**Scope:** public `DualTransform` execution plus Tensor routing for `ImageOnlyTransform` targets
 **Primary readers:** maintainers adding transform modes, targets, metadata requirements, or target-specific behavior
 
 ## What adding a registry case now covers
@@ -12,20 +12,25 @@ volume/`mask3d` coverage without another transform list.
 One primary mode per class also runs against the more expensive dtype, channel, batch, empty-target, memory-layout, and
 read-only profiles.
 
+Every primary `ImageOnlyTransform` mode automatically runs through the Tensor bridge for `image`, batched `images`, and
+`volume`. These profiles check `CHW`, `NCHW`, and `CDHW` Tensor layouts without adding annotation targets that an
+image-only transform does not declare.
+
 The generated matrix answers three questions:
 
 | Matrix | Cases | Profiles | Property under test |
 |---|---|---|---|
-| Core | Every registered mode | Applicable core profiles | A public mode executes every declared target and preserves target structure |
-| Extended | One explicit primary mode per class | Applicable extended profiles | Mode-independent dtype, channel, batch, empty-target, and memory contracts hold |
-| Tensor | Every core pair plus selected extended pairs | Equivalent plain CPU Tensor targets | Container, layout, dtype, values, replay parity, and input ownership match the NumPy case |
+| Core | Every registered `DualTransform` mode | Applicable core profiles | A public mode executes every declared target and preserves target structure |
+| Extended | One explicit primary `DualTransform` mode per class | Applicable extended profiles | Mode-independent dtype, channel, batch, empty-target, and memory contracts hold |
+| Tensor | Every core pair plus selected extended pairs; one primary ImageOnly mode per class | Equivalent plain CPU Tensor targets | Container, layout, dtype, values, replay parity, and input ownership match the NumPy case |
 
 Running every mode through the core profiles closes the gap that allowed a new mutually exclusive constructor mode to
 miss bbox, keypoint, or volume tests. Restricting extended profiles to primary modes controls runtime because these
 workloads test array representation rather than constructor branching.
 
-The Tensor matrix reuses the same cases, profile factories, applicability decisions, and `targets_as_params` metadata.
-It adds no second transform inventory.
+The Tensor matrix reuses the same case inventory, applicability decisions, and `targets_as_params` metadata. It uses
+dedicated image-only target profiles because those transforms do not declare annotation targets; it adds no second
+transform inventory.
 
 ## One configuration inventory, reusable target workloads
 
@@ -91,7 +96,7 @@ by a read-only array.
 
 `tests/helpers/target_contracts.py` creates a pair only when all of these conditions hold:
 
-1. the case class is a `DualTransform`;
+1. the case class is a `DualTransform`, or an `ImageOnlyTransform` for the dedicated Tensor profiles;
 2. the profile contains every target required by the case;
 3. a required target is non-empty when the mode needs data from it;
 4. the transform's declared `_targets` contain every profile target, including batch forms derived from their singular
@@ -102,9 +107,9 @@ by a read-only array.
 The resolver selects pairs from capabilities. A missing declared capability prevents collection. A collected pair that
 cannot execute fails with its case ID and profile ID.
 
-Meta-tests enforce that pair IDs are unique, every registered `DualTransform` case has core coverage, and every profile
-collects at least once. Performance pressure is handled by the core/extended tier boundary; applicable core pairs are
-never sampled or skipped.
+Meta-tests enforce that pair IDs are unique, every registered `DualTransform` case has core coverage, every primary
+`ImageOnlyTransform` case has all three Tensor target routes, and every general target profile collects at least once.
+Performance pressure is handled by the core/extended tier boundary; applicable core pairs are never sampled or skipped.
 
 ## Every pair crosses the same public boundaries
 
@@ -164,7 +169,7 @@ Use these commands for fast feedback:
 uv run pytest -q tests/contracts/test_target_cluster_contract.py -W error::RuntimeWarning
 uv run pytest -n auto -q tests/contracts/test_target_cluster_contract.py
 uv run pytest -q tests/contracts tests/test_serialization.py
-uv run python -m tools.quality_gate fast
+pre-commit run --all-files --show-diff-on-failure
 ```
 
 ## Completion invariants
@@ -172,6 +177,8 @@ uv run python -m tools.quality_gate fast
 The architecture remains complete while:
 
 - adding one registered mode automatically creates all applicable core pairs;
+- adding one registered `ImageOnlyTransform` mode automatically creates Tensor pairs for image, image batches, and
+  volumes;
 - target profiles contain no transform class lists or constructor kwargs;
 - core selection uses declared capabilities and has no class-name skip branches;
 - all-mode and primary-mode views are explicit at each consumer;

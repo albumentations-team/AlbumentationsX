@@ -25,7 +25,7 @@ on:
         required: false
         type: string
       bench_filter:
-        description: "Optional ASV --bench regex. Leave empty to run the bounded stf-core profile."
+        description: "Optional ASV --bench regex. Leave empty to run the bounded release-core profile."
         required: false
         type: string
 
@@ -37,165 +37,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  benchmark_evidence:
-    name: ASV benchmark evidence
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    timeout-minutes: 10
-    steps:
-    - name: Checkout
-      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      with:
-        fetch-depth: 0
-    - name: Set up benchmark environment
-      uses: ./.github/actions/setup-ci
-      with:
-        python-version: "3.12"
-        dependency-group: ci-benchmark
-        runtime-profile: torch-cpu
-    - name: Collect benchmark environment evidence
-      run: >
-        python tools/collect_test_environment.py
-        --output benchmark-evidence/environment-benchmark.json
-        --command "benchmark coverage and ASV importability evidence"
-    - name: Collect benchmark coverage evidence
-      run: |
-        python -m tools.benchmark_coverage summary \
-          --output benchmark-evidence/benchmark-coverage.json
-        python -m tools.benchmark_coverage details \
-          --output benchmark-evidence/benchmark-coverage-detail.json
-    - name: Compare benchmark coverage with baseline
-      env:
-        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-      run: |
-        BASE_WORKTREE="$RUNNER_TEMP/benchmark-coverage-base"
-        git worktree add --detach "$BASE_WORKTREE" "$PR_BASE_SHA"
-        if PYTHONPATH="$BASE_WORKTREE:$BASE_WORKTREE/benchmark" python "$BASE_WORKTREE/tools/benchmark_coverage.py" details \
-          --output "$GITHUB_WORKSPACE/benchmark-evidence/benchmark-coverage-detail-base.json"; then
-          python -m tools.benchmark_coverage diff \
-            --base-detail benchmark-evidence/benchmark-coverage-detail-base.json \
-            --output benchmark-evidence/benchmark-coverage-diff.json
-        else
-          python - <<'PY'
-        import json
-        from pathlib import Path
-
-        Path("benchmark-evidence/benchmark-coverage-diff.json").write_text(
-            json.dumps(
-                {
-                    "kind": "benchmark-coverage-diff",
-                    "reason": "baseline benchmark coverage detail could not be generated",
-                    "schema_version": 1,
-                    "summary": {"status": "unavailable"},
-                },
-                indent=2,
-                sort_keys=True,
-            )
-            + "\n",
-        )
-        PY
-        fi
-        git worktree remove --force "$BASE_WORKTREE"
-    - name: Register ASV machine profile
-      working-directory: benchmark
-      run: asv --config asv.conf.json machine --yes
-    - name: Check benchmark suite importability
-      working-directory: benchmark
-      run: asv --config asv.conf.json check --verbose
-    - name: Classify performance budget evidence
-      if: always()
-      run: >
-        python -m tools.performance_budget summarize
-        --coverage-summary benchmark-evidence/benchmark-coverage.json
-        --coverage-detail benchmark-evidence/benchmark-coverage-detail.json
-        --output benchmark-evidence/benchmark-performance-budget.json
-        --core-only
-    - name: Upload benchmark artifacts
-      if: always()
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-      with:
-        name: benchmark-evidence
-        path: benchmark-evidence/
-        if-no-files-found: ignore
-
-  pr_core_comparison:
-    name: PR core performance smoke
-    needs: benchmark_evidence
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    timeout-minutes: 10
-    steps:
-    - name: Checkout
-      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      with:
-        fetch-depth: 0
-    - name: Download benchmark contract evidence
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-      with:
-        name: benchmark-evidence
-        path: benchmark-evidence
-    - name: Set up benchmark environment
-      uses: ./.github/actions/setup-ci
-      with:
-        python-version: "3.12"
-        dependency-group: ci-benchmark
-        runtime-profile: torch-cpu
-    - name: Collect comparison environment evidence
-      run: >
-        python tools/collect_test_environment.py
-        --output pr-core-performance-evidence/environment-pr-core.json
-        --command "PR core ASV comparison"
-    - name: Resolve PR core comparison
-      working-directory: benchmark
-      env:
-        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        PR_CANDIDATE_SHA: ${{ github.sha }}
-      run: |
-        BASELINE_SHA="$(git rev-parse "$PR_BASE_SHA")"
-        CANDIDATE_SHA="$(git rev-parse "$PR_CANDIDATE_SHA")"
-        FILTER="$(python "$GITHUB_WORKSPACE/tools/select_benchmark_filters.py" --profile pr-core)"
-        mkdir -p "$GITHUB_WORKSPACE/pr-core-performance-evidence"
-        printf '%s\n' "$PR_BASE_SHA" > "$GITHUB_WORKSPACE/pr-core-performance-evidence/benchmark-baseline-ref.txt"
-        printf '%s\n' "$BASELINE_SHA" > "$GITHUB_WORKSPACE/pr-core-performance-evidence/benchmark-baseline-sha.txt"
-        printf '%s\n' "$PR_CANDIDATE_SHA" > "$GITHUB_WORKSPACE/pr-core-performance-evidence/benchmark-candidate-ref.txt"
-        printf '%s\n' "$CANDIDATE_SHA" > "$GITHUB_WORKSPACE/pr-core-performance-evidence/benchmark-candidate-sha.txt"
-        printf '%s\n' "$FILTER" > "$GITHUB_WORKSPACE/pr-core-performance-evidence/benchmark-filter.txt"
-        set -o pipefail
-        ASV_EXIT_CODE=0
-        asv --config asv.conf.json continuous \
-          --factor 1.05 --split --show-stderr \
-          --attribute repeat=1 --attribute number=1 \
-          --bench "$FILTER" "$PR_BASE_SHA" "$PR_CANDIDATE_SHA" \
-          2>&1 | tee "$GITHUB_WORKSPACE/pr-core-performance-evidence/asv-continuous.txt" || ASV_EXIT_CODE=$?
-        printf '%s\n' "$ASV_EXIT_CODE" > "$GITHUB_WORKSPACE/pr-core-performance-evidence/asv-continuous-exit-code.txt"
-    - name: Summarize PR core comparison
-      if: always()
-      run: |
-        ASV_EXIT_CODE="$(cat pr-core-performance-evidence/asv-continuous-exit-code.txt 2>/dev/null || true)"
-        python tools/asv_summary.py \
-          --input pr-core-performance-evidence/asv-continuous.txt \
-          --output pr-core-performance-evidence/benchmark-asv-summary.json \
-          --asv-exit-code "${ASV_EXIT_CODE:-1}" --allow-missing
-    - name: Classify PR core performance budget
-      if: always()
-      run: >
-        python -m tools.performance_budget summarize
-        --coverage-summary benchmark-evidence/benchmark-coverage.json
-        --coverage-detail benchmark-evidence/benchmark-coverage-detail.json
-        --asv-summary pr-core-performance-evidence/benchmark-asv-summary.json
-        --core-only
-        --output pr-core-performance-evidence/benchmark-performance-budget.json
-    - name: Upload PR core performance evidence
-      if: always()
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-      with:
-        name: pr-core-performance-evidence
-        path: |
-          pr-core-performance-evidence/
-          benchmark/.asv/results/
-        if-no-files-found: ignore
 
   asv_comparison:
     name: Targeted ASV comparison
@@ -204,7 +45,6 @@ jobs:
       (github.event_name == 'pull_request' &&
       contains(github.event.pull_request.labels.*.name, 'run-performance'))
     runs-on: ubuntu-latest
-    continue-on-error: true
     timeout-minutes: 45
     steps:
     - name: Checkout
@@ -231,9 +71,6 @@ jobs:
     - name: Register ASV machine profile
       working-directory: benchmark
       run: asv --config asv.conf.json machine --yes
-    - name: Check benchmark suite importability
-      working-directory: benchmark
-      run: asv --config asv.conf.json check --verbose
     - name: Compare targeted benchmarks
       working-directory: benchmark
       env:
@@ -260,7 +97,7 @@ jobs:
           fi
           BENCH_FILTER="${INPUT_BENCH_FILTER:-}"
           if [ -z "$BENCH_FILTER" ]; then
-            BENCH_FILTER="$(python "$GITHUB_WORKSPACE/tools/select_benchmark_filters.py" --profile stf-core)"
+            BENCH_FILTER="$(python "$GITHUB_WORKSPACE/tools/select_benchmark_filters.py" --profile release-core)"
           fi
         fi
         BASELINE_SHA="$(git rev-parse "$BASELINE_REF")"
@@ -277,6 +114,7 @@ jobs:
           --bench "$BENCH_FILTER" "$BASELINE_REF" "$CANDIDATE_REF" \
           2>&1 | tee "$GITHUB_WORKSPACE/targeted-performance-evidence/asv-continuous.txt" || ASV_EXIT_CODE=$?
         printf '%s\n' "$ASV_EXIT_CODE" > "$GITHUB_WORKSPACE/targeted-performance-evidence/asv-continuous-exit-code.txt"
+        exit "$ASV_EXIT_CODE"
     - name: Summarize targeted comparison
       if: always()
       run: |
@@ -284,7 +122,7 @@ jobs:
         python tools/asv_summary.py \
           --input targeted-performance-evidence/asv-continuous.txt \
           --output targeted-performance-evidence/benchmark-asv-summary.json \
-          --asv-exit-code "${ASV_EXIT_CODE:-1}" --allow-missing
+          --asv-exit-code "${ASV_EXIT_CODE:-1}"
     - name: Classify targeted performance budget
       if: always()
       run: >
@@ -305,10 +143,9 @@ jobs:
         if-no-files-found: ignore
 
   scheduled_core_comparison:
-    name: Scheduled STF core performance
+    name: Scheduled release core performance
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
-    continue-on-error: true
     timeout-minutes: 20
     steps:
     - name: Checkout
@@ -325,7 +162,7 @@ jobs:
       run: >
         python tools/collect_test_environment.py
         --output scheduled-core-performance-evidence/environment-scheduled.json
-        --command "scheduled STF core ASV comparison"
+        --command "scheduled release core ASV comparison"
     - name: Collect scheduled benchmark coverage evidence
       run: |
         python -m tools.benchmark_coverage summary \
@@ -335,9 +172,6 @@ jobs:
     - name: Register ASV machine profile
       working-directory: benchmark
       run: asv --config asv.conf.json machine --yes
-    - name: Check benchmark suite importability
-      working-directory: benchmark
-      run: asv --config asv.conf.json check --verbose
     - name: Compare previous release with main
       working-directory: benchmark
       run: |
@@ -346,7 +180,7 @@ jobs:
         CANDIDATE_REF="HEAD"
         BASELINE_SHA="$(git rev-parse "$BASELINE_REF")"
         CANDIDATE_SHA="$(git rev-parse "$CANDIDATE_REF")"
-        BENCH_FILTER="$(python "$GITHUB_WORKSPACE/tools/select_benchmark_filters.py" --profile stf-core)"
+        BENCH_FILTER="$(python "$GITHUB_WORKSPACE/tools/select_benchmark_filters.py" --profile release-core)"
         printf '%s\n' "$BASELINE_REF" > "$GITHUB_WORKSPACE/scheduled-core-performance-evidence/benchmark-baseline-ref.txt"
         printf '%s\n' "$BASELINE_SHA" > "$GITHUB_WORKSPACE/scheduled-core-performance-evidence/benchmark-baseline-sha.txt"
         printf '%s\n' "$CANDIDATE_REF" > "$GITHUB_WORKSPACE/scheduled-core-performance-evidence/benchmark-candidate-ref.txt"
@@ -366,7 +200,7 @@ jobs:
         python tools/asv_summary.py \
           --input scheduled-core-performance-evidence/asv-continuous.txt \
           --output scheduled-core-performance-evidence/benchmark-asv-summary.json \
-          --asv-exit-code "${ASV_EXIT_CODE:-1}" --allow-missing
+          --asv-exit-code "${ASV_EXIT_CODE:-1}"
     - name: Classify scheduled performance budget
       if: always()
       run: >
@@ -375,6 +209,8 @@ jobs:
         --coverage-detail scheduled-core-performance-evidence/benchmark-coverage-detail.json
         --asv-summary scheduled-core-performance-evidence/benchmark-asv-summary.json
         --core-only
+        --require-comparison
+        --fail-on-release-blockers
         --output scheduled-core-performance-evidence/benchmark-performance-budget.json
     - name: Upload scheduled performance evidence
       if: always()

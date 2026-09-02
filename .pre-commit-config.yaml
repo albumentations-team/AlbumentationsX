@@ -1,15 +1,3 @@
-ci:
-  autofix_commit_msg: |
-    [pre-commit.ci] auto fixes from pre-commit.com hooks
-
-    for more information, see https://pre-commit.ci
-  autofix_prs: true
-  autoupdate_branch: ''
-  autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'
-  autoupdate_schedule: weekly
-  skip: [ ]
-  submodules: false
-
 repos:
   - repo: local
     hooks:
@@ -24,12 +12,10 @@ repos:
         language: system
         pass_filenames: false
         files: ^(pyproject\.toml|\.github/workflows/|docs/maintaining/|tools/ci_matrix\.py)
-      - id: check-public-transform-docstrings
-        name: Check public transform docstring metadata
-        entry: uv run pytest -q tests/test_docstrings.py -k short_description_length
+      - id: check-ax-rules
+        name: Check AlbumentationsX rules
+        entry: uv run python -m tools.ax_rules
         language: system
-        pass_filenames: false
-        files: ^(albumentations/|tests/test_docstrings\.py$|\.pre-commit-config\.yaml$|pyproject\.toml$)
       - id: verify-regression-vectors
         name: Verify regression vector contracts
         entry: uv run python -m tools.verify_regression_vectors --all
@@ -41,7 +27,7 @@ repos:
         entry: uv run python -m tools.benchmark_coverage check
         language: system
         pass_filenames: false
-        files: ^(albumentations/|benchmark/|tools/(benchmark_coverage|performance_budget|quality_gate)\.py)
+        files: ^(albumentations/|benchmark/|tools/(benchmark_coverage|performance_budget)\.py)
       - id: check-compose-policy-and-tracing-contracts
         name: Check Compose policy and tracing contracts
         entry: uv run pytest -q tests/contracts/test_composition_serialization_contracts.py tests/test_composition_tracing.py
@@ -94,23 +80,6 @@ repos:
       - id: requirements-txt-fixer
   - repo: local
     hooks:
-    - id: check-docstrings
-      name: Check Docstrings for '---' and '``' (double backticks)
-      entry: python tools/check_docstring_format.py
-      language: python
-      types: [python]
-      exclude: ^tools/
-    - id: check-naming-conflicts
-      name: Check for naming conflicts between modules and functions/classes
-      entry: python -m tools.check_naming_conflicts
-      language: python
-      pass_filenames: false
-    - id: check-ax-coding-guidance
-      name: Check AlbumentationsX coding guidance
-      entry: python -m tools.ax_coding_guidance
-      language: python
-      pass_filenames: false
-      files: ^(albumentations/|tools/ax_coding_guidance/|tests/test_ax_coding_guidance\.py$|\.pre-commit-config\.yaml$)
     - id: check-local-markdown-links
       name: Check local Markdown links
       entry: python tools/check_local_markdown_links.py
@@ -128,12 +97,6 @@ repos:
         entry: python ./tools/check_conda_dependencies.py
         language: system
         files: ^(pyproject\.toml|conda\.recipe/meta\.yaml|tools/check_conda_dependencies\.py)$
-      - id: check-readme-transforms-docs
-        name: Check README transform tables match albumentations
-        entry: uv run python -m tools.make_transforms_docs check README.md
-        language: system
-        pass_filenames: false
-        files: ^(README\.md|albumentations/).*$
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.4
     hooks:

@@ -98,10 +98,8 @@ for size_name, (h, w) in SIZES.items():
 AlbumentationsX keeps benchmark definitions catalog-wide, but times only the
 profile that answers the current evidence question:
 
-- `pr-core`: `TimeCorePipeline` and its target-processor/tracing variants for
-  every runtime pull request;
-- `stf-core`: catalog smoke, core pipeline, and selected peak-memory sentinels
-  for the weekly schedule and release preflight;
+- `release-core`: fixed core-pipeline, target-processor, transform-family, and
+  peak-memory cases for the weekly schedule and release preflight;
 - `changed`: affected-family patterns selected from changed files for a
   `run-performance` PR label or a maintainer-requested deep comparison.
 

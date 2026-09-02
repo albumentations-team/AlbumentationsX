@@ -93,6 +93,13 @@ IMAGE_BATCH_TRANSFORMS: Mapping[str, BatchSpec] = {
             p=1.0,
         ),
     ),
+    "kspace_spike_noise": BatchSpec(
+        lambda: albumentations.KSpaceSpikeNoise(
+            num_spikes_range=(2, 2),
+            intensity_range=(0.1, 0.1),
+            p=1.0,
+        ),
+    ),
     "resize": BatchSpec(lambda: albumentations.Resize(height=128, width=128, p=1.0)),
     "spatter_mud": BatchSpec(
         lambda: albumentations.Spatter(mode="mud", p=1.0),

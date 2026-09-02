@@ -13,40 +13,17 @@ from tools.select_benchmark_filters import (
 )
 
 
-def test_select_benchmark_filters_pr_core_is_bounded() -> None:
-    assert select_profile_patterns("pr-core") == ("TimeCorePipeline",)
-    assert select_profile_regex("pr-core") == "TimeCorePipeline"
-
-
-def test_select_benchmark_filters_stf_core_contains_runtime_and_memory_sentinels() -> None:
-    patterns = select_profile_patterns("stf-core")
-
-    assert patterns == (
-        "TimeCatalogTransformSmoke",
-        "TimeCorePipeline",
-        "peakmem_resize_large_rgb",
-        "peakmem_normalize_large_rgb",
-        "peakmem_batch_pipeline_medium_rgb",
-        "peakmem_mosaic_small_rgb",
-        "peakmem_copy_paste_small_rgb",
-        "peakmem_volume_pad_medium",
-    )
-
-
 def test_select_benchmark_filters_changed_profile_routes_changed_paths() -> None:
     assert select_profile_patterns("changed", ["albumentations/core/composition.py"]) == (
         "TimeBatch",
         "TimeCatalogTransformSmoke",
+        "TimeComposeFullMatrix",
         "TimeCorePipeline",
     )
 
 
-def test_select_benchmark_filters_keep_baseline_for_docs_only_changes() -> None:
-    assert select_benchmark_patterns(["docs/maintaining/performance-coverage.md"]) == (
-        "TimeBatch",
-        "TimeCatalogTransformSmoke",
-        "TimeCorePipeline",
-    )
+def test_select_benchmark_filters_do_not_invent_evidence_for_docs_only_changes() -> None:
+    assert select_benchmark_patterns(["docs/maintaining/performance-coverage.md"]) == ()
 
 
 def test_select_benchmark_filters_add_pixel_family_matrix_for_pixel_changes() -> None:
@@ -56,7 +33,6 @@ def test_select_benchmark_filters_add_pixel_family_matrix_for_pixel_changes() ->
     assert "TimeFunctionalPixelKernels" in patterns
     assert "TimeBatch" in patterns
     assert "TimeParameterSensitivity" in patterns
-    assert "TimeCatalogTransformSmoke" in patterns
 
 
 @pytest.mark.parametrize(
@@ -97,19 +73,15 @@ def test_select_benchmark_filters_add_memory_and_volume_paths_for_3d_changes() -
     assert "TimeVolumetricFullMatrix" in patterns
 
 
-def test_select_benchmark_filters_keeps_benchmark_infrastructure_changes_bounded() -> None:
-    assert select_benchmark_patterns(["benchmark/benchmarks/test_family_matrix.py"]) == (
-        "TimeBatch",
-        "TimeCatalogTransformSmoke",
-        "TimeCorePipeline",
-    )
+def test_select_benchmark_filters_requires_an_explicit_filter_for_benchmark_infrastructure_changes() -> None:
+    assert select_benchmark_patterns(["benchmark/benchmarks/test_family_matrix.py"]) == ()
 
 
 def test_select_benchmark_filters_returns_asv_regex() -> None:
     regex = select_benchmark_regex(["albumentations/augmentations/blur/transforms.py"])
 
     assert regex == (
-        "PeakMemory|TimeBatch|TimeCatalogTransformSmoke|TimeCorePipeline|TimeParameterSensitivity|"
+        "PeakMemory|TimeBatch|TimeParameterSensitivity|"
         "TimePixelFullMatrix|TimeFunctionalPixelKernels|TimeFunctionalBlurKernels"
     )
 
@@ -123,7 +95,7 @@ def test_select_benchmark_filters_do_not_use_broad_functional_class_by_default()
 
 def test_select_benchmark_filters_reject_invalid_profile_inputs() -> None:
     with pytest.raises(ValueError, match="does not accept changed paths"):
-        select_profile_patterns("pr-core", ["albumentations/core/composition.py"])
+        select_profile_patterns("release-core", ["albumentations/core/composition.py"])
     with pytest.raises(ValueError, match="requires changed paths"):
         select_profile_patterns("changed")
     with pytest.raises(ValueError, match="unknown benchmark profile"):
@@ -137,7 +109,7 @@ def test_select_benchmark_filters_cli_requires_profile_inputs(monkeypatch: pytes
 
     monkeypatch.setattr(
         "sys.argv",
-        ["select_benchmark_filters.py", "--profile", "pr-core", "--changed-files", "paths.txt"],
+        ["select_benchmark_filters.py", "--profile", "release-core", "--changed-files", "paths.txt"],
     )
     with pytest.raises(SystemExit, match="does not accept --changed-files"):
         main()

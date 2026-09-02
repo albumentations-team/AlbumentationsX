@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import albumentations
-from benchmarks.common import IMAGE_PARAMS, make_image
+from benchmarks.common import RELEASE_CORE_IMAGE_PARAMS, make_image
 
 
 class TimePixelTransforms:
     """Benchmark representative pixel transforms."""
 
-    params = IMAGE_PARAMS
+    params = RELEASE_CORE_IMAGE_PARAMS
     param_names = ("size_name", "channels")
 
     def setup(self, size_name: str, channels: int) -> None:
@@ -31,4 +31,7 @@ class TimePixelTransforms:
         self.transforms["blur"](image=self.image)
 
     def time_normalize(self, size_name: str, channels: int) -> None:
+        self.transforms["normalize"](image=self.image)
+
+    def peakmem_normalize(self, size_name: str, channels: int) -> None:
         self.transforms["normalize"](image=self.image)

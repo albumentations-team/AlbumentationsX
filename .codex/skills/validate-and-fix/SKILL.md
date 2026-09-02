@@ -25,8 +25,8 @@ change beyond the version uses the corresponding dependency, artifact, and insta
 4. **If a selected command fails**: fix the issue, then repeat that command. Do not expand the validation scope unless the
    failure proves that the initial scope was incomplete.
 
-For transform or guidance changes, the focused mechanical check is
-`pre-commit run check-ax-coding-guidance --all-files`. Keep deterministic contract details in
+For transform or guidance changes, the focused mechanical check is `pre-commit run check-ax-rules --all-files`.
+Keep deterministic contract details in
 `docs/contributing/coding_guidelines.md`; keep design and benchmark review in the applicable skill.
 
 Before handoff, check `git status --short`. `pre-commit run --all-files` omits untracked files, so run `pre-commit`
@@ -40,7 +40,7 @@ both mypy and Pyrefly.
 - For CI, workflow, support-policy, or dependency-profile changes, also run:
   - `uv run python -m tools.ci_matrix check`
   - `uv run python -m tools.ci_shard check`
-  - `uv run pytest -q tests/test_ci_plan.py tests/test_ci_gate.py tests/test_ci_shard.py tests/test_pr_workflow.py`
+  - `uv run pytest -q tests/test_ci_plan.py tests/test_ci_shard.py tests/test_pr_workflow.py`
   - `uv run zizmor --format=plain --min-severity=medium --min-confidence=medium .github`
 - For legal or packaging workflow changes, follow the `license-integrity` skill and verify built wheel/sdist artifacts.
 

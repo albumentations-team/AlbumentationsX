@@ -1242,8 +1242,9 @@ def test_images_as_target(augmentation_cls, params, shape):
 
     transformed = aug(**data)
 
-    # Check both images were transformed identically
-    np.testing.assert_allclose(transformed["images"][0], transformed["images"][1])
+    # SciPy can round equal float32 batch FFTs differently; uint8 conversion changes at most one LSB.
+    atol = 1 if augmentation_cls == A.KSpaceSpikeNoise else 0
+    np.testing.assert_allclose(transformed["images"][0], transformed["images"][1], atol=atol)
 
     # Check output format matches input format
 

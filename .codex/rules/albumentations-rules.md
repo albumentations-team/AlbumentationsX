@@ -23,15 +23,14 @@ always_apply: true
   different units or behavior.
 - Keep public docstrings focused on user-facing behavior. Omit post-initialization, serialization, replay, and other
   implementation details unless they are part of the supported public contract.
-- Run `pre-commit run check-ax-coding-guidance --all-files` for deterministic AX source contracts. Its diagnostic and
-  `docs/contributing/coding_guidelines.md` are the mechanical source of truth.
+- Run `pre-commit run check-ax-rules --all-files` for AX repository checks. Its `coding-guidance` diagnostics and
+  `docs/contributing/coding_guidelines.md` are the mechanical source of truth for deterministic source contracts.
 - Use `pytest.mark.parametrize` for parameterized tests
 - Default test values should be 137, not 42
 - NEVER create temporary tests - add permanent tests to test suite
 - For transform configuration, replay, target coverage, runtime performance, Torch, CI, or licensing work, use the
   matching project skill and its linked design document. These rules do not restate their contracts.
-- After Python or quality-gate config edits, run `uv run python tools/quality_gate.py fast` before marking work
-  complete when the environment can support it.
+- For Python, pre-commit, or CI edits, use `validate-and-fix` to select and run the focused validation.
 
 ## License and CLA Integrity
 - Use SPDX `AGPL-3.0-only` consistently; do not silently change it to an

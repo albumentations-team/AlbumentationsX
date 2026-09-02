@@ -11,6 +11,7 @@ SIZES = {
 }
 CHANNELS = (1, 3, 5)
 IMAGE_PARAMS = ([*SIZES], CHANNELS)
+RELEASE_CORE_IMAGE_PARAMS = (("small",), (3,))
 DTYPES = {
     "uint8": np.uint8,
     "float32": np.float32,
@@ -25,6 +26,7 @@ MEDIAN_BLUR_FUNCTIONAL_CASES = tuple(
 )
 IMAGE_DTYPE_PARAMS = ([*SIZES], CHANNELS, tuple(DTYPES))
 ANNOTATION_COUNTS = (10, 100, 1000)
+RELEASE_CORE_ANNOTATION_COUNTS = (10,)
 VOLUME_SIZES = {
     "small": (8, 64, 64),
     "medium": (16, 128, 128),

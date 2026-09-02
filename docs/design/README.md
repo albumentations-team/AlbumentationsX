@@ -60,6 +60,14 @@ sample-dependent work, with separate branch-free executors for ordinary, observe
 
 ## Active Design Work
 
+### [Greenfield Pull-Request CI](pr-ci-greenfield.md)
+
+Plan for parallel pre-commit hook jobs, the complete 3 by 5 pull-request compatibility matrix, direct required contexts,
+local large-input evidence for performance-sensitive PRs, bounded release ASV evidence, and removal of Codecov and
+duplicated pull-request work.
+
+**Status**: Implemented.
+
 ### [Greenfield Target-Specific Parameter Sampling](target-specific-parameter-sampling.md)
 
 Plan for replacing flat sampled-parameter dictionaries and special `volume_*` fields with parameters plus

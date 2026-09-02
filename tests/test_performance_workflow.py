@@ -1,4 +1,4 @@
-"""Tests for the performance evidence workflow split."""
+"""Contracts for release and explicit performance evidence workflows."""
 
 from __future__ import annotations
 
@@ -22,18 +22,16 @@ def _job_run_text(job: dict[str, Any]) -> str:
     return "\n".join(str(step.get("run", "")) for step in job["steps"] if isinstance(step, dict))
 
 
-def test_performance_workflow_keeps_pr_evidence_job_fast() -> None:
-    job = _performance_jobs()["benchmark_evidence"]
-    run_text = _job_run_text(job)
+def test_performance_workflow_has_no_routine_pr_asv_or_false_green_paths() -> None:
+    text = PERFORMANCE_WORKFLOW.read_text()
+    jobs = _performance_jobs()
 
-    assert job["timeout-minutes"] == 10
-    assert "asv --config asv.conf.json check --verbose" in run_text
-    assert "asv --config asv.conf.json continuous" not in run_text
-    assert not re.search(r"asv --config asv\.conf\.json\s+run\b", run_text)
-    assert "benchmark-performance-budget.json" in run_text
+    assert not {"benchmark_evidence", "pr_core_comparison"} & set(jobs)
+    for retired in ("pr-core", "continue-on-error: true", "--allow-missing", "asv --config asv.conf.json check"):
+        assert retired not in text
 
 
-def test_performance_workflow_keeps_targeted_comparison_label_or_manual_gated() -> None:
+def test_targeted_comparison_is_explicitly_requested_and_can_reproduce_changed_families() -> None:
     job = _performance_jobs()["asv_comparison"]
     run_text = _job_run_text(job)
 
@@ -41,40 +39,38 @@ def test_performance_workflow_keeps_targeted_comparison_label_or_manual_gated() 
     assert "asv --config asv.conf.json continuous" in run_text
     assert "targeted-performance-evidence/changed-files.txt" in run_text
     assert "--profile changed" in run_text
-    assert "--profile stf-core" in run_text
+    assert "--profile release-core" in run_text
     assert 'CANDIDATE_REF="${INPUT_CANDIDATE_REF:-HEAD}"' in run_text
     assert "git describe --tags --abbrev=0 --match '[0-9]*' \"$CANDIDATE_REF^\"" in run_text
+    assert 'exit "$ASV_EXIT_CODE"' in run_text
     assert not re.search(r"asv --config asv\.conf\.json\s+run\b", run_text)
 
 
-def test_performance_workflow_adds_bounded_pr_and_scheduled_comparisons() -> None:
-    jobs = _performance_jobs()
-    pr_job = jobs["pr_core_comparison"]
-    scheduled_job = jobs["scheduled_core_comparison"]
+def test_scheduled_release_comparison_is_bounded_and_strict() -> None:
+    job = _performance_jobs()["scheduled_core_comparison"]
+    run_text = _job_run_text(job)
 
-    assert pr_job["needs"] == "benchmark_evidence"
-    assert pr_job["timeout-minutes"] == 10
-    assert "--profile pr-core" in _job_run_text(pr_job)
-    assert "asv --config asv.conf.json continuous" in _job_run_text(pr_job)
-    resolve_step = next(step for step in pr_job["steps"] if step.get("name") == "Resolve PR core comparison")
-    assert resolve_step["env"] == {
-        "PR_BASE_SHA": "${{ github.event.pull_request.base.sha }}",
-        "PR_CANDIDATE_SHA": "${{ github.sha }}",
-    }
-    assert "$PR_CANDIDATE_SHA" in _job_run_text(pr_job)
-    assert "$PR_HEAD_SHA" not in _job_run_text(pr_job)
-    assert scheduled_job["if"] == "github.event_name == 'schedule'"
-    assert scheduled_job["timeout-minutes"] == 20
-    assert "--profile stf-core" in _job_run_text(scheduled_job)
-    assert "git describe --tags --abbrev=0 --match '[0-9]*' HEAD^" in _job_run_text(scheduled_job)
+    assert job["if"] == "github.event_name == 'schedule'"
+    assert job["timeout-minutes"] == 20
+    assert "--profile release-core" in run_text
+    assert "git describe --tags --abbrev=0 --match '[0-9]*' HEAD^" in run_text
+    assert "--require-comparison" in run_text
+    assert "--fail-on-release-blockers" in run_text
     assert not re.search(r"HEAD\^!", PERFORMANCE_WORKFLOW.read_text())
 
 
-def test_pytorch_performance_uses_candidate_revision_for_default_baseline() -> None:
-    workflow = (REPO_ROOT / ".github" / "workflows" / "pytorch-performance.yml").read_text()
+def test_pytorch_performance_is_manual_only() -> None:
+    workflow_path = REPO_ROOT / ".github" / "workflows" / "pytorch-performance.yml"
+    workflow = yaml.safe_load(workflow_path.read_text())
+    trigger = workflow.get("on", workflow.get(True, {}))
+    text = workflow_path.read_text()
 
-    assert 'CANDIDATE_REF="${INPUT_CANDIDATE_REF:-HEAD}"' in workflow
-    assert "git describe --tags --abbrev=0 --match '[0-9]*' \"$CANDIDATE_REF^\"" in workflow
+    assert set(trigger) == {"workflow_dispatch"}
+    assert 'CANDIDATE_REF="${INPUT_CANDIDATE_REF:-HEAD}"' in text
+    assert "git describe --tags --abbrev=0 --match '[0-9]*' \"$CANDIDATE_REF^\"" in text
+    assert "continue-on-error" not in text
+    assert "--allow-missing" not in text
+    assert 'exit "$ASV_EXIT_CODE"' in text
 
 
 def test_asv_install_commands_are_separate_cpu_torch_steps() -> None:
@@ -93,7 +89,7 @@ def test_asv_install_commands_are_separate_cpu_torch_steps() -> None:
 
 def test_every_asv_job_explicitly_uses_the_cpu_torch_runtime() -> None:
     workflow = yaml.safe_load(PERFORMANCE_WORKFLOW.read_text())
-    for job_name in ("benchmark_evidence", "pr_core_comparison", "asv_comparison", "scheduled_core_comparison"):
+    for job_name in ("asv_comparison", "scheduled_core_comparison"):
         setup_step = next(
             step for step in workflow["jobs"][job_name]["steps"] if step.get("uses") == "./.github/actions/setup-ci"
         )

@@ -38,8 +38,8 @@ def make_mask_data(rng: np.random.Generator) -> dict[str, Any]:
     return data
 
 
-def make_target_image_mask_data(rng: np.random.Generator) -> dict[str, Any]:
-    """Return an asymmetric coordinate-coded image and multiclass mask."""
+def make_target_image_data(rng: np.random.Generator) -> dict[str, Any]:
+    """Return an asymmetric coordinate-coded image."""
     height, width, _ = TARGET_IMAGE_SHAPE
     offset = int(rng.integers(0, 256))
     rows = np.arange(height, dtype=np.uint16)[:, None]
@@ -52,11 +52,23 @@ def make_target_image_mask_data(rng: np.random.Generator) -> dict[str, Any]:
         ],
         axis=-1,
     ).astype(np.uint8)
+    return {"image": image}
+
+
+def _make_target_mask() -> np.ndarray:
+    height, width, _ = TARGET_IMAGE_SHAPE
     mask = np.zeros((height, width), dtype=np.uint8)
     mask[9:41, 17:73] = 1
     mask[52:87, 61:117] = 2
     mask[24:75, 92:104] = 3
-    return {"image": image, "mask": mask}
+    return mask
+
+
+def make_target_image_mask_data(rng: np.random.Generator) -> dict[str, Any]:
+    """Return an asymmetric coordinate-coded image and multiclass mask."""
+    data = make_target_image_data(rng)
+    data["mask"] = _make_target_mask()
+    return data
 
 
 def make_target_hbb_data(rng: np.random.Generator) -> dict[str, Any]:
@@ -105,15 +117,25 @@ def make_target_keypoint_data(rng: np.random.Generator) -> dict[str, Any]:
 
 def make_target_volume_data(rng: np.random.Generator) -> dict[str, Any]:
     """Return a coordinate-coded volume and a slice-specific multiclass mask3d."""
-    depth, height, width, channels = TARGET_VOLUME_SHAPE
-    volume = np.empty(TARGET_VOLUME_SHAPE, dtype=np.uint8)
+    data = make_target_volume_only_data(rng)
+    depth, height, width, _ = TARGET_VOLUME_SHAPE
     mask3d = np.empty((depth, height, width), dtype=np.uint8)
+    mask = _make_target_mask()
     for depth_index in range(depth):
-        slice_data = make_target_image_mask_data(rng)
-        volume[depth_index] = (slice_data["image"].astype(np.uint16) + 17 * depth_index).astype(np.uint8)
-        mask3d[depth_index] = (slice_data["mask"] + depth_index).astype(np.uint8)
+        mask3d[depth_index] = (mask + depth_index).astype(np.uint8)
+    data["mask3d"] = mask3d
+    return data
+
+
+def make_target_volume_only_data(rng: np.random.Generator) -> dict[str, Any]:
+    """Return a coordinate-coded volume without an annotation target."""
+    depth, _, _, channels = TARGET_VOLUME_SHAPE
+    volume = np.empty(TARGET_VOLUME_SHAPE, dtype=np.uint8)
+    for depth_index in range(depth):
+        image = make_target_image_data(rng)["image"]
+        volume[depth_index] = (image.astype(np.uint16) + 17 * depth_index).astype(np.uint8)
     assert volume.shape[-1] == channels
-    return {"volume": volume, "mask3d": mask3d}
+    return {"volume": volume}
 
 
 def make_target_float_image_mask_data(rng: np.random.Generator) -> dict[str, Any]:

@@ -560,3 +560,52 @@ jobs:
           path: ${{ runner.temp }}/release-bundle/evidence/
           if-no-files-found: ignore
           retention-days: 14
+
+  gate:
+    name: PR gate
+    needs:
+      - plan
+      - pre_commit_ruff
+      - pre_commit_ruff_format
+      - pre_commit_mypy
+      - pre_commit_pyrefly
+      - pre_commit_other
+      - compatibility
+      - targeted
+      - pytorch
+      - dependency_audit
+      - workflow_audit
+      - legal
+      - package
+      - release_preflight
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Validate routed results
+        env:
+          PLAN_RESULT: ${{ needs.plan.result }}
+          PLAN_COMPATIBILITY: ${{ needs.plan.outputs.compatibility }}
+          PLAN_TARGETED: ${{ needs.plan.outputs.targeted }}
+          PLAN_PYTORCH: ${{ needs.plan.outputs.pytorch }}
+          PLAN_DEPENDENCY_AUDIT: ${{ needs.plan.outputs.dependency_audit }}
+          PLAN_WORKFLOW_AUDIT: ${{ needs.plan.outputs.workflow_audit }}
+          PLAN_LEGAL: ${{ needs.plan.outputs.legal }}
+          PLAN_PACKAGE: ${{ needs.plan.outputs.package }}
+          PLAN_RELEASE_PREFLIGHT: ${{ needs.plan.outputs.release_preflight }}
+          RESULT_PRE_COMMIT_RUFF: ${{ needs.pre_commit_ruff.result }}
+          RESULT_PRE_COMMIT_RUFF_FORMAT: ${{ needs.pre_commit_ruff_format.result }}
+          RESULT_PRE_COMMIT_MYPY: ${{ needs.pre_commit_mypy.result }}
+          RESULT_PRE_COMMIT_PYREFLY: ${{ needs.pre_commit_pyrefly.result }}
+          RESULT_PRE_COMMIT_OTHER: ${{ needs.pre_commit_other.result }}
+          RESULT_COMPATIBILITY: ${{ needs.compatibility.result }}
+          RESULT_TARGETED: ${{ needs.targeted.result }}
+          RESULT_PYTORCH: ${{ needs.pytorch.result }}
+          RESULT_DEPENDENCY_AUDIT: ${{ needs.dependency_audit.result }}
+          RESULT_WORKFLOW_AUDIT: ${{ needs.workflow_audit.result }}
+          RESULT_LEGAL: ${{ needs.legal.result }}
+          RESULT_PACKAGE: ${{ needs.package.result }}
+          RESULT_RELEASE_PREFLIGHT: ${{ needs.release_preflight.result }}
+        run: python -m tools.ci_gate

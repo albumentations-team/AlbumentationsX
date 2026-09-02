@@ -18,9 +18,10 @@ rules, while deleting repeated work that did not add a distinct signal.
 - The dedicated CPU-only PyTorch job owns PyTorch-marked tests once. Base matrix
   jobs exclude those files.
 - Codecov, `pytest-cov`, coverage XML, the coverage-only test run, the duplicate
-  primary suite, clean-install PR matrix, and aggregate gate jobs are removed.
-- A direct leaf job is the merge signal. The ruleset requires direct pre-commit
-  contexts plus the plan; it must not wait for retired aggregate aliases.
+  primary suite, and clean-install PR matrix are removed.
+- A stable `PR gate` validates the router's selected and skipped leaf jobs. The
+  ruleset requires this gate plus the plan and direct pre-commit contexts; it no
+  longer lists path-dependent matrix contexts as static requirements.
 - Routine PR ASV timing is removed. `run-performance` and manual dispatch are
   explicit reproductions. Weekly and release `release-core` comparisons provide
   recurring runtime and memory evidence.
@@ -32,10 +33,9 @@ suite already covered by the compatibility matrix. They did not enforce an
 independent repository policy. A Codecov upload is not a test assertion, so it
 cannot make that duplicate execution useful.
 
-The aggregate jobs also had no independent check. They started after the leaf
-that already contained the actionable failure. Requiring direct job contexts
-therefore shortens the final status and makes a cancellation or timeout visible
-at its owner.
+The old aggregate jobs had no independent check. `PR gate` has a different job:
+it verifies the routing contract, so a path-dependent job cannot be silently
+omitted while the ruleset remains stable.
 
 The compatibility matrix remains intact because an operating system and Python
 version pair is an execution contract, not a duplicate. It has 15 independent
@@ -77,8 +77,10 @@ explicit reproduction; it never expands to a large-input matrix implicitly.
 - `python -m tools.ci_matrix check` validates workflow, matrix, dependency, and
   runtime-profile contracts.
 - No tracked workflow, manifest, lockfile, or dependency group contains Codecov,
-  `pytest-cov`, a coverage XML job, an aggregate gate, or the retired routine PR
-  ASV jobs.
+  `pytest-cov`, a coverage XML job, a duplicate test aggregation job, or the
+  retired routine PR ASV jobs.
+- `PR gate` is always present and validates every selected or skipped routed
+  job before merge.
 - The `release-core` selector returns exactly 21 fixed cases and includes runtime
   plus peak-memory evidence.
 - Maintained CI, benchmark, and release documentation describe the implemented

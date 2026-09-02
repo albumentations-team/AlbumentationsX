@@ -457,12 +457,17 @@ def _validate_stain_augmentation_inputs(
     residual_mode: Literal["project", "preserve", "augment"],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     stain_matrix = np.ascontiguousarray(stain_matrix, dtype=np.float32)
-    if stain_matrix.shape != (2, 3):
-        raise ValueError(f"stain_matrix must have shape (2, 3), got {stain_matrix.shape}")
+    if stain_matrix.shape not in {(2, 3), (3, 3)}:
+        raise ValueError(f"stain_matrix must have shape (2, 3) or (3, 3), got {stain_matrix.shape}")
     if not np.isfinite(stain_matrix).all():
         raise ValueError("stain_matrix must contain only finite values")
     if residual_mode not in {"project", "preserve", "augment"}:
         raise ValueError(f"Invalid residual_mode: {residual_mode}")
+    if stain_matrix.shape == (3, 3):
+        if residual_mode == "project":
+            raise ValueError("A full stain basis is incompatible with residual_mode='project'")
+        if np.linalg.matrix_rank(stain_matrix) < 3:
+            raise ValueError("stain_matrix rows must be linearly independent")
 
     component_count = 2 if residual_mode == "project" else 3
     scale_factors = np.asarray(scale_factors)
@@ -573,21 +578,23 @@ def apply_he_stain_augmentation(
     augment_background: bool,
     residual_mode: Literal["project", "preserve", "augment"] = "project",
 ) -> ImageType:
-    """Perturb H&E concentrations in optical-density space, with an optional residual channel
-    for stain-variation augmentation in histology pipelines.
+    """Perturb stain concentrations in optical-density space with a two-stain H&E basis or an explicit
+    three-stain basis for histology augmentation.
 
-    The two-row stain matrix always defines hematoxylin and eosin. Residual modes derive a normalized third vector
-    from their cross product, so callers do not need to provide a redundant three-row matrix.
+    A two-row matrix defines hematoxylin and eosin. Residual modes derive a normalized third vector from their cross
+    product. A three-row matrix supplies the third stain directly for full-basis operations such as HED jitter.
 
     Args:
         img (ImageType): RGB image with values in the dtype's standard range.
-        stain_matrix (np.ndarray): H&E optical-density basis with shape `(2, 3)`.
+        stain_matrix (np.ndarray): Optical-density basis with shape `(2, 3)` for H&E or `(3, 3)` for an explicit
+            three-stain basis. A three-row matrix must have full rank.
         scale_factors (np.ndarray): Per-component multiplicative factors. Supply two values for `"project"` and
             three values for the residual modes.
         shift_values (np.ndarray): Per-component additive shifts, with the same length as `scale_factors`.
         augment_background (bool): Whether to adjust concentrations outside the tissue mask.
-        residual_mode (Literal['project', 'preserve', 'augment']): Residual-channel policy. `"project"` reconstructs
-            from H&E only; `"preserve"` keeps the residual unchanged; `"augment"` adjusts all three components.
+        residual_mode (Literal['project', 'preserve', 'augment']): Third-component policy. `"project"` reconstructs
+            from H&E only and requires a two-row matrix. `"preserve"` keeps the derived or explicit third component
+            unchanged. `"augment"` adjusts all three components.
 
     Returns:
         ImageType: RGB image with the input shape and dtype.
@@ -597,14 +604,19 @@ def apply_he_stain_augmentation(
 
     Note:
         - `"project"` solves the regularized two-stain model used by earlier releases.
-        - The residual modes use `R = normalize(cross(H, E))` and solve the full H&E+R basis.
-        - If H and E are nearly collinear, residual modes fall back to the regularized `"project"` model.
+        - With a two-row matrix, the residual modes use `R = normalize(cross(H, E))` and solve the full H&E+R basis.
+        - With a three-row matrix, the residual modes use the supplied third row without deriving a replacement.
+        - If H and E in a two-row matrix are nearly collinear, residual modes fall back to the regularized
+          `"project"` model.
 
     Examples:
         >>> import numpy as np
         >>> from albumentations.augmentations.pixel import functional as fpixel
         >>> image = np.full((8, 8, 3), 0.5, dtype=np.float32)
-        >>> stain_matrix = np.array([[0.71, 0.65, 0.27], [0.18, 0.91, 0.37]], dtype=np.float32)
+        >>> stain_matrix = np.array(
+        ...     [[0.65, 0.70, 0.29], [0.07, 0.99, 0.11], [0.27, 0.57, 0.78]],
+        ...     dtype=np.float32,
+        ... )
         >>> result = fpixel.apply_he_stain_augmentation(
         ...     image,
         ...     stain_matrix,
@@ -622,9 +634,12 @@ def apply_he_stain_augmentation(
         residual_mode,
     )
     regularization = 1e-6
-    reconstruction_matrix = (
-        None if residual_mode == "project" else _build_residual_stain_matrix(stain_matrix, regularization)
-    )
+    if residual_mode == "project":
+        reconstruction_matrix = None
+    elif stain_matrix.shape == (3, 3):
+        reconstruction_matrix = stain_matrix
+    else:
+        reconstruction_matrix = _build_residual_stain_matrix(stain_matrix, regularization)
     optical_density = rgb_to_optical_density(img)
 
     # Suppress numerical warnings for edge cases with extreme optical densities

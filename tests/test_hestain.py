@@ -9,9 +9,17 @@ from albumentations.core.transform_params import SampledParams
 from tests.helpers import TestDataFactory
 
 CUSTOM_STAIN_MATRIX = np.array([[0.71, 0.65, 0.27], [0.18, 0.91, 0.37]], dtype=np.float32)
+HED_STAIN_MATRIX = np.array(
+    [
+        [0.65, 0.70, 0.29],
+        [0.07, 0.99, 0.11],
+        [0.27, 0.57, 0.78],
+    ],
+    dtype=np.float32,
+)
 
 
-def _apply_he_residual_reference(
+def _apply_three_stain_reference(
     image: np.ndarray,
     stain_matrix: np.ndarray,
     scale_factors: np.ndarray,
@@ -21,12 +29,13 @@ def _apply_he_residual_reference(
     pixel_matrix = image.reshape(-1, 3).astype(np.float32) / max_value
     pixel_matrix = np.maximum(pixel_matrix, np.float32(1e-6))
     optical_density = -np.log(pixel_matrix)
-    residual_vector = np.cross(stain_matrix[0], stain_matrix[1])
-    residual_vector /= np.linalg.norm(residual_vector)
-    full_stain_matrix = np.vstack([stain_matrix, residual_vector]).astype(np.float32)
-    stain_concentrations = np.linalg.solve(full_stain_matrix.T, optical_density.T).T
+    if stain_matrix.shape == (2, 3):
+        residual_vector = np.cross(stain_matrix[0], stain_matrix[1])
+        residual_vector /= np.linalg.norm(residual_vector)
+        stain_matrix = np.vstack([stain_matrix, residual_vector]).astype(np.float32)
+    stain_concentrations = np.linalg.solve(stain_matrix.T, optical_density.T).T
     augmented_concentrations = stain_concentrations * scale_factors + shift_values
-    result = np.clip(np.exp(-(augmented_concentrations @ full_stain_matrix)), 0, 1).reshape(image.shape)
+    result = np.clip(np.exp(-(augmented_concentrations @ stain_matrix)), 0, 1).reshape(image.shape)
     if image.dtype == np.uint8:
         return np.rint(result * 255).astype(np.uint8)
     return result
@@ -81,7 +90,7 @@ def test_hestain_augment_residual_matches_full_basis_reference(dtype: type[np.ge
 
     assert params["scale_factors"].shape == (3,)
     assert params["shift_values"].shape == (3,)
-    expected = _apply_he_residual_reference(
+    expected = _apply_three_stain_reference(
         image,
         CUSTOM_STAIN_MATRIX,
         params["scale_factors"],
@@ -89,6 +98,55 @@ def test_hestain_augment_residual_matches_full_basis_reference(dtype: type[np.ge
     )
     tolerance = 1 if dtype == np.uint8 else 1e-6
     np.testing.assert_allclose(result, expected, rtol=1e-5, atol=tolerance)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_hestain_explicit_full_basis_matches_direct_reference(dtype: type[np.generic]) -> None:
+    image = TestDataFactory.create_image((12, 10, 3), dtype=dtype, seed=137)
+    transform = A.HEStain(
+        method="custom",
+        stain_matrix=HED_STAIN_MATRIX,
+        residual_mode="augment",
+        intensity_scale_range=(0.8, 1.2),
+        intensity_shift_range=(-0.1, 0.1),
+        augment_background=True,
+        p=1.0,
+    )
+    transform.set_random_seed(137)
+
+    result = transform(image=image)["image"]
+    params = SampledParams.from_dict(transform.get_applied_params()).params
+
+    np.testing.assert_array_equal(params["stain_matrix"], HED_STAIN_MATRIX)
+    assert params["scale_factors"][2] not in params["scale_factors"][:2]
+    assert params["shift_values"][2] not in params["shift_values"][:2]
+    expected = _apply_three_stain_reference(
+        image,
+        HED_STAIN_MATRIX,
+        params["scale_factors"],
+        params["shift_values"],
+    )
+    tolerance = 1 if dtype == np.uint8 else 1e-6
+    np.testing.assert_allclose(result, expected, rtol=1e-5, atol=tolerance)
+
+
+def test_hestain_explicit_full_basis_preserves_third_stain_parameters() -> None:
+    image = np.full((8, 8, 3), 0.5, dtype=np.float32)
+    transform = A.HEStain(
+        method="custom",
+        stain_matrix=HED_STAIN_MATRIX,
+        residual_mode="preserve",
+        intensity_scale_range=(1.2, 1.2),
+        intensity_shift_range=(0.1, 0.1),
+        augment_background=True,
+        p=1.0,
+    )
+
+    transform(image=image)
+    params = SampledParams.from_dict(transform.get_applied_params()).params
+
+    np.testing.assert_array_equal(params["scale_factors"], np.array([1.2, 1.2, 1.0], dtype=np.float32))
+    np.testing.assert_array_equal(params["shift_values"], np.array([0.1, 0.1, 0.0], dtype=np.float32))
 
 
 def test_hestain_preserve_residual_reconstructs_identity() -> None:
@@ -206,6 +264,37 @@ def test_apply_he_stain_augmentation_rejects_mismatched_residual_parameters(
         )
 
 
+@pytest.mark.parametrize(
+    ("stain_matrix", "residual_mode", "parameter_count", "message"),
+    [
+        (HED_STAIN_MATRIX, "project", 2, "full stain basis.*residual_mode='project'"),
+        (
+            np.vstack([HED_STAIN_MATRIX[:2], HED_STAIN_MATRIX[0] + HED_STAIN_MATRIX[1]]),
+            "augment",
+            3,
+            "linearly independent",
+        ),
+    ],
+)
+def test_apply_he_stain_augmentation_rejects_invalid_full_basis(
+    stain_matrix: np.ndarray,
+    residual_mode: str,
+    parameter_count: int,
+    message: str,
+) -> None:
+    image = np.full((8, 8, 3), 0.5, dtype=np.float32)
+
+    with pytest.raises(ValueError, match=message):
+        fpixel.apply_he_stain_augmentation(
+            image,
+            stain_matrix,
+            np.ones(parameter_count, dtype=np.float32),
+            np.zeros(parameter_count, dtype=np.float32),
+            augment_background=True,
+            residual_mode=residual_mode,
+        )
+
+
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
 @pytest.mark.parametrize("augment_background", [False, True])
 def test_hestain_project_mode_stays_within_accepted_legacy_tolerance(
@@ -238,23 +327,26 @@ def test_hestain_project_mode_stays_within_accepted_legacy_tolerance(
 
 
 @pytest.mark.parametrize(
-    ("target", "shape"),
+    ("stain_matrix", "target", "shape"),
     [
-        ("image", (12, 10, 3)),
-        ("images", (2, 12, 10, 3)),
-        ("volume", (2, 12, 10, 3)),
+        (CUSTOM_STAIN_MATRIX, "image", (12, 10, 3)),
+        (CUSTOM_STAIN_MATRIX, "images", (2, 12, 10, 3)),
+        (CUSTOM_STAIN_MATRIX, "volume", (2, 12, 10, 3)),
+        (HED_STAIN_MATRIX, "image", (12, 10, 3)),
     ],
+    ids=["derived-image", "derived-images", "derived-volume", "explicit-full-basis"],
 )
-def test_hestain_augment_residual_replay_reuses_all_sampled_parameters(
+def test_hestain_augment_replay_reuses_all_sampled_parameters(
     target: str,
     shape: tuple[int, ...],
+    stain_matrix: np.ndarray,
 ) -> None:
     data = TestDataFactory.create_image(shape, dtype=np.uint8, seed=137)
     pipeline = A.ReplayCompose(
         [
             A.HEStain(
                 method="custom",
-                stain_matrix=CUSTOM_STAIN_MATRIX,
+                stain_matrix=stain_matrix,
                 residual_mode="augment",
                 augment_background=True,
                 p=1.0,
@@ -357,10 +449,13 @@ def test_hestain_converts_custom_stain_matrix_to_owned_float32_array() -> None:
 @pytest.mark.parametrize(
     ("stain_matrix", "message"),
     [
-        (np.ones((3, 3)), "shape"),
+        (np.ones((4, 3)), "shape"),
         (np.array([[0.71, np.nan, 0.27], [0.18, 0.91, 0.37]]), "finite"),
         (np.array([[0.0, 0.0, 0.0], [0.18, 0.91, 0.37]]), "non-zero"),
         (np.array([[0.71, 0.65, 0.27], [1.42, 1.30, 0.54]]), "linearly independent"),
+        (np.vstack([HED_STAIN_MATRIX[:2], [np.nan, 0.57, 0.78]]), "finite"),
+        (np.vstack([HED_STAIN_MATRIX[:2], np.zeros(3)]), "non-zero"),
+        (np.vstack([HED_STAIN_MATRIX[:2], HED_STAIN_MATRIX[0] + HED_STAIN_MATRIX[1]]), "linearly independent"),
     ],
 )
 def test_hestain_rejects_invalid_custom_stain_matrix(stain_matrix: np.ndarray, message: str) -> None:
@@ -368,9 +463,22 @@ def test_hestain_rejects_invalid_custom_stain_matrix(stain_matrix: np.ndarray, m
         A.HEStain(method="custom", stain_matrix=stain_matrix)
 
 
-def test_hestain_custom_stain_matrix_survives_json_serialization() -> None:
+def test_hestain_rejects_full_stain_matrix_with_project_mode() -> None:
+    with pytest.raises(ValueError, match=r"full stain basis.*residual_mode='project'"):
+        A.HEStain(method="custom", stain_matrix=HED_STAIN_MATRIX, residual_mode="project")
+
+
+@pytest.mark.parametrize(
+    ("stain_matrix", "residual_mode"),
+    [(CUSTOM_STAIN_MATRIX, "project"), (HED_STAIN_MATRIX, "augment")],
+    ids=["two-stain", "full-basis"],
+)
+def test_hestain_custom_stain_matrix_survives_json_serialization(
+    stain_matrix: np.ndarray,
+    residual_mode: str,
+) -> None:
     pipeline = A.Compose(
-        [A.HEStain(method="custom", stain_matrix=CUSTOM_STAIN_MATRIX, p=1.0)],
+        [A.HEStain(method="custom", stain_matrix=stain_matrix, residual_mode=residual_mode, p=1.0)],
         seed=137,
         strict=True,
     )
@@ -382,7 +490,7 @@ def test_hestain_custom_stain_matrix_survives_json_serialization() -> None:
     assert isinstance(restored_transform, A.HEStain)
     assert restored_transform.stain_matrix is not None
     assert restored_transform.stain_matrix.dtype == np.float32
-    np.testing.assert_array_equal(restored_transform.stain_matrix, CUSTOM_STAIN_MATRIX)
+    np.testing.assert_array_equal(restored_transform.stain_matrix, stain_matrix)
 
 
 @pytest.mark.parametrize("residual_mode", ["preserve", "augment"])

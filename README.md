@@ -257,6 +257,7 @@ Pixel-level transforms will change just an input image and will leave any additi
 - [HistogramMatching](https://albumentations.ai/explore/transform/HistogramMatching/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [HueSaturationValue](https://albumentations.ai/explore/transform/HueSaturationValue/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [ISONoise](https://albumentations.ai/explore/transform/ISONoise/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+- [KSpaceSpikeNoise](https://albumentations.ai/explore/transform/KSpaceSpikeNoise/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [Illumination](https://albumentations.ai/explore/transform/Illumination/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [ImageCompression](https://albumentations.ai/explore/transform/ImageCompression/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [InvertImg](https://albumentations.ai/explore/transform/InvertImg/?utm_source=github&utm_medium=referral&utm_campaign=readme)

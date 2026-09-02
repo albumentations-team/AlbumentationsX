@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Literal, cast
 
+from scipy import fft
+
 from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
     MONO_CHANNEL_DIMENSIONS,
@@ -771,6 +773,7 @@ __all__ = [
     "generate_shared_noise",
     "generate_spatial_noise",
     "get_safe_brightness_contrast_params",
+    "k_space_spike",
     "rician_noise",
     "sample_beta",
     "sample_gaussian",
@@ -795,3 +798,90 @@ def rician_noise(
     np.add(result, np.square(imaginary_noise), out=result)
     np.sqrt(result, out=result)
     return np.clip(result, 0.0, 1.0, out=result)
+
+
+@preserve_channel_dim
+@float32_io
+def k_space_spike(
+    img: ImageType,
+    spikes: np.ndarray,
+    intensity: float,
+) -> ImageType:
+    """Inject point spikes into the Fourier spectrum and reconstruct via inverse FFT.
+
+    Each spike adds a real amplitude `intensity * max|F|` at its frequency bin and at the
+    conjugate mirror, keeping the half-spectrum Hermitian so the reconstruction is real.
+    """
+    if intensity == 0 or spikes.size == 0:
+        return img
+
+    injections = _spike_injections(spikes)
+    if not injections:
+        return img
+
+    ndim = spikes.shape[-1]
+    is_batch = img.ndim == ndim + 2
+    axes = tuple(range(1, ndim + 1)) if is_batch else tuple(range(ndim))
+    axis_sizes = tuple(img.shape[axis] for axis in axes)
+
+    spectrum = cast("np.ndarray", fft.rfftn(np.ascontiguousarray(img), axes=axes, workers=1))
+    max_amplitudes = np.abs(spectrum).max(axis=axes, keepdims=True)
+
+    def index_for(coords: tuple[int, ...], channel: int | None = None) -> tuple[Any, ...]:
+        prefix = (slice(None),) if is_batch else ()
+        return prefix + coords + ((channel,) if channel is not None else ())
+
+    for coords, channel in injections:
+        amplitude = _k_space_spike_amplitude(max_amplitudes, intensity, is_batch, img.shape[0], channel)
+        for bin_coords in _rfft_spike_bins(coords, axis_sizes):
+            spectrum[index_for(bin_coords, channel)] += amplitude
+
+    reconstructed = cast("np.ndarray", fft.irfftn(spectrum, s=axis_sizes, axes=axes, workers=1))
+    return np.clip(reconstructed, 0.0, 1.0)
+
+
+def _rfft_spike_bins(coords: tuple[int, ...], axis_sizes: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
+    """Return the stored rFFT bin or bins representing a real-valued spike pair."""
+    stored_coords = _rfft_bin(coords, axis_sizes)
+    last_size = axis_sizes[-1]
+    is_boundary_plane = coords[-1] == 0 or (last_size % 2 == 0 and coords[-1] == last_size // 2)
+    if not is_boundary_plane:
+        return (stored_coords,)
+
+    mirror = tuple((size - coord) % size for size, coord in zip(axis_sizes, coords, strict=True))
+    stored_mirror = _rfft_bin(mirror, axis_sizes)
+    return (stored_coords,) if stored_coords == stored_mirror else (stored_coords, stored_mirror)
+
+
+def _rfft_bin(coords: tuple[int, ...], axis_sizes: tuple[int, ...]) -> tuple[int, ...]:
+    """Map a full-spectrum coordinate to the non-redundant rFFT half-spectrum."""
+    if coords[-1] <= axis_sizes[-1] // 2:
+        return coords
+    return tuple((size - coord) % size for size, coord in zip(axis_sizes, coords, strict=True))
+
+
+def _k_space_spike_amplitude(
+    max_amplitudes: np.ndarray,
+    intensity: float,
+    is_batch: bool,
+    batch_size: int,
+    channel: int | None,
+) -> float | np.ndarray:
+    """Scale each batch item from its own spectrum while sharing the sampled spike."""
+    amplitudes = max_amplitudes if channel is None else max_amplitudes[..., channel]
+    if not is_batch:
+        return intensity * float(amplitudes.max())
+    if channel is None:
+        return intensity * amplitudes.max(axis=-1).reshape(batch_size, 1)
+    return intensity * amplitudes.reshape(batch_size)
+
+
+def _spike_injections(spikes: np.ndarray) -> list[tuple[tuple[int, ...], int | None]]:
+    """Expand shared or per-channel spikes into (coords, channel) pairs."""
+    injections: list[tuple[tuple[int, ...], int | None]] = []
+    if spikes.ndim == 2:
+        injections.extend((tuple(int(index) for index in spike), None) for spike in spikes)
+    else:
+        for channel in range(spikes.shape[0]):
+            injections.extend((tuple(int(index) for index in spike), channel) for spike in spikes[channel])
+    return injections

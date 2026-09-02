@@ -565,6 +565,14 @@ _BASE_CASE_SPECS: list[list[Any]] = [
     [A.ShotNoise, {"scale_range": (0.1, 0.3)}],
     [A.RicianNoise, {"std_range": (0.05, 0.15)}],
     [
+        A.KSpaceSpikeNoise,
+        {
+            "num_spikes_range": (1, 3),
+            "intensity_range": (0.1, 0.4),
+            "per_channel": True,
+        },
+    ],
+    [
         A.StochasticConvolution,
         {
             "kernel_range": (3, 7),
@@ -1199,6 +1207,15 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
     ("stronger", A.ShotNoise, {"scale_range": (0.2, 0.4)}),
     ("stronger", A.RicianNoise, {"std_range": (0.1, 0.3)}),
     ("per-channel", A.RicianNoise, {"std_range": (0.05, 0.15), "per_channel": True}),
+    (
+        "shared-spikes",
+        A.KSpaceSpikeNoise,
+        {
+            "num_spikes_range": (2, 2),
+            "intensity_range": (0.2, 0.2),
+            "per_channel": False,
+        },
+    ),
     (
         "constant-border",
         A.StochasticConvolution,

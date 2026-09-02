@@ -767,12 +767,12 @@ class RGBShift(AdditiveNoise):
 
 
 class HEStain(ImageOnlyTransform):
-    """Perturb hematoxylin and eosin concentrations in H&E histology images to simulate stain variation across
-    laboratories, scanners, and protocols.
+    """Perturb stain concentrations in histology images to simulate color variation across laboratories,
+    scanners, protocols, and staining panels.
 
     Use this transform to train pathology models against expected staining variation. It converts RGB values to
-    optical density, separates hematoxylin and eosin with the selected stain basis, perturbs both concentrations, and
-    reconstructs the RGB image.
+    optical density, separates the stain concentrations with the selected basis, perturbs the configured components,
+    and reconstructs the RGB image.
 
     Args:
         method (Literal["preset", "random_preset", "vahadane", "macenko", "custom"]): Selects the stain basis:
@@ -795,24 +795,25 @@ class HEStain(ImageOnlyTransform):
             When None with `method="preset"`, "standard" is used. Default: None.
 
         intensity_scale_range (tuple[float, float]): Non-negative range for the multiplicative concentration factor
-            sampled independently for hematoxylin and eosin. For example, `(0.7, 1.3)` varies each concentration from
-            70% to 130%. Default: (0.7, 1.3).
+            sampled independently for hematoxylin, eosin, and any augmented third component. For example,
+            `(0.7, 1.3)` varies each concentration from 70% to 130%. Default: (0.7, 1.3).
 
         intensity_shift_range (tuple[float, float]): Range within `[-1.0, 1.0]` for the additive concentration shift
-            sampled independently for hematoxylin and eosin. Default: (-0.2, 0.2).
+            sampled independently for hematoxylin, eosin, and any augmented third component. Default: (-0.2, 0.2).
 
         augment_background (bool): Whether to perturb background pixels along with tissue pixels. Default: False.
-        residual_mode (Literal["project", "preserve", "augment"]): Controls the optical-density component orthogonal
-            to the H&E plane:
+        residual_mode (Literal["project", "preserve", "augment"]): Controls the third optical-density component:
             - `"project"`: Reconstruct from H&E only, retaining the two-stain model from earlier releases.
-            - `"preserve"`: Derive the residual basis vector and keep its concentration unchanged.
-            - `"augment"`: Independently perturb the derived residual along with H&E.
+            - `"preserve"`: Keep the derived residual or explicit third-stain concentration unchanged.
+            - `"augment"`: Independently perturb the derived residual or explicit third stain along with H&E.
             Default: `"project"`.
         p (float): Probability of applying the transform. Default: 0.5.
-        stain_matrix (np.ndarray | None): Fixed H&E stain basis used when `method="custom"`. The matrix must have
-            shape `(2, 3)`: row 0 is the hematoxylin RGB optical-density vector and row 1 is the eosin vector. Both
-            rows must contain finite values, be non-zero, and be linearly independent. The transform copies the
-            matrix as `float32` and uses its values without row normalization. Default: None.
+        stain_matrix (np.ndarray | None): Fixed stain basis used when `method="custom"`. A `(2, 3)` matrix contains
+            hematoxylin and eosin RGB optical-density vectors; `"preserve"` and `"augment"` derive the third vector
+            as `normalize(cross(H, E))`. A `(3, 3)` matrix supplies the third stain directly and requires
+            `residual_mode="preserve"` or `"augment"`. Every row must contain finite values and be non-zero, and the
+            matrix must have full row rank. The transform copies the matrix as `float32` without row normalization.
+            Default: None.
 
     Targets:
         image, volume
@@ -824,10 +825,10 @@ class HEStain(ImageOnlyTransform):
         uint8, float32
 
     Note:
-        - Let `M` be the `(2, 3)` H&E matrix and `C` the per-pixel concentrations. `"project"` solves
+        - Let `M` be the stain matrix and `C` the per-pixel concentrations. `"project"` solves
           `OD ~= C @ M`, perturbs H&E, and reconstructs `RGB = exp(-(C * scale + shift) @ M)`.
-        - `"preserve"` and `"augment"` derive `R = normalize(cross(H, E))`, solve the full H&E+R basis, and either
-          retain or perturb the residual concentration.
+        - For a `(2, 3)` matrix, `"preserve"` and `"augment"` derive `R = normalize(cross(H, E))` and solve the full
+          H&E+R basis. A `(3, 3)` matrix uses its third row directly.
         - A custom matrix is fixed for the lifetime of the transform. Per-image callable extraction is not supported.
 
     References:
@@ -849,20 +850,23 @@ class HEStain(ImageOnlyTransform):
         >>> image[50:150, 50:150] = np.array([120, 140, 180], dtype=np.uint8)  # Hematoxylin-rich region
         >>> image[150:250, 150:250] = np.array([140, 160, 120], dtype=np.uint8)  # Eosin-rich region
         >>>
-        >>> # Example 1: Using a custom stain matrix calibrated for an acquisition pipeline
-        >>> stain_matrix = np.array(
+        >>> # Example 1: Map HEDJitter(theta) to a full H&E+DAB basis
+        >>> theta = 0.05
+        >>> hed_basis = np.array(
         ...     [
-        ...         [0.71, 0.65, 0.27],  # Hematoxylin
-        ...         [0.18, 0.91, 0.37],  # Eosin
+        ...         [0.65, 0.70, 0.29],  # Hematoxylin
+        ...         [0.07, 0.99, 0.11],  # Eosin
+        ...         [0.27, 0.57, 0.78],  # DAB
         ...     ],
         ...     dtype=np.float32,
         ... )
         >>> transform = A.HEStain(
         ...     method="custom",
-        ...     stain_matrix=stain_matrix,
+        ...     stain_matrix=hed_basis,
         ...     residual_mode="augment",
-        ...     intensity_scale_range=(0.8, 1.2),
-        ...     intensity_shift_range=(-0.1, 0.1),
+        ...     intensity_scale_range=(1 - theta, 1 + theta),
+        ...     intensity_shift_range=(-theta, theta),
+        ...     augment_background=True,
         ...     p=1.0,
         ... )
         >>> transformed_image = transform(image=image)["image"]
@@ -951,13 +955,13 @@ class HEStain(ImageOnlyTransform):
                 stain_matrix = np.array(value, dtype=np.float32, copy=True)
             except (TypeError, ValueError) as exc:
                 raise ValueError("stain_matrix must contain numeric values") from exc
-            if stain_matrix.shape != (2, 3):
-                raise ValueError(f"stain_matrix must have shape (2, 3), got {stain_matrix.shape}")
+            if stain_matrix.shape not in {(2, 3), (3, 3)}:
+                raise ValueError(f"stain_matrix must have shape (2, 3) or (3, 3), got {stain_matrix.shape}")
             if not np.isfinite(stain_matrix).all():
                 raise ValueError("stain_matrix must contain only finite values")
             if np.any(np.linalg.norm(stain_matrix, axis=1) == 0):
                 raise ValueError("stain_matrix rows must be non-zero stain vectors")
-            if np.linalg.matrix_rank(stain_matrix) < 2:
+            if np.linalg.matrix_rank(stain_matrix) < stain_matrix.shape[0]:
                 raise ValueError("stain_matrix rows must be linearly independent")
             return stain_matrix
 
@@ -967,6 +971,13 @@ class HEStain(ImageOnlyTransform):
                 raise ValueError("stain_matrix is required when method='custom'")
             if self.method != "custom" and self.stain_matrix is not None:
                 raise ValueError("stain_matrix is only valid when method='custom'")
+            if (
+                self.method == "custom"
+                and self.stain_matrix is not None
+                and self.stain_matrix.shape == (3, 3)
+                and self.residual_mode == "project"
+            ):
+                raise ValueError("A full stain basis is incompatible with residual_mode='project'")
             if self.method == "preset" and self.preset is None:
                 self.preset = "standard"
             elif self.method in {"random_preset", "custom"} and self.preset is not None:

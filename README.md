@@ -63,11 +63,13 @@ pip install "albumentationsx[headless]"
 import albumentations as A
 
 # Create your augmentation pipeline
-transform = A.Compose([
-    A.RandomCrop(width=256, height=256),
-    A.HorizontalFlip(p=0.5),
-    A.RandomBrightnessContrast(p=0.2),
-])
+transform = A.Compose(
+    [
+        A.RandomCrop(width=256, height=256),
+        A.HorizontalFlip(p=0.5),
+        A.RandomBrightnessContrast(p=0.2),
+    ]
+)
 ```
 
 For commercial licensing inquiries, please visit [our pricing page](https://albumentations.ai/pricing?utm_source=github&utm_medium=referral&utm_campaign=readme).
@@ -202,11 +204,13 @@ import albumentations as A
 import cv2
 
 # Declare an augmentation pipeline
-transform = A.Compose([
-    A.RandomCrop(width=256, height=256),
-    A.HorizontalFlip(p=0.5),
-    A.RandomBrightnessContrast(p=0.2),
-])
+transform = A.Compose(
+    [
+        A.RandomCrop(width=256, height=256),
+        A.HorizontalFlip(p=0.5),
+        A.RandomBrightnessContrast(p=0.2),
+    ]
+)
 
 # Read an image with OpenCV and convert it to the RGB colorspace
 image = cv2.imread("image.jpg")

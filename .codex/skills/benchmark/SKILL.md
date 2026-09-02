@@ -62,7 +62,7 @@ for size_name, (h, w) in SIZES.items():
 
         old_t = timeit.timeit(lambda img=img: old_func(img, **params), number=N)
         new_t = timeit.timeit(lambda img=img: new_func(img, **params), number=N)
-        print(f"{size_name} {h}x{w}x{ch}: old={old_t:.4f}s new={new_t:.4f}s speedup={old_t/new_t:.2f}x")
+        print(f"{size_name} {h}x{w}x{ch}: old={old_t:.4f}s new={new_t:.4f}s speedup={old_t / new_t:.2f}x")
 ```
 
 ## Template: Full Pipeline (Compose)

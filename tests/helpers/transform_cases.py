@@ -989,6 +989,19 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
             "augment_background": True,
         },
     ),
+    (
+        "explicit-third-stain",
+        A.HEStain,
+        {
+            "method": "custom",
+            "stain_matrix": np.array(
+                [[0.65, 0.70, 0.29], [0.07, 0.99, 0.11], [0.27, 0.57, 0.78]],
+                dtype=np.float32,
+            ),
+            "residual_mode": "augment",
+            "augment_background": True,
+        },
+    ),
     ("custom-reference", A.HistogramMatching, {"blend_ratio": (0.2, 0.4), "metadata_key": "references"}),
     (
         "gaussian-darken",

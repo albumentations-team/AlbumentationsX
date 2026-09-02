@@ -600,6 +600,7 @@ def _check_pr_workflow() -> list[str]:
         "pre_commit_mypy": "Pre-commit / mypy",
         "pre_commit_pyrefly": "Pre-commit / Pyrefly",
         "pre_commit_other": "Pre-commit / Other hooks",
+        "gate": "PR gate",
     }
     for job_id, expected_name in expected_stable_jobs.items():
         job = jobs.get(job_id)
@@ -611,6 +612,7 @@ def _check_pr_workflow() -> list[str]:
             PR_WORKFLOW,
             (
                 "python -m tools.ci_plan",
+                "python -m tools.ci_gate",
                 "dependency-group: ci-test",
                 "dependency-group: ci-quality",
                 "dependency-group: ci-types",
@@ -644,7 +646,6 @@ def _check_pr_workflow() -> list[str]:
     )
 
     forbidden = (
-        "tools.ci_gate",
         "tools.quality_gate",
         "codecov/",
         "CODECOV_TOKEN",

@@ -18,7 +18,7 @@ def _workflow() -> dict[str, Any]:
     return yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
 
 
-def test_pr_workflow_exposes_direct_required_contexts_without_aggregate_aliases() -> None:
+def test_pr_workflow_exposes_stable_required_contexts_and_routing_gate() -> None:
     text = WORKFLOW_PATH.read_text(encoding="utf-8")
     trigger = text.split("permissions:", maxsplit=1)[0]
     jobs = _workflow()["jobs"]
@@ -42,6 +42,12 @@ def test_pr_workflow_exposes_direct_required_contexts_without_aggregate_aliases(
         "pre_commit_pyrefly": "Pre-commit / Pyrefly",
         "pre_commit_other": "Pre-commit / Other hooks",
     }
+    assert jobs["gate"]["name"] == "PR gate"
+    assert jobs["gate"]["if"] == "always()"
+    assert set(jobs["gate"]["needs"]) == set(jobs) - {"gate"}
+    for job_id in jobs:
+        if job_id != "gate":
+            assert f"needs.{job_id}.result" in text
     assert not {"fast_checks", "correctness", "security_policy"} & set(jobs)
 
 

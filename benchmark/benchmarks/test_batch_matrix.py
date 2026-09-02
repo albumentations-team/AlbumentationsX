@@ -23,7 +23,7 @@ Factory = Callable[[], object]
 BATCH_SIZES = (4, 8)
 ILLUMINATION_BATCH_SIZES = (2, 4, 8, 16)
 ILLUMINATION_MODES = ("linear", "corner", "gaussian")
-ILLUMINATION_NAMES = tuple(f"illumination_{mode}" for mode in ILLUMINATION_MODES)
+ILLUMINATION_NAMES = (*tuple(f"illumination_{mode}" for mode in ILLUMINATION_MODES), "illumination_gaussian_multi")
 PLASMA_BRIGHTNESS_CONTRAST_BATCH_SIZES = (1, 2, 4, 5, 8, 16)
 PLASMA_BRIGHTNESS_CONTRAST_BRIGHTNESS_ONLY_BATCH_SIZES = (2, 3, 4, 5)
 PLASMA_BRIGHTNESS_CONTRAST_ZERO_BATCH_SIZES = (1, 2, 4, 16)
@@ -64,6 +64,11 @@ IMAGE_BATCH_TRANSFORMS: Mapping[str, BatchSpec] = {
         )
         for mode in ILLUMINATION_MODES
     },
+    "illumination_gaussian_multi": BatchSpec(
+        partial(albumentations.Illumination, mode="gaussian", num_spots_range=(3, 3), p=1.0),
+        sizes=("small", "medium", "large"),
+        batch_sizes=ILLUMINATION_BATCH_SIZES,
+    ),
     **{
         name: BatchSpec(
             partial(albumentations.MedianBlur, blur_range=(kernel_size, kernel_size), p=1.0),
@@ -266,8 +271,7 @@ class TimeIlluminationDirectBatchMatrix:
 
     def setup(self, case_id: str) -> None:
         name, _, size_name, channels, dtype_name, batch_size = _parse_batch_case(case_id)
-        mode = name.removeprefix("illumination_")
-        self.transform = albumentations.Illumination(mode=mode, p=1.0)
+        self.transform = IMAGE_BATCH_TRANSFORMS[name].factory()
         self.transform.set_random_seed(137)
         self.images = _make_image_batch(size_name, channels, dtype_from_name(dtype_name), batch_size)
         self.transform(image=self.images[0])

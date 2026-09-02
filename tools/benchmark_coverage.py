@@ -264,6 +264,7 @@ BATCH_ALIAS_TO_TRANSFORM = {
     "horizontal_flip": "HorizontalFlip",
     "illumination_corner": "Illumination",
     "illumination_gaussian": "Illumination",
+    "illumination_gaussian_multi": "Illumination",
     "illumination_linear": "Illumination",
     **{name: "MedianBlur" for name, _ in MEDIAN_BLUR_CASES},
     "normalize": "Normalize",

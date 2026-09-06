@@ -215,7 +215,6 @@ def resize_pil(
         warn(f"Interpolation method {interpolation} is not supported by PIL backend, using BILINEAR", stacklevel=2)
         pil_interpolation = Image.Resampling.BILINEAR
 
-    # Convert numpy array to PIL Image
     # Images always have ndim=3 in albumentations
     if img.ndim != 3:
         raise ValueError(f"Expected 3D array, got shape: {img.shape}")
@@ -229,7 +228,6 @@ def resize_pil(
             (target_width, target_height),
             resample=pil_interpolation,
         )
-        # Convert back to (H, W, 1)
         result = np.array(resized_pil_img)[:, :, np.newaxis]
     elif num_channels == 3:
         # RGB image
@@ -259,7 +257,6 @@ def resize_pil(
             channels.append(np.array(resized_channel))
         result = np.stack(channels, axis=-1)
 
-    # Convert back to original dtype
     if needs_conversion:
         result = to_float(result)
     elif result.dtype != original_dtype:
@@ -488,10 +485,8 @@ def perspective_keypoints(
         keypoints[:, 4],
     )
 
-    # Reshape keypoints for perspective transform
     keypoint_vector = np.column_stack((x, y)).astype(np.float32).reshape(-1, 1, 2)
 
-    # Apply perspective transform
     transformed_points = cv2.perspectiveTransform(keypoint_vector, matrix).squeeze()
 
     # Unsqueeze if we have a single keypoint
@@ -503,7 +498,6 @@ def perspective_keypoints(
     # Update angles
     angle += rotation2d_matrix_to_euler_angles(matrix[:2, :2], y_up=True)
 
-    # Calculate scale factors
     scale_x = np.sign(matrix[0, 0]) * np.sqrt(matrix[0, 0] ** 2 + matrix[0, 1] ** 2)
     scale_y = np.sign(matrix[1, 1]) * np.sqrt(matrix[1, 0] ** 2 + matrix[1, 1] ** 2)
     scale *= max(scale_x, scale_y)
@@ -515,7 +509,6 @@ def perspective_keypoints(
         y *= scale_y
         scale *= max(scale_x, scale_y)
 
-    # Create the output array with unchanged z coordinate
     transformed_keypoints = np.column_stack([x, y, z, angle, scale])
 
     # If there are additional columns, preserve them
@@ -584,7 +577,6 @@ def calculate_affine_transform_padding(
     """
     height, width = image_shape[:2]
 
-    # Check for identity transform
     if is_identity_matrix(matrix):
         return (0, 0, 0, 0)
 
@@ -594,7 +586,6 @@ def calculate_affine_transform_padding(
     # Transform corners
     transformed_corners = apply_affine_to_points(corners, matrix)
 
-    # Ensure transformed_corners is 2D
     transformed_corners = transformed_corners.reshape(-1, 2)
 
     # Find box that includes both original and transformed corners
@@ -602,10 +593,8 @@ def calculate_affine_transform_padding(
     min_x, min_y = all_corners.min(axis=0)
     max_x, max_y = all_corners.max(axis=0)
 
-    # Compute the inverse transform
     inverse_matrix = np.linalg.inv(matrix)
 
-    # Apply inverse transform to all corners of the bounding box
     bbox_corners = np.array(
         [[min_x, min_y], [max_x, min_y], [max_x, max_y], [min_x, max_y]],
     )
@@ -1087,20 +1076,15 @@ def create_affine_transformation_matrix(
         np.ndarray: The resulting 3x3 affine transformation matrix.
 
     """
-    # Convert angles to radians
     rotate_rad = np.deg2rad(rotate % 360)
 
     shear_x_rad = np.deg2rad(shear["x"])
     shear_y_rad = np.deg2rad(shear["y"])
 
-    # Create individual transformation matrices
-    # 1. Shift to top-left
     m_shift_topleft = np.array([[1, 0, -shift[0]], [0, 1, -shift[1]], [0, 0, 1]])
 
-    # 2. Scale
     m_scale = np.array([[scale["x"], 0, 0], [0, scale["y"], 0], [0, 0, 1]])
 
-    # 3. Rotation
     m_rotate = np.array(
         [
             [np.cos(rotate_rad), np.sin(rotate_rad), 0],
@@ -1109,22 +1093,18 @@ def create_affine_transformation_matrix(
         ],
     )
 
-    # 4. Shear
     m_shear = np.array(
         [[1, np.tan(shear_x_rad), 0], [np.tan(shear_y_rad), 1, 0], [0, 0, 1]],
     )
 
-    # 5. Translation
     m_translate = np.array([[1, 0, translate["x"]], [0, 1, translate["y"]], [0, 0, 1]])
 
-    # 6. Shift back to center
     m_shift_center = np.array([[1, 0, shift[0]], [0, 1, shift[1]], [0, 0, 1]])
 
     # Combine all transformations
     # The order is important: transformations are applied from right to left
     m = m_shift_center @ m_translate @ m_shear @ m_rotate @ m_scale @ m_shift_topleft
 
-    # Ensure the last row is exactly [0, 0, 1]
     m[2] = [0, 0, 1]
 
     return m
@@ -1149,14 +1129,12 @@ def compute_transformed_image_bounds(
     """
     height, width = image_shape[:2]
 
-    # Define the corners of the image
     corners = np.array([[0, 0, 1], [width, 0, 1], [width, height, 1], [0, height, 1]])
 
     # Transform the corners
     transformed_corners = corners @ matrix.T
     transformed_corners = transformed_corners[:, :2] / transformed_corners[:, 2:]
 
-    # Calculate the bounding box of the transformed corners
     min_coords = np.floor(transformed_corners.min(axis=0)).astype(int)
     max_coords = np.ceil(transformed_corners.max(axis=0)).astype(int)
 

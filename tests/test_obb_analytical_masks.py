@@ -50,7 +50,6 @@ def obb_to_mask(
     polygon_px[:, 1] *= height
     polygon_px = np.int32(polygon_px)
 
-    # Create mask
     mask = np.zeros(image_shape, dtype=np.uint8)
 
     # Fill the polygon
@@ -85,7 +84,6 @@ def test_obb_rotation_centered_square_analytical(rotation_deg: int) -> None:
         initial_angle,
     ]
 
-    # Create input mask from OBB
     input_mask = obb_to_mask(input_obb, image_shape)
 
     # Apply rotation to OBB
@@ -100,7 +98,6 @@ def test_obb_rotation_centered_square_analytical(rotation_deg: int) -> None:
     output_obb = result["bboxes"][0]
     rotated_mask = result["mask"]
 
-    # Create mask from output OBB
     output_mask = obb_to_mask(output_obb, image_shape)
 
     # Compare masks - they should be very similar (allowing for discretization)
@@ -462,7 +459,6 @@ def test_obb_rot90_centered_box_analytical(k: int) -> None:
     result_bboxes = fgeometric.bboxes_rot90(bboxes, k_to_group_element[k], bbox_type="obb")
     output_obb = result_bboxes[0]
 
-    # Create mask from output OBB
     output_mask = obb_to_mask(output_obb, image_shape)
 
     intersection = np.logical_and(rotated_mask, output_mask).sum()
@@ -750,7 +746,6 @@ def test_obb_mask_conversion_roundtrip(width: float, height: float, angle: float
         angle,
     ]
 
-    # Create mask from OBB
     mask = obb_to_mask(input_obb, image_shape)
 
     # Basic sanity checks

@@ -115,7 +115,6 @@ def generate_plasma_pattern(
     total_steps = int(np.log2(power_of_two_size - 1) - 1)
     noise_scales = np.asarray([roughness**i for i in range(total_steps)], dtype=np.float32)
 
-    # Initialize with small random grid
     plasma_grid = random_generator.uniform(-1, 1, (3, 3)).astype(np.float32)
 
     # Recursively apply diamond-square steps
@@ -162,12 +161,10 @@ def apply_plasma_brightness_contrast(
     if img.ndim > MONO_CHANNEL_DIMENSIONS:
         plasma_pattern = np.tile(plasma_pattern[..., np.newaxis], (1, 1, img.shape[-1]))
 
-    # Apply brightness adjustment
     if brightness_factor != 0:
         brightness_adjustment = multiply(plasma_pattern, brightness_factor, inplace=False)
         img = add(img, brightness_adjustment, inplace=True)
 
-    # Apply contrast adjustment
     if contrast_factor != 0:
         img_mean = mean(img)
         contrast_weights = multiply(plasma_pattern, contrast_factor, inplace=False) + 1
@@ -996,7 +993,6 @@ def create_contrast_lut(
         # Normalize CDF to full range
         cdf = (cdf - cdf[0]) * max_value / (cdf[-1] - cdf[0])
 
-        # Create lookup table
         lut = np.zeros(256, dtype=np.uint8)
         lut[min_intensity : max_intensity + 1] = np.clip(np.round(cdf), 0, max_value).astype(np.uint8)
         lut[max_intensity + 1 :] = max_value

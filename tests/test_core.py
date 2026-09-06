@@ -60,21 +60,20 @@ def test_compose():
 
 @pytest.mark.parametrize("target_as_params", ([], ["image"], ["image", "mask"], ["image", "mask", "keypoints"]))
 def test_one_of(target_as_params):
-    # Create a simple transform-like class for testing
-    class DummyTransform:
-        def __init__(self):
-            self.p = 1
-            self.available_keys = {"image"}
-            self.targets_as_params = target_as_params
-            self.params = {}
-
-        def __call__(self, **kwargs):
-            return kwargs
-
-    transforms = [DummyTransform() for _ in range(10)]
+    transforms = [
+        Mock(
+            p=1,
+            side_effect=lambda **kwargs: {"image": kwargs["image"]},
+            available_keys={"image"},
+            targets_as_params=target_as_params,
+        )
+        for _ in range(10)
+    ]
     augmentation = OneOf(transforms, p=1)
     image = np.ones((8, 8))
-    augmentation(image=image)
+    result = augmentation(image=image)
+    assert sum(transform.call_count for transform in transforms) == 1
+    np.testing.assert_array_equal(result["image"], image)
 
 
 @pytest.mark.parametrize("N", [0, 1, 2, 5, 10, 12])
@@ -983,7 +982,6 @@ def test_additional_targets_overwrite():
 @pytest.mark.parametrize("image", IMAGES)
 def test_sequential_with_horizontal_flip_prob_1(image):
     mask = image.copy()
-    # Setup transformations
     transform = Sequential([A.HorizontalFlip(p=1)], p=1)
     expected_transform = Compose([A.HorizontalFlip(p=1)])
 
@@ -1693,41 +1691,6 @@ def test_compose_probability():
     assert len(result["applied_transforms"]) == 0
 
 
-def test_transform_strict_mode_raises_error():
-    # Test that strict=True raises error for invalid parameters
-    with pytest.raises(ValueError, match="Argument\\(s\\) 'invalid_param' are not valid for transform Blur"):
-        A.Blur(strict=True, invalid_param=123)
-
-
-def test_transform_non_strict_mode_shows_warning():
-    # Test that strict=False (default) shows warning for invalid parameters
-    with pytest.warns(UserWarning, match="Argument\\(s\\) 'invalid_param' are not valid for transform Blur"):
-        transform = A.Blur(invalid_param=123)
-        assert transform.p == 0.5  # Check that transform was still created with default values
-
-
-def test_transform_valid_params_no_warning():
-    # Test that no warning/error is raised for valid parameters
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")  # Convert warnings to errors to ensure none are raised
-        transform = A.Blur(p=0.7, blur_range=(3, 5))
-        assert transform.p == 0.7
-        assert transform.blur_range == (3, 5)
-
-
-def test_transform_multiple_invalid_params():
-    # Test handling of multiple invalid parameters
-    with pytest.raises(ValueError, match="Argument\\(s\\) 'invalid1, invalid2' are not valid for transform Blur"):
-        A.Blur(strict=True, invalid1=123, invalid2=456)
-
-
-def test_transform_strict_with_valid_params():
-    # Test that strict mode doesn't affect valid parameters
-    transform = A.Blur(strict=True, p=0.7, blur_range=(3, 5))
-    assert transform.p == 0.7
-    assert transform.blur_range == (3, 5)
-
-
 @pytest.mark.parametrize(
     ["labels", "expected_type", "expected_dtype"],
     [
@@ -1769,7 +1732,6 @@ def test_label_type_preservation(labels, expected_type, expected_dtype):
 
 
 def test_string_labels():
-    # Create sample data
     bboxes = [(0, 0, 10, 10), (10, 10, 20, 20), (20, 20, 30, 30)]
     labels = ["cat", "dog", "bird"]
 
@@ -1884,20 +1846,17 @@ def test_strict_validation_in_compose(
 
 
 def test_transform_strict_mode_raises_error():
-    # Test that strict=True raises error for invalid parameters
     with pytest.raises(ValueError, match="Argument\\(s\\) 'invalid_param' are not valid for transform Blur"):
         A.Blur(strict=True, invalid_param=123)
 
 
 def test_transform_non_strict_mode_shows_warning():
-    # Test that strict=False (default) shows warning for invalid parameters
     with pytest.warns(UserWarning, match="Argument\\(s\\) 'invalid_param' are not valid for transform Blur"):
         transform = A.Blur(invalid_param=123)
         assert transform.p == 0.5  # Check that transform was still created with default values
 
 
 def test_transform_valid_params_no_warning():
-    # Test that no warning/error is raised for valid parameters
     with warnings.catch_warnings():
         warnings.simplefilter("error")  # Convert warnings to errors to ensure none are raised
         transform = A.Blur(p=0.7, blur_range=(3, 5))
@@ -1906,13 +1865,11 @@ def test_transform_valid_params_no_warning():
 
 
 def test_transform_multiple_invalid_params():
-    # Test handling of multiple invalid parameters
     with pytest.raises(ValueError, match="Argument\\(s\\) 'invalid1, invalid2' are not valid for transform Blur"):
         A.Blur(strict=True, invalid1=123, invalid2=456)
 
 
 def test_transform_strict_with_valid_params():
-    # Test that strict mode doesn't affect valid parameters
     transform = A.Blur(strict=True, p=0.7, blur_range=(3, 5))
     assert transform.p == 0.7
     assert transform.blur_range == (3, 5)
@@ -2260,10 +2217,8 @@ def test_compose_with_empty_masks():
 
 def test_grayscale_image_handling():
     """Test that grayscale images are handled correctly."""
-    # Create grayscale image (H, W)
     grayscale_image = np.random.rand(100, 200).astype(np.float32)
 
-    # Create a simple transform pipeline
     transform = A.Compose(
         [
             A.HorizontalFlip(p=1.0),
@@ -2271,7 +2226,6 @@ def test_grayscale_image_handling():
         ],
     )
 
-    # Apply transform
     result = transform(image=grayscale_image)
 
     # Check that output has same shape as input
@@ -2281,11 +2235,9 @@ def test_grayscale_image_handling():
 
 def test_grayscale_images_batch_handling():
     """Test that batches of grayscale images are handled correctly."""
-    # Create batch of grayscale images (N, H, W)
     batch_size = 4
     grayscale_images = np.random.rand(batch_size, 100, 200).astype(np.float32)
 
-    # Create a simple transform pipeline
     transform = A.Compose(
         [
             A.HorizontalFlip(p=1.0),
@@ -2293,7 +2245,6 @@ def test_grayscale_images_batch_handling():
         ],
     )
 
-    # Apply transform
     result = transform(images=grayscale_images)
 
     # Check that output has same shape as input
@@ -2303,17 +2254,14 @@ def test_grayscale_images_batch_handling():
 
 def test_grayscale_volume_handling():
     """Test that grayscale volume data is handled correctly."""
-    # Create grayscale volume (D, H, W)
     grayscale_volume = np.random.rand(50, 100, 200).astype(np.float32)
 
-    # Create a simple transform pipeline that works with volume data
     transform = A.Compose(
         [
             A.NoOp(p=1.0),  # NoOp supports all canonical targets
         ],
     )
 
-    # Apply transform
     result = transform(volume=grayscale_volume)
 
     # Check that output has same shape as input
@@ -2323,31 +2271,25 @@ def test_grayscale_volume_handling():
 
 def test_mixed_grayscale_rgb_handling():
     """Test that mixed grayscale and RGB data are handled correctly."""
-    # Create grayscale image and RGB mask
     grayscale_image = np.random.rand(100, 200).astype(np.float32)
     rgb_mask = np.random.rand(100, 200, 3).astype(np.float32)
 
-    # Create a simple transform pipeline
     transform = A.Compose(
         [
             A.HorizontalFlip(p=1.0),
         ],
     )
 
-    # Apply transform
     result = transform(image=grayscale_image, mask=rgb_mask)
 
-    # Check shapes
     assert result["image"].shape == grayscale_image.shape
     assert result["mask"].shape == rgb_mask.shape
 
 
 def test_grayscale_with_channel_dimension():
     """Test that data with explicit channel dimension is preserved."""
-    # Create grayscale image with explicit channel dimension (H, W, 1)
     image_with_channel = np.random.rand(100, 200, 1).astype(np.float32)
 
-    # Create a simple transform pipeline
     transform = A.Compose(
         [
             A.HorizontalFlip(p=1.0),
@@ -2355,7 +2297,6 @@ def test_grayscale_with_channel_dimension():
         ],
     )
 
-    # Apply transform
     result = transform(image=image_with_channel)
 
     # Check that shape is preserved (channel dimension remains)
@@ -2365,17 +2306,14 @@ def test_grayscale_with_channel_dimension():
 
 def test_grayscale_array_handling():
     """Test that arrays of grayscale images are handled correctly."""
-    # Create array of grayscale images (N, H, W)
     grayscale_array = np.random.rand(3, 100, 200).astype(np.float32)
 
-    # Create a simple transform pipeline
     transform = A.Compose(
         [
             A.HorizontalFlip(p=1.0),
         ],
     )
 
-    # Apply transform
     result = transform(images=grayscale_array)
 
     # Check the output
@@ -2387,10 +2325,8 @@ def test_grayscale_array_handling():
 
 def test_uint8_grayscale_handling():
     """Test that uint8 grayscale images work correctly."""
-    # Create uint8 grayscale image
     grayscale_uint8 = np.random.randint(0, 256, (100, 200), dtype=np.uint8)
 
-    # Create a transform that works with uint8
     transform = A.Compose(
         [
             A.HorizontalFlip(p=1.0),
@@ -2398,17 +2334,14 @@ def test_uint8_grayscale_handling():
         ],
     )
 
-    # Apply transform
     result = transform(image=grayscale_uint8)
 
-    # Check shape and dtype
     assert result["image"].shape == grayscale_uint8.shape
     assert result["image"].dtype == np.uint8
 
 
 def test_grayscale_with_transforms_expecting_channels():
     """Test transforms that expect channel information work with grayscale."""
-    # Create grayscale image
     grayscale_image = np.random.rand(100, 200).astype(np.float32)
 
     # Create transform that typically expects channels
@@ -2419,16 +2352,13 @@ def test_grayscale_with_transforms_expecting_channels():
         ],
     )
 
-    # Apply transform - should not raise errors
     result = transform(image=grayscale_image)
 
-    # Check output shape
     assert result["image"].shape == grayscale_image.shape
 
 
 def test_grayscale_shape_check_with_strict():
     """Test that shape checking works correctly with grayscale images."""
-    # Create grayscale image and mask with same H,W
     grayscale_image = np.random.rand(100, 200).astype(np.float32)
     grayscale_mask = np.random.rand(100, 200).astype(np.float32)
 
@@ -2466,7 +2396,6 @@ def test_grayscale_with_bbox_params():
 
     result = transform(image=grayscale_image, bboxes=bboxes)
 
-    # Check that image shape is preserved
     assert result["image"].shape == grayscale_image.shape
     assert result["image"].ndim == 2
     # Check that bboxes were transformed
@@ -2487,19 +2416,15 @@ def test_grayscale_with_keypoint_params():
 
     result = transform(image=grayscale_image, keypoints=keypoints)
 
-    # Check that image shape is preserved
     assert result["image"].shape == grayscale_image.shape
     assert result["image"].ndim == 2
-    # Check that keypoints were transformed
     assert len(result["keypoints"]) == len(keypoints)
 
 
 def test_grayscale_mask_handling():
     """Test that grayscale masks are handled correctly."""
-    # Create grayscale mask (H, W)
     grayscale_mask = np.random.randint(0, 2, (100, 200)).astype(np.uint8)
 
-    # Create a simple transform pipeline
     transform = A.Compose(
         [
             A.HorizontalFlip(p=1.0),
@@ -2507,7 +2432,6 @@ def test_grayscale_mask_handling():
         ],
     )
 
-    # Apply transform
     result = transform(mask=grayscale_mask)
 
     # Check that output has same shape as input
@@ -2517,11 +2441,9 @@ def test_grayscale_mask_handling():
 
 def test_grayscale_masks_batch_handling():
     """Test that batches of grayscale masks are handled correctly."""
-    # Create batch of grayscale masks (N, H, W)
     batch_size = 4
     grayscale_masks = np.random.randint(0, 2, (batch_size, 100, 200)).astype(np.uint8)
 
-    # Create a simple transform pipeline
     transform = A.Compose(
         [
             A.HorizontalFlip(p=1.0),
@@ -2529,7 +2451,6 @@ def test_grayscale_masks_batch_handling():
         ],
     )
 
-    # Apply transform
     result = transform(masks=grayscale_masks)
 
     # Check that output has same shape as input
@@ -2539,17 +2460,14 @@ def test_grayscale_masks_batch_handling():
 
 def test_grayscale_mask3d_handling():
     """Test that grayscale 3D masks are handled correctly."""
-    # Create grayscale 3D mask (D, H, W)
     grayscale_mask3d = np.random.randint(0, 2, (50, 100, 200)).astype(np.uint8)
 
-    # Create a simple transform pipeline that works with 3D masks
     transform = A.Compose(
         [
             A.NoOp(p=1.0),  # NoOp supports all targets including mask3d
         ],
     )
 
-    # Apply transform
     result = transform(mask3d=grayscale_mask3d)
 
     # Check that output has same shape as input

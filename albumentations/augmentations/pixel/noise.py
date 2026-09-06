@@ -909,7 +909,6 @@ class _AdditiveNoiseInitSchema(BaseTransformInitSchema):
         # Add noise_type to params if not present
         params_dict = {**params_dict, "noise_type": self.noise_type}
 
-        # Convert dict to appropriate NoiseParams object and validate
         params_class: Any = {
             "uniform": UniformParams,
             "gaussian": GaussianParams,

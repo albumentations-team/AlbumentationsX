@@ -96,10 +96,6 @@ def _unit_d(rule: str, unit, node: ast.AST, message: str, symbol: str = "") -> D
     return Diagnostic(rule, unit.key, getattr(node, "lineno", 1), getattr(node, "col_offset", 0) + 1, symbol, message)
 
 
-def _function_defs(info: ClassInfo) -> Iterable[ast.FunctionDef | ast.AsyncFunctionDef]:
-    return info.methods.values()
-
-
 def _method_targets(info: ClassInfo) -> Iterable[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef]]:
     for name, node in info.methods.items():
         if name == "apply" or name.startswith("apply_to_"):
@@ -668,7 +664,7 @@ def rule_fill_naming(index: SourceIndex) -> list[Diagnostic]:
     result: list[Diagnostic] = []
     public_transforms = {info.qname for info in index.concrete_transforms()}
     for info in index.classes.values():
-        for node in _function_defs(info):
+        for node in info.methods.values():
             for arg in argument_nodes(node):
                 if arg.arg in {"fill_value", "fill_mask_value"}:
                     replacement = "fill" if arg.arg == "fill_value" else "fill_mask"
@@ -870,7 +866,7 @@ def rule_cv2(index: SourceIndex) -> list[Diagnostic]:
 def rule_bbox_defaults(index: SourceIndex) -> list[Diagnostic]:
     result: list[Diagnostic] = []
     for info in index.classes.values():
-        for node in _function_defs(info):
+        for node in info.methods.values():
             for arg, _value in _defaults(node):
                 if arg.arg != "bbox_type":
                     continue
@@ -1220,7 +1216,7 @@ def rule_method_docstrings(index: SourceIndex) -> list[Diagnostic]:
         if info.file.key.startswith("albumentations/core/") and info.name.startswith("Base")
     ]
     for info in selected:
-        for node in _function_defs(info):
+        for node in info.methods.values():
             if node.name.startswith("_") or node.name in OPTIONAL_METHOD_DOCS or _property_method(node):
                 continue
             args = [*node.args.posonlyargs, *node.args.args]

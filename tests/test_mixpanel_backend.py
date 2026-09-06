@@ -59,7 +59,6 @@ class TestMixpanelBackend:
         # Should not raise
         backend.send_event(event)
 
-        # Check request was made
         mock_urlopen.assert_called_once()
 
         # Check request details
@@ -118,7 +117,6 @@ class TestMixpanelBackend:
         assert props["token"] == backend.PROJECT_TOKEN
         assert props["$insert_id"] == "session-456"  # For deduplication
 
-        # Check all fields are included
         assert props["pipeline_hash"] == "test_hash"
         assert props["version"] == "2.0.0"
         assert props["python_version"] == "3.10"

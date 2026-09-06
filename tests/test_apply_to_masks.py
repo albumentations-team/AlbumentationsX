@@ -21,7 +21,6 @@ def test_crop_apply_to_mask_single(transform_class, init_params, expected_shape,
     transform = transform_class(**init_params, p=1.0)
     mask = np.random.randint(0, 2, mask_shape, dtype=np.uint8)
 
-    # Apply the transform through Compose
     aug = A.Compose([transform])
     result = aug(image=np.zeros((100, 120, 3), dtype=np.uint8), mask=mask)
 
@@ -34,10 +33,8 @@ def test_crop_apply_to_mask_single(transform_class, init_params, expected_shape,
 def test_crop_apply_to_mask_empty_channels():
     """Test that apply_to_mask handles empty channel dimension correctly."""
     transform = A.Crop(x_min=10, y_min=10, x_max=60, y_max=60, p=1.0)
-    # Create mask with 0 channels (empty)
     mask = np.empty((100, 100, 0), dtype=np.uint8)
 
-    # Apply the transform through Compose
     aug = A.Compose([transform])
     result = aug(image=np.zeros((100, 100, 3), dtype=np.uint8), mask=mask)
 
@@ -68,7 +65,6 @@ def test_crop_apply_to_masks_batch(transform_class, init_params, expected_shape,
 
     masks = np.random.randint(0, 2, masks_shape, dtype=np.uint8)
 
-    # Apply the transform through Compose
     aug = A.Compose([transform])
     result = aug(image=np.zeros((100, 120, 3), dtype=np.uint8), masks=masks)
 
@@ -82,10 +78,8 @@ def test_crop_apply_to_masks_batch(transform_class, init_params, expected_shape,
 def test_crop_apply_to_masks_empty_batch():
     """Test that apply_to_masks handles empty batch correctly."""
     transform = A.Crop(x_min=10, y_min=10, x_max=60, y_max=60, p=1.0)
-    # Create empty batch of masks
     masks = np.empty((0, 100, 100), dtype=np.uint8)
 
-    # Apply the transform through Compose
     aug = A.Compose([transform])
     result = aug(image=np.zeros((100, 100, 3), dtype=np.uint8), masks=masks)
 
@@ -97,10 +91,8 @@ def test_crop_apply_to_masks_empty_batch():
 def test_crop_apply_to_masks_empty_batch_with_channels():
     """Test that apply_to_masks handles empty batch with channels correctly."""
     transform = A.Crop(x_min=10, y_min=10, x_max=60, y_max=60, p=1.0)
-    # Create empty batch of masks with channels
     masks = np.empty((0, 100, 100, 3), dtype=np.uint8)
 
-    # Apply the transform through Compose
     aug = A.Compose([transform])
     result = aug(image=np.zeros((100, 100, 3), dtype=np.uint8), masks=masks)
 
@@ -117,7 +109,6 @@ def test_flip_apply_to_mask_single(transform_class, mask_shape):
     transform = transform_class(p=1.0)
     mask = np.random.randint(0, 2, mask_shape, dtype=np.uint8)
 
-    # Apply the transform through Compose
     aug = A.Compose([transform])
     result = aug(image=np.zeros((80, 120, 3), dtype=np.uint8), mask=mask)
 
@@ -138,10 +129,8 @@ def test_flip_apply_to_mask_empty_channels():
     """Test that HorizontalFlip and VerticalFlip handle empty channel dimension correctly."""
     for transform_class in [A.HorizontalFlip, A.VerticalFlip]:
         transform = transform_class(p=1.0)
-        # Create mask with 0 channels (empty)
         mask = np.empty((80, 120, 0), dtype=np.uint8)
 
-        # Apply the transform through Compose
         aug = A.Compose([transform])
         result = aug(image=np.zeros((80, 120, 3), dtype=np.uint8), mask=mask)
 
@@ -178,7 +167,6 @@ def test_flip_apply_to_masks_batch(transform_class, num_masks, channels):
 
     masks = np.random.randint(0, 2, masks_shape, dtype=np.uint8)
 
-    # Apply the transform through Compose
     aug = A.Compose([transform])
     result = aug(image=np.zeros((80, 120, 3), dtype=np.uint8), masks=masks)
 
@@ -196,10 +184,8 @@ def test_flip_apply_to_masks_empty_batch():
     """Test that HorizontalFlip and VerticalFlip handle empty batch correctly."""
     for transform_class in [A.HorizontalFlip, A.VerticalFlip]:
         transform = transform_class(p=1.0)
-        # Create empty batch of masks
         masks = np.empty((0, 80, 120), dtype=np.uint8)
 
-        # Apply the transform through Compose
         aug = A.Compose([transform])
         result = aug(image=np.zeros((80, 120, 3), dtype=np.uint8), masks=masks)
 
@@ -322,14 +308,11 @@ def test_d4_empty_mask3d_dimension_handling(group_element, expected_swap):
 def test_crop_apply_to_mask3d_empty():
     """Test that apply_to_mask3d handles empty mask correctly."""
     transform = A.Crop(x_min=10, y_min=10, x_max=60, y_max=60, p=1.0)
-    # Create empty mask3d (0 depth)
     mask3d = np.empty((0, 100, 100), dtype=np.uint8)
 
-    # Apply the transform through Compose
     aug = A.Compose([transform])
     result = aug(image=np.zeros((100, 100, 3), dtype=np.uint8), mask3d=mask3d)
 
-    # Check correct shape
     assert result["mask3d"].shape == (0, 50, 50)
     assert result["mask3d"].dtype == np.uint8
 
@@ -342,7 +325,6 @@ def test_flip_apply_to_mask3d(transform_class):
     # mask3d has shape (D, H, W)
     mask3d = np.random.randint(0, 2, (10, 100, 100), dtype=np.uint8)
 
-    # Apply the transform through Compose
     aug = A.Compose([transform])
     result = aug(image=np.zeros((100, 100, 3), dtype=np.uint8), mask3d=mask3d)
 
@@ -357,14 +339,11 @@ def test_flip_apply_to_mask3d_empty():
     """Test that HorizontalFlip and VerticalFlip handle empty mask3d correctly."""
     for transform_class in [A.HorizontalFlip, A.VerticalFlip]:
         transform = transform_class(p=1.0)
-        # Create empty mask3d (0 depth)
         mask3d = np.empty((0, 80, 120), dtype=np.uint8)
 
-        # Apply the transform through Compose
         aug = A.Compose([transform])
         result = aug(image=np.zeros((80, 120, 3), dtype=np.uint8), mask3d=mask3d)
 
-        # Check correct shape
         assert result["mask3d"].shape == (0, 80, 120)
         assert result["mask3d"].dtype == np.uint8
 

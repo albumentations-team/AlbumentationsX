@@ -29,7 +29,7 @@ from tests.conftest import RECTANGULAR_UINT8_IMAGE
         (np.array([10 * np.pi, 100 * np.pi]), np.array([0, 0])),
     ],
 )
-def test_angle_to_2pi_range(input_angles, expected_angles):
+def test_angle_to_2pi_range_arrays(input_angles, expected_angles):
     result = angle_to_2pi_range(input_angles)
     np.testing.assert_allclose(result, expected_angles, atol=1e-7)
 
@@ -281,22 +281,6 @@ def test_convert_keypoints_to_albumentations(
 def test_convert_keypoints_to_albumentations_invalid_format():
     with pytest.raises(ValueError, match="Unknown source_format"):
         convert_keypoints_to_albumentations(np.array([[10, 20]]), "invalid_format", (100, 100))
-
-
-@pytest.mark.parametrize(
-    "angle, expected",
-    [
-        (0, 0),
-        (np.pi, np.pi),
-        (2 * np.pi, 0),
-        (3 * np.pi, np.pi),
-        (-np.pi, np.pi),
-        (-2 * np.pi, 0),
-    ],
-)
-def test_angle_to_2pi_range(angle, expected):
-    result = angle_to_2pi_range(np.array([angle]))
-    np.testing.assert_allclose(result, [expected], rtol=1e-5, atol=1e-8)
 
 
 @pytest.mark.parametrize(
@@ -655,6 +639,7 @@ def test_compose_with_additional_targets() -> None:
         [np.pi, np.pi],
         [3 * np.pi / 2, 3 * np.pi / 2],
         [2 * np.pi, 0],
+        [3 * np.pi, np.pi],
         [-np.pi / 2, 3 * np.pi / 2],
         [-np.pi, np.pi],
         [-3 * np.pi / 2, np.pi / 2],

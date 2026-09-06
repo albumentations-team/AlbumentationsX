@@ -160,7 +160,6 @@ class SimpleNMF:
         # Start with known H&E colors
         stain_colors = self.initial_colors.copy()
 
-        # Initialize concentrations based on projection onto initial colors
         # This gives us a physically meaningful starting point
         stain_colors_normalized = normalize_vectors(stain_colors)
 
@@ -176,7 +175,6 @@ class SimpleNMF:
                 denominator = stain_concentrations @ (stain_colors @ stain_colors.T)
                 stain_concentrations *= numerator / (denominator + eps)
 
-                # Ensure non-negativity
                 stain_concentrations = np.maximum(stain_concentrations, 0)
 
                 # Update colors
@@ -184,7 +182,6 @@ class SimpleNMF:
                 denominator = (stain_concentrations.T @ stain_concentrations) @ stain_colors
                 stain_colors *= numerator / (denominator + eps)
 
-                # Ensure non-negativity and normalize
                 stain_colors = np.maximum(stain_colors, 0)
                 stain_colors = normalize_vectors(stain_colors)
 
@@ -319,10 +316,8 @@ class MacenkoNormalizer(StainNormalizer):
             angular_percentile (float): Angular percentile.
 
         """
-        # Step 1: Convert RGB to optical density (OD) space
         optical_density = rgb_to_optical_density(img)
 
-        # Step 2: Remove background pixels
         od_threshold = 0.05
         threshold_mask = (optical_density > od_threshold).any(axis=1)
         tissue_density = optical_density[threshold_mask]
@@ -330,7 +325,6 @@ class MacenkoNormalizer(StainNormalizer):
         if len(tissue_density) < 1:
             raise ValueError(f"No tissue pixels found (threshold={od_threshold})")
 
-        # Step 3: Compute covariance matrix
         tissue_density = np.ascontiguousarray(tissue_density, dtype=np.float32)
         covariance_mean = np.empty((0,), dtype=np.float32)
         od_covariance = cast(
@@ -342,12 +336,10 @@ class MacenkoNormalizer(StainNormalizer):
             )[0],
         )
 
-        # Step 4: Get principal components
         eigenvalues, eigenvectors = cv2.eigen(od_covariance)[1:]
         idx = np.argsort(eigenvalues.ravel())[-2:]
         principal_eigenvectors = np.ascontiguousarray(eigenvectors[:, idx], dtype=np.float32)
 
-        # Step 5: Project onto eigenvector plane
         # Add small epsilon to avoid numerical instability
         epsilon = 1e-8
         if np.any(np.abs(principal_eigenvectors) < epsilon):
@@ -365,17 +357,14 @@ class MacenkoNormalizer(StainNormalizer):
         with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
             plane_coordinates = safe_tissue_density @ principal_eigenvectors
 
-        # Step 6: Find angles of extreme points
         polar_angles = np.arctan2(
             plane_coordinates[:, 1],
             plane_coordinates[:, 0],
         )
 
-        # Get robust angle estimates
         hematoxylin_angle = np.percentile(polar_angles, 100 - angular_percentile)
         eosin_angle = np.percentile(polar_angles, angular_percentile)
 
-        # Step 7: Convert angles back to RGB space
         hem_cos, hem_sin = np.cos(hematoxylin_angle), np.sin(hematoxylin_angle)
         eos_cos, eos_sin = np.cos(eosin_angle), np.sin(eosin_angle)
 
@@ -384,7 +373,6 @@ class MacenkoNormalizer(StainNormalizer):
             dtype=np.float32,
         )
 
-        # Ensure both matrices have the same data type for cv2.gemm
         principal_eigenvectors_t = np.ascontiguousarray(principal_eigenvectors.T, dtype=np.float32)
         empty_matrix = np.empty((0,), dtype=np.float32)
         stain_vectors = cast(
@@ -398,10 +386,8 @@ class MacenkoNormalizer(StainNormalizer):
             ),
         )
 
-        # Step 8: Ensure non-negativity by taking absolute values
         stain_vectors = np.abs(stain_vectors)
 
-        # Step 9: Normalize vectors to unit length
         stain_norms = np.sqrt(
             np.asarray(reduce_sum(stain_vectors**2, axis=1, keepdims=True), dtype=np.float32) + epsilon,
         )
@@ -423,7 +409,6 @@ def get_tissue_mask(img: ImageType, threshold: float = 0.85) -> np.ndarray:
         np.ndarray: Binary mask where True indicates tissue regions
 
     """
-    # Convert to grayscale using RGB weights: R*0.299 + G*0.587 + B*0.114
     luminosity = img[..., 0] * 0.299 + img[..., 1] * 0.587 + img[..., 2] * 0.114
 
     # Tissue is darker, so we want pixels below threshold

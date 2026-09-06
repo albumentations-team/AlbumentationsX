@@ -713,7 +713,6 @@ class SafeRotate(Affine):
         height, width = image_shape[:2]
         rotation_mat = cv2.getRotationMatrix2D(center, angle, 1.0)
 
-        # Calculate new image size
         abs_cos = abs(rotation_mat[0, 0])
         abs_sin = abs(rotation_mat[0, 1])
         new_w = int(height * abs_sin + width * abs_cos)
@@ -723,11 +722,9 @@ class SafeRotate(Affine):
         rotation_mat[0, 2] += new_w / 2 - center[0]
         rotation_mat[1, 2] += new_h / 2 - center[1]
 
-        # Calculate scaling factors
         scale_x = width / new_w
         scale_y = height / new_h
 
-        # Create scaling matrix
         scale_mat = np.array([[scale_x, 0, 0], [0, scale_y, 0], [0, 0, 1]])
 
         # Combine rotation and scaling

@@ -443,7 +443,6 @@ def pad_along_axes(
     pad_width[h_axis] = (pad_top, pad_bottom)
     pad_width[w_axis] = (pad_left, pad_right)
 
-    # Initialize kwargs with mode
     kwargs: dict[str, Any] = {"mode": np_mode}
     # Add constant_values only if mode is constant
     if np_mode == "constant":

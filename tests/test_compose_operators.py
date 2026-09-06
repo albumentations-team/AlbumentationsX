@@ -69,11 +69,9 @@ def test_compose_add_single_transform_equivalence(
     # Base compose kwargs (no seed during init)
     compose_kwargs = {"p": 1.0}
 
-    # Create fresh instances for base compose
     base_transforms = [cls(p=1.0) for cls in base_transform_classes]
     base_compose = compose_class(base_transforms, **compose_kwargs)
 
-    # Create fresh instances for expected compose
     expected_transforms = [cls(p=1.0) for cls in base_transform_classes] + [additional_transform_class(p=1.0)]
     expected_compose = compose_class(expected_transforms, **compose_kwargs)
 
@@ -85,7 +83,6 @@ def test_compose_add_single_transform_equivalence(
     expected_compose.set_random_seed(137)
     result_compose.set_random_seed(137)
 
-    # Apply both compositions to the same data
     data = {"image": sample_image, "mask": sample_mask}
 
     expected_result = expected_compose(**data)
@@ -120,11 +117,9 @@ def test_compose_add_multiple_transforms_equivalence(
     # Base compose kwargs (no seed during init)
     compose_kwargs = {"p": 1.0}
 
-    # Create fresh instances for base compose
     base_transforms = [cls(p=1.0) for cls in base_transform_classes]
     base_compose = compose_class(base_transforms, **compose_kwargs)
 
-    # Create fresh instances for expected compose
     expected_transforms = [cls(p=1.0) for cls in base_transform_classes] + [
         cls(p=1.0) for cls in additional_transform_classes
     ]
@@ -138,7 +133,6 @@ def test_compose_add_multiple_transforms_equivalence(
     expected_compose.set_random_seed(137)
     result_compose.set_random_seed(137)
 
-    # Apply both compositions to the same data
     data = {"image": sample_image, "mask": sample_mask}
 
     expected_result = expected_compose(**data)
@@ -171,11 +165,9 @@ def test_compose_radd_single_transform_equivalence(
     # Base compose kwargs (no seed during init)
     compose_kwargs = {"p": 1.0}
 
-    # Create fresh instances for base compose
     base_transforms = [cls(p=1.0) for cls in base_transform_classes]
     base_compose = compose_class(base_transforms, **compose_kwargs)
 
-    # Create fresh instances for expected compose
     expected_transforms = [additional_transform_class(p=1.0)] + [cls(p=1.0) for cls in base_transform_classes]
     expected_compose = compose_class(expected_transforms, **compose_kwargs)
 
@@ -187,7 +179,6 @@ def test_compose_radd_single_transform_equivalence(
     expected_compose.set_random_seed(137)
     result_compose.set_random_seed(137)
 
-    # Apply both compositions to the same data
     data = {"image": sample_image, "mask": sample_mask}
 
     expected_result = expected_compose(**data)
@@ -220,11 +211,9 @@ def test_compose_radd_multiple_transforms_equivalence(
     # Base compose kwargs (no seed during init)
     compose_kwargs = {"p": 1.0}
 
-    # Create fresh instances for base compose
     base_transforms = [cls(p=1.0) for cls in base_transform_classes]
     base_compose = compose_class(base_transforms, **compose_kwargs)
 
-    # Create fresh instances for expected compose
     expected_transforms = [cls(p=1.0) for cls in additional_transform_classes] + [
         cls(p=1.0) for cls in base_transform_classes
     ]
@@ -238,7 +227,6 @@ def test_compose_radd_multiple_transforms_equivalence(
     expected_compose.set_random_seed(137)
     result_compose.set_random_seed(137)
 
-    # Apply both compositions to the same data
     data = {"image": sample_image, "mask": sample_mask}
 
     expected_result = expected_compose(**data)
@@ -251,7 +239,6 @@ def test_compose_radd_multiple_transforms_equivalence(
 
 def test_compose_subtract_transform_equivalence(sample_image, sample_mask):
     """Test that compose - TransformClass removes the first transform of that class."""
-    # Create compose with different transform types
     compose = A.Compose([A.HorizontalFlip(p=0.5), A.VerticalFlip(p=1.0), A.Blur(p=0.3)], p=1.0)
 
     # Remove HorizontalFlip by class
@@ -264,7 +251,6 @@ def test_compose_subtract_transform_equivalence(sample_image, sample_mask):
     reduced_compose.set_random_seed(137)
     expected_compose.set_random_seed(137)
 
-    # Apply both compositions to the same data
     data = {"image": sample_image, "mask": sample_mask}
 
     expected_result = expected_compose(**data)
@@ -284,7 +270,6 @@ def test_compose_subtract_transform_equivalence(sample_image, sample_mask):
 
 def test_compose_subtract_by_class(sample_image, sample_mask):
     """Test that compose - TransformClass removes the first transform of that class."""
-    # Create compose with different instances of the same class
     transform_a = A.HorizontalFlip(p=0.5)
     transform_b = A.VerticalFlip(p=1.0)
     transform_c = A.HorizontalFlip(p=1.0)  # Different instance, different p value
@@ -301,7 +286,6 @@ def test_compose_subtract_by_class(sample_image, sample_mask):
     reduced_compose.set_random_seed(137)
     expected_compose.set_random_seed(137)
 
-    # Apply both compositions to the same data
     data = {"image": sample_image, "mask": sample_mask}
 
     expected_result = expected_compose(**data)
@@ -419,7 +403,6 @@ def test_compose_operators_preserve_params(
     else:
         assert result_compose.processors.get("keypoints") is None
 
-    # Test functionality with data
     data = {"image": sample_image, "mask": sample_mask}
 
     if bbox_params:
@@ -461,7 +444,6 @@ def test_compose_operators_preserve_additional_targets(sample_image):
     # Verify additional_targets are preserved
     assert result_compose.additional_targets == additional_targets
 
-    # Test functionality
     mask2 = np.random.randint(0, 2, (100, 100), dtype=np.uint8)
     data = {
         "image": sample_image,
@@ -530,11 +512,9 @@ def test_special_compose_classes_add_operations(compose_class, sample_image, sam
     # No seed during initialization
     compose_kwargs = {"p": 1.0}
 
-    # Create fresh instances for base compose
     base_transforms = [A.HorizontalFlip(p=1.0), A.VerticalFlip(p=1.0)]
     base_compose = compose_class(base_transforms, **compose_kwargs)
 
-    # Create fresh instances for expected compose
     expected_transforms = [A.HorizontalFlip(p=1.0), A.VerticalFlip(p=1.0), A.Blur(p=1.0)]
     expected_compose = compose_class(expected_transforms, **compose_kwargs)
 
@@ -561,7 +541,6 @@ def test_selective_channel_transform_operators(sample_image):
     assert result_compose.channels == [0, 1]
     assert len(result_compose.transforms) == 2
 
-    # Test functionality
     data = {"image": sample_image}
     result = result_compose(**data)
     assert "image" in result

@@ -39,7 +39,6 @@ class ValidatedTransformMeta(type):
         # Note: Cannot use strict=True here because args may be shorter than param_names (defaults)
         full_kwargs: dict[str, Any] = dict(zip(param_names, args)) | kwargs  # noqa: B905
 
-        # Get strict value before validation
         strict = full_kwargs.pop("strict", False)
 
         # Add default values if not provided

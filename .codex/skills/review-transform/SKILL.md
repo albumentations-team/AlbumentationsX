@@ -1,104 +1,54 @@
 ---
 name: review-transform
-description: Run the full shared Codex review checklist against a transform. Use when the user asks to review, audit, or check a transform for correctness, performance, or API consistency.
+description: Review an AlbumentationsX transform for correctness, public API coherence, performance, documentation, and test coverage.
 ---
 
-# Review Transform
+# Review a transform
 
-Run these checks in order. Report issues with severity: 🔴 Critical, 🟡 Important, 🟢 Suggestion.
+Start with `pre-commit run check-ax-rules --all-files`. Report failing diagnostics with their rule and location.
+The hook and [Coding Guidelines](../../../docs/contributing/coding_guidelines.md) own deterministic source contracts.
+Then review the behavior the hook cannot prove.
 
-## 1. Dead Code (🔴 Critical)
+## Correctness and API
 
-- Any methods defined but never called within the class or externally
-- Unused imports at the top of the file
-- Unreachable branches (`if False:`, conditions that can never be true)
+- Check the mathematical operation, coordinate boundaries, dtype range, and annotation semantics.
+- Verify that constructor fields, validators, and defaults express a coherent public policy.
+- Check empty inputs, ownership, aliasing, and unsupported input handling through the public route.
+- Distinguish public grayscale inputs from internal execution: Compose normalizes NumPy inputs to explicit channels
+  before dispatch. Use [NumPy and Tensor routing](../../../docs/design/numpy-tensor-routing.md) for boundary changes.
+- Take bbox type from `BboxParams.bbox_type`, never column count. Convert OpenCV rotated rectangles through
+  `cv2.boxPoints` and `polygons_to_obb`.
+- Remove unreachable code and unused helpers after checking external callers and inherited dispatch.
 
-## 2. Correctness
+## Sampling and replay
 
-- Mathematical/logical errors in the transform
-- Off-by-one errors in coordinate handling
-- Incorrect dtype preservation (uint8 in → uint8 out, float32 in → float32 out)
-- BBox/keypoint coordinate correctness after spatial transforms
-- Do not request 2D grayscale compatibility for Compose paths: images and volume data are channel-last with explicit
-  channels (`(H,W,C)`, `(N,H,W,C)`, `(D,H,W,C)`), and grayscale is `(H,W,1)`.
-- **Never auto-detect bbox type from column count** — type comes from `BboxParams.bbox_type`
-- For OBB: never use raw `cv2.minAreaRect` output; use `cv2.boxPoints` then `polygons_to_obb`
+Use [Applied Configuration Replay Contracts](../../../docs/design/applied-config-replay-contracts.md) when reviewing
+constructor serialization, applied configuration, or `ReplayCompose`.
 
-## 3. Mechanical AX contracts (🔴 Critical)
+- Identify what is sampled per invocation and which constructor fields remain policy.
+- Check target prerequisites, deterministic sampling, and representation-dependent parameters.
+- Verify that applied configuration records realized constructor values and clears conflicting source policy fields.
+- Claim exact replay only when the recorded configuration captures every output-changing random value.
+- Reconstruct through the public API and execute on fresh equivalent data without mutating caller-owned inputs.
 
-Run `pre-commit run check-ax-rules --all-files` first. Report a failing `AXG` diagnostic exactly; otherwise record
-that the hook passed. Keep the deterministic contract and its exceptions in
-`docs/contributing/coding_guidelines.md`.
+## Performance
 
-Use human review for what the hook cannot decide: whether constructor fields express a coherent public API, whether
-validators preserve intended semantics, and whether a proposed functional operation belongs in Albucore.
+Read [Performance Optimization](../performance-optimization/SKILL.md) and its required reference before inspecting
+runtime code. Tie each proposed optimization to an affected route and a measurement. Consider removable work,
+existing Albucore primitives, allocation and conversion costs, and setup that can be shared across a batch.
 
-## 4. Sampling design (🔴 Critical)
+## Documentation and tests
 
-Review the policy and replay boundary, not the hook's syntax checks:
+Use [Public docstring review](../docstring-deep-dive/SKILL.md) for reader-facing quality and
+[Generated Transform Target Contracts](../../../docs/design/transform-target-contracts.md) for coverage.
 
-- What is sampled per invocation, and which constructor fields remain policy rather than realized state?
-- Does target-dependent sampling declare its required data and produce the same result for the same invocation seed?
-- Does `applied_config` record every realized constructor value needed for reconstruction and clear a conflicting source
-  policy field?
-- Is `ReplayProfile.EXACT` claimed only when the emitted configuration captures every output-changing random value?
-- Does the reconstructed transform execute on fresh equivalent data without mutating caller-owned inputs?
+- Register each public constructor mode, including mutually exclusive behavior.
+- Derive target-profile applicability from declared capabilities and prerequisites.
+- Keep focused tests for semantic properties the generated profiles cannot express.
+- Check strict JSON transport, public reconstruction, fresh-data execution, and the declared replay strength.
 
-Read `docs/design/applied-config-replay-contracts.md` when a finding concerns constructor serialization, applied
-configuration, or `ReplayCompose` rather than local sampling logic.
+## Report
 
-## 5. Type Safety (🔴 Critical)
-
-- [ ] All methods have complete type hints
-- [ ] `ImageType` used for image/mask/volume params and return types (not `np.ndarray`)
-- [ ] `np.ndarray` used for bboxes and keypoints only
-- [ ] No unsafe type conversions or missing dtype handling
-
-## 6. Performance (🟡 Important)
-
-Read `../performance-optimization/SKILL.md` and its required reference completely before reviewing this section.
-
-Report only an applicable missed candidate: work that can be deleted, an existing Albucore primitive, an unsafe
-allocation or conversion, an unexamined backend, or setup that can be shared across a batch. Tie the finding to the
-affected public route and benchmark evidence; do not request an optimization merely because its pattern is generally
-faster.
-
-## 7. Documentation (🟡 Important)
-
-Use `docstring-deep-dive` for public-docstring quality. Review whether the description lets a user choose the transform,
-and whether each example demonstrates the targets and configuration that the transform actually supports.
-
-## 8. Test Coverage (🟡 Important)
-
-- Does every public constructor mode have a named registry case, including mutually exclusive behavior?
-- Do declared targets, bbox types, metadata prerequisites, and genuine channel restrictions produce the expected
-  generated target-profile pairs without class-name branches or skips?
-- Does a focused test state a stronger semantic property than the generated cluster already covers?
-- Does replay cross strict JSON, reconstruct publicly, and execute on fresh data at the declared strength?
-
-Use `docs/design/transform-target-contracts.md` and `docs/design/applied-config-replay-contracts.md` for the exact
-registry and profile contracts.
-
-## 9. Code Quality (🟢 Suggestion)
-
-- [ ] No unused imports
-- [ ] No overly complex logic that could be simplified
-- [ ] Relative parameters (fractions) preferred over fixed pixel values
-- [ ] Consistent style with similar existing transforms
-
-## Reporting Format
-
-```
-## Review: <TransformName>
-
-### 🔴 Critical
-- **Dead code**: `_unused_method` is never called (line 42)
-- **AXG diagnostic**: report the exact hook rule and location (for example, `AXG008`)
-
-### 🟡 Important
-- **Performance**: The public Compose route has no baseline comparison for the proposed LUT candidate
-- **Docs**: Example does not explain the transform's target semantics
-
-### 🟢 Suggestions
-- Consider using relative `noise_range` instead of absolute pixel values
-```
+For each finding, give severity, file and line, the affected public behavior, and evidence that demonstrates the issue.
+Distinguish confirmed defects from benchmark hypotheses or design decisions. Report checks actually run and any
+unresolved validation limits. If there are no actionable findings, say so.

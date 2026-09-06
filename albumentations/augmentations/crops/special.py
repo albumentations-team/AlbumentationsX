@@ -208,7 +208,6 @@ class CropNonEmptyMaskIfExists(BaseCrop):
             non_zero_yx = non_zero_xy.reshape(-1, 2)[:, ::-1]
             y, x = sampling.py_random.choice(non_zero_yx)
 
-            # Calculate crop coordinates centered around chosen point
             x_min = x - sampling.py_random.randint(0, self.width - 1)
             y_min = y - sampling.py_random.randint(0, self.height - 1)
             x_min = np.clip(x_min, 0, mask_width - self.width)

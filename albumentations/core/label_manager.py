@@ -356,7 +356,6 @@ class LabelManager:
         """
         if data_name in self.metadata and label_field in self.metadata[data_name]:
             encoder = self.metadata[data_name][label_field].encoder
-            # Ensure encoder is LabelEncoder or None, handle potential type issues
             if isinstance(encoder, LabelEncoder):
                 return encoder
         return None

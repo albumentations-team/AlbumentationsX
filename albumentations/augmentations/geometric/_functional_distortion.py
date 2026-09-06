@@ -393,7 +393,6 @@ def generate_distorted_grid_polygons(
     grid_height, grid_width = dimensions.shape[:2]
     total_cells = grid_height * grid_width
 
-    # Initialize polygons
     polygons = np.zeros((total_cells, 8), dtype=np.float32)
     polygons[:, 0:2] = dimensions.reshape(-1, 4)[:, [0, 1]]  # x1, y1
     polygons[:, 2:4] = dimensions.reshape(-1, 4)[:, [2, 1]]  # x2, y1
@@ -461,7 +460,6 @@ def create_piecewise_affine_maps(
     if scale <= 0:
         return None, None
 
-    # Create source points grid
     y = np.linspace(0, height - 1, nb_rows, dtype=np.float32)
     x = np.linspace(0, width - 1, nb_cols, dtype=np.float32)
     xx_src, yy_src = np.meshgrid(x, y)
@@ -547,7 +545,6 @@ def compute_tps_weights(
     """
     num_points = src_points.shape[0]
 
-    # Compute pairwise distances
     distances = pairwise_distances_squared(src_points, src_points)
     kernel_matrix = _compute_tps_kernel(distances)
 
@@ -580,7 +577,6 @@ def tps_transform(
     """Apply TPS transformation to target_points given control_points and
     nonlinear_weights, affine_weights. All float32. For ThinPlateSpline remap.
     """
-    # Ensure float32 type for all inputs
     target_points = np.ascontiguousarray(target_points, dtype=np.float32)
     control_points = np.ascontiguousarray(control_points, dtype=np.float32)
     nonlinear_weights = np.ascontiguousarray(nonlinear_weights, dtype=np.float32)

@@ -154,7 +154,6 @@ def _assert_any_epoch_differs(first_batches: list[list[list[int]]]) -> None:
 
 def test_worker_seed_without_torch():
     """Test that worker seed functionality works when PyTorch is not available."""
-    # Create compose (worker-aware seed is now always enabled)
     transform = A.Compose(
         [
             A.HorizontalFlip(p=0.5),
@@ -554,7 +553,6 @@ def test_deterministic_behavior_property():
 
 def test_multiple_compose_instances():
     """Test that multiple Compose instances with same seed produce same results."""
-    # Create two instances with same configuration
     transform1 = A.Compose(
         [
             A.HorizontalFlip(p=0.5),

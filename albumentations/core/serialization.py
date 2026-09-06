@@ -49,7 +49,6 @@ def shorten_class_name(class_fullname: str) -> str:
     if split_index == -1 or not class_fullname.startswith("albumentations."):
         return class_fullname
 
-    # Extract the class name after the last '.'
     return class_fullname[split_index + 1 :]
 
 
@@ -225,7 +224,6 @@ def from_dict(
     name = transform["__class_fullname__"]
     args = {k: v for k, v in transform.items() if k != "__class_fullname__"}
 
-    # Get the transform class from registry
     cls = SERIALIZABLE_REGISTRY[shorten_class_name(name)]
 
     # Handle nested transforms
@@ -423,7 +421,6 @@ def register_additional_transforms() -> None:
     """
     if importlib.util.find_spec("torch") is not None:
         try:
-            # Import `albumentations.pytorch` only if `torch` is installed.
             import albumentations.pytorch
 
             # Use a dummy operation to acknowledge the use of the imported module and avoid linting errors.

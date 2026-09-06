@@ -25,19 +25,11 @@ Put the transform in the most specific matching subpackage:
 Read `../performance-optimization/SKILL.md` and its required reference completely before implementing the functional
 kernel.
 
-Add the pure function in the corresponding `functional.py` file (no class state, no RNG):
-
-```python
-def my_transform(img: np.ndarray, param1: float, param2: int) -> np.ndarray: ...
-```
+Implement the operation in the corresponding functional module, without transform state or invocation sampling.
 
 - Keep the functional layer deterministic; define stochastic behavior at the transform sampling boundary.
-- Delete redundant work and full-array passes before selecting a backend
-- Compare applicable NumPy, OpenCV, NumKong, StringZilla, and LUT implementations
-- Consider `np.bincount` for repeated reductions over dense non-negative integer labels
-- Move a reusable atomic image operation into Albucore instead of duplicating it locally
-- Use in-place operations only when ownership and aliasing make mutation safe
-- Use `@uint8_io` / `@float32_io` decorators if dtype conversion is needed
+- Use the performance workflow to compare kernels, remove redundant work, and check Albucore ownership.
+- Use `@uint8_io` / `@float32_io` on the owning functional operation when dtype conversion is needed.
 
 ## 3. Write the transform class
 
@@ -48,39 +40,19 @@ def my_transform(img: np.ndarray, param1: float, param2: int) -> np.ndarray: ...
   mechanical violations.
 - Use relative parameters where users should transfer a policy across image sizes.
 - Use `ImageType` for image, mask, and volume signatures; reserve `np.ndarray` for bboxes and keypoints.
-- Compose inputs always have a channel dimension: `(H, W, C)`, `(N, H, W, C)`, and `(D, H, W, C)`; grayscale is
-  `(H, W, 1)`. Do not add Compose-path compatibility branches for two-dimensional grayscale data.
+- NumPy inputs inside transform execution have explicit channel-last layouts: `(H, W, C)`, `(N, H, W, C)`, and
+  `(D, H, W, C)`; grayscale is `(H, W, 1)`. Compose normalizes public channel-free inputs before dispatch. Native
+  Tensor handlers use the channel-first layouts in [NumPy and Tensor routing](../../../docs/design/numpy-tensor-routing.md).
 - Keep reusable pixel arithmetic in `functional.py`, not in a transform class.
 
 ## 4. Add batch optimization (`apply_to_images`)
 
-Override `apply_to_images` only if you can beat the default per-image loop. Priority patterns:
+Override `apply_to_images` only when measurement shows an advantage over the default per-image loop. Keep the
+method as a thin dispatcher with explicit sampled parameters. Put the complete batch operation in a functional
+helper: shared kernel or LUT setup, direct batch indexing, empty-batch handling, and any preallocated per-image loop.
 
-**Pre-compute expensive setup once per batch** (kernels, LUTs, gradient maps):
-```python
-def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
-    kernel = create_kernel(params["size"])  # once, not N times
-    return self._apply_to_batch(images, lambda img: convolve(img, kernel))
-```
-
-**Direct 4D indexing** for simple array ops:
-```python
-def apply_to_images(self, images: ImageType, channels_to_drop: list[int], **params: Any) -> ImageType:
-    result = images.copy()
-    result[:, :, :, channels_to_drop] = self.fill
-    return result
-```
-
-**Pre-allocated loop** as fallback when params vary per image:
-```python
-def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
-    result = np.empty_like(images)
-    for i, image in enumerate(images):
-        result[i] = self.apply(image, **params)
-    return result
-```
-
-> **DO NOT** reshape `(N,H,W,1)` to `(H,W,N)` to call cv2 once — this is 2–4× slower in practice (transpose → non-contiguous copy + cv2 sequential channel processing).
+Keep batch and channel axes distinct; do not reshape `(N, H, W, 1)` into `(H, W, N)` to make one OpenCV call.
+Use [Benchmark](../benchmark/SKILL.md) to compare the direct operation and public Compose route.
 
 ## 5. Export the transform
 

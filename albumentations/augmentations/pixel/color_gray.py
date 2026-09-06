@@ -214,7 +214,6 @@ class ToGray(ImageOnlyTransform):
         return fpixel.to_gray(img, self.num_output_channels, self.method)
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
-        # Check if images are already grayscale by checking number of channels
         if images.shape[-1] == 1:
             warnings.warn("The image is already gray.", stacklevel=2)
             return images

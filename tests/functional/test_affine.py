@@ -11,7 +11,6 @@ import albumentations.augmentations.geometric.functional as fgeometric
 from albumentations.core.bbox_utils import denormalize_bboxes, normalize_bboxes
 from tests.conftest import SQUARE_UINT8_IMAGE
 
-# Define your parameter sets
 image_shapes = [
     (100, 100, 1),
     (100, 100, 2),
@@ -190,7 +189,6 @@ def test_keypoint_affine(keypoint, expected, angle, scale, dx, dy):
     height, width = 100, 200
     center = fgeometric.center((height, width))
 
-    # Create forward transformation matrix
     forward_matrix = fgeometric.create_affine_transformation_matrix(
         translate={"x": dx * width, "y": dy * height},
         shear={"x": 0, "y": 0},

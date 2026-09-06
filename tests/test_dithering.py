@@ -91,7 +91,6 @@ class TestDitheringFunctional:
 
     def test_ordered_dither(self):
         """Test ordered dithering with Bayer matrix."""
-        # Create uniform gray image
         img = np.full((8, 8, 1), 0.5, dtype=np.float32)
 
         # Test with 4x4 Bayer matrix
@@ -127,7 +126,6 @@ class TestDitheringFunctional:
 
     def test_error_diffusion_dither(self):
         """Test error diffusion dithering."""
-        # Create gradient image
         img = np.linspace(0, 1, 100).reshape(10, 10, 1).astype(np.float32)
 
         # Test Floyd-Steinberg
@@ -183,7 +181,6 @@ class TestDitheringFunctional:
     def test_apply_dithering_grayscale_mode(self):
         """Test dithering with grayscale conversion."""
         rng = np.random.default_rng(137)
-        # Create color image
         img = np.random.rand(10, 10, 3).astype(np.float32)
 
         # Test grayscale mode
@@ -203,7 +200,6 @@ class TestDitheringFunctional:
     def test_apply_dithering_per_channel(self):
         """Test per-channel dithering."""
         np.random.default_rng(137)
-        # Create color image
         img = np.random.rand(10, 10, 3).astype(np.float32)
 
         # Test per-channel mode
@@ -230,19 +226,15 @@ class TestDitheringTransform:
     @pytest.mark.parametrize("img_dtype", [np.uint8, np.float32])
     def test_dithering_methods(self, method, n_colors, img_dtype):
         """Test different dithering methods with various parameters."""
-        # Create test image
         if img_dtype == np.uint8:
             img = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
         else:
             img = np.random.rand(100, 100, 3).astype(np.float32)
 
-        # Create transform
         transform = A.Dithering(method=method, n_colors=n_colors, p=1.0)
 
-        # Apply transform
         result = transform(image=img)["image"]
 
-        # Check output
         np.testing.assert_equal(result.shape, img.shape)
         np.testing.assert_equal(result.dtype, img.dtype)
 
@@ -385,7 +377,6 @@ class TestDitheringTransform:
         # Deserialize
         deserialized = A.from_dict(serialized)
 
-        # Check parameters
         np.testing.assert_equal(deserialized.method, transform.method)
         np.testing.assert_equal(deserialized.n_colors, transform.n_colors)
         np.testing.assert_equal(deserialized.error_diffusion_algorithm, transform.error_diffusion_algorithm)

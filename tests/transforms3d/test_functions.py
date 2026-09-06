@@ -115,7 +115,6 @@ def test_filter_keypoints_in_holes3d_random():
     """Test with random data to ensure robustness."""
     rng = np.random.default_rng(42)
 
-    # Generate random keypoints and holes
     num_keypoints = 100
     num_holes = 10
     volume_size = 100
@@ -138,7 +137,6 @@ def test_filter_keypoints_in_holes3d_random():
     # Ensure z2>z1, y2>y1, x2>x1 for each hole
     holes[:, 3:] = holes[:, :3] + holes[:, 3:]
 
-    # Test function
     result = f3d.filter_keypoints_in_holes3d(keypoints, holes)
 
     # Verify each surviving point is actually outside all holes

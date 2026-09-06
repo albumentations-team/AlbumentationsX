@@ -62,7 +62,6 @@ pip install "albumentationsx[headless]"
 ```python
 import albumentations as A
 
-# Create your augmentation pipeline
 transform = A.Compose(
     [
         A.RandomCrop(width=256, height=256),
@@ -90,32 +89,25 @@ Here is an example of how you can apply some [pixel-level](#pixel-level-transfor
 
 ## Table of contents
 
-- [AlbumentationsX](#albumentationsx)
-  - [Why AlbumentationsX](#why-albumentationsx)
-  - [Table of contents](#table-of-contents)
-  - [Authors](#authors)
-    - [Current Maintainer](#current-maintainer)
-    - [Emeritus Core Team Members](#emeritus-core-team-members)
-  - [Installation](#installation)
-  - [Documentation](#documentation)
-  - [A simple example](#a-simple-example)
-  - [List of augmentations](#list-of-augmentations)
-    - [Pixel-level transforms](#pixel-level-transforms)
-    - [Spatial-level transforms](#spatial-level-transforms)
-  - [A few more examples of **augmentations**](#a-few-more-examples-of-augmentations)
-    - [Semantic segmentation on the Inria dataset](#semantic-segmentation-on-the-inria-dataset)
-    - [Medical imaging](#medical-imaging)
-    - [Object detection and semantic segmentation on the Mapillary Vistas dataset](#object-detection-and-semantic-segmentation-on-the-mapillary-vistas-dataset)
-    - [Keypoints augmentation](#keypoints-augmentation)
-  - [Benchmarking results](#benchmark-results)
-    - [System Information](#system-information)
-    - [Benchmark Parameters](#benchmark-parameters)
-    - [Library Versions](#library-versions)
-  - [Performance Comparison](#performance-comparison)
-  - [🤝 Contribute](#-contribute)
-  - [📜 License](#-license)
-  - [📞 Contact](#-contact)
-  - [Citing](#citing)
+- [Citing](#citing)
+- [Licensing](#-licensing-commercial-use-is-allowed)
+- [Quick Start](#quick-start)
+- [Why AlbumentationsX](#why-albumentationsx)
+- [Authors](#authors)
+- [Installation](#installation)
+- [Documentation](#documentation)
+- [A simple example](#a-simple-example)
+- [List of augmentations](#list-of-augmentations)
+  - [Pixel-level transforms](#pixel-level-transforms)
+  - [Spatial-level transforms](#spatial-level-transforms)
+  - [3D transforms](#3d-transforms)
+- [Augmentation examples](#a-few-more-examples-of-augmentations)
+- [Benchmark results](#benchmark-results)
+- [Performance comparison](#performance-comparison)
+- [Contribute](#-contribute)
+- [License](#-license)
+- [Contact](#-contact)
+- [Newsletter](#-stay-connected)
 
 ## Authors
 
@@ -203,7 +195,6 @@ AlbumentationsX pipelines.
 import albumentations as A
 import cv2
 
-# Declare an augmentation pipeline
 transform = A.Compose(
     [
         A.RandomCrop(width=256, height=256),
@@ -212,11 +203,8 @@ transform = A.Compose(
     ]
 )
 
-# Read an image with OpenCV and convert it to the RGB colorspace
-image = cv2.imread("image.jpg")
-image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+image = cv2.imread("image.jpg", cv2.IMREAD_COLOR_RGB)
 
-# Augment an image
 transformed = transform(image=image)
 transformed_image = transformed["image"]
 ```
@@ -418,6 +406,8 @@ Where:
 <img src="https://habrastorage.org/webt/e-/6k/z-/e-6kz-fugp2heak3jzns3bc-r8o.jpeg" width=100%>
 
 ## Benchmark Results
+
+These results cover the library versions listed below.
 
 ### Image Benchmark Results
 

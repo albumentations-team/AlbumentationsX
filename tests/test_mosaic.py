@@ -155,11 +155,9 @@ def test_mosaic_identity_with_targets() -> None:
 
     result = pipeline(**data)
 
-    # Check image
     assert result["image"].shape == img.shape
     np.testing.assert_array_equal(result["image"], img)
 
-    # Check mask
     assert result["mask"].shape == mask.shape
     np.testing.assert_array_equal(result["mask"], mask)
 
@@ -294,7 +292,6 @@ def test_mosaic_obb_basic() -> None:
 
     result = transform(**data)
 
-    # Check OBB format is preserved (5 columns)
     assert result["bboxes"].shape[1] == 5
 
 
@@ -354,7 +351,6 @@ def test_mosaic_obb_with_metadata() -> None:
 
     result = transform(**data)
 
-    # Check OBB format is preserved
     assert result["bboxes"].shape[1] == 5
     # Should have bboxes from multiple cells
     assert len(result["bboxes"]) > 0
@@ -569,7 +565,6 @@ def test_mosaic_simplified_deterministic() -> None:
     assert not np.all(result["mask"][:, :split_col] == 0)
     assert not np.all(result["mask"][:, split_col:] == 0)
 
-    # Check bboxes
     assert "bboxes" in result
     np.testing.assert_allclose(result["bboxes"], expected_bboxes, atol=1e-6)
 

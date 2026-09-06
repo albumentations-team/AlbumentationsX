@@ -419,7 +419,6 @@ def test_match_histograms(shape, channel_axis):
     our_result = our_match_histograms(source, reference)
     skimage_result = skimage_match_histograms(source, reference, channel_axis=channel_axis)
 
-    # Check shape and dtype
     assert our_result.shape == skimage_result.shape
     assert our_result.dtype == source.dtype
 

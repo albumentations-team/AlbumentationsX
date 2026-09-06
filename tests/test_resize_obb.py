@@ -51,7 +51,6 @@ class TestRandomScaleOBB:
 
         result = transform(image=image, bboxes=obb_boxes, bbox_labels=bbox_labels)
 
-        # Check all boxes are preserved
         assert len(result["bboxes"]) == 3
         np.testing.assert_allclose(result["bboxes"], obb_boxes, atol=1e-6, rtol=1e-5, equal_nan=False)
 
@@ -275,7 +274,6 @@ class TestResizeOBB:
 
         # Check shape is preserved (including extra fields)
         assert result["bboxes"].shape == obb_boxes.shape
-        # Check extra fields are preserved
         assert np.isclose(result["bboxes"][0][5], 0.95)
         assert result["bboxes"][0][6] == 137
 

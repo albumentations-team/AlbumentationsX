@@ -99,11 +99,9 @@ def shift_hsv(
         hue = sz_lut(cast("ImageUInt8", hue), lut_hue, inplace=False)
 
     if sat_shift != 0:
-        # Create a mask for all grayscale pixels (S=0)
         # These should remain grayscale regardless of saturation change
         grayscale_mask = sat == 0
 
-        # Apply saturation shift only to non-white pixels
         sat = add_constant(sat, sat_shift, inplace=True)
 
         # Reset saturation for white pixels
@@ -309,7 +307,6 @@ def _handle_mask(
         np.uint8,
         copy=False,
     )  # Use copy=False to avoid unnecessary copying
-    # Check for grayscale image and avoid slicing if i is None
     if i is not None and not is_grayscale_image(mask):
         mask = mask[..., i]
 
@@ -386,7 +383,6 @@ def equalize(
     result_img = np.empty_like(img)
     for i in range(get_num_channels(img)):
         _mask = _handle_mask(mask, i)
-        # Extract channel, process, and ensure we maintain 2D shape
         channel_result = function(img[..., i], _mask)
         # Remove any extra dimensions that might have been added
         if channel_result.ndim > 2:
@@ -1195,14 +1191,12 @@ def to_gray_pca(img: ImageType) -> ImageType:
 
     """
     dtype = img.dtype
-    # Reshape the image to a 2D array of pixels
     pixels = img.reshape(-1, img.shape[-1])
 
     # Perform PCA
     pca = PCA(n_components=1, dtype=np.float32)
     pca_result = pca.fit_transform(pixels)
 
-    # Reshape back to image dimensions and scale to 0-255
     grayscale = pca_result.reshape(img.shape[:-1])
     grayscale = normalize_per_image(grayscale, "min_max")
 

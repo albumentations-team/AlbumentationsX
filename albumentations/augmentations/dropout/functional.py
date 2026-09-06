@@ -134,7 +134,6 @@ def apply_inpainting(img: ImageType, holes: np.ndarray, method: Literal["inpaint
 
     """
     num_channels = get_num_channels(img)
-    # Create inpainting mask
     mask = np.zeros(img.shape[:2], dtype=np.uint8)
     for x_min, y_min, x_max, y_max in holes:
         mask[y_min:y_max, x_min:x_max] = 255
@@ -412,7 +411,6 @@ def cutout(
             return fill_holes_with_grayscale(img, holes)
         raise ValueError(f"Unsupported string fill: {fill}")
 
-    # Convert numeric fill values to numpy array
     if isinstance(fill, (int, float)):
         fill_array = np.array(fill, dtype=img.dtype)
         return fill_holes_with_value(img, holes, fill_array)
@@ -463,7 +461,6 @@ def cutout_on_volume(
         if fill in {"inpaint_telea", "inpaint_ns"}:
             processed_images = [apply_inpainting(img, holes, fill) for img in volume]
             result = np.array(processed_images)
-            # Reshape to original volume shape: (D, H, W, C) or (D, H, W)
             return cast("ImageType", result.reshape(volume.shape))
         if fill == "random":
             return fill_volume_holes_with_random(volume, holes, random_generator, uniform=False)
@@ -473,7 +470,6 @@ def cutout_on_volume(
             return fill_volume_holes_with_grayscale(volume, holes)
         raise ValueError(f"Unsupported string fill: {fill}")
 
-    # Convert numeric fill values to numpy array
     if isinstance(fill, (int, float)):
         fill_array = np.array(fill, dtype=volume.dtype)
         return fill_volume_holes_with_value(volume, holes, fill_array)
@@ -517,7 +513,6 @@ def filter_keypoints_in_holes(keypoints: np.ndarray, holes: np.ndarray) -> np.nd
     hole_x2 = holes[:, 2]  # Shape: (num_holes,)
     hole_y2 = holes[:, 3]  # Shape: (num_holes,)
 
-    # Check if each keypoint is inside each hole
     inside_hole = (kp_x >= hole_x1) & (kp_x < hole_x2) & (kp_y >= hole_y1) & (kp_y < hole_y2)
 
     # A keypoint is valid if it's not inside any hole
@@ -534,7 +529,6 @@ def resize_boxes_to_visible_area(
     """Resize boxes to largest visible rectangular region inside hole_mask. boxes (N,4);
     hole_mask: binary. Returns resized boxes for dropout bbox handling.
     """
-    # Extract box coordinates
     x1 = boxes[:, 0].astype(int)
     y1 = boxes[:, 1].astype(int)
     x2 = boxes[:, 2].astype(int)
@@ -566,8 +560,6 @@ def resize_boxes_to_visible_area(
 
         new_boxes.append(new_box)
 
-        # Return empty array with correct shape if all boxes were removed
-
     return np.array(new_boxes) if new_boxes else np.zeros((0, boxes.shape[1]), dtype=boxes.dtype)
 
 
@@ -597,7 +589,6 @@ def filter_bboxes_by_holes(
     if len(bboxes) == 0 or len(holes) == 0:
         return bboxes
 
-    # Create hole mask
     hole_mask = np.zeros(image_shape, dtype=np.uint8)
     for hole in holes:
         x_min, y_min, x_max, y_max = hole.astype(int)
@@ -750,13 +741,11 @@ def generate_grid_holes(
     # Generate the uniform grid
     cells = split_uniform_grid(image_shape, grid, random_generator)
 
-    # Calculate hole sizes based on the ratio
     cell_heights = cells[:, 2] - cells[:, 0]
     cell_widths = cells[:, 3] - cells[:, 1]
     hole_heights = np.clip(cell_heights * ratio, 1, cell_heights - 1).astype(int)
     hole_widths = np.clip(cell_widths * ratio, 1, cell_widths - 1).astype(int)
 
-    # Calculate maximum possible offsets
     max_offset_y = cell_heights - hole_heights
     max_offset_x = cell_widths - hole_widths
 
@@ -769,7 +758,6 @@ def generate_grid_holes(
         offset_y = np.full_like(max_offset_y, shift_xy[1])
         offset_x = np.full_like(max_offset_x, shift_xy[0])
 
-    # Calculate hole coordinates
     x_min = np.clip(cells[:, 1] + offset_x, 0, width - hole_widths)
     y_min = np.clip(cells[:, 0] + offset_y, 0, height - hole_heights)
     x_max = np.minimum(x_min + hole_widths, width)
@@ -802,7 +790,6 @@ def mask_dropout_bboxes(
     """
     height, width = image_shape
 
-    # Ensure dropout_mask is 2D
     if dropout_mask.ndim > 2:
         if dropout_mask.shape[0] == 1:  # Shape is (1, H, W)
             dropout_mask = dropout_mask.squeeze(0)
@@ -850,7 +837,6 @@ def mask_dropout_bboxes(
         where=box_areas != 0,
     )
 
-    # Create a boolean mask for boxes to keep
     keep_mask = (visible_areas >= min_area) & (visibility_ratio >= min_visibility)
 
     return bboxes[keep_mask]
@@ -872,7 +858,6 @@ def mask_dropout_keypoints(
         np.ndarray: Filtered keypoints
 
     """
-    # Ensure dropout_mask is 2D
     if dropout_mask.ndim > 2:
         if dropout_mask.shape[0] == 1:  # Shape is (1, H, W)
             dropout_mask = dropout_mask.squeeze(0)
@@ -881,7 +866,6 @@ def mask_dropout_keypoints(
         else:  # Shape is (C, H, W)
             dropout_mask = np.any(dropout_mask, axis=0)
 
-    # Get coordinates as integers
     coords = keypoints[:, :2].astype(int)
 
     # Filter out keypoints that are outside the mask dimensions
@@ -918,10 +902,8 @@ def label(mask: np.ndarray, return_num: bool = False, connectivity: int = 2) -> 
         assigned the same integer value. If return_num is True, it also returns the number of labels.
 
     """
-    # Create a copy of the original mask
     labeled = np.zeros_like(mask, dtype=np.int32)
 
-    # Get unique non-zero values from the original mask
     unique_values = np.unique(mask[mask != 0])
 
     # Label each unique value separately
@@ -929,7 +911,6 @@ def label(mask: np.ndarray, return_num: bool = False, connectivity: int = 2) -> 
     for value in unique_values:
         binary_mask = (mask == value).astype(np.uint8)
 
-        # Set connectivity for OpenCV (4 or 8)
         cv2_connectivity = 4 if connectivity == 1 else 8
 
         # Use OpenCV's connectedComponents
@@ -957,7 +938,6 @@ def get_holes_from_boxes(
     """
     num_boxes = len(target_boxes)
 
-    # Get box dimensions (N, )
     box_widths = target_boxes[:, 2] - target_boxes[:, 0]
     box_heights = target_boxes[:, 3] - target_boxes[:, 1]
 
@@ -988,7 +968,6 @@ def get_holes_from_boxes(
         box_heights[:, None] - hole_heights
     )
 
-    # Calculate final coordinates (N, num_holes)
     x_min = target_boxes[:, 0, None] + x_offsets
     y_min = target_boxes[:, 1, None] + y_offsets
     x_max = x_min + hole_widths
@@ -1076,7 +1055,6 @@ def get_holes_from_mask(
         np.ndarray: Holes (n, 4) [x1,y1,x2,y2].
 
     """
-    # Create binary mask for target indices
     binary_mask = np.isin(mask[:, :, 0], np.array(mask_indices))
     if not np.any(binary_mask):  # If no target objects found
         return np.array([], dtype=np.int32).reshape((0, 4))
@@ -1107,7 +1085,6 @@ def get_holes_from_mask(
         * obj_sizes
     )
 
-    # Calculate hole coordinates around centers
     half_heights = hole_heights // 2
     half_widths = hole_widths // 2
 

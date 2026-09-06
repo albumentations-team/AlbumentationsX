@@ -18,7 +18,6 @@ def get_user_config_dir() -> Path:
     """Return the base config directory: XDG_CONFIG_HOME on Unix, APPDATA on Windows.
     Overridable with ALBUMENTATIONS_CONFIG_DIR.
     """
-    # Check for environment variable override
     if config_dir := os.environ.get("ALBUMENTATIONS_CONFIG_DIR"):
         return Path(config_dir)
 
@@ -81,7 +80,6 @@ class UserIDManager:
             bool: True if write was successful, False otherwise.
 
         """
-        # Create directory if it doesn't exist
         try:
             self.config_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
         except OSError:
@@ -131,11 +129,9 @@ class UserIDManager:
             str | None: User ID string or None if user has opted out.
 
         """
-        # Return cached value if already loaded
         if self._cache_loaded:
             return self._cached_user_id
 
-        # Check if user has opted out by looking at the file directly
         if self.user_id_file.exists():
             try:
                 with self.user_id_file.open("r", encoding="utf-8") as f:

@@ -1,19 +1,7 @@
 # Coding Guidelines
 
-This document outlines the coding standards and best practices for contributing to AlbumentationsX.
-
-## Important Note About Guidelines
-
-These guidelines define the required standard for code that enters or is revised in the AlbumentationsX codebase.
-
-**For new contributions:**
-
-- All new code must follow these guidelines
-- All revised code must follow these guidelines within the scope of the change
-- Pull requests that introduce non-conforming patterns will not be accepted
-
-Apply the same standard when changing existing code: do not preserve a non-conforming pattern merely because it is
-already present.
+Apply these standards to new and revised code within the scope of a change. The repository hooks enforce the
+mechanical rules; the linked skills and design documents explain decisions that require review.
 
 ## Code Style and Formatting
 
@@ -192,32 +180,8 @@ The decorators will:
 - Pass through images that are already in the target type without conversion
 - Convert other types as needed and convert back after processing
 
-```python
-@uint8_io  # If input is uint8 => use as is; if float32 => convert to uint8, process, convert back
-def apply(self, img: np.ndarray, **params) -> np.ndarray:
-    # img is guaranteed to be uint8
-    # if input was float32 => result will be converted back to float32
-    # if input was uint8 => result will stay uint8
-    return cv2.blur(img, (3, 3))
-
-
-@float32_io  # If input is float32 => use as is; if uint8 => convert to float32, process, convert back
-def apply(self, img: np.ndarray, **params) -> np.ndarray:
-    # img is guaranteed to be float32 in range [0, 1]
-    # if input was uint8 => result will be converted back to uint8
-    # if input was float32 => result will stay float32
-    return img * 0.5
-
-
-# Avoid - manual type conversion
-def apply(self, img: np.ndarray, **params) -> np.ndarray:
-    if img.dtype != np.uint8:
-        img = (img * 255).clip(0, 255).astype(np.uint8)
-    result = cv2.blur(img, (3, 3))
-    if img.dtype != np.uint8:
-        result = result.astype(np.float32) / 255
-    return result
-```
+Apply the decorator to the functional operation that owns the dtype-specific kernel. Keep transform application
+methods as dispatchers; do not add manual conversion or a forwarding wrapper just to attach a decorator.
 
 ### Image Value Ranges and `@clipped`
 
@@ -230,21 +194,9 @@ def apply(self, img: np.ndarray, **params) -> np.ndarray:
 
 ### Channel Flexibility
 
-- Support arbitrary number of channels unless specifically constrained:
-
-  ```python
-  # Correct - works with any number of channels
-  def apply(self, img: np.ndarray, **params) -> np.ndarray:
-      # img shape is (H, W, C), works for any C
-      return img * self.factor
-
-
-  # Also correct - explicitly requires RGB
-  def apply(self, img: np.ndarray, **params) -> np.ndarray:
-      if img.shape[-1] != 3:
-          raise ValueError("Transform requires RGB image")
-      return rgb_to_hsv(img)  # RGB-specific processing
-  ```
+Support arbitrary channel counts unless the operation requires a specific layout, such as RGB. Validate that
+transform-specific requirement before dispatching to the functional operation. Keep channel arithmetic in the
+functional layer.
 
 ### Image and Volume Shape Invariants
 
@@ -456,12 +408,6 @@ def sample_parameters(
 ) -> SampledParams:
     height, width = targets.require_aligned_spatial_shape(2)
 
-    image = data.get("image")
-    mask = data.get("mask")
-    bboxes = data.get("bboxes")
-    keypoints = data.get("keypoints")
-
-    # Example: Calculate parameters based on image size
     crop_size = min(height, width) // 2
     center_x = width // 2
     center_y = height // 2
@@ -476,12 +422,6 @@ The method receives:
 - `targets`: The ordered `TargetSet`; use `require_aligned_spatial_shape(2)` or `require_aligned_spatial_shape(3)` for synchronized geometry
 - `sampling`: Call-local Python and NumPy RNG streams plus the applied-configuration sink
 
-Use this method when you need to:
-
-- Calculate parameters based on image dimensions
-- Access target data for parameter generation
-- Ensure transform parameters are appropriate for the input data
-
 Never return a plain dictionary. For target-specific materialization, group by a transform-defined compatibility key and
 return `TargetParams(targets=..., params=..., requirements=...)`. The core stores the resulting schema in replay and
 rejects legacy flat payloads.
@@ -495,29 +435,6 @@ explicitly forwards those inputs does not need a new schema. The schema is respo
 - Validating input parameters before `__init__` execution
 - Converting parameter types if needed
 - Ensuring consistent parameter handling
-
-  ```python
-  # Correct - full parameter validation
-  class RandomGravel(ImageOnlyTransform):
-      class InitSchema(BaseTransformInitSchema):
-        slant_range: Annotated[tuple[float, float], AfterValidator(nondecreasing)]
-        brightness_coefficient: float = Field(gt=0, le=1)
-
-
-    def __init__(self, slant_range: tuple[float, float], brightness_coefficient: float, p: float = 0.5):
-        super().__init__(p=p)
-        self.slant_range = slant_range
-        self.brightness_coefficient = brightness_coefficient
-  ```
-
-  ```python
-  # Incorrect - missing InitSchema
-  class RandomGravel(ImageOnlyTransform):
-      def __init__(self, slant_range: tuple[float, float], brightness_coefficient: float, p: float = 0.5):
-          super().__init__(p=p)
-          self.slant_range = slant_range
-          self.brightness_coefficient = brightness_coefficient
-  ```
 
 #### No Default Values in InitSchema
 
@@ -570,38 +487,20 @@ serialization or applied-configuration boundary. Overriding this method can caus
 
 ### Batch Performance (`apply_to_images`)
 
-Images in batch mode are always `(N, H, W, C)`. Never check `ndim == 4` — it's always true.
+NumPy image batches inside transform execution have shape `(N, H, W, C)`. Native Tensor handlers receive
+`(N, C, H, W)`. Both have rank four; do not repeat that check inside `apply_to_images`.
 
 Keep `apply_to_images` as a short delegation method. Put the complete batch image operation—including empty-batch
 handling, shared setup, routing between native and per-image kernels, and clipping—in one functional helper so it has a
 single direct correctness and benchmark boundary.
 
-Override `apply_to_images` when you can do better than the default per-image loop:
+Override `apply_to_images` only when measurement shows an advantage over the default per-image loop. In the
+functional helper, compare shared setup, direct batch indexing, and a preallocated loop. Do not construct kernels or
+read sampled values from `**params` inside the transform method.
 
-1. **Pre-compute expensive setup once** (kernels, LUTs, gradient maps):
-
-```python
-def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
-    kernel = create_kernel(params["size"])  # once per batch
-    return self._apply_to_batch(images, lambda img: convolve(img, kernel))
-```
-
-2. **Direct 4D indexing** for simple array ops:
-
-```python
-result = images.copy()
-result[:, :, :, channels] = fill  # vectorized across N
-```
-
-3. **Pre-allocated loop** to avoid repeated allocations:
-
-```python
-result = np.empty_like(images)
-for i, image in enumerate(images):
-    result[i] = self.apply(image, **params)
-```
-
-> **Anti-pattern**: Do NOT reshape `(N,H,W,1)` to `(H,W,N)` to call a cv2 function once — transpose yields non-contiguous memory (requiring a full copy), and cv2 processes channels sequentially so an N-channel call is not faster than N single-channel calls. Benchmarks show 2–4× regression.
+Keep batch and channel axes distinct. Reshaping `(N, H, W, 1)` into `(H, W, N)` adds a transpose and may require a
+copy; OpenCV processes those channels sequentially. Use the
+[benchmark skill](../../.codex/skills/benchmark/SKILL.md) for the required direct and Compose measurements.
 
 ### Coordinate Systems
 
@@ -648,54 +547,27 @@ This small difference is crucial for pixel-perfect accuracy. Always use the appr
 
 ### Docstrings
 
-- Use Google-style docstrings
-- **Transform apply methods:** Do not add docstrings to `apply`, `apply_to_image`, `apply_to_mask`, or other `apply_to_*` methods in transform classes. The transform class docstring and the base interface in `transforms_interface` are sufficient.
-- **First paragraph (120–160 characters):** A **useful short description** — an elevator pitch: what the function or transform does, how it works in one sentence, and when to use it. This is the web/search preview. Paragraphs are separated by blank lines; there is no blank line within a paragraph. So the first paragraph occupies **two lines of text with no blank line between them** (not "line, blank line, line"). **Line limit 120 chars** ⇒ the first paragraph must be two lines (no single line over 120; do not use `# noqa: E501`). Wrap at a word boundary. Do **not** list parameter names ("Parameters: x, y, z" or "Params: ...") in the first paragraph — that belongs in Args. Do **not** use "Preserves X" boilerplate (e.g. "Preserves channel count", "preserves dtype and channels") in the first paragraph — describe effect and when to use it instead. Do not put "Targets: ...", "Same shape", "Used by X", return type (e.g. "Returns np.ndarray"), or "Supports uint8/float32" (or Image types) in the first paragraph — return type belongs in Returns; dtype/target support has a separate Image types section, and all transforms support uint8 and float32 unless noted. Both length (120–160) and usefulness matter for discoverability.
-- **Similar transforms / See also:** Use a **bullet list** (`-` per item) listing 2–4 related transforms with brief when-to-use hints, so users discover more than a limited set (e.g. RandomResizedCrop, ColorJitter). **One transform per bullet** — do not combine multiple transforms in one bullet. When you add transform X to transform Y's See also, update X's docstring to mention Y (reciprocal cross-links).
-- **Note:** Use a **bullet list** (`-` per point). Note is **pure info** only — no call-to-action (e.g. no "Explore other transforms…" or "Consider using…"); put discoverability in See also.
-- Include type information, parameter descriptions, and examples:
+Use Google-style docstrings. Concrete transform `apply*` methods inherit their documentation from the class and base
+interface; do not repeat it on each override.
 
-  ```python
-  def transform(self, image: np.ndarray) -> np.ndarray:
-      """Apply brightness transformation to the image.
+- The first paragraph is a 120–160 character web/search preview. Explain the effect and when to use it. Wrap at a word
+  boundary within the 120-character line limit, with no blank line inside the paragraph.
+- Put parameter names and units in `Args`, return details in `Returns`, and supported targets and dtypes in their own
+  sections. Generic preservation claims and directions to read other sections do not belong in the preview.
+- Use `See also` for two to four related transforms, one per bullet with a selection hint. Keep cross-links reciprocal.
+- Use `Note` bullets for factual details. Put recommendations in `See also`.
 
-      Args:
-          image: Input image in RGB format.
-
-      Returns:
-          Transformed image.
-
-      Examples:
-          >>> transform = Brightness(brightness_range=(-0.2, 0.2))
-          >>> transformed = transform(image=image)
-      """
-  ```
+Use the [docstring review skill](../../.codex/skills/docstring-deep-dive/SKILL.md) to review reader-facing quality.
 
 ### Examples in Docstrings
 
-Every transform class that is a descendant of `ImageOnlyTransform`, `DualTransform`, or `Transform3D` **must** include a comprehensive Examples section in its docstring. The examples should follow these guidelines:
+Every transform class descending from `ImageOnlyTransform`, `DualTransform`, or `Transform3D` needs an `Examples`
+section. Use doctest syntax: `>>>` for statements, `...` for continuations, and no prefix for output.
 
-1. **Section Naming**: The section should be titled "Examples" (not "Example").
-
-2. **Jupyter Notebook Format**: Examples should mimic Jupyter notebook format, using `>>>` for code lines and no prefix for output lines.
-
-3. **Comprehensiveness**: Examples should be fully reproducible, including:
-   - Initialization of sample data
-   - Creation of transform(s)
-   - Application of transform(s)
-   - Retrieving results from the transform
-
-4. **Target-Specific Requirements**:
-   - For `ImageOnlyTransform`: Pass and demonstrate transformation of image data. Including how to get all transformed targets.
-   - For `DualTransform`: Pass and demonstrate transformation of image, mask, bboxes, keypoints, bbox_labels, class_labels (where supported). Including how to get all transformed targets including bbox_labels and keypoints_labels
-   - For `Transform3D`: Pass and demonstrate transformation of volume and mask3d data. Including how to get all transformed targets.
-    Including keypoint_labels
-
-5. **For Base Classes**: Examples for base classes should show:
-   - How to initialize a custom transform that inherits from the base class
-   - How to use the custom transform as part of a Compose pipeline
-
-6. **Parameter Examples**: When a parameter accepts both a single value and a tuple of values (to be sampled from), always use a tuple in the example.
+Include imports, sample data, transform construction, a public call, and result access. Demonstrate the supported
+targets: images for image-only transforms; images, masks, bboxes, keypoints, and their labels for dual transforms;
+volumes, 3D masks, and keypoint labels where supported for 3D transforms. Use tuple ranges for sampled parameters.
+Base-class examples should implement a working subclass and execute it through Compose.
 
 Here's an example for a `DualTransform`:
 
@@ -704,21 +576,25 @@ Here's an example for a `DualTransform`:
 Examples:
     >>> import numpy as np
     >>> import albumentations as A
-    >>> # Prepare sample data
-    >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
-    >>> mask = np.random.randint(0, 2, (100, 100), dtype=np.uint8)
+    >>> rng = np.random.default_rng(137)
+    >>> image = rng.integers(0, 256, (100, 100, 3), dtype=np.uint8)
+    >>> mask = rng.integers(0, 2, (100, 100), dtype=np.uint8)
     >>> bboxes = np.array([[10, 10, 50, 50], [40, 40, 80, 80]], dtype=np.float32)
     >>> bbox_labels = [1, 2]
     >>> keypoints = np.array([[20, 30], [60, 70]], dtype=np.float32)
-    >>> keypoint_labels = [0, 1]
+    >>> keypoint_labels = ['left_eye', 'right_eye']
     >>>
-    >>> # Define transform with parameters as tuples when possible
     >>> transform = A.Compose([
     ...     A.HorizontalFlip(p=1.0),
     ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
-    ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
+    ...    keypoint_params=A.KeypointParams(
+    ...        coord_format='xy',
+    ...        label_fields=['keypoint_labels'],
+    ...        label_mapping={'HorizontalFlip': {
+    ...            'keypoint_labels': {'left_eye': 'right_eye', 'right_eye': 'left_eye'},
+    ...        }},
+    ...    ))
     >>>
-    >>> # Apply the transform
     >>> transformed = transform(
     ...     image=image,
     ...     mask=mask,
@@ -728,72 +604,55 @@ Examples:
     ...     keypoint_labels=keypoint_labels
     ... )
     >>>
-    >>> # Get the transformed data
-    >>> transformed_image = transformed['image']  # Horizontally flipped image
-    >>> transformed_mask = transformed['mask']    # Horizontally flipped mask
-    >>> transformed_bboxes = transformed['bboxes']  # Horizontally flipped bounding boxes
-    >>> transformed_keypoints = transformed['keypoints']  # Horizontally flipped keypoints
-"""
-```
-
-Examples for a base class showing custom implementation:
-
-```python
-"""
-Examples:
-    # Example of a custom distortion subclass
-    >>> import numpy as np
-    >>> import albumentations as A
-    >>>
-    >>> class CustomDistortion(A.BaseDistortion):
-    ...     def __init__(self, *args, **kwargs):
-    ...         super().__init__(*args, **kwargs)
-    ...         # Add custom parameters here
-    ...
-    ...     def sample_parameters(self, params, data, targets, sampling):
-    ...         height, width = targets.require_aligned_spatial_shape(2)
-    ...         # Generate distortion maps
-    ...         map_x = np.zeros((height, width), dtype=np.float32)
-    ...         map_y = np.zeros((height, width), dtype=np.float32)
-    ...         # Apply your custom distortion logic here
-    ...         # ...
-    ...         return SampledParams(params={"map_x": map_x, "map_y": map_y})
-    >>>
-    >>> # Prepare sample data
-    >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
-    >>> mask = np.random.randint(0, 2, (100, 100), dtype=np.uint8)
-    >>> bboxes = np.array([[10, 10, 50, 50], [40, 40, 80, 80]], dtype=np.float32)
-    >>> bbox_labels = [1, 2]
-    >>> keypoints = np.array([[20, 30], [60, 70]], dtype=np.float32)
-    >>> keypoint_labels = [0, 1]
-    >>>
-    >>> # Apply the custom distortion
-    >>> transform = A.Compose([
-    ...     CustomDistortion(
-    ...         interpolation=A.cv2.INTER_LINEAR,
-    ...         mask_interpolation=A.cv2.INTER_NEAREST,
-    ...         keypoint_remapping_method="mask",
-    ...         p=1.0
-    ...     )
-    ... ], bbox_params=A.BboxParams(coord_format='pascal_voc', label_fields=['bbox_labels']),
-    ...    keypoint_params=A.KeypointParams(coord_format='xy', label_fields=['keypoint_labels']))
-    >>>
-    >>> # Apply the transform
-    >>> transformed = transform(
-    ...     image=image,
-    ...     mask=mask,
-    ...     bboxes=bboxes,
-    ...     bbox_labels=bbox_labels,
-    ...     keypoints=keypoints,
-    ...     keypoint_labels=keypoint_labels
-    ... )
-    >>>
-    >>> # Get results
     >>> transformed_image = transformed['image']
     >>> transformed_mask = transformed['mask']
     >>> transformed_bboxes = transformed['bboxes']
     >>> transformed_keypoints = transformed['keypoints']
+    >>> transformed_bbox_labels = transformed['bbox_labels']
+    >>> transformed_keypoint_labels = transformed['keypoint_labels']
 """
+```
+
+A base-class example can start with identity maps so the reader can verify the remapping before adding distortion:
+
+```python
+from typing import Any
+
+import cv2
+import numpy as np
+
+import albumentations as A
+from albumentations.augmentations.geometric.distortion import BaseDistortion
+from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import SampledParams, TargetSet
+
+
+class IdentityDistortion(BaseDistortion):
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
+        sampling: SamplingContext,
+    ) -> SampledParams:
+        height, width = targets.require_aligned_spatial_shape(2)
+        map_y, map_x = np.mgrid[:height, :width].astype(np.float32)
+        return SampledParams(params={"map_x": map_x, "map_y": map_y})
+
+
+image = np.random.default_rng(137).integers(0, 256, (100, 100, 3), dtype=np.uint8)
+transform = A.Compose(
+    [
+        IdentityDistortion(
+            interpolation=cv2.INTER_LINEAR,
+            mask_interpolation=cv2.INTER_NEAREST,
+            keypoint_remapping_method="mask",
+            p=1.0,
+        ),
+    ]
+)
+transformed_image = transform(image=image)["image"]
+np.testing.assert_array_equal(transformed_image, image)
 ```
 
 ### Comments
@@ -802,153 +661,14 @@ Examples:
 - Explain why, not what (the code shows what)
 - Keep comments up to date with code changes
 
-## Performance Optimization Checklist
+## Performance Optimization
 
-Runtime performance is an evidence problem, not a list of automatic rewrites. For functional-layer code, `apply`
-methods, and core pipeline paths, use the techniques below to form candidates, then measure them on the affected public
-route. The repo-local `performance-optimization` skill provides the full workflow: delete-first review, backend
-comparison, correctness baseline, and representative benchmarks. Use the `benchmark` skill to record the baseline,
-candidate, public route, and every relevant measured cell.
+Use [Performance Optimization](../../.codex/skills/performance-optimization/SKILL.md) and its synchronized reference
+for runtime audits. The workflow covers removable work, memory traffic, vectorization, grouped reductions, LUTs,
+random generation, backend selection, Albucore ownership, and aliasing.
 
-### 1. Eliminate Python Loops Over Pixels
-
-Python `for y in range(h): for x in range(w):` loops are much slower than vectorized NumPy. Prefer:
-
-- `np.mgrid` / `np.meshgrid` plus broadcasting for grid computations;
-- `np.einsum` for weighted sums over control points; and
-- scatter updates via fancy indexing (`arr[ys, xs] = values`) instead of per-pixel assignment.
-
-### 2. Eliminate Per-Label Full-Array Scans
-
-When integer labels are dense and non-negative, `np.bincount` can be a grouped reduction instead of constructing one
-full-image mask per label:
-
-```python
-counts = np.bincount(labels, minlength=num_labels)
-weighted_sums = np.bincount(labels, weights=values, minlength=num_labels)
-means = weighted_sums / counts
-```
-
-This can replace `for label: mask = labels == label` for component sizes, sums, means, histograms, and cluster-centre
-updates. Benchmark small label counts too: sparse IDs require remapping, `weights=` changes accumulation precision, and
-`np.unique(..., return_inverse=True)` can cost more than the scans it replaces.
-
-### 3. Consider `cv2.LUT` / `sz_lut` for uint8 Pixel-Wise Transforms
-
-For a uint8 operation of the form `f(pixel) -> pixel`, compare a 256-entry LUT applied with
-`sz_lut(image, lut, inplace=...)` to direct array arithmetic. LUTs often win, but the complete operation and the input
-layout decide the result.
-
-An operation that is literally a bit mask is a common exception:
-
-```python
-# Often fast for posterization-style bit masks.
-mask = ~np.uint8(2 ** (8 - num_bits) - 1)
-result = image & mask
-```
-
-For multichannel bit masks, benchmark broadcasted `image & masks` against a preallocated per-channel implementation.
-Broadcasting small per-channel masks can create slow strided operations.
-
-### 4. Vectorize LUT and Array Construction
-
-Replace Python list comprehensions with NumPy vectorized equivalents when constructing arrays in a hot path:
-
-```python
-# Slow
-lut = np.array([max_value - i if i >= threshold else i for i in range(256)])
-
-# Fast
-indices = np.arange(256, dtype=np.uint8)
-lut = np.where(indices >= threshold, max_value - indices, indices)
-```
-
-### 5. Use `out=` for In-Place Operations
-
-Avoid unnecessary temporaries on image-sized arrays:
-
-```python
-# Allocates a temporary.
-result = np.clip(image + noise, 0, 1)
-
-# Reuses the result buffer.
-result = image + noise
-np.clip(result, 0, 1, out=result)
-```
-
-Useful functions with `out=` include `np.clip`, `np.multiply`, `np.add`, and `np.divide`. Only use in-place mutation when
-the public contract permits it.
-
-### 6. Avoid Float64 Waste
-
-NumPy defaults to float64. Specify `dtype=np.float32` for float arrays when float32 is sufficient, including
-`np.arange`, `np.linspace`, `np.zeros`, `np.ones`, `np.full`, and mesh-grid inputs.
-
-### 7. Fuse Multi-Step Operations
-
-Replace chains of temporary allocations with a fused helper where its semantics match:
-
-```python
-# Two temporaries.
-result = image + alpha * (image - blurred)
-
-# A fused weighted sum.
-result = add_weighted(image, 1.0 + alpha, blurred, -alpha)
-```
-
-### 8. Choose Backends by Benchmark
-
-Compare NumPy, OpenCV, NumKong, StringZilla, and LUT implementations that express the complete operation. Include
-dispatch, conversion, contiguity, clipping, and allocation costs, and benchmark the exact dtype, shape, and channel
-matrix before switching.
-
-- Use scalar NumPy bitwise operations, such as `image & np.uint8(mask)`, for a scalar mask.
-- Use `cv2.bitwise_*` when both operands are dense contiguous arrays and `dst=` can reuse output.
-- Do not allocate a full image-sized mask merely to call OpenCV; that allocation often loses.
-- For a single-source Euclidean distance field, direct coordinate math with `np.arange(..., dtype=np.float32)` and
-  `cv2.sqrt(..., dst=...)` may be simpler and faster than `cv2.distanceTransform`.
-- For sparse multi-channel replacement, copy plus masked assignment can beat nested `np.where`; measure the density
-  threshold.
-
-### 9. Preallocate Outside Loops
-
-Move repeated allocations outside loops and reset reusable buffers:
-
-```python
-# Slow — allocates every iteration.
-for item in items:
-    mask = np.zeros((height, width), dtype=np.uint8)
-    cv2.fillPoly(mask, ...)
-
-# Reuse one allocation.
-mask = np.zeros((height, width), dtype=np.uint8)
-for item in items:
-    mask[:] = 0
-    cv2.fillPoly(mask, ...)
-```
-
-### 10. Skip Redundant Work in Hot Paths
-
-- Guard `np.ascontiguousarray` with `if not array.flags["C_CONTIGUOUS"]`.
-- Use `first_result[np.newaxis]` instead of `np.array([first_result])` for a batch of one.
-- Precompute loop-invariant expressions, for example `inverse_squared_step = 1.0 / (step * step)`.
-- Prefer `np.where(mask)` to `np.argwhere(mask)` when a tuple of one-dimensional index arrays is enough.
-
-### 11. Compare and Vectorize Random Number Generation
-
-Use Python `random.Random` for a few scalar choices and a NumPy `Generator` for arrays as starting candidates. When
-multiple generators can express the workload, benchmark them while preserving transform-local seeded isolation and
-replay behaviour; a global OpenCV RNG can be ineligible even if its kernel is fast.
-
-Replace per-element Python RNG loops with one NumPy call when an array draw is appropriate:
-
-```python
-# Slow
-steps = [1 + sampling.py_random.uniform(*limit) for _ in range(n)]
-
-# Fast
-steps = (1 + sampling.random_generator.uniform(*limit, size=n)).tolist()
-```
+Treat each candidate as a hypothesis. Use the [benchmark skill](../../.codex/skills/benchmark/SKILL.md) to compare
+baseline and candidate on the affected public routes, and record every measured cell and any regressions.
 
 ### Updating Transform Documentation
 

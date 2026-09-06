@@ -148,7 +148,6 @@ def keypoints_scale(
         np.ndarray: Scaled keypoints
 
     """
-    # Extract x, y, z, angle, and scale
     x, y, z, angle, scale = (
         keypoints[:, 0],
         keypoints[:, 1],
@@ -164,7 +163,6 @@ def keypoints_scale(
     # Scale the keypoint scale by the maximum of scale_x and scale_y
     scale_scaled = scale * max(scale_x, scale_y)
 
-    # Create the output array
     scaled_keypoints = np.column_stack([x_scaled, y_scaled, z, angle, scale_scaled])
 
     # If there are additional columns, preserve them
@@ -224,7 +222,6 @@ def keypoints_affine(
         return keypoints
 
     if border_mode in REFLECT_BORDER_MODES:
-        # Step 1: Compute affine transform padding
         pad_left, pad_right, pad_top, pad_bottom = calculate_affine_transform_padding(
             matrix,
             image_shape,
@@ -243,7 +240,6 @@ def keypoints_affine(
             center_in_origin=True,
         )
 
-    # Extract x, y coordinates (z is preserved)
     xy = keypoints[:, :2]
 
     # Transform x, y coordinates (same code path as bboxes_affine OBB)
@@ -295,7 +291,6 @@ def to_distance_maps(
     if len(keypoints) == 0:
         return np.zeros((height, width, 0), dtype=np.float32)
 
-    # Convert keypoints to numpy array
     keypoints_array = np.asarray(keypoints, dtype=np.float32)
     if len(keypoints_array) > CV2_DISTANCE_MAP_MAX_KEYPOINTS:
         x_distances = np.arange(width, dtype=np.float32)[np.newaxis, :, np.newaxis] - keypoints_array[:, 0]
@@ -310,7 +305,6 @@ def to_distance_maps(
             np.reciprocal(distances, out=distances)
         return distances
 
-    # Create coordinate grids
     yy, xx = np.mgrid[:height, :width]
     xx = xx.astype(np.float32)
     yy = yy.astype(np.float32)
@@ -427,14 +421,11 @@ def from_distance_maps(
             axis=0,
         )
 
-    # Convert flat indices to 2D coordinates
     hitidx_y, hitidx_x = np.unravel_index(hitidx_flat, (height, width))
 
-    # Create keypoints array
     keypoints = np.column_stack((hitidx_x, hitidx_y)).astype(float)
 
     if threshold is not None:
-        # Check threshold condition
         if inverted:
             valid_mask = distance_maps[hitidx_y, hitidx_x, np.arange(nb_keypoints)] >= threshold
         else:
@@ -556,13 +547,11 @@ def remap_keypoints_via_mask(
         interpolation=cv2.INTER_NEAREST,
     )[..., 0]
 
-    # Extract transformed keypoints
     new_points = []
     for idx, kp in enumerate(keypoints, start=1):
         # Find points with this index
         points = np.where(transformed_kp_mask == idx)
         if len(points[0]) > 0:
-            # Convert back to (x,y) coordinates
             new_points.append(np.concatenate([[points[1][0], points[0][0]], kp[2:]]))
 
     return np.array(new_points) if new_points else np.zeros((0, keypoints.shape[1]))
@@ -597,17 +586,14 @@ def remap_keypoints(
     """
     height, width = image_shape[:2]
 
-    # Extract x and y coordinates
     x, y = keypoints[:, 0], keypoints[:, 1]
 
     # Clip coordinates to image boundaries
     x = np.clip(x, 0, width - 1)
     y = np.clip(y, 0, height - 1)
 
-    # Convert to integer indices
     x_idx, y_idx = x.astype(int), y.astype(int)
     inv_map_x, inv_map_y = generate_inverse_distortion_map(map_x, map_y, image_shape[:2])
-    # Apply the inverse mapping
     new_x = inv_map_x[y_idx, x_idx]
     new_y = inv_map_y[y_idx, x_idx]
 
@@ -615,7 +601,6 @@ def remap_keypoints(
     new_x = np.clip(new_x, 0, width - 1)
     new_y = np.clip(new_y, 0, height - 1)
 
-    # Create the transformed keypoints array
     return np.column_stack([new_x, new_y, keypoints[:, 2:]])
 
 
@@ -663,7 +648,6 @@ def distort_image_keypoints(
         cell_keypoints = keypoints[mask]
 
         if len(cell_keypoints) > 0:
-            # Convert to float32 before applying the transformation
             points_float32 = cell_keypoints[:, :2].astype(np.float32).reshape(-1, 1, 2)
             transformed_points = cv2.perspectiveTransform(
                 points_float32,
@@ -735,7 +719,6 @@ def pad_keypoints(
 
     rows, cols = image_shape[:2]
 
-    # Calculate the number of grid cells added on each side
     original_row, original_col = grid_dimensions["original_position"]
 
     # Subtract the offset based on the number of added grid cells
@@ -968,13 +951,11 @@ def swap_tiles_on_keypoints(
 
     start_y, start_x, end_y, end_x = tiles.T  # Each shape: (num_tiles,)
 
-    # Check if each keypoint is inside each tile
     in_tile = (kp_y >= start_y) & (kp_y < end_y) & (kp_x >= start_x) & (kp_x < end_x)
 
     # Find which tile each keypoint belongs to
     tile_indices = np.argmax(in_tile, axis=1)
 
-    # Check if any keypoint is not in any tile
     not_in_any_tile = ~np.any(in_tile, axis=1)
     if np.any(not_in_any_tile):
         warn(
@@ -984,16 +965,13 @@ def swap_tiles_on_keypoints(
             stacklevel=2,
         )
 
-    # Get the new tile indices
     new_tile_indices = np.array(mapping)[tile_indices]
 
-    # Calculate the offsets
     old_start_x = tiles[tile_indices, 1]
     old_start_y = tiles[tile_indices, 0]
     new_start_x = tiles[new_tile_indices, 1]
     new_start_y = tiles[new_tile_indices, 0]
 
-    # Apply the transformation
     new_keypoints = keypoints.copy()
     new_keypoints[:, 0] = (keypoints[:, 0] - old_start_x) + new_start_x
     new_keypoints[:, 1] = (keypoints[:, 1] - old_start_y) + new_start_y

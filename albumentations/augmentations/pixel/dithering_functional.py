@@ -330,11 +330,9 @@ def random_dither_uint8(
         lut_binary[128:] = 255
         return sz_lut(noisy, lut_binary, inplace=False)
 
-    # Create LUT for quantization directly in uint8 space
     lut = np.round(np.arange(256) * (n_colors - 1) / 255) / (n_colors - 1) * 255
     lut = lut.astype(np.uint8)
 
-    # Apply LUT directly - this is the fastest path
     return sz_lut(noisy, lut, inplace=False)
 
 
@@ -500,7 +498,6 @@ def ordered_dither(
     # Expand for color channels
     tiled = np.expand_dims(tiled, axis=2)
 
-    # Apply threshold with Bayer matrix
     if n_colors == 2:
         return (img > tiled).astype(np.float32)
 
@@ -515,7 +512,6 @@ def ordered_dither(
     # Quantize to n_colors levels using vectorized numpy operations
     # Since @float32_io guarantees float32 input, use direct numpy operations
     quantized = np.floor(dithered * n_colors) / n_colors
-    # Ensure proper clipping to max quantized value
     return np.clip(quantized, 0, (n_colors - 1) / n_colors).astype(np.float32)
 
 
@@ -569,14 +565,12 @@ def error_diffusion_dither(
                 x_offsets = offsets
 
             for col_idx in col_range:
-                # Get current pixel value
                 old_val = channel[row_idx, col_idx]
 
                 # Quantize
                 new_val = (1.0 if old_val >= 0.5 else 0.0) if is_binary else round(old_val * max_level) / max_level
                 channel[row_idx, col_idx] = new_val
 
-                # Calculate error
                 error = old_val - new_val
 
                 # Distribute error to neighbors
@@ -604,7 +598,6 @@ def _apply_dithering_to_grayscale(
     # Store original number of channels
     original_channels = img.shape[2]
 
-    # Convert to grayscale
     if img.shape[2] == 3:
         gray = to_gray_weighted_average(img)
     elif img.shape[2] == 1:
@@ -612,11 +605,9 @@ def _apply_dithering_to_grayscale(
     else:
         gray = to_gray_average(img)
 
-    # Ensure gray has shape (H, W, 1)
     if gray.ndim == 2:
         gray = gray[:, :, np.newaxis]
 
-    # Apply dithering method
     dithered = _apply_single_dithering_method(gray, method, n_colors, **kwargs)
 
     # Expand back to original number of channels (handle both 2D and 3D cases)
@@ -713,5 +704,4 @@ def apply_dithering(
     if color_mode == "grayscale":
         return _apply_dithering_to_grayscale(img, method, n_colors, **kwargs)
 
-    # Apply dithering directly (per_channel mode)
     return _apply_single_dithering_method(img, method, n_colors, **kwargs)

@@ -179,7 +179,6 @@ class RandomCrop(BaseCropAndPad):
                 f" {(self.height, self.width)} vs {image_shape[:2]}",
             )
 
-        # Get padding params first if needed
         pad_params = self._get_pad_params(image_shape, (self.height, self.width), sampling)
 
         # If padding is needed, adjust the image shape for crop calculation
@@ -193,12 +192,10 @@ class RandomCrop(BaseCropAndPad):
             padded_width = image_width + pad_left + pad_right
             padded_shape = (padded_height, padded_width)
 
-            # Get random crop coordinates based on padded dimensions
             h_start = sampling.py_random.random()
             w_start = sampling.py_random.random()
             crop_coords = fcrops.get_crop_coords(padded_shape, (self.height, self.width), h_start, w_start)
         else:
-            # Get random crop coordinates based on original dimensions
             h_start = sampling.py_random.random()
             w_start = sampling.py_random.random()
             crop_coords = fcrops.get_crop_coords(image_shape, (self.height, self.width), h_start, w_start)
@@ -359,7 +356,6 @@ class CenterCrop(BaseCropAndPad):
                 f" {(self.height, self.width)} vs {image_shape[:2]}",
             )
 
-        # Get padding params first if needed
         pad_params = self._get_pad_params(image_shape, (self.height, self.width), sampling)
 
         # If padding is needed, adjust the image shape for crop calculation
@@ -373,10 +369,8 @@ class CenterCrop(BaseCropAndPad):
             padded_width = image_width + pad_left + pad_right
             padded_shape = (padded_height, padded_width)
 
-            # Get crop coordinates based on padded dimensions
             crop_coords = fcrops.get_center_crop_coords(padded_shape, (self.height, self.width))
         else:
-            # Get crop coordinates based on original dimensions
             crop_coords = fcrops.get_center_crop_coords(image_shape, (self.height, self.width))
 
         return SampledParams(

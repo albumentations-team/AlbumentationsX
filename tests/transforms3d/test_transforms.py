@@ -532,7 +532,6 @@ def test_crop_3d_fill_values(transform_cls, size, fill, fill_mask):
     padded_volume = transformed["volume"]
     padded_mask = transformed["mask3d"]
 
-    # Verify shapes
     assert padded_volume.shape == size
     assert padded_mask.shape == size
 
@@ -739,7 +738,6 @@ def test_keypoints_xy_xyz(augmentation_cls, params):
     aug1 = A.Compose([augmentation_cls(**params, p=1)], seed=seed, keypoint_params={"coord_format": "xy"})
     aug2 = A.Compose([augmentation_cls(**params, p=1)], seed=seed, keypoint_params={"coord_format": "xyz"})
 
-    # Create test keypoints
     keypoints_xy = np.array(
         [
             [0, 0],  # corner
@@ -749,7 +747,6 @@ def test_keypoints_xy_xyz(augmentation_cls, params):
         ],
     )
 
-    # Create xyz version by adding z coordinates
     keypoints_xyz = np.column_stack(
         [
             keypoints_xy,
@@ -829,11 +826,9 @@ def test_pad3d_keypoints(padding, initial_coords, expected_coords):
     # Create keypoint at the same location
     keypoints = np.array([[x, y, z]])  # XYZ order
 
-    # Apply padding transform
     transform = A.Compose([A.Pad3D(padding=padding, p=1.0)], seed=42, keypoint_params={"coord_format": "xyz"})
     transformed = transform(volume=volume, keypoints=keypoints)
 
-    # Verify keypoint transformation
     np.testing.assert_array_almost_equal(
         transformed["keypoints"][0],
         expected_coords,
@@ -897,7 +892,6 @@ def test_pad_if_needed3d_keypoints(params, volume_shape, initial_coords, expecte
     # Create keypoint at the same location
     keypoints = np.array([[x, y, z]])  # XYZ order
 
-    # Apply padding transform
     transform = A.Compose(
         [
             A.PadIfNeeded3D(position="center", **params, p=1.0),
@@ -907,7 +901,6 @@ def test_pad_if_needed3d_keypoints(params, volume_shape, initial_coords, expecte
 
     transformed = transform(volume=volume, keypoints=keypoints)
 
-    # Verify keypoint transformation
     np.testing.assert_array_almost_equal(
         transformed["keypoints"][0],
         expected_coords,
@@ -981,17 +974,14 @@ def test_center_crop3d_keypoints(
        - Keypoints at volume borders
        - Keypoints that get cropped out
     """
-    # Create test volume
     volume = np.zeros(volume_shape, dtype=np.uint8)
 
-    # Create keypoint
     x, y, z = initial_coords
     keypoints = np.array([[x, y, z]])  # XYZ format
 
     # Mark keypoint in volume for visual verification
     volume[z, y, x] = 1
 
-    # Apply transform
     transform = A.Compose(
         [
             A.CenterCrop3D(
@@ -1071,7 +1061,6 @@ def test_3d_transforms_keypoint_positions(augmentation_cls, params):
     for x, y, z in keypoints:
         volume[int(z), int(y), int(x)] = 1
 
-    # Apply transform
     transform = A.Compose(
         [
             augmentation_cls(p=1, **params),
@@ -1143,7 +1132,6 @@ def test_grid_shuffle_3d_various_grids(grid_zyx):
     transform = A.GridShuffle3D(grid_zyx=grid_zyx, p=1.0)
     transformed = transform(volume=volume)
 
-    # Check shape preservation
     assert transformed["volume"].shape == volume.shape
 
     # Check content preservation

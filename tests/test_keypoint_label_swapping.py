@@ -19,7 +19,6 @@ class TestKeypointLabelSwapping:
     )
     def test_basic_label_mapping_string_labels(self, transform_class, expected_swaps):
         """Test basic label mapping with string labels."""
-        # Setup
         keypoints = np.array([[50, 25], [75, 30]], dtype=np.float32)
         labels = list(expected_swaps.keys())
 
@@ -38,14 +37,12 @@ class TestKeypointLabelSwapping:
             ),
         )
 
-        # Apply transform
         result = transform(image=np.ones((100, 100, 3), dtype=np.uint8), keypoints=keypoints, keypoint_labels=labels)
 
         # Check that labels were swapped correctly
         expected_labels = [expected_swaps[label] for label in labels]
         assert result["keypoint_labels"] == expected_labels
 
-        # Check that keypoints were transformed
         assert not np.array_equal(result["keypoints"], keypoints)
 
     @pytest.mark.parametrize(
@@ -58,7 +55,6 @@ class TestKeypointLabelSwapping:
     )
     def test_basic_label_mapping_integer_labels(self, transform_class, expected_swaps):
         """Test basic label mapping with integer labels."""
-        # Setup
         keypoints = np.array([[50, 25], [75, 30]], dtype=np.float32)
         labels = list(expected_swaps.keys())
 
@@ -77,7 +73,6 @@ class TestKeypointLabelSwapping:
             ),
         )
 
-        # Apply transform
         result = transform(image=np.ones((100, 100, 3), dtype=np.uint8), keypoints=keypoints, keypoint_labels=labels)
 
         # Check that labels were swapped correctly

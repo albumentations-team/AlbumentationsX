@@ -42,29 +42,24 @@ def detect_environment() -> str:
         str: Environment name.
 
     """
-    # Check CI first
     if is_ci_environment():
         return "ci"
 
-    # Check Colab
     if _check_module("google.colab"):
         return "colab"
 
-    # Check Kaggle
     try:
         if Path("/kaggle/working").exists():
             return "kaggle"
     except OSError:
         pass
 
-    # Check Docker
     try:
         if Path("/.dockerenv").exists() or Path("/proc/self/cgroup").is_file():
             return "docker"
     except OSError:
         pass
 
-    # Check Jupyter
     if _check_jupyter():
         return "jupyter"
 
@@ -169,7 +164,6 @@ def get_cpu_model() -> str:
     # Special handling for Apple Silicon on macOS
     if platform.system() == "Darwin":
         try:
-            # Check for Apple Silicon
             result = subprocess.run(
                 ["sysctl", "-n", "machdep.cpu.brand_string"],  # noqa: S607
                 check=False,
@@ -345,7 +339,6 @@ def _extract_transform_names(transform: Any, transforms: list[str]) -> None:
     """Append one transform's class name to the list; recurse into nested compose.
     Skips Lambda and ReplayCompose. Mutates list.
     """
-    # Get the class name
     class_name = transform.__class__.__name__
 
     # Skip Lambda transforms
@@ -399,7 +392,6 @@ def collect_pipeline_info(compose: "Compose") -> dict[str, Any]:
     """
     transforms: list[str] = []
 
-    # Extract all transforms
     for transform in compose.transforms:
         _extract_transform_names(transform, transforms)
 

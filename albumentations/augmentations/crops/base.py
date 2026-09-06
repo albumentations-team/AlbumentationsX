@@ -154,7 +154,6 @@ class BaseCrop(DualTransform):
         **params: Any,
     ) -> ImageType:
         if mask.size == 0:
-            # Return empty array with cropped dimensions
             # Assume mask shape is (H, W, C)
             crop_height = crop_coords[3] - crop_coords[1]
             crop_width = crop_coords[2] - crop_coords[0]
@@ -196,7 +195,6 @@ class BaseCrop(DualTransform):
         **params: Any,
     ) -> VolumeType:
         if mask3d.size == 0:
-            # Return empty array with cropped dimensions
             # Assume mask3d shape is (D, H, W, C)
             crop_height = crop_coords[3] - crop_coords[1]
             crop_width = crop_coords[2] - crop_coords[0]
@@ -545,7 +543,6 @@ class BaseCropAndPad(BaseCrop):
         image_shape = shape[:2]
 
         if pad_params is not None:
-            # Calculate padded dimensions
             padded_height = image_shape[0] + pad_params["pad_top"] + pad_params["pad_bottom"]
             padded_width = image_shape[1] + pad_params["pad_left"] + pad_params["pad_right"]
 
@@ -735,7 +732,6 @@ class _BaseRandomSizedCrop(DualTransform):
             target_type == "mask" and self.area_for_downscale == "image_mask"
         ):
             return cv2.INTER_AREA
-        # Get base interpolation
         return self.interpolation if target_type == "image" else self.mask_interpolation
 
     def apply(
@@ -777,11 +773,9 @@ class _BaseRandomSizedCrop(DualTransform):
         # First, crop the keypoints
         cropped_keypoints = fcrops.crop_keypoints_by_coords(keypoints, crop_coords)
 
-        # Calculate the dimensions of the crop
         crop_height = crop_coords[3] - crop_coords[1]
         crop_width = crop_coords[2] - crop_coords[0]
 
-        # Calculate scaling factors
         scale_x = self.size[1] / crop_width
         scale_y = self.size[0] / crop_height
 
@@ -797,7 +791,6 @@ class _BaseRandomSizedCrop(DualTransform):
         # First crop the volume using volume_crop_yx (reduces data size)
         crop = fcrops.volume_crop_yx(images, *crop_coords)
 
-        # Get interpolation method based on crop dimensions
         interpolation = self._get_interpolation_for_resize(cast("tuple[int, int]", crop.shape[1:3]), "image")
 
         # Then resize the smaller cropped volume using the selected interpolation

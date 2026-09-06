@@ -19,9 +19,7 @@ keywords = [
 
   "autonomous driving",
   "bounding boxes",
-  # Core Computer Vision Tasks
   "classification",
-  # Technical Domains
   "computer vision",
   "computer vision library",
   "data augmentation",
@@ -33,13 +31,10 @@ keywords = [
 
   "depth estimation",
   "face recognition",
-  # Performance & Features
   "fast augmentation",
-  # Data Types & Processing
   "image augmentation",
   "image processing",
   "image transformation",
-  # Data Structures
   "images",
   "instance segmentation",
   "keras",
@@ -48,7 +43,6 @@ keywords = [
   "machine learning",
   "machine learning tools",
   "masks",
-  # Application Domains
   "medical imaging",
   "microscopy",
   "object counting",
@@ -56,9 +50,7 @@ keywords = [
   "optimized performance",
   "panoptic segmentation",
   "pose estimation",
-  # Development
   "python library",
-  # ML Frameworks
   "pytorch",
   "quality inspection",
 
@@ -86,20 +78,16 @@ authors = [ { name = "Vladimir Iglovikov" } ]
 requires-python = ">=3.10"
 
 classifiers = [
-  # Development Status
   "Development Status :: 5 - Production/Stable",
 
-  # Intended Audience
   "Intended Audience :: Developers",
-  "Intended Audience :: Healthcare Industry",    # valid for medical applications
+  "Intended Audience :: Healthcare Industry",
   "Intended Audience :: Information Technology",
 
   "Intended Audience :: Science/Research",
 
-  # Operating System
   "Operating System :: OS Independent",
 
-  # Python Versions
   "Programming Language :: Python",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.10",
@@ -107,7 +95,6 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
-  # Topics - Scientific
   "Topic :: Scientific/Engineering",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
   "Topic :: Scientific/Engineering :: Astronomy",
@@ -117,11 +104,9 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Image Processing",
   "Topic :: Scientific/Engineering :: Physics",
   "Topic :: Scientific/Engineering :: Visualization",
-  # Topics - Software Development
   "Topic :: Software Development :: Libraries",
   "Topic :: Software Development :: Libraries :: Python Modules",
 
-  # Typing
   "Typing :: Typed",
 ]
 
@@ -253,13 +238,11 @@ exclude = [
 ]
 
 [tool.ruff]
-# Exclude a variety of commonly ignored directories.
 target-version = "py310"
 
 line-length = 120
 indent-width = 4
 
-# Assume Python 3.10
 exclude = [
   ".bzr",
   ".direnv",
@@ -292,12 +275,9 @@ exclude = [
 ]
 
 format.indent-style = "space"
-# Like Black, respect magic trailing commas.
 format.quote-style = "double"
-# Like Black, indent with spaces, rather than tabs.
 format.line-ending = "auto"
 format.skip-magic-trailing-comma = false
-# Like Black, automatically detect the appropriate line ending.
 lint.select = [ "ALL" ]
 lint.ignore = [
   "ANN001",
@@ -411,7 +391,6 @@ check_untyped_defs = true
 no_implicit_reexport = true
 disable_error_code = [ "valid-type" ]
 
-# for strict mypy: (this is the tricky one :-))
 disallow_untyped_defs = true
 
 # Strict checking for the instance-binding boundary modules so the StackedMasks4D NewType brand
@@ -453,14 +432,11 @@ project-excludes = [
 ]
 
 [tool.pydocstyle]
-# Allow fix for all enabled rules (when `--fix`) is provided.
 
 lint.explicit-preview-rules = true
 lint.fixable = [ "ALL" ]
 lint.unfixable = [  ]
-# Allow unused variables when underscore-prefixed.
 lint.dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
-# Like Black, use double quotes for strings.
 lint.pydocstyle.convention = "google"
 lint.pydocstyle.ignore-magic-methods = true
 

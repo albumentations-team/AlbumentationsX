@@ -1,60 +1,42 @@
-# Setting Up Your Development Environment
+# Set up a development environment
 
-This guide will help you set up your development environment for contributing to AlbumentationsX.
-
-## Prerequisites
-
-- Python 3.10 or higher
-- Git
-- [uv](https://docs.astral.sh/uv/)
-- A GitHub account
-
-## Step-by-Step Setup
-
-### 1. Fork and Clone the Repository
-
-1. Fork the [AlbumentationsX repository](https://github.com/albumentations-team/AlbumentationsX) on GitHub
-2. Clone your fork locally:
+Use Python 3.10 or higher, Git, and [uv](https://docs.astral.sh/uv/). Fork the
+[repository](https://github.com/albumentations-team/AlbumentationsX), then clone your fork:
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/AlbumentationsX.git
 cd AlbumentationsX
 ```
 
-### 2. Install Dependencies With uv
+## Install dependencies
 
-Create a local virtual environment and install the project plus development tools:
+Install the project and development tools from the lockfile:
 
 ```bash
 uv sync --locked --group dev --inexact
 ```
 
-This is the canonical setup path for contributors and coding agents. It installs the same toolchain used by CI,
-including Ruff, mypy, Pyrefly, pytest, pre-commit, and security tooling. It does not choose a Torch build. Install
-the CPU, CUDA, or MPS Torch build required by your development environment before running code that imports
-AlbumentationsX.
+This installs Ruff, mypy, Pyrefly, pytest, pre-commit, and security tooling. Install the PyTorch build for your CPU,
+CUDA, or MPS environment before importing AlbumentationsX. The development group leaves that runtime choice to you.
 
-To reproduce the CPU-only runtime used by CI, add its explicit profile:
+To use the CPU-only runtime profile used by CI:
 
 ```bash
 uv sync --locked --group dev --group ci-torch-cpu --inexact
 ```
 
-CI itself uses smaller locked groups so unrelated jobs do not install the full
-toolchain: `ci-test`, `ci-quality`, `ci-types`, `ci-security`, `ci-package`,
-`ci-benchmark`, `ci-release`, and `ci-torch-cpu`. Tool groups never select a
-runtime. Jobs that import AlbumentationsX add `ci-torch-cpu`; static jobs do
-not. Contributors normally should keep using `dev`; the purpose-specific
-groups are useful when reproducing one CI leaf, for example:
+CI selects smaller groups for individual jobs. Use those groups when reproducing a specific job, for example:
 
 ```bash
 uv sync --locked --no-default-groups --group ci-test --group ci-torch-cpu --inexact
 ```
 
-#### pip fallback
+The tool groups are `ci-test`, `ci-quality`, `ci-types`, `ci-security`, `ci-package`, `ci-benchmark`, and `ci-release`.
+Import-capable jobs add `ci-torch-cpu`; static jobs do not need it.
 
-If you cannot use uv, create and activate a virtual environment manually, then install the project and development
-requirements:
+### pip fallback
+
+If uv is unavailable, create and activate a virtual environment:
 
 ```bash
 python3 -m venv env
@@ -63,125 +45,58 @@ pip install -e .
 pip install -r requirements-dev.txt
 ```
 
-The fallback requirements also leave Torch to you. Install the CPU, CUDA, or
-MPS Torch build before running the test suite.
+On Windows, activate with `env\Scripts\activate.bat` in cmd.exe or `env\Scripts\activate.ps1` in PowerShell.
+Install the appropriate PyTorch build separately. In the commands below, omit `uv run` when using this activated
+pip environment.
 
-On Windows, activate the environment with `env\Scripts\activate.bat` for cmd.exe or `env\Scripts\activate.ps1` for
-PowerShell.
-
-### 3. Set Up Pre-commit Hooks
-
-Pre-commit hooks help maintain code quality by automatically checking your changes before each commit.
-
-1. Set up the hooks:
+## Enable hooks and verify the environment
 
 ```bash
 uv run pre-commit install
+uv run python -c "import albumentations"
+uv run pytest -n 4 -q tests/test_core_utils.py
+uv run pre-commit run --all-files --show-diff-on-failure
 ```
 
-If you used the pip fallback with an activated virtual environment, run:
+The test command checks one module to confirm the environment works. For a change, select tests that can detect its
+failure modes. Use `uv run pytest -n auto` when the change requires the full suite.
 
-```bash
-pre-commit install
-```
+If imports fail, check which interpreter is running with `uv run python -c "import sys; print(sys.executable)"` and
+confirm that the selected environment contains PyTorch and an OpenCV variant. Re-run the appropriate sync command
+above if dependencies are missing. Installation should use the virtual environment without administrator privileges.
 
-1. (Optional) Run hooks manually on all files:
+## Maintenance checks
 
-```bash
-uv run pre-commit run --all-files
-```
-
-With the pip fallback:
-
-```bash
-pre-commit run --all-files
-```
-
-## Verifying Your Setup
-
-### Run Tests
-
-Ensure everything is set up correctly by running the test suite:
-
-```bash
-uv run pytest
-```
-
-With the pip fallback:
-
-```bash
-pytest
-```
-
-For a faster local gate before handing work off, run:
-
-```bash
-pre-commit run --all-files --show-diff-on-failure
-```
-
-With the pip fallback:
-
-```bash
-pre-commit run --all-files --show-diff-on-failure
-```
-
-### Verification Infrastructure Commands
-
-The maintenance verification layer adds focused commands for CI, release, and
-support-policy changes:
+For CI and support-policy changes:
 
 ```bash
 uv run python -m tools.ci_matrix check
 uv run python -m tools.ci_shard check
-uv run python tools/verify_regression_vectors.py --all
-uv run pytest -q tests/regression tests/property --hypothesis-profile=ci-fast
-uv run python tools/generate_correctness_report.py \
-  --allow-missing-evidence \
-  --output _internal/correctness-report-dry-run.md
 ```
 
-Golden regression vectors are updated only by an explicit command:
+For regression contracts:
+
+```bash
+uv run python tools/verify_regression_vectors.py --all
+uv run pytest -n 4 -q tests/regression tests/property --hypothesis-profile=ci-fast
+```
+
+Golden vectors change only through an explicit regeneration command, for example:
 
 ```bash
 uv run python tools/generate_regression_vectors.py --transform HorizontalFlip --epoch 2.4
 ```
 
-Local dry-run reports and other one-off evidence belong under `_internal/`.
+To inspect report generation without release evidence:
 
-### Common Issues and Solutions
+```bash
+uv run python tools/generate_correctness_report.py \
+  --allow-missing-evidence \
+  --output _internal/correctness-report-dry-run.md
+```
 
-#### Permission Errors
+Keep local reports and other temporary artifacts under `_internal/`.
 
-- **Linux/macOS**: If you encounter permission errors, try using `sudo` for system-wide installations or consider using `--user` flag with pip
-- **Windows**: Run your terminal as administrator if you encounter permission issues
-
-#### Virtual Environment Not Activating
-
-- Ensure you're in the correct directory
-- Check that Python is properly installed and in your system PATH
-- Try creating the virtual environment with the full Python path
-
-#### Import Errors After Installation
-
-- Verify that you're using the correct virtual environment
-- Confirm that all dependencies were installed successfully
-- Try reinstalling the package in editable mode
-
-## Next Steps
-
-After setting up your environment:
-
-1. Create a new branch for your work
-2. Make your changes
-3. Run tests and pre-commit hooks
-4. Submit a pull request
-
-For more detailed information about contributing, please refer to [Coding Guidelines](./coding_guidelines.md)
-
-## Getting Help
-
-If you encounter any issues with the setup:
-
-1. Check our [Discord community](https://discord.gg/e6zHCXTvaN)
-2. Open an [issue on GitHub](https://github.com/albumentations-team/AlbumentationsX/issues)
-3. Review existing issues for similar problems and solutions
+Follow the [Coding Guidelines](coding_guidelines.md) and [Contributing Guide](../../CONTRIBUTING.md) for your change.
+For setup problems, check existing [issues](https://github.com/albumentations-team/AlbumentationsX/issues) or ask in
+[Discord](https://discord.gg/e6zHCXTvaN).

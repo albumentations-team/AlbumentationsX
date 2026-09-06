@@ -195,7 +195,6 @@ def add_snow_texture(
     """
     max_value = MAX_VALUES_BY_DTYPE[np.dtype(img.dtype)]
 
-    # Convert to HSV for better color control
     img_hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV).astype(np.float32)
 
     # Increase brightness
@@ -213,7 +212,6 @@ def add_snow_texture(
     depth_effect = np.linspace(1, 0.2, rows, dtype=np.float32)[:, np.newaxis]
     snow_texture *= depth_effect
 
-    # Apply snow texture
     snow_layer = (snow_texture[:, :, np.newaxis] * (max_value * snow_point)).astype(
         np.float32,
     )
@@ -286,7 +284,6 @@ def add_rain(
     # Pre-allocate rain layer
     rain_layer = np.zeros_like(img, dtype=np.uint8)
 
-    # Calculate end points correctly
     end_points = rain_drops + np.array([[slant, drop_length]])  # This creates correct shape
 
     # Stack arrays properly - both must be same shape arrays
@@ -368,7 +365,6 @@ def add_fog(
     """
     result = img.copy()
 
-    # Apply fog particles progressively like in old version
     for (x, y), radius in zip(fog_particle_positions, fog_particle_radiuses, strict=True):
         overlay = result.copy()
         cv2.circle(
@@ -566,7 +562,6 @@ def add_sun_flare_physics_based(
     output = img.copy()
     height, width = img.shape[:2]
 
-    # Create a separate flare layer
     flare_layer = np.zeros_like(img, dtype=np.float32)
 
     # Add the main sun
@@ -584,10 +579,8 @@ def add_sun_flare_physics_based(
     for _, center, size, color in circles:
         cv2.circle(flare_layer, center, int(size**0.33), color, -1)
 
-    # Apply gaussian blur to soften the flare
     flare_layer = cv2.GaussianBlur(flare_layer, (0, 0), sigmaX=15, sigmaY=15)
 
-    # Create a radial gradient mask
     y = np.arange(height, dtype=np.float32)[:, np.newaxis] - flare_center[1]
     x = np.arange(width, dtype=np.float32)[np.newaxis, :] - flare_center[0]
     mask = x * x + y * y
@@ -596,7 +589,6 @@ def add_sun_flare_physics_based(
     np.clip(mask, 0, 1, out=mask)
     np.subtract(1, mask, out=mask)
 
-    # Apply the mask to the flare layer
     flare_layer *= mask[..., np.newaxis]
 
     # Add chromatic aberration
@@ -896,7 +888,6 @@ def get_rain_params(
         dtype=np.float32,
     )
 
-    # Apply convolution with better precision
     dist = convolve(dist, ker)
 
     # Final blur with larger kernel for smoother drops
@@ -908,7 +899,6 @@ def get_rain_params(
         borderType=cv2.BORDER_REPLICATE,
     ).astype(np.float32)
 
-    # Calculate final rain mask with better blending
     m = liquid_layer.astype(np.float32) * dist
 
     # Normalize with better handling of edge cases
@@ -918,7 +908,6 @@ def get_rain_params(
     else:
         m = np.zeros_like(m)
 
-    # Apply color with adjusted intensity for more natural look
     drops = m[:, :, None] * color.astype(np.float32, copy=False) * np.float32(intensity * 0.9)
 
     return {
@@ -953,7 +942,6 @@ def get_mud_params(
     """
     height, width = liquid_layer.shape
 
-    # Create initial mask (ensure we have some non-zero values)
     mask = (liquid_layer > cutout_threshold).astype(np.float32)
     if reduce_sum(mask) == 0:  # If mask is all zeros
         # Force minimum coverage of 10%
@@ -963,7 +951,6 @@ def get_mud_params(
         mask = np.zeros_like(liquid_layer, dtype=np.float32)
         mask.flat[flat_indices] = 1.0
 
-    # Apply Gaussian blur if sigma > 0
     if sigma > 0:
         mask = cv2.GaussianBlur(
             mask,
@@ -984,14 +971,11 @@ def get_mud_params(
     # Scale by intensity directly (no minimum)
     mask = mask * intensity
 
-    # Create mud effect array
     mud = np.zeros((height, width, 3), dtype=np.float32)
 
-    # Apply color directly - the intensity scaling is already handled
     for i in range(3):
         mud[..., i] = mask * color[i]
 
-    # Create complementary non-mud array
     non_mud = np.ones_like(mud)
     for i in range(3):
         if color[i] > 0:

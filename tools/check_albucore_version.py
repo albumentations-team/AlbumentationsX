@@ -7,7 +7,6 @@ def check_albucore_version(filename: str) -> int:
     with Path(filename).open() as file:
         content = file.read()
 
-    # Look for albucore in dependencies array
     match = re.search(r'"albucore([^"]*)"', content)
     if not match:
         print(f"Error: albucore not found in {filename}")

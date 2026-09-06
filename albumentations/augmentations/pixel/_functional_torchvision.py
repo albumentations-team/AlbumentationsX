@@ -151,7 +151,6 @@ def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
     orig_shape = img.shape
     num_channels = get_num_channels(img)
 
-    # Reshape image to 2D array of pixels
     img_reshaped = img.reshape(-1, num_channels)
 
     # Center the pixel values
@@ -163,10 +162,8 @@ def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
         std_dev = std(img_centered, eps=0)
         noise = alpha_vector[0] * std_dev * img_centered
     else:
-        # Compute covariance matrix
         img_cov = np.cov(img_centered, rowvar=False)
 
-        # Compute eigenvectors & eigenvalues of the covariance matrix
         eig_vals, eig_vecs = np.linalg.eigh(img_cov)
 
         # Sort eigenvectors by eigenvalues in descending order
@@ -174,7 +171,6 @@ def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
         eig_vals = eig_vals[sort_perm]
         eig_vecs = eig_vecs[:, sort_perm]
 
-        # Create noise vector
         noise = np.dot(
             np.dot(eig_vecs, np.diag(alpha_vector * eig_vals)),
             img_centered.T,
@@ -183,7 +179,6 @@ def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
     # Add noise to the image
     img_pca = img_reshaped + noise
 
-    # Reshape back to original shape
     img_pca = img_pca.reshape(orig_shape)
 
     # Clip values to [0, 1] range
@@ -556,10 +551,8 @@ def slic(
     np.divide(image_normalized, max_value + np.float32(1e-6), out=image_normalized)
     single_channel = image_normalized.shape[-1] == 1
 
-    # Initialize cluster centers on a regular grid.
     centers = _initialize_slic_centers(height, width, grid_step)
 
-    # Initialize labels and distances
     labels = np.full((height, width), -1, dtype=np.int32)
 
     x_coordinates_flat = np.tile(np.arange(width, dtype=np.float32), height)

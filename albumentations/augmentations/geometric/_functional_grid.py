@@ -163,7 +163,6 @@ def almost_equal_intervals(n: int, parts: int) -> np.ndarray:
 
     """
     part_size, remainder = divmod(n, parts)
-    # Create an array with the base part size and adjust the first `remainder` parts by adding 1
     return np.array(
         [part_size + 1 if i < remainder else part_size for i in range(parts)],
     )
@@ -227,7 +226,6 @@ def split_uniform_grid(
         random_generator=random_generator,
     )
 
-    # Calculate tiles coordinates
     tiles = [
         (height_splits[i], width_splits[j], height_splits[i + 1], width_splits[j + 1])
         for i in range(n_rows)
@@ -518,7 +516,6 @@ def swap_tiles_on_image(
     if tiles.size == 0 or mapping is None:
         return image.copy()
 
-    # Create a copy of the image to retain original for reference
     new_image = np.empty_like(image)
     for num, new_index in enumerate(mapping):
         start_y, start_x, end_y, end_x = tiles[new_index]
@@ -559,7 +556,6 @@ def shuffle_tiles_within_shape_groups(
         list[int]: A list where each index is mapped to the new index of the tile after shuffling.
 
     """
-    # Initialize the output list with the same size as the total number of tiles, filled with -1
     num_tiles = sum(len(indices) for indices in shape_groups.values())
     mapping = [-1] * num_tiles
 

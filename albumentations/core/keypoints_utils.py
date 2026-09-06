@@ -339,7 +339,6 @@ class KeypointsProcessor(DataProcessor[KeypointParams]):
         encoded_mapping: dict[int, int] = {}
 
         if metadata.encoder is not None:
-            # Convert string mapping to encoded integers
             # Pre-filter valid labels to avoid repeated lookups
             encoder_classes = set(metadata.encoder.classes_)
             valid_from_labels = set(mapping.keys()) & encoder_classes
@@ -348,7 +347,6 @@ class KeypointsProcessor(DataProcessor[KeypointParams]):
             # Filter to only valid mappings where both from and to exist
             valid_mappings = {k: v for k, v in mapping.items() if k in valid_from_labels and v in valid_to_labels}
 
-            # Convert valid mappings in batch
             if valid_mappings:
                 from_labels = list(valid_mappings.keys())
                 to_labels = list(valid_mappings.values())
@@ -599,14 +597,12 @@ def filter_keypoints(
     if len(shape) == 3:
         depth, height, width = shape
 
-        # Create boolean mask for visible keypoints
         x, y, z = keypoints[:, 0], keypoints[:, 1], keypoints[:, 2]
         visible = (x >= 0) & (x < width) & (y >= 0) & (y < height) & (z >= 0) & (z < depth)
     else:
         # Handle 2D case (height, width)
         height, width = shape
 
-        # Create boolean mask for visible keypoints
         x, y = keypoints[:, 0], keypoints[:, 1]
         visible = (x >= 0) & (x < width) & (y >= 0) & (y < height)
 

@@ -533,7 +533,6 @@ def fourier_domain_adaptation(img: ImageType, target_img: ImageType, beta: float
         fft_src_shifted = np.fft.fftshift(fft_src)
         fft_trg_shifted = np.fft.fftshift(fft_trg)
 
-        # Extract amplitude and phase
         amp_src, pha_src = np.abs(fft_src_shifted), np.angle(fft_src_shifted)
         amp_trg = np.abs(fft_trg_shifted)
 

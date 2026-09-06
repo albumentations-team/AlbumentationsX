@@ -78,7 +78,6 @@ def test_init_vs_initschema_types(transform_class):
                     f"    Mismatch: {mismatch}",
                 )
 
-    # Assert no mismatches found
     if mismatches:
         error_msg = f"\n\nType mismatches in {transform_name}:\n" + "\n".join(mismatches)
         pytest.fail(error_msg)

@@ -33,7 +33,6 @@ class SettingsManager:
         """
         settings = self.defaults.copy()
 
-        # Load from file if exists
         if self.settings_file.exists():
             try:
                 with self.settings_file.open() as f:

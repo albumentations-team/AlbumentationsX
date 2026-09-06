@@ -1157,7 +1157,6 @@ class GridElasticDeform(DualTransform):
             sampling.random_generator,
         )
 
-        # Convert tiles to the format expected by generate_distorted_grid_polygons
         dimensions = np.array(
             [
                 [

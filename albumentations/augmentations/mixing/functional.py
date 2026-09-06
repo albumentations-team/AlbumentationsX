@@ -360,14 +360,12 @@ def calculate_mosaic_center_point(
     large_grid_h = rows * cell_h
     large_grid_w = cols * cell_w
 
-    # Define valid center range bounds (inclusive)
     # The center must be far enough from edges so the crop window fits
     min_cx = target_w // 2
     max_cx = large_grid_w - (target_w + 1) // 2
     min_cy = target_h // 2
     max_cy = large_grid_h - (target_h + 1) // 2
 
-    # Calculate valid range dimensions (size of the safe zone)
     valid_w = max_cx - min_cx + 1
     valid_h = max_cy - min_cy + 1
 
@@ -375,12 +373,10 @@ def calculate_mosaic_center_point(
     rel_x = py_random.uniform(*center_range)
     rel_y = py_random.uniform(*center_range)
 
-    # Calculate center coordinates by scaling relative position within valid range
     # Add the minimum bound to shift the range start
     center_x = min_cx + int(valid_w * rel_x)
     center_y = min_cy + int(valid_h * rel_y)
 
-    # Ensure the result is strictly within the calculated bounds after int conversion
     # (This clip is mostly a safety measure, shouldn't be needed with correct int conversion)
     center_x = max(min_cx, min(center_x, max_cx))
     center_y = max(min_cy, min(center_y, max_cy))
@@ -415,11 +411,9 @@ def calculate_cell_placements(
     target_h, target_w = target_size
     center_x, center_y = center_xy
 
-    # 1. Generate grid line coordinates using arange for the large grid
     y_coords_large = np.arange(rows + 1) * cell_h
     x_coords_large = np.arange(cols + 1) * cell_w
 
-    # 2. Calculate Crop Window boundaries
     crop_x_min = center_x - target_w // 2
     crop_y_min = center_y - target_h // 2
     crop_x_max = crop_x_min + target_w
@@ -434,7 +428,6 @@ def calculate_cell_placements(
     y_coords_clipped = _clip_coords(y_coords_large, crop_y_min, crop_y_max)
     x_coords_clipped = _clip_coords(x_coords_large, crop_x_min, crop_x_max)
 
-    # 4. Form all cell coordinates efficiently
     num_x_intervals = len(x_coords_clipped) - 1
     num_y_intervals = len(y_coords_clipped) - 1
     result = []
@@ -458,12 +451,10 @@ def _check_data_compatibility(
     """Check if item_data dimensions and channels match primary_data. Returns (ok, error_msg);
     used to validate mosaic/mixup additional items.
     """
-    # 1. Check if item has the required data (image is always required)
     if item_data is None:
         is_required = data_key == "image"
         return not is_required, "Item is missing required key 'image'" if is_required else None
 
-    # 2. If item data exists, check against primary data (if primary data exists)
     if primary_data is None:  # No primary data to compare against
         return True, None
 
@@ -1059,9 +1050,7 @@ def assemble_mosaic_from_processed_cells(
     # Use 0 as default fill if None is provided
     actual_fill = fill if fill is not None else 0
 
-    # Convert fill to numpy array to handle broadcasting in np.full
     fill_value = np.array(actual_fill, dtype=dtype)
-    # Initialize canvas with the fill value.
     # If fill_value shape is incompatible with target_shape, np.full will raise ValueError.
     canvas = np.full(target_shape, fill_value=fill_value, dtype=dtype)
 
@@ -1322,7 +1311,6 @@ def process_all_mosaic_geometries(
 
         cell_position = get_cell_relative_position(placement_coords, canvas_shape)
 
-        # Apply geometric processing (crop/pad)
         processed_cells_geom[placement_coords] = process_cell_geometry(
             cell_shape=cell_shape,
             item=item,
@@ -1429,7 +1417,6 @@ def shift_all_coordinates(
         cell_width = placement_coords[2] - placement_coords[0]
         cell_height = placement_coords[3] - placement_coords[1]
 
-        # Extract geometrically processed bboxes/keypoints
         bboxes_geom = cell_data_geom.get("bboxes")
         keypoints_geom = cell_data_geom.get("keypoints")
 
@@ -1455,7 +1442,6 @@ def shift_all_coordinates(
         if keypoints_geom is not None and keypoints_geom.size > 0:
             keypoints_geom_arr = np.asarray(keypoints_geom)
 
-            # Ensure shift vector matches keypoint dtype (usually float)
             kp_shift_vector = np.array([tgt_x1, tgt_y1, 0], dtype=keypoints_geom_arr.dtype)
 
             shifted_keypoints = fgeometric.shift_keypoints(keypoints_geom_arr, kp_shift_vector)

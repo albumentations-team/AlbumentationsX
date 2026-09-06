@@ -3350,7 +3350,6 @@ class Compose(BaseCompose, HubMixin):
         volume_shapes: list[tuple[int, ...]] = []  # For D,H,W checks
 
         for data_name, data in kwargs.items():
-            # Get internal name for additional targets
             internal_name = self._additional_targets.get(data_name, data_name)
 
             # Always check bbox/keypoint params for all data items
@@ -3390,10 +3389,8 @@ class Compose(BaseCompose, HubMixin):
         """Check consistency of shapes. When is_check_shapes, ensures all 2D shapes match
         and all 3D shapes match. Raises ValueError if inconsistent.
         """
-        # Check H,W consistency
         self._check_shapes(shapes, self.is_check_shapes)
 
-        # Check D,H,W consistency for volume data and 3D masks
         if self.is_check_shapes and volume_shapes and volume_shapes.count(volume_shapes[0]) != len(volume_shapes):
             raise ValueError(
                 "Depth, Height and Width of volume and mask3d should be equal. "
@@ -3682,7 +3679,6 @@ class RandomOrder(SomeOf):
     """
 
     def __init__(self, transforms: TransformsSeqType, n: int = 1, replace: bool = False, p: float = 1):
-        # Initialize using SomeOf's logic (which now does uniform selection setup)
         super().__init__(transforms=transforms, n=n, replace=replace, p=p)
 
     def sample_indices(self, invocation: InvocationContext) -> NDArray[np.int_]:

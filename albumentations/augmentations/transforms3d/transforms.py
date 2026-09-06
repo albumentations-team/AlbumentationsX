@@ -1278,7 +1278,6 @@ class BaseCropAndPad3D(Transform3D):
         z, h, w = image_shape
         target_z, target_h, target_w = target_shape
 
-        # Calculate total padding needed for each dimension
         z_pad = max(0, target_z - z)
         h_pad = max(0, target_h - h)
         w_pad = max(0, target_w - w)
@@ -1369,10 +1368,8 @@ class BaseCropAndPad3D(Transform3D):
         pad_params: dict[str, int] | None,
         **params: Any,
     ) -> np.ndarray:
-        # Extract crop start coordinates (z1,y1,x1)
         crop_z1, _, crop_y1, _, crop_x1, _ = crop_coords
 
-        # Initialize shift vector with negative crop coordinates
         shift = np.array(
             [
                 -crop_x1,  # X shift
@@ -1391,7 +1388,6 @@ class BaseCropAndPad3D(Transform3D):
                 ],
             )
 
-        # Apply combined shift
         return fgeometric.shift_keypoints(keypoints, shift)
 
 
@@ -1515,7 +1511,6 @@ class CenterCrop3D(BaseCropAndPad3D):
         z, h, w = _sampling_volume_shape(targets)
         target_z, target_h, target_w = self.size
 
-        # Get padding params if needed
         pad_params = self._get_pad_params(
             image_shape=(z, h, w),
             target_shape=self.size,
@@ -1665,7 +1660,6 @@ class RandomCrop3D(BaseCropAndPad3D):
         z, h, w = _sampling_volume_shape(targets)
         target_z, target_h, target_w = self.size
 
-        # Get padding params if needed
         pad_params = self._get_pad_params(
             image_shape=(z, h, w),
             target_shape=self.size,
@@ -1678,7 +1672,6 @@ class RandomCrop3D(BaseCropAndPad3D):
             h = h + pad_params["pad_top"] + pad_params["pad_bottom"]
             w = w + pad_params["pad_left"] + pad_params["pad_right"]
 
-        # Calculate random crop coordinates
         z_start = sampling.py_random.randint(0, max(0, z - target_z))
         h_start = sampling.py_random.randint(0, max(0, h - target_h))
         w_start = sampling.py_random.randint(0, max(0, w - target_w))

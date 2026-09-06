@@ -162,7 +162,7 @@ repos:
         exclude: ^build/
         additional_dependencies: ["tomli>=2.4.1"]
   - repo: https://github.com/frnmst/md-toc
-    rev: 9.0.0  # or latest version
+    rev: 9.0.0
     hooks:
       - id: md-toc
         args: ["-p", "github", "-l", "6"]  # GitHub style, up to 6 levels deep

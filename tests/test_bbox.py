@@ -1318,7 +1318,6 @@ def test_crop_boxes_replay_compose() -> None:
 
 def test_bounding_box_partially_outside_no_clip() -> None:
     """Test error is raised when bounding box exceeds image boundaries without clipping."""
-    # Define a transformation with NoOp
     transform = Compose(
         [NoOp()],
         bbox_params={"coord_format": "pascal_voc", "label_fields": ["labels"]},
@@ -2245,10 +2244,8 @@ def test_bboxes_to_mask(test_case):
 
     masks = bboxes_to_mask(bboxes, image_shape)
 
-    # Check shape
     assert masks.shape == expected_shape
 
-    # Check dtype
     assert masks.dtype == np.uint8
 
     # Check if masks are binary
@@ -2326,7 +2323,6 @@ def test_mask_to_bboxes(test_case):
 
     result = mask_to_bboxes(masks, original_bboxes, bbox_type="hbb")
 
-    # Check shape and values
     assert result.shape == expected_bboxes.shape
     np.testing.assert_array_equal(result, expected_bboxes)
 
@@ -3058,7 +3054,6 @@ def test_resize_boxes_to_visible_area_removes_fully_covered_boxes():
     # Update boxes using the function
     updated_boxes = resize_boxes_to_visible_area(boxes, hole_mask)
 
-    # Assertions
     assert len(updated_boxes) == 1, "Should remove fully covered boxes"
     assert updated_boxes.shape == (1, 6), "Should preserve the shape with correct number of columns"
 
@@ -3085,7 +3080,6 @@ def test_resize_boxes_to_visible_area_with_partially_covered_boxes():
     # Update boxes using the function
     updated_boxes = resize_boxes_to_visible_area(boxes, hole_mask)
 
-    # Assertions
     assert len(updated_boxes) == 1, "Should keep partially covered boxes"
     assert updated_boxes.shape == (1, 6), "Should preserve the shape with correct number of columns"
     assert updated_boxes[0, 0] > boxes[0, 0], "X min should increase (left part covered)"
@@ -3111,7 +3105,6 @@ def test_resize_boxes_to_visible_area_with_all_boxes_covered():
     # Update boxes using the function
     updated_boxes = resize_boxes_to_visible_area(boxes, hole_mask)
 
-    # Assertions
     assert len(updated_boxes) == 0, "Should return empty array when all boxes are covered"
     assert updated_boxes.shape == (0, 6), "Empty array should have correct shape with all columns"
 
@@ -3125,7 +3118,6 @@ def test_resize_boxes_to_visible_area_with_empty_input():
     # Update boxes using the function
     updated_boxes = resize_boxes_to_visible_area(boxes, hole_mask)
 
-    # Assertions
     assert len(updated_boxes) == 0, "Should return empty array"
     assert updated_boxes.shape == (0, 6), "Should preserve the shape with correct number of columns"
 
@@ -3327,10 +3319,8 @@ def test_clip_bboxes_geometry_obb_with_extra_columns():
 
     result = clip_bboxes_geometry(bboxes, shape, bbox_type)
 
-    # Check shape preserved
     assert result.shape == bboxes.shape
 
-    # Check extra columns preserved
     assert result[0, 5] == 1.0
     assert result[0, 6] == 2.0
     assert result[1, 5] == 3.0

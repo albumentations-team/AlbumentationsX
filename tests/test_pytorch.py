@@ -176,10 +176,8 @@ def test_post_data_check():
 
 
 def test_to_tensor_v2_on_non_contiguous_array():
-    # Create a contiguous array
     img = np.random.randint(0, 256, [100, 100, 3], dtype=np.uint8)
 
-    # Create a non-contiguous array by slicing
     non_contiguous_img = img[::2, ::2, :]
     assert not non_contiguous_img.flags["C_CONTIGUOUS"]
 
@@ -191,7 +189,6 @@ def test_to_tensor_v2_on_non_contiguous_array():
     assert transformed["image"].shape == (3, 50, 50)  # Shape changed due to slicing
     assert transformed["image"].dtype == torch.uint8
 
-    # Check masks
     assert isinstance(transformed["masks"], torch.Tensor)
     assert transformed["masks"].shape == (2, 50, 50, 3)  # (N, H, W, C) - masks remain in original format
     assert transformed["masks"].dtype == torch.uint8
@@ -216,7 +213,10 @@ def test_to_tensor_v2_on_non_contiguous_array_with_horizontal_flip():
 
     masks = np.stack([image[:, :, 0]] * 2)
 
-    transform(image=image, masks=masks)
+    result = transform(image=image, masks=masks)
+    expected_image = np.flip(image, axis=1).transpose(2, 0, 1).astype(np.float32) / 255
+    np.testing.assert_allclose(result["image"].numpy(), expected_image)
+    np.testing.assert_array_equal(result["masks"].numpy(), np.flip(masks, axis=2))
 
 
 def test_to_tensor_v2_on_non_contiguous_array_with_random_rotate90():
@@ -256,7 +256,6 @@ def test_to_tensor_v2_images_masks():
     assert isinstance(transformed["masks"], torch.Tensor)
     assert isinstance(transformed["images"], torch.Tensor)  # Now checking single tensor
 
-    # Check shapes
     assert transformed["image"].shape == (3, 100, 100)  # (C, H, W)
     assert transformed["mask"].shape == (100, 100)  # (H, W)
     assert transformed["masks"].shape == (2, 100, 100)  # (N, H, W)

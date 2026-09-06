@@ -2066,12 +2066,10 @@ def test_selective_channel(
     ],
 )
 def test_pad_if_needed_functionality(params, expected):
-    # Setup the augmentation with the provided parameters
     aug = A.PadIfNeeded(**params, p=1)
     # Get the initialization arguments to check against expected
     aug_dict = {key: getattr(aug, key) for key in expected}
 
-    # Assert each expected key/value pair
     for key, value in expected.items():
         assert aug_dict[key] == value, f"Failed on {key} with value {value}"
 
@@ -2847,7 +2845,6 @@ def test_return_nonzero(augmentation_cls, params):
 )
 @pytest.mark.parametrize("num_channels", [1, 3, 5])
 def test_padding_color(transform, num_channels):
-    # Create an image with zeros
     if num_channels == 1:
         image = np.zeros((4, 4), dtype=np.uint8)
     else:
@@ -2855,7 +2852,6 @@ def test_padding_color(transform, num_channels):
 
     pipeline = A.Compose([transform], seed=137, strict=True)
 
-    # Apply the transform
     augmented = pipeline(image=image)["image"]
 
     # Check the unique values in each channel of the padded image
@@ -3441,13 +3437,11 @@ def test_random_snow_dtype_preservation(method, dtype):
     transform = A.RandomSnow(p=1.0, method=method)
     res = transform(image=img)["image"]
 
-    # Assert dtype is preserved
     assert res.dtype == dtype, f"Expected {dtype}, got {res.dtype}"
 
     # Assert the image actually changed (non-uniform input ensures this won't spuriously fail)
     assert not np.array_equal(res, img), "Image was not modified by RandomSnow"
 
-    # Assert valid range
     if dtype == np.float32:
         assert res.min() >= 0.0
         assert res.max() <= 1.0

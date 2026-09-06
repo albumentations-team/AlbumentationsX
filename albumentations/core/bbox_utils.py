@@ -399,13 +399,11 @@ class BboxProcessor(DataProcessor[BboxParams]):
                     check_transform(t)
                 return
 
-            # Check DualTransforms
             if isinstance(transform, DualTransform):
                 supported_types = getattr(transform, "_supported_bbox_types", frozenset({"hbb"}))
                 if "obb" not in supported_types:
                     unsupported.append(transform.__class__.__name__)
 
-        # Check all transforms
         for transform in transforms:
             check_transform(transform)
 
@@ -1033,7 +1031,6 @@ def check_bboxes(bboxes: np.ndarray) -> None:
         ValueError: If any bounding box is invalid.
 
     """
-    # Check if all values are in range [0, 1]
     in_range = (bboxes[:, :4] >= 0) & (bboxes[:, :4] <= 1)
     close_to_zero = np.isclose(bboxes[:, :4], 0)
     close_to_one = np.isclose(bboxes[:, :4], 1)
@@ -1048,7 +1045,6 @@ def check_bboxes(bboxes: np.ndarray) -> None:
             f"Expected {invalid_coord} for bbox {invalid_bbox} to be in the range [0.0, 1.0], got {invalid_value}.",
         )
 
-    # Check if x_max > x_min and y_max > y_min
     valid_order = (bboxes[:, 2] > bboxes[:, 0]) & (bboxes[:, 3] > bboxes[:, 1])
 
     if not np.all(valid_order):
@@ -1120,10 +1116,8 @@ def clip_bboxes_geometry(bboxes: np.ndarray, shape: tuple[int, int], bbox_type: 
         return clip_bboxes(bboxes, shape)
 
     # OBB path - clip corners and return wrapping HBB with angle=0
-    # Convert OBB to polygons (4 corners each)
     polygons = obb_to_polygons(bboxes)  # Shape: (N, 4, 2) in normalized coords
 
-    # Check if clipping is needed for each bbox
     needs_clipping = (polygons < 0) | (polygons > 1)
     needs_clipping_per_bbox = needs_clipping.any(axis=(1, 2))  # Shape: (N,)
 
@@ -1459,7 +1453,6 @@ def bboxes_to_mask(
     height, width = image_shape[:2]
     num_boxes = len(bboxes)
 
-    # Create multi-channel mask where each channel represents one bbox
     bbox_masks = np.zeros((height, width, num_boxes), dtype=np.uint8)
 
     # Fill each bbox in its channel
@@ -1498,7 +1491,6 @@ def mask_to_bboxes(
     new_bboxes = []
 
     if num_boxes == 0:
-        # Return empty array with correct shape
         return np.zeros((0, original_bboxes.shape[1]), dtype=original_bboxes.dtype)
 
     for idx in range(num_boxes):

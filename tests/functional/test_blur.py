@@ -35,9 +35,7 @@ def test_sample_odd_from_range(low: int, high: int, expected_range: set[int]):
     for _ in range(50):  # Sample multiple times to get all possible values
         value = fblur.sample_odd_from_range(random_state, low, high)
         results.add(value)
-        # Verify each value is odd
         assert value % 2 == 1
-        # Verify value is >= 3
         assert value >= 3
 
     assert results == expected_range, f"Failed for low={low}, high={high}"
@@ -56,7 +54,6 @@ def create_reference_gaussian_kernel(sigma: float) -> np.ndarray:
 
     # Normalize 1D kernel
     kernel = np.array(kernel) / np.sum(kernel)
-    # Create 2D kernel
     return kernel[:, np.newaxis] @ kernel[np.newaxis, :]
 
 

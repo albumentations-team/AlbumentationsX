@@ -1,193 +1,56 @@
 ---
 name: benchmark
-description: Run performance benchmarks for transform changes. Use when the user asks to benchmark, measure performance, compare speed, or when changes affect apply methods, functional layer, parameter generation, or core pipeline code.
+description: Measure AlbumentationsX runtime changes with paired baseline and candidate benchmarks on the affected routes.
 ---
 
-# Benchmark
+# Benchmark a runtime change
 
-Benchmark a change to `apply_*`, `functional.py`, `sample_parameters`, `composition.py`, or
-`transforms_interface.py` when it can change executed runtime work. Do not benchmark a documentation-only or
-mechanical refactor with no plausible runtime effect.
+Benchmark when a change can alter executed work in a functional operation, sampling, target dispatch, or Compose.
+Documentation and mechanical refactors with no plausible runtime effect need no timing run.
 
-Before designing the benchmark, read `../performance-optimization/SKILL.md` and its required reference completely.
-Use that workflow to define candidates and the dimension that controls each candidate, such as label density for
-`bincount`, channel layout for LUTs, or output size and dtype for random generation.
+Read [Performance Optimization](../performance-optimization/SKILL.md) and its required reference before selecting
+candidates. Define the changed route and the workload dimension that could falsify the proposed speedup.
 
-For `Compose` executor work, add a control-plane matrix alongside the image matrix: root `p=0`, no-op `p=1`, no-op
-with `0<p<1`, an always-applied cheap leaf, `save_applied_params=True`, trace, Tensor route, processors, and concurrent
-calls. Construction time and retained allocations for one-leaf, one-node, and ten-node pipelines are optional context
-when RNG or graph ownership changes. They are never an acceptance metric: prefer slower construction when it makes
-repeated training calls faster. For annotation work, include image-only and bbox/keypoint-affecting chains at empty, one,
-and representative dense annotation counts. Compare the same cells against the baseline checkout in one environment.
-The full-size image matrix remains required when the change touches pixel arithmetic, conversions, or layout work.
+## Select the workload
 
-## Standard Matrix
+For pixel arithmetic, dtype conversion, layout, or backend routing, use the nine combinations of square sizes
+`256`, `512`, and `1024` with `1`, `3`, and `5` channels. Skip explicitly unsupported channel counts. Keep grayscale
+NumPy inputs `(H, W, 1)`.
 
-For pixel arithmetic, dtype conversion, memory layout, or backend routing, benchmark all 9 combinations:
+For other changes, vary the controlling axis: label count and density, random-output size, annotation count, or both
+sides of a routing threshold. Explain why the chosen matrix covers the claim.
 
-| Size       | Channels | Use case                              |
-|------------|----------|---------------------------------------|
-| 256×256    | 1        | Grayscale classification              |
-| 256×256    | 3        | RGB classification                    |
-| 256×256    | 5        | Multispectral                         |
-| 512×512    | 1        | Depth maps                            |
-| 512×512    | 3        | Detection/segmentation (YOLO, U-Net)  |
-| 512×512    | 5        | Multispectral segmentation            |
-| 1024×1024  | 1        | Medical imaging                       |
-| 1024×1024  | 3        | High-res segmentation                 |
-| 1024×1024  | 5        | Satellite imagery                     |
+- Measure the direct functional call and the public Compose route when both are affected.
+- For batch changes, compare per-image dispatch with the batch route at batch sizes `4`, `8`, and `16`.
+- For dtype routing, measure uint8 and float32. A change confined to one dtype may time that dtype and use correctness
+  tests to verify the other dtype's wrapper round-trip.
+- For Compose changes, include root skip, no-op, probabilistic no-op, an always-applied cheap leaf, applied-parameter
+  capture, trace, Tensor, processors, and concurrent calls. For annotation changes, include empty, single, and dense
+  annotations alongside image-only inputs.
+- Construction time and retained allocations are optional context when RNG or graph ownership changes. Judge the
+  result by repeated-call performance; a measured call-time gain can justify slower construction.
 
-Skip channel counts the transform explicitly doesn't support. Always include the channel axis: grayscale inputs are
-`(H, W, 1)`, not `(H, W)`. For another proposal, vary the dimension that controls the candidate—such as label density,
-random-output size, or the sides of a routing threshold—and explain the bounded matrix.
+## Use the existing catalog
 
-If the optimization changes dtype conversion or a `@uint8_io` / `@float32_io` wrapped function, benchmark the hot dtype
-and add correctness tests for the other supported dtype. For example, a uint8-only speedup in a `@uint8_io` function
-still needs a float32 regression test that verifies wrapper round-tripping.
+Start with [benchmark/README.md](../../../benchmark/README.md) for ASV commands and
+[Performance Coverage](../../../docs/maintaining/performance-coverage.md) for case ownership.
 
-## Template: Isolated Function
+`release-core` supplies the fixed weekly and release profile. `changed` selects affected families for requested PR
+comparisons. Resolve these profiles with `tools/select_benchmark_filters.py`. Use ASV `continuous` with explicit
+baseline and candidate refs. An empty selection does not authorize a full-catalog run; choose an explicit regex for
+a larger investigation.
 
-```python
-import timeit
-import numpy as np
+If the catalog cannot express the question, keep a focused local measurement under `_internal/`. Save matching
+before/after cells with shape, dtype, channels, parameters, allocation mode, elapsed time, and iteration count.
 
-SIZES = {"small": (256, 256), "medium": (512, 512), "large": (1024, 1024)}
-CHANNELS = [1, 3, 5]
-N = 100
+## Compare and report
 
-for size_name, (h, w) in SIZES.items():
-    for ch in CHANNELS:
-        shape = (h, w, ch)
-        img = np.random.randint(0, 256, shape, dtype=np.uint8)
+1. Run baseline and candidate on the same machine and environment, back-to-back, with controlled OpenCV and BLAS
+   threads and warm-up.
+2. Use at least 100 iterations for fast functions. For slow functions, choose enough repetitions for stable timing,
+   aiming for more than one second per cell.
+3. Verify correctness, seeded behavior, and aliasing before accepting a faster path.
+4. Report every before/after cell, speedup, exact revisions, command or ASV filter, environment, and rejected candidates.
+5. Investigate any regression above 5%; rework it or explain the measured trade-off.
 
-        old_t = timeit.timeit(lambda img=img: old_func(img, **params), number=N)
-        new_t = timeit.timeit(lambda img=img: new_func(img, **params), number=N)
-        print(f"{size_name} {h}x{w}x{ch}: old={old_t:.4f}s new={new_t:.4f}s speedup={old_t / new_t:.2f}x")
-```
-
-## Template: Full Pipeline (Compose)
-
-```python
-import timeit
-import numpy as np
-import albumentations as A
-
-SIZES = {"small": (256, 256), "medium": (512, 512), "large": (1024, 1024)}
-CHANNELS = [1, 3, 5]
-
-transform = A.Compose([A.YourTransform(p=1.0)])
-
-for size_name, (h, w) in SIZES.items():
-    for ch in CHANNELS:
-        shape = (h, w, ch)
-        img = np.random.randint(0, 256, shape, dtype=np.uint8)
-
-        t = timeit.timeit(lambda img=img: transform(image=img), number=100)
-        print(f"{size_name} {h}x{w}x{ch}: {t:.4f}s (100 calls)")
-```
-
-## Workflow
-
-1. **Before**: run benchmark on the current `main` / original code, save output to a JSON file
-2. **After**: run benchmark on the modified code, save output to a JSON file
-3. **Compare**: load both JSON files, compute speedup = old_time / new_time for each transform/size combo
-4. **Report** results in the PR/commit message body
-
-## Repository CI Profiles
-
-AlbumentationsX keeps benchmark definitions catalog-wide, but times only the
-profile that answers the current evidence question:
-
-- `release-core`: fixed core-pipeline, target-processor, transform-family, and
-  peak-memory cases for the weekly schedule and release preflight;
-- `changed`: affected-family patterns selected from changed files for a
-  `run-performance` PR label or a maintainer-requested deep comparison.
-
-Resolve profiles with `tools/select_benchmark_filters.py`. Timed CI evidence
-must compare an explicit baseline ref with an explicit candidate ref using ASV
-`continuous`. Do not use a single-revision snapshot or treat an empty filter
-as permission to run the entire catalog. A full-family run requires an
-explicit regex so its cost is visible before execution.
-
-### JSON Output Format
-
-Save benchmark results as JSON for automated comparison:
-
-```python
-import json
-
-results = {}
-for transform_name, (h, w), ch, elapsed in all_results:
-    key = f"{transform_name}_{h}x{w}x{ch}"
-    results[key] = {"time": elapsed, "iterations": N}
-
-with open("benchmark_results.json", "w") as f:
-    json.dump(results, f, indent=2)
-```
-
-### Comparison Script Pattern
-
-```python
-import json
-
-with open("bench_old.json") as f:
-    old = json.load(f)
-with open("bench_new.json") as f:
-    new = json.load(f)
-
-for key in sorted(old):
-    if key in new:
-        speedup = old[key]["time"] / new[key]["time"]
-        indicator = "FASTER" if speedup > 1.05 else "SLOWER" if speedup < 0.95 else "SAME"
-        print(f"{key}: {old[key]['time']:.4f}s -> {new[key]['time']:.4f}s  {speedup:.2f}x  {indicator}")
-```
-
-## Reporting Format
-
-```
-Benchmark (uint8, 100 iterations):
-
-Function direct:
-  256x256x1   — Before: 0.0200s After: 0.0100s Speedup: 2.00x
-  256x256x3   — Before: 0.0500s After: 0.0300s Speedup: 1.67x
-  ...
-
-Compose single:
-  256x256x1   — 0.0120s
-  256x256x3   — 0.0340s
-  ...
-```
-
-## Template: Batch (apply_to_images)
-
-When benchmarking batch optimizations (kernel pre-computation, 4D indexing, pre-allocated loops):
-
-```python
-import timeit
-import numpy as np
-import albumentations as A
-
-BATCH_SIZES = [4, 8, 16]
-SIZES = {"small": (256, 256), "medium": (512, 512), "large": (1024, 1024)}
-CHANNELS = [1, 3, 5]
-
-transform = A.Compose([A.YourTransform(p=1.0)])
-
-for batch_size in BATCH_SIZES:
-    for size_name, (h, w) in SIZES.items():
-        for channels in CHANNELS:
-            images = np.random.randint(0, 256, (batch_size, h, w, channels), dtype=np.uint8)
-            t = timeit.timeit(lambda images=images: transform(images=images), number=50)
-            print(f"batch={batch_size} {size_name} {h}x{w}x{channels}: {t:.4f}s")
-```
-
-## Rules
-
-- Run on the **same machine**, back-to-back, same conditions
-- Use at least **100 iterations** for fast functions; fewer for slow ones (aim for >1s total)
-- Test **both uint8 and float32** if the change affects dtype handling. If benchmarking only the hot dtype, add
-  correctness tests for the other dtype.
-- A **>5% regression** on any combination requires justification or rework
-- For batch optimizations, compare 1-channel, 3-channel RGB, and 5-channel multichannel inputs to verify speedup
-  holds across channel counts
-- Keep channel-last shapes throughout: images `(H,W,C)`, image batches `(N,H,W,C)`, and a volume `(D,H,W,C)`
+A one-revision timing is a baseline observation, not evidence of a speedup.

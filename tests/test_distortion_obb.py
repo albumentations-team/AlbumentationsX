@@ -162,7 +162,6 @@ def test_distortion_transforms_obb_format_consistency(transform_cls, params, bbo
                 f"Expected normalized coords for {bbox_format}, got {output_bbox}"
             )
 
-        # Check OBB has angle
         assert len(output_bbox) == 5, f"Expected 5 values for OBB, got {len(output_bbox)}"
 
 

@@ -507,7 +507,6 @@ class ConstrainedCoarseDropout(BaseDropout):
         if len(bboxes) == 0 or self.bbox_labels is None:
             return None
 
-        # Get label encoder from BboxProcessor if needed
         bbox_processor = self.get_processor("bboxes")
         if bbox_processor is None:
             return None

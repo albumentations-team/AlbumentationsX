@@ -425,7 +425,6 @@ def test_create_piecewise_affine_maps_bounds(
     assert map_x is not None and map_y is not None
     height, width = image_shape
 
-    # Check bounds
     assert np.all(map_x >= 0)
     assert np.all(map_x <= width - 1)
     assert np.all(map_y >= 0)
@@ -721,7 +720,6 @@ def test_create_piecewise_affine_maps_grid_points(
 
 def test_pad_with_params_zero_channels():
     """Test that padding works correctly with 0-channel images."""
-    # Create a 0-channel image
     img = np.zeros((10, 10, 0), dtype=np.uint8)
 
     result = fgeometric.pad_with_params(
@@ -734,7 +732,6 @@ def test_pad_with_params_zero_channels():
         value=0,
     )
 
-    # Check result shape
     assert result.shape == (15, 19, 0)  # 10+2+3, 10+4+5, 0
     assert result.dtype == np.uint8
     assert result.size == 0
@@ -822,7 +819,6 @@ def test_resize_pil_with_cv2_interpolation_constants(input_shape, target_shape, 
     # This should not raise an error
     resized = fgeometric.resize_pil(img, target_shape, interpolation=interpolation)
 
-    # Check output shape
     assert resized.shape[:2] == target_shape
     assert resized.shape[2] == 3
     assert resized.dtype == np.uint8

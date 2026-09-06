@@ -184,7 +184,6 @@ def test_scale(target):
 @pytest.mark.parametrize("target", ["image", "mask"])
 def test_scale_downscale(target):
     """Test downscaling with INTER_AREA (best for downscaling)."""
-    # Create a 10x10 image with distinct values
     img = np.arange(100, dtype=np.uint8).reshape(10, 10)
 
     img = convert_2d_to_target_format([img], target=target)
@@ -196,7 +195,6 @@ def test_scale_downscale(target):
     assert scaled.shape[0] == 5
     assert scaled.shape[1] == 5
 
-    # Verify dtype is preserved
     assert scaled.dtype == np.uint8
 
 
@@ -383,7 +381,6 @@ def test_solarize_value_range_property():
     )
     @settings(max_examples=50, deadline=3000)
     def property_test(dtype, shape, threshold):
-        # Generate appropriate data for dtype
         if dtype == np.uint8:
             image = np.random.randint(0, 256, shape, dtype=np.uint8)
         else:
@@ -495,10 +492,8 @@ def test_equalize_uniform_image():
     When the image has a uniform histogram (all pixels same value),
     equalization should return the image unchanged (identity LUT).
     """
-    # Create uniform image (all pixels same value)
     uniform_img = np.full((100, 100, 1), 128, dtype=np.uint8)
 
-    # Apply equalize
     result = fpixel.equalize(uniform_img, mode="cv")
 
     # Should be unchanged (identity operation)
@@ -822,7 +817,6 @@ def test_planckian_jitter_cied():
 
 @pytest.mark.parametrize("mode", ["blackbody", "cied"])
 def test_planckian_jitter_edge_cases(mode):
-    # Create a sample image
     img = np.ones((10, 10, 3), dtype=np.float32)
 
     # Get min and max temperatures for the mode
@@ -1507,7 +1501,6 @@ def test_prepare_drop_values(array, value, expected_shape, expected_dtype, expec
     rng = np.random.default_rng(42)
     result = fpixel.prepare_drop_values(array, value, rng)
 
-    # Check shape and dtype
     assert result.shape == expected_shape
     assert result.dtype == expected_dtype
 
@@ -1601,10 +1594,8 @@ def test_get_drop_mask_shapes_and_properties(
     rng = np.random.default_rng(42)
     mask = fpixel.get_drop_mask(shape, per_channel, dropout_prob, rng)
 
-    # Check shape
     assert mask.shape == expected_shape
 
-    # Check dtype
     assert mask.dtype == bool
 
     # Check if mask is 2D or 3D
@@ -1662,7 +1653,6 @@ def test_get_drop_mask_reproducibility():
 
 def test_pixel_dropout_sequence_per_channel():
     """Test pixel dropout with sequence values and per_channel=True"""
-    # Setup
     image = np.ones((10, 10, 3), dtype=np.uint8) * 255
     drop_values = (1, 2, 3)
 
@@ -1679,7 +1669,6 @@ def test_pixel_dropout_sequence_per_channel():
     # Verify prepared_values shape matches image
     assert prepared_values.shape == image.shape
 
-    # Apply dropout
     result = fpixel.pixel_dropout(image, drop_mask, prepared_values)
 
     # Each channel should be entirely filled with its corresponding value
@@ -2141,7 +2130,6 @@ def test_create_contrast_lut(
     if len(hist) < 256:
         hist = np.pad(hist, (0, 256 - len(hist)))
 
-    # Generate LUT
     lut = fpixel.create_contrast_lut(
         hist=hist,
         min_intensity=min_intensity,
@@ -2533,10 +2521,8 @@ def test_create_corner_illumination_gradient_zero_intensity_returns_ones():
 )
 def test_corner_illumination_brightest_point(corner, intensity, expected_corner):
     """Test that the illumination pattern has maximum intensity at the correct corner."""
-    # Create a constant test image
     image = np.full((10, 10), 0.5, dtype=np.float32)
 
-    # Apply corner illumination
     result = fpixel.apply_corner_illumination(image, intensity, corner)
 
     # Find the brightest point
@@ -2557,12 +2543,10 @@ def test_corner_illumination_brightest_point(corner, intensity, expected_corner)
 )
 def test_corner_illumination_preserves_shape_and_type(shape, dtype):
     """Test that the output maintains the input shape and dtype."""
-    # Create test image
     image = np.ones(shape, dtype=dtype)
     if dtype == np.uint8:
         image *= 255
 
-    # Apply corner illumination
     result = fpixel.apply_corner_illumination(image, intensity=0.2, corner=0)
 
     assert result.shape == shape
@@ -2572,11 +2556,9 @@ def test_corner_illumination_preserves_shape_and_type(shape, dtype):
 @pytest.mark.parametrize("intensity", [-0.2, 0, 0.2])
 def test_corner_illumination_intensity_range(intensity):
     """Test that the output values stay within valid range."""
-    # Create test images with extreme values
     image_zeros = np.zeros((10, 10), dtype=np.float32)
     image_ones = np.ones((10, 10), dtype=np.float32)
 
-    # Apply corner illumination
     result_zeros = fpixel.apply_corner_illumination(image_zeros, intensity, corner=0)
     result_ones = fpixel.apply_corner_illumination(image_ones, intensity, corner=0)
 
@@ -2589,10 +2571,8 @@ def test_corner_illumination_intensity_range(intensity):
 
 def test_corner_illumination_identity_zero_intensity():
     """Test that zero intensity returns the input image unchanged."""
-    # Create random test image
     image = np.random.rand(10, 10).astype(np.float32)
 
-    # Apply corner illumination with zero intensity
     result = fpixel.apply_corner_illumination(image, intensity=0, corner=0)
 
     np.testing.assert_array_almost_equal(result, image, decimal=2)
@@ -2601,10 +2581,8 @@ def test_corner_illumination_identity_zero_intensity():
 @pytest.mark.parametrize("corner", [0, 1, 2, 3])
 def test_corner_illumination_symmetry(corner):
     """Test that the illumination pattern is symmetric around the corner."""
-    # Create test image
     image = np.ones((11, 11), dtype=np.float32)  # Odd dimensions for clear center
 
-    # Apply corner illumination
     result = fpixel.apply_corner_illumination(image, intensity=0.2, corner=corner)
 
     # Get distances from corner to test symmetry
@@ -2626,13 +2604,10 @@ def test_corner_illumination_symmetry(corner):
 
 def test_corner_illumination_multichannel_consistency():
     """Test that all channels are modified identically for RGB images."""
-    # Create RGB test image
     image = np.ones((10, 10, 3), dtype=np.float32)
 
-    # Apply corner illumination
     result = fpixel.apply_corner_illumination(image, intensity=0.2, corner=0)
 
-    # Check that all channels are identical
     np.testing.assert_array_almost_equal(result[..., 0], result[..., 1])
     np.testing.assert_array_almost_equal(result[..., 1], result[..., 2])
 
@@ -2655,10 +2630,8 @@ def test_corner_illumination_multichannel_consistency():
 )
 def test_gaussian_illumination_brightest_point(center, intensity, sigma, expected_brightest):
     """Test that the brightest point is at the expected location."""
-    # Create a constant test image
     image = np.full((10, 10), 0.5, dtype=np.float32)
 
-    # Apply gaussian illumination
     result = fpixel.apply_gaussian_illumination(image, intensity, center, sigma)
 
     # Find the brightest point
@@ -2678,7 +2651,6 @@ def test_gaussian_illumination_brightest_point(center, intensity, sigma, expecte
 )
 def test_gaussian_illumination_preserves_shape_and_type(shape, dtype):
     """Test that output maintains input shape and dtype."""
-    # Create test image
     image = np.ones(shape, dtype=dtype)
     if dtype == np.uint8:
         image *= 255
@@ -2768,7 +2740,6 @@ def test_gaussian_illumination_multichannel_consistency(intensity):
         sigma=0.25,
     )
 
-    # Check that all channels are identical
     np.testing.assert_allclose(result[..., 0], result[..., 1], rtol=1e-5, atol=1e-8, equal_nan=False)
     np.testing.assert_allclose(result[..., 1], result[..., 2], rtol=1e-5, atol=1e-8, equal_nan=False)
 
@@ -3008,7 +2979,6 @@ def test_add_rain_preserves_input():
 )
 def test_rain_params_shapes(shape, color, intensity, expected_shape):
     """Test that output shapes are correct for different input configurations."""
-    # Generate random liquid layer
     liquid_layer = np.random.normal(0.65, 0.3, size=shape)
 
     result = fpixel.get_rain_params(liquid_layer, color, intensity)
@@ -3175,14 +3145,6 @@ def test_mud_params_intensity_and_color(intensity, color, cutout_threshold):
     expected_max = intensity * max_color
     expected_min = 0.8 * expected_max  # Allow 20% tolerance for numerical effects
 
-    # Add diagnostic information
-    if max_effect < expected_min:
-        # Calculate percentage of non-zero mud pixels
-        np.mean(result["mud"] > 0)
-
-        # Show distribution of non-zero mud values
-        result["mud"][result["mud"] > 0]
-
     if max_color > 0:
         assert max_effect >= expected_min, (
             f"Maximum effect ({max_effect:.3f}) is less than expected minimum ({expected_min:.3f}) "
@@ -3293,11 +3255,9 @@ def test_simple_nmf_shape(height, width, n_iter, random_state):
     nmf = fpixel.SimpleNMF(n_iter=n_iter)
     concentrations, colors = nmf.fit_transform(od)
 
-    # Check shapes
     assert concentrations.shape == (height * width, 2)
     assert colors.shape == (2, 3)
 
-    # Check non-negativity
     assert np.all(concentrations >= 0)
     assert np.all(colors >= 0)
 
@@ -3371,7 +3331,6 @@ def synthetic_he_image():
     h_concentration[:20, :20] = 0
     e_concentration[:20, :20] = 0
 
-    # Create image
     concentrations = np.stack([h_concentration, e_concentration], axis=-1)
     optical_density = np.dot(concentrations, stain_matrix)
     img = np.exp(-optical_density) * 255
@@ -3541,10 +3500,8 @@ def test_white_pixels_remain_white_with_saturation_increase(sat_shift, descripti
     This test verifies that increasing saturation doesn't affect white pixels,
     which should remain white regardless of saturation changes.
     """
-    # Create a simple test image with white pixels (255, 255, 255)
     white_image = np.ones((10, 10, 3), dtype=np.uint8) * 255
 
-    # Apply saturation increase
     result = fpixel.shift_hsv(white_image, hue_shift=0, sat_shift=sat_shift, val_shift=0)
 
     # Check that all pixels are still white (255, 255, 255)
@@ -3561,7 +3518,6 @@ def test_white_pixels_remain_white_with_saturation_increase(sat_shift, descripti
 )
 def test_white_pixels_in_mixed_images(image_type, sat_shift):
     """Test that white pixels in mixed images remain white when saturation is increased."""
-    # Create different test images
     if image_type == "white_and_gray":
         # White and gray image
         image = np.ones((10, 10, 3), dtype=np.uint8) * 255
@@ -3579,7 +3535,6 @@ def test_white_pixels_in_mixed_images(image_type, sat_shift):
     # Store original white pixels for comparison
     white_mask = np.all(image == 255, axis=2)
 
-    # Apply saturation increase
     result = fpixel.shift_hsv(image, hue_shift=0, sat_shift=sat_shift, val_shift=0)
 
     # Check that white pixels remain white (vectorized)
@@ -3610,7 +3565,6 @@ def test_white_pixels_in_mixed_images(image_type, sat_shift):
 
 def test_grayscale_image_with_saturation():
     """Test that grayscale images are handled correctly with saturation changes."""
-    # Create a grayscale image
     gray_image = np.ones((10, 10, 1), dtype=np.uint8) * 128
 
     # Apply saturation increase (should be ignored for grayscale)
@@ -3635,10 +3589,8 @@ def test_gray_pixels_remain_gray_with_saturation_increase(gray_value, sat_shift)
     This test verifies that increasing saturation doesn't affect gray pixels,
     which should remain gray regardless of saturation changes.
     """
-    # Create a simple test image with gray pixels
     gray_image = np.ones((10, 10, 3), dtype=np.uint8) * gray_value
 
-    # Apply saturation increase
     result = fpixel.shift_hsv(gray_image, hue_shift=0, sat_shift=sat_shift, val_shift=0)
 
     # Check that all pixels are still the same gray value
@@ -3659,7 +3611,6 @@ def test_gray_pixels_remain_gray_with_saturation_increase(gray_value, sat_shift)
 )
 def test_gray_pixels_in_mixed_images(image_type, sat_shift):
     """Test that gray pixels in mixed images remain gray when saturation is increased."""
-    # Create different test images
     if image_type == "gray_and_color":
         # Gray and colored image
         image = np.ones((10, 10, 3), dtype=np.uint8) * 128  # Medium gray
@@ -3676,7 +3627,6 @@ def test_gray_pixels_in_mixed_images(image_type, sat_shift):
     # Store original values for comparison
     original_values = image.copy()
 
-    # Apply saturation increase
     result = fpixel.shift_hsv(image, hue_shift=0, sat_shift=sat_shift, val_shift=0)
 
     # Check that gray pixels remain unchanged (vectorized)
@@ -3739,7 +3689,6 @@ def test_gray_pixels_in_mixed_images(image_type, sat_shift):
 )
 def test_to_gray_preserves_original_image(shape, dtype, method, num_output_channels):
     """Test that to_gray doesn't modify the original image."""
-    # Create test image
     if dtype == np.uint8:
         original_img = np.random.randint(0, 256, shape, dtype=dtype)
     else:
@@ -3748,7 +3697,6 @@ def test_to_gray_preserves_original_image(shape, dtype, method, num_output_chann
     # Make a copy for comparison
     img_copy = original_img.copy()
 
-    # Apply to_gray
     result = fpixel.to_gray(original_img, num_output_channels, method)
 
     # Check that original image is unchanged
@@ -3790,13 +3738,10 @@ def test_to_gray_preserves_original_image(shape, dtype, method, num_output_chann
 )
 def test_grayscale_to_multichannel_output_channels(input_shape, num_output_channels, expected_shape):
     """Test that grayscale_to_multichannel returns correct number of channels."""
-    # Create grayscale image
     grayscale_img = np.random.random(input_shape).astype(np.float32)
 
-    # Apply grayscale_to_multichannel
     result = fpixel.grayscale_to_multichannel(grayscale_img, num_output_channels)
 
-    # Check output shape
     assert result.shape == expected_shape, f"Expected shape {expected_shape}, got {result.shape}"
 
     # Check that all channels have the same values (replicated from grayscale)
@@ -3822,7 +3767,6 @@ def test_grayscale_to_multichannel_output_channels(input_shape, num_output_chann
 )
 def test_to_gray_all_methods_consistency(method):
     """Test that all to_gray methods produce valid grayscale images."""
-    # Create test images
     rgb_img_uint8 = np.random.randint(0, 256, (50, 50, 3), dtype=np.uint8)
     rgb_img_float32 = rgb_img_uint8.astype(np.float32) / 255.0
 
@@ -3830,11 +3774,9 @@ def test_to_gray_all_methods_consistency(method):
     gray_uint8 = fpixel.to_gray(rgb_img_uint8, 1, method)
     gray_float32 = fpixel.to_gray(rgb_img_float32, 1, method)
 
-    # Check shapes
     assert gray_uint8.shape == (50, 50), f"Incorrect shape for uint8 with method={method}"
     assert gray_float32.shape == (50, 50), f"Incorrect shape for float32 with method={method}"
 
-    # Check dtypes
     assert gray_uint8.dtype == np.uint8, f"Incorrect dtype for uint8 with method={method}"
     assert gray_float32.dtype == np.float32, f"Incorrect dtype for float32 with method={method}"
 
@@ -3850,7 +3792,6 @@ def test_to_gray_all_methods_consistency(method):
     assert gray_multi_uint8.shape == (50, 50, 3), f"Incorrect multi-channel shape for uint8 with method={method}"
     assert gray_multi_float32.shape == (50, 50, 3), f"Incorrect multi-channel shape for float32 with method={method}"
 
-    # Check that all channels are identical
     for i in range(1, 3):
         np.testing.assert_array_equal(
             gray_multi_uint8[..., 0],
@@ -3866,7 +3807,6 @@ def test_to_gray_all_methods_consistency(method):
 
 def test_grayscale_to_multichannel_preserves_values():
     """Test that grayscale_to_multichannel preserves original grayscale values."""
-    # Create test grayscale images
     gray_2d = np.array([[0, 128, 255], [64, 192, 32]], dtype=np.uint8)
     gray_3d = gray_2d[..., np.newaxis]
 
@@ -3891,13 +3831,11 @@ def test_grayscale_to_multichannel_preserves_values():
 
 def test_grayscale_to_multichannel_float_values():
     """Test grayscale_to_multichannel with float values."""
-    # Create float grayscale image
     gray_float = np.array([[0.0, 0.5, 1.0], [0.25, 0.75, 0.1]], dtype=np.float32)
 
     # Test with 3 channels
     result = fpixel.grayscale_to_multichannel(gray_float, 3)
 
-    # Check shape and values
     assert result.shape == (2, 3, 3)
     assert result.dtype == np.float32
 

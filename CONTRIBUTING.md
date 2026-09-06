@@ -1,52 +1,20 @@
 # Contributing to AlbumentationsX
 
-Thank you for your interest in contributing to [AlbumentationsX](https://albumentations.ai/)! This guide will help you get started with contributing to our image augmentation library.
+For small bug fixes, submit a pull request directly. For larger changes, open an
+[issue](https://github.com/albumentations-team/AlbumentationsX/issues) describing the problem and proposed behavior
+before implementation. You can discuss it in [Discord](https://discord.gg/e6zHCXTvaN).
 
-## Quick Start
+## Prepare and submit a change
 
-For small changes (e.g., bug fixes), feel free to submit a PR directly.
+1. Fork the repository and follow the [Environment Setup Guide](docs/contributing/environment_setup.md).
+2. Create a branch in your fork: `git checkout -b feature/my-new-feature`.
+3. Follow the [Coding Guidelines](docs/contributing/coding_guidelines.md). Keep transform policy and dispatch in the
+   transform class and image operations in the functional layer.
+4. Add or update tests that demonstrate the changed behavior, then run the relevant tests and pre-commit hooks.
+5. Open a pull request explaining the problem, resulting behavior, and validation. Address review feedback before merge.
 
-For larger changes:
-
-1. Create an [issue](https://github.com/albumentations-team/AlbumentationsX/issues) outlining your proposed change
-2. Join our [Discord community](https://discord.gg/e6zHCXTvaN) to discuss your idea
-
-## Contribution Guides
-
-We've organized our contribution guidelines into focused documents:
-
-- [Environment Setup Guide](docs/contributing/environment_setup.md) - How to set up your development environment
-- [Coding Guidelines](docs/contributing/coding_guidelines.md) - Code style, best practices, and technical requirements
-
-## Contribution Process
-
-1. **Find an Issue**: Look for open issues or propose a new one. For newcomers, look for issues labeled "good first issue"
-2. **Fork & Set Up**: Fork the repository and follow our [Environment Setup Guide](docs/contributing/environment_setup.md)
-3. **Create a Branch**: In your fork, create a new branch: `git checkout -b feature/my-new-feature`
-4. **Make Changes**: Write code following our [Coding Guidelines](docs/contributing/coding_guidelines.md). Image
-   operations must preserve their dtype range; clip the operation itself, never through a forwarding wrapper added
-   only to attach a decorator. Keep `apply*` methods as short dispatchers: move image arithmetic, routing, and clipping
-   into a functional helper.
-5. **Test**: Add tests and ensure all tests pass
-6. **Submit**: Open a Pull Request from your fork with a clear description of your changes
-
-## Code Review Process
-
-1. Maintainers will review your contribution
-2. Address any feedback or questions
-3. Once approved, your code will be merged
-
-## Project Structure
-
-- `albumentations/` - Main source code
-- `tests/` - Test suite
-- `docs/` - Documentation
-
-## Getting Help
-
-- Join our [Discord community](https://discord.gg/e6zHCXTvaN)
-- Open a GitHub [issue](https://github.com/albumentations-team/AlbumentationsX/issues)
-- Ask questions in your pull request
+Source code is in `albumentations/`, tests in `tests/`, and documentation in `docs/`.
+For help, ask in the issue, pull request, or Discord discussion.
 
 ## Contributor License Agreement
 

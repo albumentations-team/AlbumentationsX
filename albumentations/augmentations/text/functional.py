@@ -178,7 +178,6 @@ def draw_text_on_multi_channel_image(image: ImageType, metadata_list: list[dict[
         font_color = metadata["font_color"]
 
         # Handle font_color as tuple[float, ...]
-        # Ensure we have enough color values for all channels
         if len(font_color) < image.shape[2]:
             # If fewer values than channels, pad with zeros
             font_color = tuple(list(font_color) + [0] * (image.shape[2] - len(font_color)))
@@ -186,7 +185,6 @@ def draw_text_on_multi_channel_image(image: ImageType, metadata_list: list[dict[
             # If more values than channels, truncate
             font_color = font_color[: image.shape[2]]
 
-        # Convert to integers for PIL
         font_color = [int(c) for c in font_color]
 
         position = bbox_coords[:2]

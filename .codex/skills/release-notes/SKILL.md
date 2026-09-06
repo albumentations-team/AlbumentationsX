@@ -29,35 +29,14 @@ Match the tone of `RELEASE_NOTES_2.1.2.md` and `RELEASE_NOTES_2.2.0.md`: terse, 
 
 ## Transform name → link
 
-**Every mention of a transform name in release notes MUST be a markdown link to its explore page**:
+Link the first meaningful mention of a transform in each section, including headings and table entries:
 
-```
+```markdown
 [TransformName](https://albumentations.ai/explore/transform/TransformName/)
 ```
 
-This applies to:
-- New transforms (in the "New features" section header and prose).
-- Transforms touched by bug fixes.
-- Transforms touched by breaking changes (including in the rename table).
-- The `Commits` table descriptions.
-
-The first mention in each section should be a link. Repeat mentions in the same paragraph can stay as plain backticked names if it would be visually noisy, but err on the side of always linking.
-
-Examples (good):
-
-```markdown
-### [CopyAndPaste](https://albumentations.ai/explore/transform/CopyAndPaste/) (mixing)
-
-[CopyAndPaste](https://albumentations.ai/explore/transform/CopyAndPaste/) was mixing positional indices and `_bbox_instance_id` values...
-
-| `Rotate.limit`, `SafeRotate.limit` | `angle_range` |
-```
-
-Becomes:
-
-```markdown
-| [Rotate](https://albumentations.ai/explore/transform/Rotate/).limit, [SafeRotate](https://albumentations.ai/explore/transform/SafeRotate/).limit | `angle_range` |
-```
+Repeated mentions in the same paragraph may use plain backticked names. Keep code fences runnable, without links.
+For parameter renames, link the transform separately and put the parameter name in code.
 
 Do **not** link:
 - Core classes (`Compose`, `BboxParams`, `KeypointParams`, `BasicTransform`, `BaseDistortion`).

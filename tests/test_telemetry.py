@@ -82,12 +82,6 @@ class TestTelemetryClient:
         client2 = TelemetryClient()
         assert client1 is client2
 
-    def test_client_enabled_by_default(self):
-        """Test that client is disabled during pytest runs."""
-        client = TelemetryClient()
-        # Since we're running under pytest, telemetry should be disabled
-        assert client.enabled is False
-
     def test_disable_enable_client(self):
         """Test disabling and enabling the client."""
         client = TelemetryClient()
@@ -247,16 +241,12 @@ class TestCIEnvironmentDetection:
         # Set CI environment
         monkeypatch.setenv("GITHUB_ACTIONS", "true")
 
-        # Create new client
         client = TelemetryClient()
         assert client.enabled is False
 
-    def test_telemetry_disabled_in_pytest(self, monkeypatch):
+    def test_telemetry_disabled_in_pytest(self):
         """Test that telemetry is disabled when pytest is running."""
-        # The client should already be disabled since we're running in pytest
-        # Just verify this behavior
         client = TelemetryClient()
-        # Since we're running under pytest, telemetry should be disabled
         assert client.enabled is False
 
     def test_environment_returns_ci(self, monkeypatch):
@@ -319,7 +309,6 @@ class TestComposeIntegration:
                 telemetry=True,
             )
 
-            # Verify telemetry was tracked
             mock_client.track_compose_init.assert_called_once()
             args = mock_client.track_compose_init.call_args
             # First argument should be the telemetry data dict
@@ -379,7 +368,6 @@ class TestDataCollectors:
         """Test environment info collection."""
         info = get_environment_info()
 
-        # Check basic fields exist
         assert "albumentationsx_version" in info
         assert "python_version" in info
         assert "os" in info
@@ -584,7 +572,6 @@ class TestComposeInitEvent:
 
     def test_event_many_transforms(self):
         """Test event with many transforms - no limits with Mixpanel!"""
-        # Create 20 transforms
         transforms = [f"Transform{i}" for i in range(20)]
 
         event = ComposeInitEvent(
@@ -659,7 +646,6 @@ class TestComplexPipelines:
                 additional_targets={"image2": "image", "mask2": "mask"},
             )
 
-            # Verify telemetry was called
             mock_client.track_compose_init.assert_called_once()
 
             # Verify the data was passed correctly
@@ -698,7 +684,6 @@ class TestComplexPipelines:
             mock_client.track_compose_init = track_call
 
             with patch("albumentations.core.composition.get_telemetry_client", return_value=mock_client):
-                # Create compose with nested structure
                 main_compose = A.Compose(
                     [
                         A.Compose(
@@ -765,7 +750,6 @@ def test_settings_manager():
         temp_path = Path(f.name)
 
     try:
-        # Create settings with custom file
         settings = SettingsManager(settings_file=temp_path)
 
         # Test defaults
@@ -795,7 +779,6 @@ class TestTelemetryIntegration:
         """Test creating and using a simple pipeline with telemetry enabled."""
         # Enable telemetry
         settings.update(telemetry=True)
-        # Create a simple pipeline
         transform = A.Compose(
             [
                 A.RandomCrop(256, 256),
@@ -804,14 +787,12 @@ class TestTelemetryIntegration:
             ],
         )
 
-        # Test the pipeline works
         image = np.random.randint(0, 255, (512, 512, 3), dtype=np.uint8)
         result = transform(image=image)
         assert result["image"].shape == (256, 256, 3)
 
     def test_pipeline_with_telemetry_disabled(self):
         """Test creating a pipeline with telemetry explicitly disabled."""
-        # Create a pipeline with telemetry disabled
         transform = A.Compose(
             [
                 A.RandomCrop(256, 256),
@@ -820,7 +801,6 @@ class TestTelemetryIntegration:
             telemetry=False,
         )
 
-        # Test it works
         image = np.random.randint(0, 255, (512, 512, 3), dtype=np.uint8)
         result = transform(image=image)
         assert result["image"].shape == (256, 256, 3)
@@ -873,7 +853,6 @@ class TestTelemetryIntegration:
             keypoint_labels=keypoint_labels,
         )
 
-        # Check all outputs are present
         assert "image" in result
         assert "mask" in result
         assert "bboxes" in result
@@ -885,7 +864,6 @@ class TestTelemetryIntegration:
         """Test that Lambda transforms are excluded from telemetry."""
         from albumentations.augmentations.other.lambda_transform import Lambda
 
-        # Create pipeline with Lambda
         transform = A.Compose(
             [
                 A.RandomCrop(256, 256),
@@ -904,7 +882,6 @@ class TestTelemetryIntegration:
 
     def test_normalize_totensor_included(self):
         """Test that Normalize and ToTensorV2 are included with Mixpanel."""
-        # Create event with Normalize and ToTensorV2
         event = ComposeInitEvent(
             transforms=["RandomCrop", "Normalize", "HorizontalFlip", "ToTensorV2", "Blur"],
             albumentationsx_version="2.0.0",
@@ -930,7 +907,6 @@ class TestTelemetryIntegration:
 
     def test_serialization_with_telemetry(self):
         """Test that telemetry doesn't interfere with serialization."""
-        # Create a pipeline
         transform = A.Compose(
             [
                 A.RandomCrop(256, 256),

@@ -22,7 +22,6 @@ from tests.utils import set_seed
 )
 def test_label_function(shape, dtype, connectivity):
     set_seed(137)
-    # Generate a random binary mask
     mask = np.random.randint(0, 2, shape).astype(dtype)
 
     # Compare results with scikit-image
@@ -158,7 +157,16 @@ def test_cutout_with_random_fills(img_shape, fill):
     holes = np.array([[2, 2, 5, 5]])
     generator = np.random.default_rng(137)
 
-    fdropout.cutout(img, holes, fill, generator)
+    result = fdropout.cutout(img, holes, fill, generator)
+    filled_pixels = result[2:5, 2:5].reshape(-1, img_shape[-1])
+    assert np.any(filled_pixels != 0)
+    if fill == "random_uniform":
+        np.testing.assert_array_equal(filled_pixels, np.broadcast_to(filled_pixels[0], filled_pixels.shape))
+    else:
+        assert len(np.unique(filled_pixels, axis=0)) > 1
+    outside_hole = np.ones(img_shape[:2], dtype=bool)
+    outside_hole[2:5, 2:5] = False
+    np.testing.assert_array_equal(result[outside_hole], 0)
 
 
 @pytest.mark.parametrize(
@@ -730,7 +738,6 @@ def test_sample_points_from_components_multiple_components(mask, num_points, exp
 
     points, sizes = result
 
-    # Check basic shapes
     assert len(points) == expected["num_points"]
     assert len(sizes) == expected["num_points"]
     assert points.shape[1] == 2  # (x, y) coordinates

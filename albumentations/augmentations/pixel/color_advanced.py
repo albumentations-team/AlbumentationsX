@@ -593,7 +593,6 @@ class PlanckianJitter(ImageOnlyTransform):
         else:
             raise ValueError(f"Unknown sampling method: {self.sampling_method}")
 
-        # Ensure temperature is within the valid range
         temperature = np.clip(
             temperature,
             self.temperature_range[0],
@@ -708,7 +707,6 @@ class RGBShift(AdditiveNoise):
             normalize_range(b_shift_range),
         ]
 
-        # Initialize with fixed noise type and spatial mode
         super().__init__(
             noise_type="uniform",
             spatial_mode="constant",
@@ -1015,7 +1013,6 @@ class HEStain(ImageOnlyTransform):
         self.residual_mode = residual_mode
         self.stain_matrix = stain_matrix
 
-        # Initialize stain extractor here if needed
         if method in ["vahadane", "macenko"]:
             self.stain_extractor = fpixel.get_normalizer(method)
 

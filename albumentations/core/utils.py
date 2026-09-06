@@ -316,13 +316,11 @@ class DataProcessor(ABC, Generic[ParamsT]):
         """
         shape = get_shape(data)
 
-        # Convert all sequences (including empty lists) to numpy arrays with proper shape
         for data_name in set(self.data_fields) & set(data.keys()):
             if isinstance(data[data_name], Sequence) and not isinstance(data[data_name], np.ndarray):
                 if len(data[data_name]) > 0:
                     data[data_name] = np.array(data[data_name], dtype=np.float32)
                 else:
-                    # Convert empty list to properly shaped empty array
                     data[data_name] = self._create_empty_array()
 
         data = self.add_label_fields_to_data(data)

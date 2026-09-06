@@ -15,10 +15,6 @@ def _as_int(value: str | None) -> int:
     return int(float(value or 0))
 
 
-def _as_float(value: str | None) -> float:
-    return float(value or 0)
-
-
 def _suite_summaries(root: ET.Element) -> list[dict[str, Any]]:
     suites = [root] if root.tag == "testsuite" else list(root.iter("testsuite"))
 
@@ -29,7 +25,7 @@ def _suite_summaries(root: ET.Element) -> list[dict[str, Any]]:
             "failures": _as_int(suite.attrib.get("failures")),
             "errors": _as_int(suite.attrib.get("errors")),
             "skipped": _as_int(suite.attrib.get("skipped")),
-            "time": _as_float(suite.attrib.get("time")),
+            "time": float(suite.attrib.get("time") or 0),
         }
         for suite in suites
     ]

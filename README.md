@@ -11,7 +11,7 @@
 
 [![Docs](https://img.shields.io/badge/docs-albumentations.ai-blue)](https://albumentations.ai/docs/?utm_source=github&utm_medium=referral&utm_campaign=readme) [![Discord](https://img.shields.io/badge/Discord-join-7289da?logo=discord&logoColor=white)](https://discord.gg/AKPrrDYNAt) [![Twitter](https://img.shields.io/badge/Twitter-follow-1da1f2?logo=twitter&logoColor=white)](https://twitter.com/albumentations) [![LinkedIn](https://img.shields.io/badge/LinkedIn-connect-0077b5?logo=linkedin&logoColor=white)](https://www.linkedin.com/company/albumentations/) [![Reddit](https://img.shields.io/badge/Reddit-join-ff4500?logo=reddit&logoColor=white)](https://www.reddit.com/r/Albumentations/)
 
-**AlbumentationsX** is a Python library for image augmentation. It provides high-performance, robust implementations and cutting-edge features for computer vision tasks. Image augmentation is used in deep learning and computer vision to increase the quality of trained models. The purpose of image augmentation is to create new training samples from the existing data.
+**AlbumentationsX** is a Python augmentation library for images and volumes. It applies sampled transformations to training data while keeping related masks, bounding boxes, keypoints, and labels synchronized.
 
 ## Citing
 
@@ -62,7 +62,6 @@ pip install "albumentationsx[headless]"
 ```python
 import albumentations as A
 
-# Create your augmentation pipeline
 transform = A.Compose(
     [
         A.RandomCrop(width=256, height=256),
@@ -81,41 +80,35 @@ Here is an example of how you can apply some [pixel-level](#pixel-level-transfor
 
 ## Why AlbumentationsX
 
-- **Complete Computer Vision Support**: Works with all major CV tasks
-- **Simple, Unified API**: [One consistent interface](#a-simple-example) for all data types - RGB/grayscale/multispectral images, masks, bounding boxes, and keypoints.
-- **Rich Augmentation Library**: [70+ high-quality augmentations](https://albumentations.ai/docs/reference/supported-targets-by-transform/?utm_source=github&utm_medium=referral&utm_campaign=readme) to enhance your training data.
-- **Fast**: Consistently benchmarked as the [fastest augmentation library](https://albumentations.ai/docs/benchmarks/image-benchmarks/?utm_source=github&utm_medium=referral&utm_campaign=readme) also shown [below section](#performance-comparison), with optimizations for production use.
-- **Deep Learning Integration**: Works with [PyTorch](https://pytorch.org/), [TensorFlow](https://www.tensorflow.org/), and other frameworks. Part of the [PyTorch ecosystem](https://pytorch.org/ecosystem/).
-- **Created by Experts**: Built by [developers with deep experience in computer vision and machine learning competitions](#authors).
+- **Synchronized targets:** Transform images, masks, bounding boxes, keypoints, and volumes through one pipeline.
+- **Image and volume operations:** Choose geometry, color, blur, noise, dropout, mixing, and 3D transforms from the
+  [transform catalog](#list-of-augmentations).
+- **NumPy and Tensor inputs:** Use arrays or CPU PyTorch tensors with the
+  [documented layouts](docs/design/numpy-tensor-routing.md).
+- **Measured performance:** Compare the [published benchmarks](https://albumentations.ai/docs/benchmarks/image-benchmarks/?utm_source=github&utm_medium=referral&utm_campaign=readme)
+  for the workload and library versions you use.
 
 ## Table of contents
 
-- [AlbumentationsX](#albumentationsx)
-  - [Why AlbumentationsX](#why-albumentationsx)
-  - [Table of contents](#table-of-contents)
-  - [Authors](#authors)
-    - [Current Maintainer](#current-maintainer)
-    - [Emeritus Core Team Members](#emeritus-core-team-members)
-  - [Installation](#installation)
-  - [Documentation](#documentation)
-  - [A simple example](#a-simple-example)
-  - [List of augmentations](#list-of-augmentations)
-    - [Pixel-level transforms](#pixel-level-transforms)
-    - [Spatial-level transforms](#spatial-level-transforms)
-  - [A few more examples of **augmentations**](#a-few-more-examples-of-augmentations)
-    - [Semantic segmentation on the Inria dataset](#semantic-segmentation-on-the-inria-dataset)
-    - [Medical imaging](#medical-imaging)
-    - [Object detection and semantic segmentation on the Mapillary Vistas dataset](#object-detection-and-semantic-segmentation-on-the-mapillary-vistas-dataset)
-    - [Keypoints augmentation](#keypoints-augmentation)
-  - [Benchmarking results](#benchmark-results)
-    - [System Information](#system-information)
-    - [Benchmark Parameters](#benchmark-parameters)
-    - [Library Versions](#library-versions)
-  - [Performance Comparison](#performance-comparison)
-  - [🤝 Contribute](#-contribute)
-  - [📜 License](#-license)
-  - [📞 Contact](#-contact)
-  - [Citing](#citing)
+- [Citing](#citing)
+- [Licensing](#-licensing-commercial-use-is-allowed)
+- [Quick Start](#quick-start)
+- [Why AlbumentationsX](#why-albumentationsx)
+- [Authors](#authors)
+- [Installation](#installation)
+- [Documentation](#documentation)
+- [A simple example](#a-simple-example)
+- [List of augmentations](#list-of-augmentations)
+  - [Pixel-level transforms](#pixel-level-transforms)
+  - [Spatial-level transforms](#spatial-level-transforms)
+  - [3D transforms](#3d-transforms)
+- [Augmentation examples](#a-few-more-examples-of-augmentations)
+- [Benchmark results](#benchmark-results)
+- [Performance comparison](#performance-comparison)
+- [Contribute](#-contribute)
+- [License](#-license)
+- [Contact](#-contact)
+- [Newsletter](#-stay-connected)
 
 ## Authors
 
@@ -203,7 +196,6 @@ AlbumentationsX pipelines.
 import albumentations as A
 import cv2
 
-# Declare an augmentation pipeline
 transform = A.Compose(
     [
         A.RandomCrop(width=256, height=256),
@@ -212,11 +204,8 @@ transform = A.Compose(
     ]
 )
 
-# Read an image with OpenCV and convert it to the RGB colorspace
-image = cv2.imread("image.jpg")
-image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+image = cv2.imread("image.jpg", cv2.IMREAD_COLOR_RGB)
 
-# Augment an image
 transformed = transform(image=image)
 transformed_image = transformed["image"]
 ```
@@ -419,6 +408,8 @@ Where:
 
 ## Benchmark Results
 
+These results cover the library versions listed below.
+
 ### Image Benchmark Results
 
 ### System Information
@@ -504,11 +495,9 @@ library for each transform.
 
 ## 🤝 Contribute
 
-We thrive on community collaboration! AlbumentationsX wouldn't be the powerful augmentation library it is without contributions from developers like you. Please see our [Contributing Guide](CONTRIBUTING.md) to get started. A huge **Thank You** 🙏 to everyone who contributes!
+See the [Contributing Guide](CONTRIBUTING.md) to report a bug, improve documentation, or submit a code change.
 
 [![AlbumentationsX open-source contributors](https://contrib.rocks/image?repo=albumentations-team/AlbumentationsX)](https://github.com/albumentations-team/AlbumentationsX/graphs/contributors)
-
-We look forward to your contributions to help make the AlbumentationsX ecosystem even better!
 
 ## 📜 License
 
@@ -525,10 +514,13 @@ repository-level details.
 
 ## 📞 Contact
 
-For bug reports and feature requests related to AlbumentationsX, please visit [GitHub Issues](https://github.com/albumentations-team/AlbumentationsX/issues). For questions, discussions, and community support, join our active communities on [Discord](https://discord.gg/AKPrrDYNAt), [Twitter](https://twitter.com/albumentations), [LinkedIn](https://www.linkedin.com/company/albumentations/), and [Reddit](https://www.reddit.com/r/Albumentations/). We're here to help with all things AlbumentationsX!
+Report bugs and request features in [GitHub Issues](https://github.com/albumentations-team/AlbumentationsX/issues).
+For questions and discussion, use [Discord](https://discord.gg/AKPrrDYNAt) or
+[Reddit](https://www.reddit.com/r/Albumentations/). Follow release and project updates on
+[Twitter](https://twitter.com/albumentations) and [LinkedIn](https://www.linkedin.com/company/albumentations/).
 
 ---
 
 ## 📫 Stay Connected
 
-Never miss updates, tutorials, and tips from the AlbumentationsX team! [Subscribe to our newsletter](https://albumentations.ai/subscribe?utm_source=github&utm_medium=referral&utm_campaign=readme).
+For releases, tutorials, and tips, [subscribe to the newsletter](https://albumentations.ai/subscribe?utm_source=github&utm_medium=referral&utm_campaign=readme).

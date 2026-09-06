@@ -1089,11 +1089,9 @@ def test_image_only_transforms_apply_to_volume(transform_cls, kwargs, dtype):
 
 def test_constrained_coarse_dropout_with_mask():
     """Test ConstrainedCoarseDropout with segmentation mask."""
-    # Create test data
     image = np.zeros((100, 100, 3), dtype=np.uint8)
     mask = np.zeros((100, 100, 1), dtype=np.uint8)
 
-    # Create objects in mask
     mask[10:30, 10:30] = 1  # First object (class 1)
     mask[40:60, 40:60] = 2  # Second object (class 2)
     mask[70:90, 70:90] = 2  # Third object (class 2)
@@ -1107,7 +1105,6 @@ def test_constrained_coarse_dropout_with_mask():
     )
     transform.set_random_seed(137)
 
-    # Apply transform
     _ = transform(image=image, mask=mask)
 
     # Get holes
@@ -1175,7 +1172,6 @@ def test_constrained_coarse_dropout_with_bboxes(bbox_labels, bboxes, expected_nu
     labels = [bbox[4] for bbox in bboxes]
     bboxes_without_labels = [bbox[:4] for bbox in bboxes]
 
-    # Apply transform
     transform(image=image, bboxes=bboxes_without_labels, class_labels=labels)
 
     holes = get_resolved_applied_params(ccd)["holes"]
@@ -1325,7 +1321,6 @@ def test_pixel_dropout_preserves_empty_targets(target: str, shape: tuple[int, ..
 )
 def test_pixel_dropout_mismatched_tuple_dimensions(drop_value, channels, expected_values):
     """Test that PixelDropout handles mismatched tuple dimensions correctly."""
-    # Create image with specified number of channels
     shape = (10, 10, channels) if channels > 1 else (10, 10)
     image = np.ones(shape, dtype=np.uint8) * 128
 
@@ -1333,7 +1328,6 @@ def test_pixel_dropout_mismatched_tuple_dimensions(drop_value, channels, expecte
     transform = A.PixelDropout(dropout_prob=1.0, drop_value=drop_value, p=1.0)
     result = transform(image=image)["image"]
 
-    # Check shape is preserved
     assert result.shape == image.shape
 
     # Check values are as expected
@@ -1535,7 +1529,6 @@ def test_salt_and_pepper_noise():
     )
     transform.set_random_seed(137)
 
-    # Apply transform
     transformed = transform(image=image)["image"]
 
     # Count all changes
@@ -1600,7 +1593,6 @@ def test_salt_and_pepper_grayscale():
 
     transformed = transform(image=image)["image"]
 
-    # Verify shape is preserved
     assert transformed.shape == image.shape, "Transform should preserve single-channel image shape"
 
     # Check noise values
@@ -1620,7 +1612,6 @@ def test_salt_and_pepper_grayscale():
     ],
 )
 def test_random_rain_slant(slant_range, expected_slant_range):
-    # Create a deterministic image
     image = np.zeros((100, 100, 3), dtype=np.uint8)
 
     # Create transform with 100% probability and specific slant range
@@ -1660,7 +1651,6 @@ def test_random_rain_slant(slant_range, expected_slant_range):
 
 @pytest.mark.parametrize("slant", [-10, 0, 10])
 def test_random_rain_visual_effect(slant):
-    # Create a white image
     image = np.full((100, 100, 3), 255, dtype=np.uint8)
 
     # Create transform with fixed slant for visual verification
@@ -1677,7 +1667,6 @@ def test_random_rain_visual_effect(slant):
 
     transform.set_random_seed(137)
 
-    # Apply transform
     result = transform(image=image)["image"]
 
     # Find non-white pixels (rain drops)

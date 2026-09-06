@@ -123,14 +123,12 @@ def resize_bboxes(
     bboxes_px = denormalize_bboxes(bboxes, image_shape)
     extras = bboxes_px[:, 5:] if bboxes_px.shape[1] > BBOX_OBB_MIN_COLUMNS else None
 
-    # Convert to polygons in pixel space
     polygons_px = obb_to_polygons(bboxes_px)
 
     # Scale the polygons
     polygons_px[..., 0] *= scale_x
     polygons_px[..., 1] *= scale_y
 
-    # Convert back to OBB in pixel space
     transformed_bboxes_px = polygons_to_obb(polygons_px, extra_fields=extras)
 
     # Normalize back to [0, 1]
@@ -394,7 +392,6 @@ def bboxes_affine_largest_box(
         transformed = apply_affine_to_points(polygons.reshape(-1, 2), matrix).reshape(polygons.shape)
         return polygons_to_obb(transformed, extra_fields=extras)
 
-    # Extract corners of all bboxes
     x_min, y_min, x_max, y_max = bboxes[:, 0], bboxes[:, 1], bboxes[:, 2], bboxes[:, 3]
 
     corners = (
@@ -404,7 +401,6 @@ def bboxes_affine_largest_box(
     # Transform all corners at once
     transformed_corners = apply_affine_to_points(corners, matrix).reshape(-1, 4, 2)
 
-    # Compute new bounding boxes
     new_x_min = np.min(transformed_corners[:, :, 0], axis=1)
     new_x_max = np.max(transformed_corners[:, :, 0], axis=1)
     new_y_min = np.min(transformed_corners[:, :, 1], axis=1)
@@ -472,7 +468,6 @@ def bboxes_affine_ellipse(
 
     transformed_points = transformed_points.reshape(len(bboxes), -1, 2)
 
-    # Compute new bounding boxes
     new_x_min = np.min(transformed_points[:, :, 0], axis=1)
     new_x_max = np.max(transformed_points[:, :, 0], axis=1)
     new_y_min = np.min(transformed_points[:, :, 1], axis=1)
@@ -535,7 +530,6 @@ def bboxes_affine(
     bboxes = denormalize_bboxes(bboxes, image_shape)
 
     if border_mode in REFLECT_BORDER_MODES:
-        # Step 1: Compute affine transform padding
         pad_left, pad_right, pad_top, pad_bottom = calculate_affine_transform_padding(
             matrix,
             image_shape,
@@ -554,7 +548,6 @@ def bboxes_affine(
             center_in_origin=True,
         )
 
-    # Apply affine transform
     if rotate_method == "largest_box":
         transformed_bboxes = bboxes_affine_largest_box(bboxes, matrix, bbox_type=bbox_type)
     elif rotate_method == "ellipse":
@@ -665,10 +658,8 @@ def remap_bboxes(
         np.ndarray: Remapped bounding boxes.
 
     """
-    # Convert bboxes to mask
     bbox_masks = bboxes_to_mask(bboxes, image_shape)
 
-    # Ensure maps are float32
     map_x = map_x.astype(np.float32)
     map_y = map_y.astype(np.float32)
 
@@ -681,7 +672,6 @@ def remap_bboxes(
         border_value=0,
     )
 
-    # Convert masks back to bboxes
     return mask_to_bboxes(transformed_masks, bboxes, bbox_type=bbox_type)
 
 
@@ -728,7 +718,6 @@ def pad_bboxes(
 
     bboxes = generate_reflected_bboxes(bboxes, grid_dimensions, image_shape)
 
-    # Calculate the number of grid cells added on each side
     original_row, original_col = grid_dimensions["original_position"]
 
     image_height, image_width = image_shape[:2]
@@ -788,7 +777,6 @@ def shift_bboxes(bboxes: np.ndarray, shift_vector: np.ndarray) -> np.ndarray:
         np.ndarray: Shifted bounding boxes with the same shape as input.
 
     """
-    # Create a copy of the input array to avoid modifying it in-place
     shifted_bboxes = bboxes.copy()
 
     # Add the shift vector to the first 4 columns
@@ -1028,10 +1016,8 @@ def bboxes_grid_shuffle(
         np.ndarray: Shuffled bounding boxes
 
     """
-    # Convert bboxes to masks
     masks = masks_from_bboxes(bboxes, image_shape)
 
-    # Apply grid shuffle to each mask and handle split components
     all_component_masks = []
     extra_bbox_data = []  # Store additional bbox data for each component
 
@@ -1050,9 +1036,7 @@ def bboxes_grid_shuffle(
         for comp_idx in range(1, num_components):  # Skip background (0)
             component_mask = (components == comp_idx).astype(np.uint8)
 
-            # Calculate area and visibility ratio
             component_area = float(reduce_sum(component_mask))
-            # Check if component meets minimum requirements
             if is_valid_component(
                 component_area,
                 original_area,
@@ -1064,7 +1048,6 @@ def bboxes_grid_shuffle(
                 if bboxes.shape[1] > NUM_BBOXES_COLUMNS_IN_ALBUMENTATIONS:
                     extra_bbox_data.append(bboxes[idx, 4:])
 
-    # Convert all component masks to bboxes
     if all_component_masks:
         all_component_masks = np.array(all_component_masks)
         shuffled_bboxes = bboxes_from_masks(all_component_masks)

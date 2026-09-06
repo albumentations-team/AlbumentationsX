@@ -907,7 +907,6 @@ def filter_keypoints_in_holes3d(keypoints: np.ndarray, holes: np.ndarray) -> np.
     hole_y2 = holes[:, 4]
     hole_x2 = holes[:, 5]
 
-    # Check if each keypoint is inside each hole
     inside_hole = (
         (kp_z >= hole_z1)
         & (kp_z < hole_z2)
@@ -920,10 +919,8 @@ def filter_keypoints_in_holes3d(keypoints: np.ndarray, holes: np.ndarray) -> np.
     # A keypoint is valid if it's not inside any hole
     valid_keypoints = ~np.any(inside_hole, axis=1)
 
-    # Return filtered keypoints with same dtype as input
     result = keypoints[valid_keypoints]
     if len(result) == 0:
-        # Ensure empty result has correct shape and dtype
         return np.array([], dtype=keypoints.dtype).reshape(0, keypoints.shape[1])
     return result
 
@@ -956,14 +953,11 @@ def keypoints_rot90(
 
     result = keypoints.copy()
 
-    # Get dimensions for the rotation axes
     dims = [volume_shape[ax] for ax in axes]
 
-    # Get coordinates to rotate
     coords1 = result[:, axes[0]].copy()
     coords2 = result[:, axes[1]].copy()
 
-    # Apply rotation based on factor (counterclockwise)
     if k == 1:  # 90 degrees CCW
         result[:, axes[0]] = (dims[1] - 1) - coords2
         result[:, axes[1]] = coords1
@@ -999,7 +993,6 @@ def transform_cube_keypoints(
     if not (0 <= index < 48):
         raise ValueError("Index must be between 0 and 47")
 
-    # Create working copy preserving all columns
     working_points = keypoints.copy()
 
     # Convert only XYZ coordinates to HWD, keeping other columns unchanged
@@ -1087,7 +1080,6 @@ def split_uniform_grid_3d(
         random_generator=random_generator,
     )
 
-    # Calculate tiles coordinates
     tiles = [
         (
             depth_splits[d],
@@ -1173,7 +1165,6 @@ def swap_tiles_on_volume(
     if tiles.size == 0:
         return volume.copy()
 
-    # Create a copy of the volume to retain original for reference
     new_volume = np.empty_like(volume)
 
     # Note: Loop is necessary as tiles may have different sizes (edge tiles can be smaller)
@@ -1182,9 +1173,7 @@ def swap_tiles_on_volume(
         # mapping[dest_idx] = src_idx means:
         # "position dest_idx in output gets content from position src_idx in input"
 
-        # Get the destination tile position in the output volume
         z1_dest, y1_dest, x1_dest, z2_dest, y2_dest, x2_dest = tiles[dest_idx]
-        # Get the source tile position in the input volume
         z1_src, y1_src, x1_src, z2_src, y2_src, x2_src = tiles[src_idx]
 
         # Copy tile from source position in input to destination position in output
@@ -1238,7 +1227,6 @@ def swap_tiles_on_keypoints_3d(
         )
         tile_indices[mask] = i
 
-    # Check if any keypoint is not in any tile
     not_in_any_tile = tile_indices < 0
     if np.any(not_in_any_tile):
         from warnings import warn
@@ -1272,7 +1260,6 @@ def swap_tiles_on_keypoints_3d(
         new_starts_y = tiles[new_tile_indices, 1]
         new_starts_x = tiles[new_tile_indices, 2]
 
-        # Apply the transformation
         new_keypoints[valid_mask, 0] += new_starts_x - old_starts_x
         new_keypoints[valid_mask, 1] += new_starts_y - old_starts_y
         new_keypoints[valid_mask, 2] += new_starts_z - old_starts_z

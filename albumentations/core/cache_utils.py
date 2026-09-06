@@ -12,7 +12,6 @@ def get_cache_dir() -> Path:
         Path: Path to the cache directory for AlbumentationsX.
 
     """
-    # Check for environment variable override
     if cache_dir := os.environ.get("ALBUMENTATIONS_CACHE_DIR"):
         return Path(cache_dir)
 

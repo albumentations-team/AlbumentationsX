@@ -456,10 +456,8 @@ def handle_empty_array(param_name: str) -> Callable[[F], F]:
     def decorator(func: F) -> F:
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
-            # Check if the parameter is passed as positional argument
             if len(args) > 0:
                 array = args[0]
-            # Check if the parameter is passed as keyword argument
             elif param_name in kwargs:
                 array = kwargs[param_name]
             else:

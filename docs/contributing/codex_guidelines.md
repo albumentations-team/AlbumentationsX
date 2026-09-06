@@ -1,8 +1,7 @@
 # Codex Working Guide for AlbumentationsX
 
-This is a routing guide, not a second coding rulebook. Deterministic AX source contracts are owned by the
-`coding-guidance` rule in `check-ax-rules`; read its diagnostic and the canonical explanation in
-`docs/contributing/coding_guidelines.md` rather than duplicating a checklist in a prompt.
+Use this guide to select the workflow for your task. The `coding-guidance` rule in `check-ax-rules` owns deterministic
+AX source contracts; [Coding Guidelines](coding_guidelines.md) explains its diagnostics.
 
 ## Choose the owning workflow
 

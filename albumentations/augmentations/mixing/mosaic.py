@@ -291,7 +291,6 @@ class Mosaic(DualTransform):
         data: dict[str, Any],
         sampling: SamplingContext,
     ) -> list[tuple[int, int, int, int]]:
-        # Step 1: Calculate Geometry & Cell Placements
         center_xy = fmixing.calculate_mosaic_center_point(
             grid_yx=self.grid_yx,
             cell_shape=self.cell_shape,

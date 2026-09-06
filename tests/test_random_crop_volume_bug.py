@@ -61,7 +61,6 @@ def test_random_crop_edge_case_exact_size_after_scale():
 
 def test_random_crop_pad_if_needed_false_with_larger_volume():
     """Test that RandomCrop works correctly when volume is larger than crop size."""
-    # Create a large volume
     volume = np.random.randint(0, 256, (8, 300, 300), dtype=np.uint8)
 
     transform = A.RandomCrop(height=256, width=256, pad_if_needed=False, p=1.0)

@@ -306,17 +306,13 @@ def create_motion_kernel(
     kernel = np.zeros((kernel_size, kernel_size), dtype=np.float32)
     center = kernel_size // 2
 
-    # Convert angle to radians
     angle_rad = radians(angle)
 
-    # Calculate direction vector
     dx = cos(angle_rad)
     dy = sin(angle_rad)
 
-    # Create line points with direction bias
     line_length = kernel_size // 2
 
-    # Apply direction bias to control the distribution of blur
     if direction < 0:
         # Backward bias: interpolate between symmetric and backward-only
         # direction = -1: only backward, direction = 0: symmetric
@@ -341,7 +337,6 @@ def create_motion_kernel(
     x = center + dx * t
     y = center + dy * t
 
-    # Apply random shift if allowed
     if allow_shifted:
         shift_x = random_state.uniform(-1, 1) * line_length / 2
         shift_y = random_state.uniform(-1, 1) * line_length / 2
@@ -356,7 +351,6 @@ def create_motion_kernel(
     points = np.unique(np.column_stack([y, x]), axis=0)
     kernel[points[:, 0], points[:, 1]] = 1
 
-    # Ensure at least one point is set
     if not kernel.any():
         kernel[center, center] = 1
 
@@ -387,13 +381,11 @@ def sample_odd_from_range(random_state: random.Random, low: int, high: int) -> i
     # Normalize high value
     high = max(3, high + (high % 2 == 0))
 
-    # Ensure high >= low after normalization
     high = max(high, low)
 
     if low == high:
         return low
 
-    # Calculate number of possible odd values
     num_odd_values = (high - low) // 2 + 1
     # Generate random index and convert to corresponding odd number
     rand_idx = random_state.randint(0, num_odd_values - 1)
@@ -415,17 +407,13 @@ def create_gaussian_kernel(sigma: float, ksize: int = 0) -> np.ndarray:
     """
     size = int(sigma * 3.5) * 2 + 1 if ksize == 0 else ksize
 
-    # Ensure odd size
     size = size + 1 if size % 2 == 0 else size
 
-    # Create x coordinates
     x = np.linspace(-(size // 2), size // 2, size)
 
-    # Compute 1D kernel using vectorized operations
     kernel_1d = np.exp(-0.5 * (x / sigma) ** 2)
     kernel_1d = kernel_1d / reduce_sum(kernel_1d)
 
-    # Create 2D kernel
     return kernel_1d[:, np.newaxis] @ kernel_1d[np.newaxis, :]
 
 
@@ -444,10 +432,8 @@ def create_gaussian_kernel_1d(sigma: float, ksize: int = 0) -> np.ndarray:
     """
     size = int(sigma * 3.5) * 2 + 1 if ksize == 0 else ksize
 
-    # Ensure odd size
     size = size + 1 if size % 2 == 0 else size
 
-    # Create x coordinates
     x = create_gaussian_kernel_input_array(size=size)
 
     # Guard against sigma=0 (would cause division by zero)

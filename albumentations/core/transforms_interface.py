@@ -436,12 +436,10 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
         # Only validate if strict is being set to True and we have stored init args
         if value and hasattr(self, "_init_args"):
-            # Get the list of valid arguments for this transform
             valid_args = {"p", "strict"}  # Base valid args
             if hasattr(self, "InitSchema"):
                 valid_args.update(self.InitSchema.model_fields.keys())
 
-            # Check for invalid arguments
             invalid_args = [name_arg for name_arg in self._init_args if name_arg not in valid_args]
 
             if invalid_args:
@@ -1342,10 +1340,8 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         Returns a dictionary of parameter names and their values, excluding parameters
         that are not actually set on the instance or that shouldn't be serialized.
         """
-        # Get the parameter names
         arg_names = self.get_transform_init_args_names()
 
-        # Create a dictionary of parameter values
         args = {}
         for name in arg_names:
             # Only include parameters that are actually set as instance attributes
@@ -1368,7 +1364,6 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         state = {"__class_fullname__": self.get_class_fullname()}
         state.update(self.get_base_init_args())
 
-        # Get transform init args (our improved method handles all types of transforms)
         transform_args = self.get_transform_init_args()
 
         # Add transform args to state
@@ -1623,12 +1618,10 @@ class DualTransform(BasicTransform):
             np.ndarray: Keypoints array with rows reordered based on label mapping
 
         """
-        # Get the keypoint processor
         processor = self.get_processor("keypoints")
         if not processor or not hasattr(processor, "encoded_label_mappings"):
             return keypoints
 
-        # Check if there are label fields and the array has extra columns
         if not processor.params.label_fields or keypoints.size == 0 or keypoints.shape[1] <= 5:
             return keypoints
 
@@ -1787,7 +1780,6 @@ class DualTransform(BasicTransform):
         """
         res = super().apply_with_params(sampled_params, *args, **kwargs)
 
-        # Apply label mapping to keypoints if they were transformed
         if "keypoints" in res and res["keypoints"] is not None:
             res["keypoints"] = self._apply_label_mapping_to_keypoints(
                 res["keypoints"],

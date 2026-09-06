@@ -543,7 +543,6 @@ def items_list_geom(base_item_geom, small_item_geom) -> list[dict[str, Any]]:
 
 def test_process_all_geometry_identity(base_item_geom) -> None:
     """Test process_all for a single cell identity case."""
-    # Setup: Map the placement directly to the item index
     placement_to_item_index = {(0, 0, 100, 100): 0}
     final_items = [base_item_geom]
     canvas_shape = (100, 100)  # Added canvas_shape
@@ -575,7 +574,6 @@ def test_process_all_geometry_identity(base_item_geom) -> None:
 
 def test_process_all_geometry_crop(base_item_geom) -> None:
     """Test process_all for a single cell requiring cropping."""
-    # Setup: Map the placement directly to the item index
     placement_to_item_index = {(10, 20, 60, 80): 0}  # Placement is 50x60 within 80x60 canvas
     final_items = [base_item_geom]  # Item is 100x100
     canvas_shape = (80, 60)  # Added canvas_shape (height, width)
@@ -602,7 +600,6 @@ def test_process_all_geometry_crop(base_item_geom) -> None:
 
 def test_process_all_geometry_pad(small_item_geom) -> None:
     """Test process_all for a single cell requiring padding."""
-    # Setup: Map the placement directly to the item index
     placement_to_item_index = {(0, 0, 80, 70): 0}  # Placement 80x70
     final_items = [small_item_geom]  # Item is 50x50
     fill_value = 111
@@ -655,7 +652,6 @@ def test_process_all_geometry_pad(small_item_geom) -> None:
 
 def test_process_all_geometry_multiple_cells(items_list_geom) -> None:
     """Test process_all processing two different items for two cells."""
-    # Setup: Map placements directly to item indices
     placement_to_item_index = {
         (0, 0, 50, 50): 0,  # Crop base_item_geom (idx 0) to 50x50
         (50, 0, 110, 60): 1,  # Pad small_item_geom (idx 1) to 60x60
@@ -829,7 +825,6 @@ def test_assemble_multiple_non_overlapping(processed_cell_data_1, processed_cell
 
 
 def test_preprocess_selected_mosaic_items_basic():
-    # Setup processors
     bbox_processor = BboxProcessor(BboxParams(coord_format="pascal_voc", label_fields=["class_labels"]))
     keypoint_processor = KeypointsProcessor(KeypointParams(coord_format="xy", label_fields=["kp_labels"]))
 
@@ -913,11 +908,9 @@ def test_preprocess_selected_mosaic_items_basic():
 
 
 def test_preprocess_selected_mosaic_items_missing_data():
-    # Setup processors
     bbox_processor = BboxProcessor(BboxParams(coord_format="pascal_voc", label_fields=["class_labels"]))
     keypoint_processor = KeypointsProcessor(KeypointParams(coord_format="xy", label_fields=["kp_labels"]))
 
-    # Setup input data items
     item_bbox_only = {
         "image": np.zeros((50, 50, 3), dtype=np.uint8),
         "bboxes": np.array([[10, 10, 20, 20]], dtype=np.float32),

@@ -396,8 +396,7 @@ def get_dimension_padding(
     min_size: int | None,
     divisor: int | None,
 ) -> tuple[int, int]:
-    """Calculate padding (pad_before, pad_after) for one dimension. current_size,
-    optional min_size or divisor. For PadIfNeeded / divisible sizes.
+    """Calculate centered padding to satisfy the minimum size and divisibility constraints.
 
     Args:
         current_size (int): Current size of the dimension
@@ -408,20 +407,13 @@ def get_dimension_padding(
         tuple[int, int]: (pad_before, pad_after)
 
     """
-    if min_size is not None:
-        if current_size < min_size:
-            pad_before = int((min_size - current_size) / 2.0)
-            pad_after = min_size - current_size - pad_before
-            return pad_before, pad_after
-    elif divisor is not None:
-        remainder = current_size % divisor
-        if remainder > 0:
-            total_pad = divisor - remainder
-            pad_before = total_pad // 2
-            pad_after = total_pad - pad_before
-            return pad_before, pad_after
+    target_size = max(current_size, min_size) if min_size is not None else current_size
+    if divisor is not None:
+        target_size += -target_size % divisor
 
-    return 0, 0
+    total_pad = target_size - current_size
+    pad_before = total_pad // 2
+    return pad_before, total_pad - pad_before
 
 
 def get_padding_params(

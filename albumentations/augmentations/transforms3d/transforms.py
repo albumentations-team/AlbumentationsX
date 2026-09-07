@@ -785,30 +785,32 @@ class BasePad3D(Transform3D):
 
     def apply_to_volume(
         self,
-        volume: VolumeType,
+        volume: VolumeType | torch.Tensor,
         padding: tuple[int, int, int, int, int, int],
         **params: Any,
     ) -> VolumeType:
-        if padding == (0, 0, 0, 0, 0, 0):
-            return volume
-        return f3d.pad_3d_with_params(
-            volume=volume,
-            padding=padding,
-            value=self.fill,
+        return cast(
+            "VolumeType",
+            f3d.pad_3d_with_params(
+                volume=volume,
+                padding=padding,
+                value=self.fill,
+            ),
         )
 
     def apply_to_mask3d(
         self,
-        mask3d: VolumeType,
+        mask3d: VolumeType | torch.Tensor,
         padding: tuple[int, int, int, int, int, int],
         **params: Any,
     ) -> VolumeType:
-        if padding == (0, 0, 0, 0, 0, 0):
-            return mask3d
-        return f3d.pad_3d_with_params(
-            volume=mask3d,
-            padding=padding,
-            value=cast("tuple[float, ...] | float", self.fill_mask),
+        return cast(
+            "VolumeType",
+            f3d.pad_3d_with_params(
+                volume=mask3d,
+                padding=padding,
+                value=cast("tuple[float, ...] | float", self.fill_mask),
+            ),
         )
 
     def apply_to_keypoints(
@@ -846,8 +848,8 @@ class Pad3D(BasePad3D):
         uint8, float32
 
     Note:
-        Input volume should be a numpy array with dimensions ordered as (z, y, x) or (depth, height, width),
-        with optional channel dimension as the last axis.
+        NumPy input uses (depth, height, width) with an optional channel-last axis. CPU Tensor input uses
+        channel-first (channels, depth, height, width); Compose adds the channel axis for channel-less inputs.
 
     Examples:
         >>> import numpy as np
@@ -971,6 +973,7 @@ class PadIfNeeded3D(BasePad3D):
             If not specified, pad_divisor_zyx must be provided.
         pad_divisor_zyx (tuple[int, int, int] | None): If set, pads each dimension to make it
             divisible by corresponding value in format (depth_div, height_div, width_div).
+            When min_zyx is also set, rounds each minimum-adjusted dimension up to a multiple of its divisor.
             If not specified, min_zyx must be provided.
         position (Literal['center', 'random']): Position where the volume is to be placed after padding.
             Default is 'center'.
@@ -985,8 +988,8 @@ class PadIfNeeded3D(BasePad3D):
         uint8, float32
 
     Note:
-        Input volume should be a numpy array with dimensions ordered as (z, y, x) or (depth, height, width),
-        with optional channel dimension as the last axis.
+        NumPy input uses (depth, height, width) with an optional channel-last axis. CPU Tensor input uses
+        channel-first (channels, depth, height, width); Compose adds the channel axis for channel-less inputs.
 
     Examples:
         >>> import numpy as np
@@ -1033,8 +1036,7 @@ class PadIfNeeded3D(BasePad3D):
 
         @model_validator(mode="after")
         def validate_params(self) -> Self:
-            """Validate that exactly one of min_zyx or pad_divisor_zyx is provided. Raises ValueError
-            if both None or both set. For PadIfNeeded3D InitSchema.
+            """Validate that at least one of min_zyx or pad_divisor_zyx is provided.
 
             Returns:
                 Self: Self reference for method chaining
@@ -1325,10 +1327,13 @@ class BaseCropAndPad3D(Transform3D):
                 pad_params["pad_left"],
                 pad_params["pad_right"],
             )
-            return f3d.pad_3d_with_params(
-                cropped,
-                padding=padding,
-                value=self.fill,
+            return cast(
+                "VolumeType",
+                f3d.pad_3d_with_params(
+                    cropped,
+                    padding=padding,
+                    value=self.fill,
+                ),
             )
 
         return cropped
@@ -1353,10 +1358,13 @@ class BaseCropAndPad3D(Transform3D):
                 pad_params["pad_left"],
                 pad_params["pad_right"],
             )
-            return f3d.pad_3d_with_params(
-                cropped,
-                padding=padding,
-                value=cast("tuple[float, ...] | float", self.fill_mask),
+            return cast(
+                "VolumeType",
+                f3d.pad_3d_with_params(
+                    cropped,
+                    padding=padding,
+                    value=cast("tuple[float, ...] | float", self.fill_mask),
+                ),
             )
 
         return cropped

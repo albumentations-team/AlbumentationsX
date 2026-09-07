@@ -45,8 +45,9 @@ before/after cells with shape, dtype, channels, parameters, allocation mode, ela
 
 ## Compare and report
 
-1. Run baseline and candidate on the same machine and environment, back-to-back, with controlled OpenCV and BLAS
-   threads and warm-up.
+1. Run baseline and candidate on the same machine and environment, back-to-back, with warm-up and exactly one
+   CPU thread per process. Follow the thread controls in the required performance guide. Benchmark additional
+   thread counts only when the user explicitly requests a thread-scaling experiment.
 2. Use at least 100 iterations for fast functions. For slow functions, choose enough repetitions for stable timing,
    aiming for more than one second per cell.
 3. Verify correctness, seeded behavior, and aliasing before accepting a faster path.

@@ -1,10 +1,12 @@
 from typing import Any
+from unittest.mock import Mock
 
 import cv2
 import numpy as np
 import pytest
 import torch
 import torch.nn.functional as torch_f
+from albucore import pad3d
 
 import albumentations as A
 from albumentations.augmentations.transforms3d import functional as f3d
@@ -141,46 +143,116 @@ def test_resize_3d_rejects_unsupported_interpolation(interpolation):
         A.Resize3D(size=(2, 3, 4), interpolation=interpolation)
 
 
+@pytest.mark.parametrize("dtype", [np.int32, np.int64])
+def test_pad_if_needed_3d_preserves_large_integer_mask_labels(dtype):
+    mask = np.full((64, 96, 128), 2**24 + 137, dtype=dtype)
+    result = A.Compose([A.PadIfNeeded3D(min_zyx=(66, 98, 130), fill_mask=-137)])(mask3d=mask)["mask3d"]
+    expected = np.pad(mask, 1, constant_values=-137)
+    assert result.dtype == mask.dtype
+    np.testing.assert_array_equal(result, expected)
+
+
+@pytest.mark.parametrize("tensor_volume", [False, True])
+@pytest.mark.parametrize("tensor_mask", [False, True])
+@pytest.mark.parametrize("fill", [-1.0, (3.0, 7.0)])
+def test_pad_if_needed_3d_albucore_dispatch(monkeypatch, tensor_volume, tensor_mask, fill):
+    volume = np.arange(72, dtype=np.uint8).reshape(2, 3, 4, 3)
+    mask = np.arange(24, dtype=np.int16).reshape(2, 3, 4, 1)
+    source = torch.from_numpy(volume).permute(3, 0, 1, 2).contiguous() if tensor_volume else volume
+    source_mask = torch.from_numpy(mask).permute(3, 0, 1, 2).contiguous() if tensor_mask else mask
+    padding = ((3, 3), (2, 3), (2, 2), (0, 0))
+    expected = np.pad(volume, padding, constant_values=fill)
+    expected_mask = np.pad(mask, padding, constant_values=-137)
+    kernel = Mock(wraps=pad3d)
+    monkeypatch.setattr(f3d, "pad3d", kernel)
+
+    result = A.PadIfNeeded3D(min_zyx=(7, 7, 7), pad_divisor_zyx=(4, 4, 4), fill=fill, fill_mask=-137)(
+        volume=source,
+        mask3d=source_mask,
+    )
+
+    assert kernel.call_count == 2
+    assert kernel.call_args_list[0].args[0] is source
+    assert kernel.call_args_list[1].args[0] is source_mask
+    for name, original, reference in (("volume", source, expected), ("mask3d", source_mask, expected_mask)):
+        actual = result[name]
+        assert type(actual) is type(original)
+        assert actual.dtype == original.dtype
+        if isinstance(actual, torch.Tensor):
+            actual = actual.permute(1, 2, 3, 0).numpy()
+        np.testing.assert_array_equal(actual, reference)
+    original_volume = source.permute(1, 2, 3, 0).numpy() if tensor_volume else source
+    np.testing.assert_array_equal(original_volume, np.arange(72, dtype=np.uint8).reshape(2, 3, 4, 3))
+    original_mask = source_mask.permute(1, 2, 3, 0).numpy() if tensor_mask else source_mask
+    np.testing.assert_array_equal(original_mask, np.arange(24, dtype=np.int16).reshape(2, 3, 4, 1))
+
+
 @pytest.mark.parametrize(
     ["volume_shape", "min_zyx", "pad_divisor_zyx", "expected_shape"],
     [
-        # Test no padding needed
-        ((10, 100, 100), (10, 100, 100), None, (10, 100, 100)),
-        # Test 2D-like behavior (no z padding)
-        ((10, 100, 100), (10, 128, 128), None, (10, 128, 128)),
-        # Test padding in all dimensions
-        ((10, 100, 100), (16, 128, 128), None, (16, 128, 128)),
-        # Test divisibility padding
-        ((10, 100, 100), None, (8, 32, 32), (16, 128, 128)),
-        # Test mixed min_size and divisibility
-        ((10, 100, 100), (16, 128, 128), (8, 32, 32), (16, 128, 128)),
+        ((2, 3, 4), (2, 3, 4), None, (2, 3, 4)),
+        ((2, 3, 4), (1, 2, 3), None, (2, 3, 4)),
+        ((2, 3, 4), (2, 8, 8), None, (2, 8, 8)),
+        ((2, 3, 4), (8, 8, 8), None, (8, 8, 8)),
+        ((2, 3, 4), (5, 3, 4), None, (5, 3, 4)),
+        ((2, 3, 4), (2, 8, 4), None, (2, 8, 4)),
+        ((2, 3, 4), (2, 3, 9), None, (2, 3, 9)),
+        ((2, 3, 4), None, (3, 4, 5), (3, 4, 5)),
+        ((4, 6, 8), None, (2, 3, 4), (4, 6, 8)),
+        ((2, 3, 4), (7, 8, 9), (4, 3, 2), (8, 9, 10)),
+        ((9, 8, 7), (3, 4, 5), (4, 3, 2), (12, 9, 8)),
     ],
 )
-def test_pad_if_needed_3d_shapes(volume_shape, min_zyx, pad_divisor_zyx, expected_shape):
-    volume = np.random.randint(0, 256, volume_shape, dtype=np.uint8)
-    transform = A.PadIfNeeded3D(
-        min_zyx=min_zyx,
-        pad_divisor_zyx=pad_divisor_zyx,
-        position="center",
-        fill=0,
-        fill_mask=0,
+@pytest.mark.parametrize("position", ["center", "random"])
+@pytest.mark.parametrize("seed", [137, 42])
+def test_pad_if_needed_3d_shapes(volume_shape, min_zyx, pad_divisor_zyx, expected_shape, position, seed):
+    volume = np.zeros(volume_shape, dtype=np.uint8)
+    transform = A.Compose(
+        [A.PadIfNeeded3D(min_zyx=min_zyx, pad_divisor_zyx=pad_divisor_zyx, position=position)],
+        seed=seed,
+        strict=True,
     )
     transformed = transform(volume=volume)
     assert transformed["volume"].shape == expected_shape
 
 
 @pytest.mark.parametrize("position", ["center", "random"])
-def test_pad_if_needed_3d_positions(position):
-    volume = np.ones((5, 50, 50), dtype=np.uint8)
-    transform = A.PadIfNeeded3D(
-        min_zyx=(10, 100, 100),
-        position=position,
-        fill=0,
-        fill_mask=0,
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("seed", [137, 42])
+def test_pad_if_needed_3d_positions(position, dtype, seed):
+    volume = np.arange(1, 25, dtype=dtype).reshape(2, 3, 4)
+    if dtype == np.float32:
+        volume /= 32
+    mask3d = (np.arange(24, dtype=np.uint8).reshape(2, 3, 4) % 3) + 1
+    keypoints = np.array([[0, 0, 0], [3, 2, 1]], dtype=np.float32)
+    transform = A.Compose(
+        [A.PadIfNeeded3D(min_zyx=(8, 8, 8), position=position, fill=0, fill_mask=0)],
+        keypoint_params=A.KeypointParams(coord_format="xyz"),
+        seed=seed,
+        strict=True,
     )
-    transformed = transform(volume=volume)
-    # Check that the original volume is preserved somewhere in the padded volume
-    assert np.any(transformed["volume"] == 1)
+    transformed = transform(volume=volume, mask3d=mask3d, keypoints=keypoints)
+    padded_volume = transformed["volume"]
+    assert padded_volume.shape == (8, 8, 8)
+    assert padded_volume.dtype == volume.dtype
+    assert transformed["mask3d"].dtype == mask3d.dtype
+
+    offset = np.argwhere(padded_volume != 0).min(axis=0)
+    if position == "center":
+        np.testing.assert_array_equal(offset, [3, 2, 2])
+    region = tuple(slice(start, start + size) for start, size in zip(offset, volume.shape, strict=True))
+    expected_volume = np.zeros((8, 8, 8), dtype=dtype)
+    expected_volume[region] = volume
+    expected_mask = np.zeros((8, 8, 8), dtype=mask3d.dtype)
+    expected_mask[region] = mask3d
+    np.testing.assert_array_equal(padded_volume, expected_volume)
+    np.testing.assert_array_equal(transformed["mask3d"], expected_mask)
+    np.testing.assert_array_equal(transformed["keypoints"], keypoints + offset[::-1])
+
+    transform.set_random_seed(seed)
+    repeated = transform(volume=volume, mask3d=mask3d, keypoints=keypoints)
+    for target in ("volume", "mask3d", "keypoints"):
+        np.testing.assert_array_equal(repeated[target], transformed[target])
 
 
 def test_pad_if_needed_3d_2d_equivalence():
@@ -218,8 +290,8 @@ def test_pad_if_needed_3d_2d_equivalence():
 
 
 def test_pad_if_needed_3d_fill_values():
-    volume = np.zeros((5, 50, 50), dtype=np.uint8)
-    mask3d = np.ones((5, 50, 50), dtype=np.uint8)
+    volume = np.zeros((5, 50, 50, 1), dtype=np.uint8)
+    mask3d = np.ones((5, 50, 50, 1), dtype=np.uint8)
 
     transform = A.PadIfNeeded3D(
         min_zyx=(10, 100, 100),
@@ -316,7 +388,7 @@ def test_pad3d_fill_values(fill, fill_mask):
 )
 def test_pad3d_different_shapes(volume_shape):
     volume = np.ones(volume_shape, dtype=np.float32)
-    augmentation = A.Pad3D(padding=2)
+    augmentation = A.Compose([A.Pad3D(padding=2)])
     padded = augmentation(volume=volume)["volume"]
 
     expected_shape = tuple(s + 4 for s in volume_shape[:3])  # +4 because padding=2 on each side
@@ -328,7 +400,7 @@ def test_pad3d_different_shapes(volume_shape):
 
 def test_pad3d_different_dtypes():
     for dtype in [np.uint8, np.float32]:
-        volume = np.ones((5, 5, 5), dtype=dtype)
+        volume = np.ones((5, 5, 5, 1), dtype=dtype)
         augmentation = A.Pad3D(padding=1)
         padded = augmentation(volume=volume)["volume"]
         assert padded.dtype == dtype
@@ -336,7 +408,7 @@ def test_pad3d_different_dtypes():
 
 def test_pad3d_preservation():
     """Test that the original data is preserved in the non-padded region"""
-    volume = np.random.randint(0, 255, (5, 5, 5), dtype=np.uint8)
+    volume = np.random.randint(0, 255, (5, 5, 5, 1), dtype=np.uint8)
     augmentation = A.Pad3D(padding=2)
     padded = augmentation(volume=volume)["volume"]
 
@@ -365,7 +437,7 @@ def test_pad3d_2d_equivalence(pad3d_padding, pad2d_padding):
     """Test that Pad3D behaves like Pad when no z-padding is applied"""
     # Create a volume with multiple identical slices
     num_slices = 4
-    slice_2d = np.random.randint(0, 256, (3, 3), dtype=np.uint8)
+    slice_2d = np.random.randint(0, 256, (3, 3, 1), dtype=np.uint8)
     volume_3d = np.stack([slice_2d] * num_slices)  # 10 identical slices
 
     # Apply 3D padding with no z-axis changes

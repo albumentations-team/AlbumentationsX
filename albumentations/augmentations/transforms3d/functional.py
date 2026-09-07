@@ -15,7 +15,7 @@ from typing import Any, Literal, cast
 import cv2
 import numpy as np
 import torch
-from albucore import clip, remap3d, resize3d, warp_affine3d
+from albucore import clip, pad3d, remap3d, resize3d, warp_affine3d
 
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.utils import handle_empty_array
@@ -641,74 +641,46 @@ def adjust_padding_by_position3d(
             paddings[2][1],  # w_right
         )
 
-    # For random position, redistribute padding for each dimension
     d_pad = sum(paddings[0])
     h_pad = sum(paddings[1])
     w_pad = sum(paddings[2])
+    d_front = py_random.randint(0, d_pad)
+    h_top = py_random.randint(0, h_pad)
+    w_left = py_random.randint(0, w_pad)
 
     return (
-        py_random.randint(0, d_pad),  # d_front
-        d_pad - py_random.randint(0, d_pad),  # d_back
-        py_random.randint(0, h_pad),  # h_top
-        h_pad - py_random.randint(0, h_pad),  # h_bottom
-        py_random.randint(0, w_pad),  # w_left
-        w_pad - py_random.randint(0, w_pad),  # w_right
+        d_front,
+        d_pad - d_front,
+        h_top,
+        h_pad - h_top,
+        w_left,
+        w_pad - w_left,
     )
 
 
 def pad_3d_with_params(
-    volume: VolumeType,
+    volume: VolumeType | torch.Tensor,
     padding: tuple[int, int, int, int, int, int],
     value: tuple[float, ...] | float,
-) -> VolumeType:
-    """Pad 3D volume. padding (d_front, d_back, h_top, h_bottom, w_left, w_right); value: fill.
-    (D,H,W) or (D,H,W,C). Used by Pad3D and PadIfNeeded3D.
+) -> VolumeType | torch.Tensor:
+    """Pad a NumPy DHWC volume or CPU Tensor CDHW volume, preserving its container and rank.
 
     Args:
-        volume (VolumeType): Input volume with shape (depth, height, width) or (depth, height, width, channels)
-        padding (tuple[int, int, int, int, int, int]): Padding values in format:
-            (depth_front, depth_back, height_top, height_bottom, width_left, width_right)
-            where:
-            - depth_front/back: padding at start/end of depth axis (z)
-            - height_top/bottom: padding at start/end of height axis (y)
-            - width_left/right: padding at start/end of width axis (x)
-        value (tuple[float, ...] | float): Value to fill the padding
+        volume (VolumeType | torch.Tensor): Input volume or mask.
+        padding (tuple[int, int, int, int, int, int]): Front, back, top, bottom, left, and right padding.
+        value (tuple[float, ...] | float): Scalar fill or before/after fill values shared by spatial axes.
 
     Returns:
-        VolumeType: Padded volume with same number of dimensions as input
-
-    Note:
-        The padding order matches the volume dimensions (depth, height, width).
-        For each dimension, the first value is padding at the start (smaller indices),
-        and the second value is padding at the end (larger indices).
+        VolumeType | torch.Tensor: Padded volume with the input dtype and channel count.
 
     """
-    depth_front, depth_back, height_top, height_bottom, width_left, width_right = padding
-
-    # Skip if no padding is needed
-    if all(p == 0 for p in padding):
+    if not any(padding):
         return volume
-
-    # Handle both 3D and 4D arrays
-    pad_width = [
-        (depth_front, depth_back),  # depth (z) padding
-        (height_top, height_bottom),  # height (y) padding
-        (width_left, width_right),  # width (x) padding
-    ]
-
-    # Add channel padding if 4D array
-    if volume.ndim == NUM_VOLUME_DIMENSIONS:
-        pad_width.append((0, 0))  # no padding for channels
-
-    return cast(
-        "VolumeType",
-        np.pad(
-            volume,
-            pad_width=pad_width,
-            mode="constant",
-            constant_values=value,
-        ),
-    )
+    # NumPy masks may use dtypes outside Albucore's uint8/float32/int16 contract.
+    if isinstance(volume, np.ndarray) and volume.dtype not in (np.uint8, np.float32, np.int16):
+        pad_width = [*zip(padding[::2], padding[1::2], strict=True), (0, 0)]
+        return cast("VolumeType", np.pad(volume, pad_width, constant_values=value))
+    return pad3d(volume, padding, value)
 
 
 def crop3d(

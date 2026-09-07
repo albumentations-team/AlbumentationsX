@@ -239,6 +239,17 @@ def test_spectral_field_is_real_smooth_bounded_and_cut_off() -> None:
     assert np.max(np.abs(spectrum[..., high_frequency])) <= 1e-5
 
 
+@pytest.mark.parametrize("image_shape", [(-1, 32), (32, -1)])
+def test_spectral_field_rejects_negative_spatial_extent(image_shape: tuple[int, int]) -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        fgeometric.create_spectral_displacement_field(
+            np.empty((2, 0, 2), dtype=np.float32),
+            image_shape,
+            0.1,
+            0.01,
+        )
+
+
 def test_spectral_mode_is_seeded_and_replayable_for_spatial_targets() -> None:
     image = _image(24, 28)
     mask = np.arange(24 * 28, dtype=np.uint8).reshape(24, 28)

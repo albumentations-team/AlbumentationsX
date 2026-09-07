@@ -303,12 +303,14 @@ def create_spectral_displacement_field(
     `displacement_magnitude * min(height - 1, width - 1)` pixels.
     """
     height, width = image_shape
-    if height <= 0 or width <= 0:
+    if height < 0 or width < 0:
+        raise ValueError("image_shape dimensions must be non-negative")
+    if height == 0 or width == 0:
         return np.zeros((2, height, width), dtype=np.float32)
 
     active_frequencies = get_spectral_frequency_mask(image_shape, cutoff)
     coefficients = np.asarray(spectral_coefficients, dtype=np.float32)
-    expected_shape = (2, int(np.count_nonzero(active_frequencies)), 2)
+    expected_shape = (2, np.count_nonzero(active_frequencies), 2)
     if coefficients.shape != expected_shape:
         raise ValueError(f"spectral_coefficients must have shape {expected_shape}")
 

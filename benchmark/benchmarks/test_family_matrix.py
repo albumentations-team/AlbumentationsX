@@ -378,6 +378,13 @@ GEOMETRY_CASES = tuple(
         tuple(DTYPES),
     )
 )
+ELASTIC_FIELD_MODE_CASES = tuple(
+    f"elastic_{mode}|{size_name}|{channel_count}|{dtype_name}"
+    for mode in ("gaussian", "spectral")
+    for size_name in SIZES
+    for channel_count in CHANNELS
+    for dtype_name in DTYPES
+)
 PIXEL_CASES = _pixel_cases()
 SPECIAL_TARGET_CASES = _matrix_cases(
     tuple(SPECIAL_TARGET_TRANSFORMS),
@@ -417,6 +424,44 @@ class TimeGeometryFullMatrix:
 
     def time_transform(self, case_id: str) -> None:
         self.transform(image=self.image)
+
+
+class TimeElasticFieldModes:
+    """Compare Gaussian and spectral elastic fields over direct and Compose routes."""
+
+    params = (ELASTIC_FIELD_MODE_CASES,)
+    param_names = ("case_id",)
+
+    def setup(self, case_id: str) -> None:
+        mode_name, size_name, channels_text, dtype_name = case_id.split("|")
+        mode = mode_name.removeprefix("elastic_")
+        channels = int(channels_text)
+        self.image = make_image(size_name, channels, dtype_from_name(dtype_name))
+        kwargs = {
+            "displacement_range": (0.02, 0.02),
+            "displacement_field_mode": mode,
+            "p": 1.0,
+        }
+        if mode == "spectral":
+            kwargs["spectral_cutoff_range"] = (0.1, 0.1)
+        self.direct = albumentations.ElasticTransform(**kwargs)
+        self.compose = albumentations.Compose(
+            [albumentations.ElasticTransform(**kwargs)],
+            seed=137,
+            strict=True,
+        )
+
+    def time_direct(self, case_id: str) -> None:
+        self.direct(image=self.image)
+
+    def time_compose(self, case_id: str) -> None:
+        self.compose(image=self.image)
+
+    def peakmem_direct(self, case_id: str) -> None:
+        self.direct(image=self.image)
+
+    def peakmem_compose(self, case_id: str) -> None:
+        self.compose(image=self.image)
 
 
 class TimePixelFullMatrix:

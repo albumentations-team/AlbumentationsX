@@ -54,6 +54,7 @@ from benchmarks.test_family_matrix import (  # noqa: E402
     ANNOTATION_CASES,
     ANNOTATION_TRANSFORMS,
     BBOX_SPECIAL_TARGET_TRANSFORMS,
+    ELASTIC_FIELD_MODE_CASES,
     GEOMETRY_CASES,
     GEOMETRY_TRANSFORMS,
     HBB_KEYPOINT_TRANSFORMS,
@@ -123,6 +124,11 @@ GEOMETRY_ALIAS_TO_TRANSFORM = {
     "transpose": "Transpose",
     "vertical_flip": "VerticalFlip",
     "water_refraction": "WaterRefraction",
+}
+
+ELASTIC_FIELD_MODE_ALIAS_TO_TRANSFORM = {
+    "elastic_gaussian": "ElasticTransform",
+    "elastic_spectral": "ElasticTransform",
 }
 
 PIXEL_ALIAS_TO_TRANSFORM = {
@@ -470,6 +476,7 @@ ASV_BENCHMARKS = {
     "direct_kernel_geometry_image": "benchmarks.test_functional_kernels.TimeFunctionalGeometryImageKernels.time_kernel",
     "direct_kernel_pixel": "benchmarks.test_functional_kernels.TimeFunctionalPixelKernels.time_kernel",
     "family_matrix_geometry": "benchmarks.test_family_matrix.TimeGeometryFullMatrix.time_transform",
+    "elastic_field_modes": "benchmarks.test_family_matrix.TimeElasticFieldModes",
     "family_matrix_pixel": "benchmarks.test_family_matrix.TimePixelFullMatrix.time_transform",
     "memory": "benchmarks.test_family_matrix.PeakMemoryHotPaths",
     "memory_plasma_brightness_contrast": "benchmarks.test_batch_matrix.PeakMemoryPlasmaBrightnessContrastBatchMatrix",
@@ -1161,6 +1168,13 @@ def _benchmark_case_index() -> dict[str, list[dict[str, str]]]:
         case_ids=GEOMETRY_CASES,
         layer="family_matrix",
         name_map=GEOMETRY_ALIAS_TO_TRANSFORM,
+    )
+    _add_matrix_cases(
+        cases,
+        benchmark=ASV_BENCHMARKS["elastic_field_modes"],
+        case_ids=ELASTIC_FIELD_MODE_CASES,
+        layer="family_matrix",
+        name_map=ELASTIC_FIELD_MODE_ALIAS_TO_TRANSFORM,
     )
     _add_matrix_cases(
         cases,

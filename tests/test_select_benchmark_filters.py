@@ -59,6 +59,7 @@ def test_select_benchmark_filters_add_geometry_and_annotation_paths_for_geometri
     patterns = select_benchmark_patterns(["albumentations/augmentations/geometric/functional.py"])
 
     assert "TimeGeometryFullMatrix" in patterns
+    assert "TimeElasticFieldModes" in patterns
     assert "TimeAnnotationTargets" in patterns
     assert "TimeSpecialTargetMatrix" in patterns
     assert "TimeFunctionalGeometry" in patterns

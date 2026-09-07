@@ -277,6 +277,179 @@ def create_elastic_maps(
     return map_x, map_y
 
 
+def get_spectral_frequency_mask(
+    image_shape: tuple[int, int],
+    cutoff: float,
+) -> np.ndarray:
+    """Return the Fourier-bin mask for a radial cutoff expressed as a Nyquist fraction."""
+    height, width = image_shape
+    frequencies_y = 2 * np.abs(np.fft.fftfreq(height))[:, None]
+    frequencies_x = 2 * np.abs(np.fft.fftfreq(width))[None, :]
+    return np.hypot(frequencies_y, frequencies_x) <= cutoff
+
+
+def create_spectral_displacement_field(
+    spectral_coefficients: np.ndarray,
+    image_shape: tuple[int, int],
+    cutoff: float,
+    displacement_magnitude: float,
+) -> np.ndarray:
+    """Reconstruct a bounded, real-valued displacement field from low-pass Fourier coefficients.
+
+    The coefficients use the packed real/imaginary layout `(2, N, 2)`, where `N` is the number of
+    frequencies inside the radial cutoff. They are symmetrized against their conjugate frequencies
+    before the inverse orthonormal FFT, which guarantees a real field. The radial cutoff is normalized
+    to the Nyquist frequency, and the vector field is scaled so its largest displacement is
+    `displacement_magnitude * min(height - 1, width - 1)` pixels.
+    """
+    height, width = image_shape
+    if height <= 0 or width <= 0:
+        return np.zeros((2, height, width), dtype=np.float32)
+
+    active_frequencies = get_spectral_frequency_mask(image_shape, cutoff)
+    coefficients = np.asarray(spectral_coefficients, dtype=np.float32)
+    expected_shape = (2, int(np.count_nonzero(active_frequencies)), 2)
+    if coefficients.shape != expected_shape:
+        raise ValueError(f"spectral_coefficients must have shape {expected_shape}")
+
+    spectrum = np.zeros((2, height, width), dtype=np.complex64)
+    spectrum[:, active_frequencies] = coefficients[..., 0] + np.complex64(1j) * coefficients[..., 1]
+    conjugate_y = np.mod(-np.arange(height), height)
+    conjugate_x = np.mod(-np.arange(width), width)
+    conjugate_spectrum = np.take(np.take(spectrum, conjugate_y, axis=-2), conjugate_x, axis=-1).conj()
+    spectrum = (spectrum + conjugate_spectrum) * np.complex64(0.5)
+
+    spectrum *= active_frequencies
+    field = np.fft.ifft2(spectrum, axes=(-2, -1), norm="ortho").real.astype(np.float32)
+
+    radius = np.float32(displacement_magnitude * min(height - 1, width - 1))
+    field_norm = np.sqrt(np.sum(field * field, axis=0, dtype=np.float32))
+    max_norm = np.max(field_norm, initial=np.float32(0))
+    if max_norm > np.finfo(np.float32).tiny:
+        field *= radius / max_norm
+    return field
+
+
+def create_spectral_maps(
+    spectral_coefficients: np.ndarray,
+    image_shape: tuple[int, int],
+    cutoff: float,
+    displacement_magnitude: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Create float32 target-to-source coordinate maps from spectral displacement coefficients."""
+    height, width = image_shape
+    displacement = create_spectral_displacement_field(
+        spectral_coefficients,
+        image_shape,
+        cutoff,
+        displacement_magnitude,
+    )
+    map_x = displacement[0] + np.arange(width, dtype=np.float32)
+    map_y = displacement[1] + np.arange(height, dtype=np.float32)[:, None]
+    return map_x, map_y
+
+
+def _sample_dense_displacement(
+    displacement_x: np.ndarray,
+    displacement_y: np.ndarray,
+    points: np.ndarray,
+) -> np.ndarray:
+    height, width = displacement_x.shape
+    if height == 0 or width == 0:
+        return np.full((len(points), 2), np.nan, dtype=np.float64)
+
+    finite = np.isfinite(points).all(axis=1)
+    inside = finite.copy()
+    inside &= points[:, 0] >= 0
+    inside &= points[:, 0] <= width - 1
+    inside &= points[:, 1] >= 0
+    inside &= points[:, 1] <= height - 1
+    safe_points = np.where(finite[:, None], points, 0.0)
+    clipped = np.clip(safe_points, [0, 0], [width - 1, height - 1])
+    x_floor = np.floor(clipped[:, 0]).astype(np.intp)
+    y_floor = np.floor(clipped[:, 1]).astype(np.intp)
+    x_ceil = np.minimum(x_floor + 1, width - 1)
+    y_ceil = np.minimum(y_floor + 1, height - 1)
+    x_fraction = clipped[:, 0] - x_floor
+    y_fraction = clipped[:, 1] - y_floor
+
+    top = (1 - x_fraction)[:, None] * np.column_stack(
+        (displacement_x[y_floor, x_floor], displacement_y[y_floor, x_floor]),
+    ) + x_fraction[:, None] * np.column_stack(
+        (displacement_x[y_floor, x_ceil], displacement_y[y_floor, x_ceil]),
+    )
+    bottom = (1 - x_fraction)[:, None] * np.column_stack(
+        (displacement_x[y_ceil, x_floor], displacement_y[y_ceil, x_floor]),
+    ) + x_fraction[:, None] * np.column_stack(
+        (displacement_x[y_ceil, x_ceil], displacement_y[y_ceil, x_ceil]),
+    )
+    result = (1 - y_fraction)[:, None] * top + y_fraction[:, None] * bottom
+    result[~inside] = np.nan
+    return result
+
+
+def remap_spectral_keypoints(
+    keypoints: np.ndarray,
+    map_x: np.ndarray,
+    map_y: np.ndarray,
+    image_shape: tuple[int, int],
+    tolerance: float = 1e-3,
+) -> np.ndarray:
+    """Invert a dense spectral pull map for keypoints with a bounded fixed-point iteration."""
+    if keypoints.size == 0:
+        return keypoints.copy()
+    points = np.asarray(keypoints[:, :2], dtype=np.float64)
+    displacement_x = np.asarray(map_x, dtype=np.float64) - np.arange(map_x.shape[1], dtype=np.float64)
+    displacement_y = np.asarray(map_y, dtype=np.float64) - np.arange(map_y.shape[0], dtype=np.float64)[:, None]
+    transformed_xy = points.copy()
+    active_points = np.isfinite(points).all(axis=1)
+    for _ in range(96):
+        displacement = _sample_dense_displacement(displacement_x, displacement_y, transformed_xy)
+        updated = points - displacement
+        finite_updated = np.isfinite(updated).all(axis=1)
+        active_points &= finite_updated
+        max_change = np.max(
+            np.abs(updated[active_points] - transformed_xy[active_points]),
+            initial=0.0,
+        )
+        converged = max_change <= tolerance * 0.1
+        if active_points.any() and converged:
+            transformed_xy = updated
+            break
+        transformed_xy = updated
+        transformed_xy[~active_points] = np.nan
+        if not active_points.any():
+            break
+
+    residual = np.full(len(points), np.inf, dtype=np.float64)
+    if active_points.any():
+        displacement = _sample_dense_displacement(displacement_x, displacement_y, transformed_xy[active_points])
+        residual[active_points] = np.max(
+            np.abs(transformed_xy[active_points] + displacement - points[active_points]),
+            axis=1,
+        )
+    height, width = image_shape
+    valid = np.isfinite(residual) & (residual <= tolerance)
+    valid &= (
+        (transformed_xy[:, 0] >= -tolerance)
+        & (transformed_xy[:, 0] <= width - 1 + tolerance)
+        & (transformed_xy[:, 1] >= -tolerance)
+        & (transformed_xy[:, 1] <= height - 1 + tolerance)
+    )
+    result = keypoints.copy()
+    result[:, :2] = np.where(valid[:, None], transformed_xy, -1.0).astype(result.dtype, copy=False)
+    fallback_indices = np.flatnonzero(~valid & np.isfinite(points).all(axis=1))
+    if fallback_indices.size:
+        inverse_map_x, inverse_map_y = generate_inverse_distortion_map(map_x, map_y, image_shape)
+        fallback_points = np.clip(points[fallback_indices], [0, 0], [width - 1, height - 1])
+        x_indices = fallback_points[:, 0].astype(np.intp)
+        y_indices = fallback_points[:, 1].astype(np.intp)
+        result[fallback_indices, :2] = np.column_stack(
+            (inverse_map_x[y_indices, x_indices], inverse_map_y[y_indices, x_indices]),
+        ).astype(result.dtype, copy=False)
+    return result
+
+
 def remap_elastic_keypoints(
     keypoints: np.ndarray,
     control_coefficients: np.ndarray,
@@ -701,6 +874,8 @@ __all__ = [
     "compute_tps_weights",
     "create_elastic_maps",
     "create_piecewise_affine_maps",
+    "create_spectral_displacement_field",
+    "create_spectral_maps",
     "evaluate_control_grid",
     "expand_control_grid",
     "generate_control_points",
@@ -708,7 +883,9 @@ __all__ = [
     "generate_inverse_distortion_map",
     "get_camera_matrix_distortion_maps",
     "get_fisheye_distortion_maps",
+    "get_spectral_frequency_mask",
     "remap_elastic_keypoints",
+    "remap_spectral_keypoints",
     "sample_elastic_control_coefficients",
     "tps_transform",
     "upscale_distortion_maps",

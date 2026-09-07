@@ -263,8 +263,8 @@ class BaseDistortion(BaseRemapTransform):
 
 
 class ElasticTransform(BaseRemapTransform):
-    """Apply bounded XY deformations from a compact control grid to images and annotations. Use it for
-    shape variation in segmentation and medical imaging.
+    """Apply bounded XY deformations from compact control grids or spectral fields to images and annotations for shape
+    variation in vision and medical imaging.
 
     `displacement_range` is measured relative to the shorter span between the first and last
     pixel centers. The sampled cubic B-spline coefficients use pixel units after scaling. One map
@@ -274,6 +274,10 @@ class ElasticTransform(BaseRemapTransform):
     Args:
         displacement_range (tuple[float, float]): Range for the sampled relative displacement magnitude.
         control_grid_shape (tuple[int, int]): Number of cubic B-spline coefficient rows and columns, each at least 4.
+        displacement_field_mode (Literal["gaussian", "spectral"]): Field generator. The default `"gaussian"`
+            retains the bounded control-grid implementation; `"spectral"` samples a radial low-pass Fourier field.
+        spectral_cutoff_range (tuple[float, float]): Spectral radial cutoff as a fraction of the Nyquist frequency.
+            Lower values produce smoother fields. Used only when `displacement_field_mode="spectral"`.
         interpolation (int): Interpolation used for images.
         mask_interpolation (int): Interpolation used for masks.
         border_mode (int): OpenCV border mode for raster targets.
@@ -294,6 +298,10 @@ class ElasticTransform(BaseRemapTransform):
         The constructor enforces `2 * high * sqrt((rows - 3)^2 + (columns - 3)^2) < 0.75`.
         `ReplayCompose` stores the compact sampled coefficient lattice and replays it for the same
         spatial shape. Applied configuration fixes the realized magnitude but samples a new lattice.
+        Spectral mode stores packed real/imaginary Fourier coefficients in replay data and uses an
+        orthonormal inverse FFT after conjugate-frequency symmetrization. The legacy `same_dxdy`
+        and `map_resolution_range` options are not supported by this transform; strict construction
+        rejects them instead of silently changing the field contract.
 
     See Also:
         - ElasticTransform3D: Applies coupled XY, XZ, and YZ cubic fields to volumetric data and XYZ keypoints.
@@ -342,6 +350,12 @@ class ElasticTransform(BaseRemapTransform):
             AfterValidator(nondecreasing),
         ]
         control_grid_shape: tuple[int, int]
+        displacement_field_mode: Literal["gaussian", "spectral"]
+        spectral_cutoff_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, 1, min_inclusive=False)),
+            AfterValidator(nondecreasing),
+        ]
 
         @field_validator("control_grid_shape")
         @classmethod
@@ -352,6 +366,8 @@ class ElasticTransform(BaseRemapTransform):
 
         @model_validator(mode="after")
         def _validate_topology_bound(self) -> Self:
+            if self.displacement_field_mode == "spectral":
+                return self
             rows, columns = self.control_grid_shape
             high = self.displacement_range[1]
             bound = 2 * high * float(np.sqrt((rows - 3) ** 2 + (columns - 3) ** 2))
@@ -372,6 +388,9 @@ class ElasticTransform(BaseRemapTransform):
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
         p: float = 0.5,
+        *,
+        displacement_field_mode: Literal["gaussian", "spectral"] = "gaussian",
+        spectral_cutoff_range: tuple[float, float] = (0.05, 0.15),
     ):
         super().__init__(
             interpolation=interpolation,
@@ -383,6 +402,8 @@ class ElasticTransform(BaseRemapTransform):
         )
         self.displacement_range = displacement_range
         self.control_grid_shape = control_grid_shape
+        self.displacement_field_mode = displacement_field_mode
+        self.spectral_cutoff_range = spectral_cutoff_range
 
     def sample_parameters(
         self,
@@ -403,6 +424,26 @@ class ElasticTransform(BaseRemapTransform):
                 params={
                     "displacement_magnitude": magnitude,
                     "control_coefficients": [],
+                }
+            )
+
+        if self.displacement_field_mode == "spectral":
+            cutoff_low, cutoff_high = self.spectral_cutoff_range
+            cutoff = cutoff_low if cutoff_low == cutoff_high else sampling.py_random.uniform(cutoff_low, cutoff_high)
+            sampling.applied_overrides["spectral_cutoff_range"] = (cutoff, cutoff)
+            active_frequency_count = np.count_nonzero(
+                fgeometric.get_spectral_frequency_mask(image_shape, cutoff),
+            )
+            spectral_coefficients = sampling.random_generator.standard_normal(
+                (2, active_frequency_count, 2),
+                dtype=np.float32,
+            )
+            return SampledParams(
+                params={
+                    "displacement_magnitude": magnitude,
+                    "control_coefficients": [],
+                    "spectral_cutoff": cutoff,
+                    "spectral_coefficients": spectral_coefficients.tolist(),
                 }
             )
 
@@ -447,16 +488,25 @@ class ElasticTransform(BaseRemapTransform):
                 raise ValueError(
                     f"ElasticTransform replay requires the same spatial shape {recorded_shape}, got {current_shape}",
                 )
-        if not params["control_coefficients"]:
+        if not params["control_coefficients"] and not params.get("spectral_coefficients"):
             return self._apply_label_mappings_without_geometry(params, kwargs)
 
         runtime_params = dict(params)
-        control_coefficients = np.asarray(params["control_coefficients"], dtype=np.float32)
-        runtime_params["control_coefficients"] = control_coefficients
-        runtime_params["map_x"], runtime_params["map_y"] = fgeometric.create_elastic_maps(
-            control_coefficients,
-            recorded_shape,
-        )
+        if self.displacement_field_mode == "spectral":
+            spectral_coefficients = np.asarray(params["spectral_coefficients"], dtype=np.float32)
+            runtime_params["map_x"], runtime_params["map_y"] = fgeometric.create_spectral_maps(
+                spectral_coefficients,
+                recorded_shape,
+                params["spectral_cutoff"],
+                params["displacement_magnitude"],
+            )
+        else:
+            control_coefficients = np.asarray(params["control_coefficients"], dtype=np.float32)
+            runtime_params["control_coefficients"] = control_coefficients
+            runtime_params["map_x"], runtime_params["map_y"] = fgeometric.create_elastic_maps(
+                control_coefficients,
+                recorded_shape,
+            )
         runtime_sampled_params = SampledParams(
             params=runtime_params,
             target_params=sampled_params.target_params,
@@ -468,14 +518,32 @@ class ElasticTransform(BaseRemapTransform):
         self,
         keypoints: np.ndarray,
         control_coefficients: np.ndarray,
+        map_x: np.ndarray,
+        map_y: np.ndarray,
         shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
+        if self.displacement_field_mode == "spectral":
+            return fgeometric.remap_spectral_keypoints(
+                keypoints,
+                map_x,
+                map_y,
+                shape[:2],
+            )
         return fgeometric.remap_elastic_keypoints(
             keypoints,
             control_coefficients,
             shape[:2],
         )
+
+    def get_transform_init_args(self) -> dict[str, Any]:
+        """Keep default Gaussian-mode serialization compatible with existing pipeline configs."""
+        args = super().get_transform_init_args()
+        if self.displacement_field_mode == "gaussian":
+            args.pop("displacement_field_mode", None)
+            if self.spectral_cutoff_range == (0.05, 0.15):
+                args.pop("spectral_cutoff_range", None)
+        return args
 
 
 class PiecewiseAffine(BaseDistortion):

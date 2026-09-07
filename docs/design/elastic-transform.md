@@ -26,6 +26,17 @@ A.ElasticTransform(
 )
 ```
 
+Spectral fields are opt-in and use the same remap and target contract:
+
+```python
+A.ElasticTransform(
+    displacement_field_mode="spectral",
+    spectral_cutoff_range=(0.05, 0.15),
+    displacement_range=(0.02, 0.05),
+    p=0.5,
+)
+```
+
 `displacement_range` is relative to the shorter distance between the first and
 last pixel centers. If the sampled magnitude is `m`, every coefficient has a
 radius of at most `m * min(H - 1, W - 1)` pixels.
@@ -69,9 +80,26 @@ are non-negative and sum to one, so the dense displacement stays inside the
 convex hull of the sampled coefficient vectors. This gives the hard displacement
 bound without a clipping pass. The field is C2 at internal knots.
 
-Coefficients are sampled uniformly by area in a disk. The scalar magnitude
-uses the invocation's Python random stream; the coefficient lattice uses the
-invocation's NumPy generator. No process-global RNG is used.
+When `displacement_field_mode="spectral"`, the transform samples two real-valued
+Fourier coefficient channels only for bins inside a radial cutoff. The cutoff is
+expressed as a fraction of the Nyquist frequency, so a bin at normalized radial
+frequency `r` is retained when `r <= cutoff`. The packed coefficient array has
+shape `(2, N, 2)`: the first axis is x/y displacement, `N` is the number of
+retained bins, and the final axis stores real and imaginary parts.
+
+The packed spectrum is placed into a zero-filled full-frequency array and
+symmetrized as `S(-k) = conjugate(S(k))`. Self-conjugate bins are thereby real,
+and `irfft`-equivalent real reconstruction is obtained using an orthonormal
+`ifft2(...).real`. The orthonormal convention keeps coefficient amplitude
+independent of the number of pixels before the final deterministic scaling.
+The vector field is scaled by the maximum vector norm to
+`displacement_magnitude * min(H - 1, W - 1)`, giving the same relative strength
+interpretation at different resolutions.
+
+Gaussian-mode coefficients are sampled uniformly by area in a disk. Spectral
+real/imaginary coefficients use the invocation's NumPy generator, while the
+scalar magnitude and cutoff use the invocation's Python random stream. No
+process-global RNG is used.
 
 ## Targets and annotations
 
@@ -98,10 +126,13 @@ constructor-valid after strict JSON transport, but it intentionally does not
 freeze the sampled lattice. This is the same distinction as other stochastic
 transforms that sample new geometry on each call.
 
-`ReplayCompose` stores the compact `control_coefficients` lattice and the
-recorded spatial shape. It does not store dense maps. Replay reproduces all
-targets exactly for the recorded `(H, W)` shape and raises `ValueError` for a
-different spatial shape.
+`ReplayCompose` stores the compact `control_coefficients` lattice for Gaussian
+mode, or the packed `spectral_coefficients` together with its sampled cutoff for
+spectral mode. It does not store dense maps. Replay reproduces all targets
+exactly for the recorded `(H, W)` shape and raises `ValueError` for a different
+spatial shape. Legacy `same_dxdy` and `map_resolution_range` arguments are
+rejected by strict constructor validation because they describe a different
+field-generation policy.
 
 ## Implementation boundary
 
@@ -119,13 +150,20 @@ repeated field expansion.
 The focused suite covers constructor and topology validation, scalar agreement
 with the cubic basis, constant fields, coefficient bounds, strict-JSON replay,
 applied-config reconstruction, fixed-point inverse accuracy, volume slice
-consistency, and exact identity. Shared distortion, OBB, serialization, and
-target-contract suites cover integration with the rest of the library.
+consistency, exact identity, spectral cutoff and real reconstruction, and
+spectral replay across spatial targets. Shared distortion, OBB, serialization,
+and target-contract suites cover integration with the rest of the library.
 
 Performance evidence must compare the exact baseline and exact candidate head on
 the direct and `Compose` routes for 256, 512, and 1024-pixel inputs, 1, 3, and 5
 channels, and both `uint8` and `float32`. The benchmark must retain raw cells and
 state any regressions above the repository's five-percent threshold.
+
+The ASV suite includes a dedicated `TimeElasticFieldModes` matrix comparing
+Gaussian and spectral modes on direct and `Compose` routes, with peak-memory
+methods, over 256, 512, and 1024-pixel images, 1/3/5 channels, and uint8 and
+float32 inputs. It is the source of before/after evidence for this runtime path;
+no spectral robustness claim is made by this implementation.
 
 The 2D cutover benchmark ran on 2026-08-22 with Python 3.12.7, NumPy 2.5.2,
 OpenCV 5.0.0, and OpenCV threads pinned to one.

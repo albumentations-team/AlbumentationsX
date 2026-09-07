@@ -733,6 +733,14 @@ _BASE_CASE_SPECS: list[list[Any]] = [
 
 _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] = [
     (
+        "spectral",
+        A.ElasticTransform,
+        {
+            "displacement_field_mode": "spectral",
+            "spectral_cutoff_range": (0.15, 0.25),
+        },
+    ),
+    (
         "gaussian-shared",
         A.AdditiveNoise,
         {

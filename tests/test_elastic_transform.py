@@ -207,6 +207,165 @@ def test_applied_config_fixes_magnitude_but_remains_runnable() -> None:
     assert reconstructed(image=image)["image"].shape == image.shape
 
 
+def test_spectral_field_is_real_smooth_bounded_and_cut_off() -> None:
+    cutoff = 0.25
+    displacement_magnitude = 0.05
+    frequencies_y = 2 * np.abs(np.fft.fftfreq(64))[:, None]
+    frequencies_x = 2 * np.abs(np.fft.fftfreq(80))[None, :]
+    active_frequency_count = np.count_nonzero(np.hypot(frequencies_y, frequencies_x) <= cutoff)
+    coefficients = np.random.default_rng(137).standard_normal(
+        (2, active_frequency_count, 2),
+        dtype=np.float32,
+    )
+
+    field = fgeometric.create_spectral_displacement_field(
+        coefficients,
+        (64, 80),
+        cutoff,
+        displacement_magnitude,
+    )
+
+    assert field.shape == (2, 64, 80)
+    assert field.dtype == np.float32
+    assert np.isrealobj(field)
+    radius = displacement_magnitude * min(63, 79)
+    assert np.max(np.linalg.norm(np.moveaxis(field, 0, -1), axis=-1)) <= radius + 1e-5
+
+    assert coefficients.shape[1] < field.shape[1] * field.shape[2]
+    frequencies_y = 2 * np.abs(np.fft.fftfreq(field.shape[1]))[:, None]
+    frequencies_x = 2 * np.abs(np.fft.fftfreq(field.shape[2]))[None, :]
+    high_frequency = np.hypot(frequencies_y, frequencies_x) > cutoff
+    spectrum = np.fft.fft2(field, axes=(-2, -1), norm="ortho")
+    assert np.max(np.abs(spectrum[..., high_frequency])) <= 1e-5
+
+
+def test_spectral_mode_is_seeded_and_replayable_for_spatial_targets() -> None:
+    image = _image(24, 28)
+    mask = np.arange(24 * 28, dtype=np.uint8).reshape(24, 28)
+    images = np.stack([image, image], axis=0)
+    volume = np.stack([image, image], axis=0)
+    mask3d = np.stack([mask, mask], axis=0)
+    bboxes = np.array([[4, 5, 19, 18]], dtype=np.float32)
+    keypoints = np.array([[8, 9], [17, 14]], dtype=np.float32)
+    pipeline = A.ReplayCompose(
+        [
+            A.ElasticTransform(
+                displacement_field_mode="spectral",
+                spectral_cutoff_range=(0.2, 0.2),
+                displacement_range=(0.01, 0.03),
+                p=1.0,
+            ),
+        ],
+        bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["bbox_labels"]),
+        keypoint_params=A.KeypointParams(coord_format="xy", label_fields=["keypoint_labels"]),
+        seed=137,
+    )
+    data = {
+        "image": image,
+        "mask": mask,
+        "images": images,
+        "volume": volume,
+        "mask3d": mask3d,
+        "bboxes": bboxes,
+        "bbox_labels": [3],
+        "keypoints": keypoints,
+        "keypoint_labels": [4, 5],
+    }
+
+    result = pipeline(**data)
+    replayed = A.ReplayCompose.replay(json.loads(json.dumps(result["replay"])), **data)
+    repeated = A.ReplayCompose(
+        [
+            A.ElasticTransform(
+                displacement_field_mode="spectral",
+                spectral_cutoff_range=(0.2, 0.2),
+                displacement_range=(0.01, 0.03),
+                p=1.0,
+            ),
+        ],
+        bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["bbox_labels"]),
+        keypoint_params=A.KeypointParams(coord_format="xy", label_fields=["keypoint_labels"]),
+        seed=137,
+    )(**data)
+
+    assert "spectral_coefficients" in result["replay"]["transforms"][0]["params"]["params"]
+    np.testing.assert_array_equal(result["image"], repeated["image"])
+    for key in ("image", "mask", "images", "volume", "mask3d", "bboxes", "keypoints"):
+        np.testing.assert_array_equal(result[key], replayed[key])
+    assert result["bbox_labels"] == replayed["bbox_labels"]
+    assert result["keypoint_labels"] == replayed["keypoint_labels"]
+
+
+def test_spectral_keypoint_remapping_keeps_interior_points_valid() -> None:
+    image = np.zeros((512, 512, 3), dtype=np.uint8)
+    keypoints = np.array([[128.0, 128.0], [256.0, 256.0], [384.0, 384.0]], dtype=np.float32)
+    transform = A.Compose(
+        [A.ElasticTransform(displacement_field_mode="spectral", p=1.0)],
+        keypoint_params=A.KeypointParams(coord_format="xy", remove_invisible=False),
+        seed=137,
+    )
+
+    result = transform(image=image, keypoints=keypoints)
+
+    np.testing.assert_array_less(-1.0, result["keypoints"][:, :2])
+
+
+def test_spectral_keypoint_inverse_rejects_nonfinite_coordinates() -> None:
+    map_x, map_y = fgeometric.create_spectral_maps(
+        np.zeros((2, 1, 2), dtype=np.float32),
+        (32, 40),
+        0.01,
+        0.0,
+    )
+    keypoints = np.array([[np.nan, 1.0], [np.inf, 2.0], [-np.inf, 3.0], [1.0, 2.0]])
+
+    with np.errstate(all="raise"):
+        transformed = fgeometric.remap_spectral_keypoints(keypoints, map_x, map_y, (32, 40))
+
+    np.testing.assert_array_equal(transformed[:3], -1.0)
+    np.testing.assert_array_equal(transformed[3], keypoints[3])
+
+
+def test_spectral_default_policy_does_not_change_existing_serialization() -> None:
+    serialized = A.to_dict(A.ElasticTransform())["transform"]
+
+    assert "displacement_field_mode" not in serialized
+    assert "spectral_cutoff_range" not in serialized
+
+
+def test_spectral_constructor_serialization_roundtrip() -> None:
+    transform = A.ElasticTransform(
+        displacement_field_mode="spectral",
+        spectral_cutoff_range=(0.1, 0.2),
+        displacement_range=(0.01, 0.03),
+        p=1.0,
+    )
+
+    serialized = A.to_dict(transform)
+    restored = A.from_dict(serialized)
+
+    assert A.to_dict(restored) == serialized
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"spectral_cutoff_range": (0.0, 0.2)},
+        {"spectral_cutoff_range": (0.2, 1.1)},
+        {"spectral_cutoff_range": (0.3, 0.2)},
+    ],
+)
+def test_spectral_cutoff_rejects_invalid_contract(kwargs: dict[str, object]) -> None:
+    with pytest.raises(ValueError):
+        A.ElasticTransform(displacement_field_mode="spectral", **kwargs)
+
+
+@pytest.mark.parametrize("unsupported", ["same_dxdy", "map_resolution_range"])
+def test_spectral_mode_rejects_removed_legacy_options_in_strict_mode(unsupported: str) -> None:
+    with pytest.raises(ValueError, match=unsupported):
+        A.ElasticTransform(displacement_field_mode="spectral", strict=True, **{unsupported: True})
+
+
 def test_keypoint_inverse_recovers_a_scalar_reference() -> None:
     rng = np.random.default_rng(137)
     control = rng.uniform(-0.5, 0.5, (4, 5, 2)).astype(np.float32)

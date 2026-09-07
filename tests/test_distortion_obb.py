@@ -31,6 +31,15 @@ def test_distortion_transforms_declare_obb_support(transform_cls, params):
     "transform_cls,params",
     [
         pytest.param(A.ElasticTransform, {"displacement_range": (0.02, 0.05)}, id="ElasticTransform"),
+        pytest.param(
+            A.ElasticTransform,
+            {
+                "displacement_field_mode": "spectral",
+                "spectral_cutoff_range": (0.1, 0.1),
+                "displacement_range": (0.02, 0.05),
+            },
+            id="ElasticTransform-spectral",
+        ),
         pytest.param(A.GridDistortion, {"num_steps": 5, "distort_range": (-0.3, 0.3)}, id="GridDistortion"),
         pytest.param(A.OpticalDistortion, {"distort_range": (-0.05, 0.05)}, id="OpticalDistortion"),
         pytest.param(A.PiecewiseAffine, {"scale_range": (0.03, 0.05)}, id="PiecewiseAffine"),

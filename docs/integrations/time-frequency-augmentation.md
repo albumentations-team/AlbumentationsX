@@ -160,6 +160,9 @@ Use a custom transform only when `XYMasking` cannot express the sampling policy.
 the axis contract visible and operate on every channel together:
 
 ```python
+import numpy as np
+
+
 def center_time_dropout(image: np.ndarray, fraction: float, fill: float) -> np.ndarray:
     width = image.shape[1]
     length = int(width * fraction)

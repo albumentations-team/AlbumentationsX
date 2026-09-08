@@ -121,5 +121,4 @@ def test_time_frequency_recipe_serialization_and_replay() -> None:
     restored_result = restored(image=spectrogram)["image"]
 
     np.testing.assert_array_equal(original["image"], replayed["image"])
-    assert restored_result.shape == spectrogram.shape
-    assert restored_result.dtype == spectrogram.dtype
+    np.testing.assert_array_equal(restored_result, original["image"])

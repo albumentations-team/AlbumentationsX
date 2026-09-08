@@ -12,11 +12,11 @@ Every recipe uses one of these classifications:
 
 ## Sequence and video synchronization
 
-**Classification: exact replacement for framewise spatial and pixel transforms.**
+**Classification: exact replacement for spatial transforms and pixel transforms with shared batch parameters.**
 
 Historical code often sampled one transform and then reached into private parameters or reset random seeds before each
 frame. Pass the complete sequence through `images` instead. NumPy sequences use `(N, H, W, C)`. AlbumentationsX samples
-one realization and applies it to every frame.
+spatial parameters once and applies the same geometry to every frame.
 
 ### Before: rebuild a seeded pipeline for every frame
 
@@ -43,13 +43,15 @@ setup work.
 ### After: pass the sequence as one public target
 
 ```python
+import albumentations as A
+import numpy as np
+
 frames = np.arange(4 * 24 * 32 * 3, dtype=np.uint8).reshape(4, 24, 32, 3)
 
 video_transform = A.Compose(
     [
         A.RandomCrop(height=20, width=28, p=1.0),
         A.HorizontalFlip(p=0.5),
-        A.RandomBrightnessContrast(p=0.2),
     ],
     seed=137,
     strict=True,
@@ -59,8 +61,10 @@ augmented_frames = video_transform(images=frames)["images"]
 assert augmented_frames.shape == (4, 20, 28, 3)
 ```
 
-This contract synchronizes augmentation parameters, not video decoding or temporal sampling. Decode clips and choose
-timestamps before calling `Compose`.
+Some pixel transforms generate independent per-frame content inside their batch kernel. For example, random dithering
+uses a separate noise map for each frame. Check the transform's batch behavior when temporal consistency matters.
+This contract does not cover video decoding or temporal sampling. Decode clips and choose timestamps before calling
+`Compose`.
 
 ## Ordered slices and volumes
 
@@ -71,6 +75,9 @@ as `(D, H, W, C)` through `volume`. A 2D transform uses one realization across d
 change the depth axis when their API documents that behavior.
 
 ```python
+import albumentations as A
+import numpy as np
+
 volume = np.arange(8 * 32 * 40, dtype=np.float32).reshape(8, 32, 40, 1)
 
 slice_transform = A.Compose(
@@ -93,6 +100,9 @@ Use plural targets for a homogeneous stack. Use `additional_targets` when named 
 receive the same sampled geometry.
 
 ```python
+import albumentations as A
+import numpy as np
+
 image = np.zeros((48, 64, 3), dtype=np.uint8)
 depth = np.arange(48 * 64, dtype=np.float32).reshape(48, 64, 1)
 
@@ -118,6 +128,9 @@ Use a mask alias or a separate pipeline when interpolation and pixel behavior mu
 instance mask, box, keypoint collection, and label record so crop-induced filtering removes one complete instance.
 
 ```python
+import albumentations as A
+import numpy as np
+
 image = np.zeros((80, 80, 3), dtype=np.uint8)
 instances = [
     {
@@ -151,6 +164,10 @@ Use `user_data` for captions, identifiers, timestamps, or other values that do n
 The default handler preserves the object.
 
 ```python
+import albumentations as A
+import numpy as np
+
+image = np.zeros((48, 64, 3), dtype=np.uint8)
 metadata = {"clip_id": "train-137", "start_seconds": 4.5}
 result = A.Compose([A.HorizontalFlip(p=1.0)], strict=True)(
     image=image,
@@ -170,6 +187,10 @@ Use `ReplayCompose` when another input must receive the exact realized transform
 `save_applied_params=True` when the goal is inspection or logging rather than executable replay.
 
 ```python
+import albumentations as A
+import numpy as np
+
+image = np.arange(6 * 8, dtype=np.uint8).reshape(6, 8, 1)
 tta = A.ReplayCompose(
     [A.RandomRotate90(p=1.0), A.HorizontalFlip(p=0.5)],
     seed=137,
@@ -193,6 +214,9 @@ Use `SelectiveChannelTransform` instead of splitting, augmenting, and concatenat
 ### Before: split and concatenate channels
 
 ```python
+import albumentations as A
+import numpy as np
+
 multichannel = np.zeros((32, 32, 5), dtype=np.uint8)
 multichannel[..., 3:] = 137
 
@@ -205,6 +229,9 @@ selected = np.concatenate([augmented_rgb, extra], axis=-1)
 ### After: select channels inside the pipeline
 
 ```python
+import albumentations as A
+import numpy as np
+
 multichannel = np.zeros((32, 32, 5), dtype=np.uint8)
 multichannel[..., 3:] = 137
 
@@ -232,7 +259,7 @@ before using color transforms.
 | --- | --- | --- | --- |
 | Manual time-axis flip | `TimeReverse` or the matching geometric flip | Exact replacement | The image axis must match time. |
 | Time or frequency strip dropout | `XYMasking` | Exact replacement | Float ranges scale with the selected axis; integer ranges use pixels. |
-| One realization over video frames | `images` | Exact replacement | Temporal decoding and frame selection remain external. |
+| One spatial realization over video frames | `images` | Exact replacement for geometry | Pixel transforms may generate per-frame content in their batch kernels. |
 | One realization over ordered slices | `volume` | Same intent | Native 3D transforms have separate depth semantics. |
 | Paired image and depth geometry | `additional_targets` | Exact replacement for geometry | Pixel transforms follow the alias type too. |
 | Manual random-state capture | `ReplayCompose` | Exact replacement | Replay data and constructor serialization are separate contracts. |

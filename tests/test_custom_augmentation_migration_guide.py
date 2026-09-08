@@ -4,36 +4,42 @@ import albumentations as A
 
 
 def test_sequence_recipe_shares_one_spatial_realization() -> None:
-    frames = np.arange(3 * 6 * 8, dtype=np.uint8).reshape(3, 6, 8, 1)
-    transform = A.Compose([A.HorizontalFlip(p=1.0)], strict=True)
+    frame = np.arange(6 * 8, dtype=np.float32).reshape(6, 8, 1)
+    offsets = np.arange(3, dtype=np.float32).reshape(3, 1, 1, 1) * 100
+    frames = frame[np.newaxis, ...] + offsets
+    transform = A.Compose([A.RandomCrop(height=4, width=5, p=1.0)], seed=137, strict=True)
 
     result = transform(images=frames)["images"]
 
-    np.testing.assert_array_equal(result, np.flip(frames, axis=2))
+    normalized = result - offsets
+    np.testing.assert_array_equal(normalized, np.broadcast_to(normalized[:1], normalized.shape))
 
 
 def test_volume_recipe_preserves_depth_and_shares_geometry() -> None:
-    volume = np.arange(4 * 6 * 8, dtype=np.float32).reshape(4, 6, 8, 1)
-    transform = A.Compose([A.HorizontalFlip(p=1.0)], strict=True)
+    slice_data = np.arange(6 * 8, dtype=np.float32).reshape(6, 8, 1)
+    offsets = np.arange(4, dtype=np.float32).reshape(4, 1, 1, 1) * 100
+    volume = slice_data[np.newaxis, ...] + offsets
+    transform = A.Compose([A.RandomCrop(height=4, width=5, p=1.0)], seed=137, strict=True)
 
     result = transform(volume=volume)["volume"]
 
-    np.testing.assert_array_equal(result, np.flip(volume, axis=2))
+    normalized = result - offsets
+    np.testing.assert_array_equal(normalized, np.broadcast_to(normalized[:1], normalized.shape))
 
 
 def test_additional_target_recipe_keeps_paired_geometry_aligned() -> None:
-    image = np.arange(6 * 8, dtype=np.uint8).reshape(6, 8, 1)
-    depth = np.arange(6 * 8, dtype=np.float32).reshape(6, 8, 1)
+    image = np.arange(6 * 8, dtype=np.float32).reshape(6, 8, 1)
+    depth = image.copy()
     transform = A.Compose(
-        [A.HorizontalFlip(p=1.0)],
+        [A.RandomCrop(height=4, width=5, p=1.0)],
         additional_targets={"depth": "image"},
+        seed=137,
         strict=True,
     )
 
     result = transform(image=image, depth=depth)
 
-    np.testing.assert_array_equal(result["image"], np.flip(image, axis=1))
-    np.testing.assert_array_equal(result["depth"], np.flip(depth, axis=1))
+    np.testing.assert_array_equal(result["image"], result["depth"])
 
 
 def test_structured_recipe_filters_complete_bound_instance() -> None:
@@ -61,7 +67,7 @@ def test_structured_recipe_filters_complete_bound_instance() -> None:
     transform = A.Compose(
         [A.Crop(x_min=0, y_min=0, x_max=40, y_max=40, p=1.0)],
         bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["class_id"]),
-        keypoint_params=A.KeypointParams(coord_format="xy", remove_invisible=True),
+        keypoint_params=A.KeypointParams(coord_format="xy"),
         instance_binding=["masks", "bboxes", "keypoints"],
         strict=True,
     )
@@ -101,18 +107,22 @@ def test_replay_recipe_reuses_realized_parameters() -> None:
 def test_recipe_constructor_configuration_round_trip() -> None:
     image = np.arange(6 * 8, dtype=np.uint8).reshape(6, 8, 1)
     transform = A.Compose(
-        [A.HorizontalFlip(p=1.0)],
+        [A.RandomCrop(height=4, width=5, p=1.0), A.HorizontalFlip(p=0.5)],
         additional_targets={"paired": "image"},
         seed=137,
         strict=True,
     )
 
     restored = A.from_dict(A.to_dict(transform))
-    expected = transform(image=image, paired=image.copy())
-    actual = restored(image=image, paired=image.copy())
+    assert restored.seed == transform.seed
+    assert restored.additional_targets == transform.additional_targets
 
-    np.testing.assert_array_equal(actual["image"], expected["image"])
-    np.testing.assert_array_equal(actual["paired"], expected["paired"])
+    for _ in range(4):
+        expected = transform(image=image, paired=image.copy())
+        actual = restored(image=image, paired=image.copy())
+
+        np.testing.assert_array_equal(actual["image"], expected["image"])
+        np.testing.assert_array_equal(actual["paired"], expected["paired"])
 
 
 def test_selective_channel_recipe_preserves_unselected_channels() -> None:

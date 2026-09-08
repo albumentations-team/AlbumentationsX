@@ -1,5 +1,8 @@
 # Applied Configuration Replay Contracts
 
+For a runnable migration from manual parameter reuse to `ReplayCompose`, see
+[Migrating custom augmentation wrappers](../integrations/custom-augmentation-migration.md).
+
 **Status:** Implemented
 **Scope:** `BasicTransform.applied_config`, `Compose(save_applied_params=True)`, constructor serialization, and
 `Compose.from_applied_transforms()`

@@ -36,11 +36,12 @@ Your citation makes the project's research impact visible to funders and helps s
 
 AlbumentationsX offers two license options:
 
-- **Commercial license:** use AlbumentationsX in proprietary software under an agreement covering your team,
-  products, and deployments. [Request a quote](https://albumentations.ai/pricing?utm_source=github&utm_medium=referral&utm_campaign=readme).
+- **Commercial license:** choose alternative permissions for proprietary software under an agreement covering your
+  team, products, and deployments. [Request a quote](https://albumentations.ai/pricing?utm_source=github&utm_medium=referral&utm_campaign=readme).
 - **AGPL-3.0-only:** available at no charge. The AGPL permits commercial use subject to its terms.
   [Read the license guide](https://albumentations.ai/docs/license/).
 
+Commercial, proprietary, internal, or production status alone does not require a commercial license.
 See the [AGPL text](LICENSE) and [licensing details and history](LICENSING.md) for the applicable terms.
 
 ## Quick Start

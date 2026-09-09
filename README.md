@@ -30,26 +30,20 @@ Your citation makes the project's research impact visible to funders and helps s
 }
 ```
 
-## 📢 Licensing: commercial use is allowed
+<a id="-licensing-commercial-use-is-allowed"></a>
 
-**AlbumentationsX can be used in commercial projects under the AGPL.** The
-current public repository is available under **AGPL-3.0-only**, an open-source
-license. The AGPL permits commercial use subject to its terms.
+## Licensing
 
-Albumentations, LLC also offers separately negotiated commercial licenses with
-alternative, scope-specific permissions for the versions and uses covered by
-an executed agreement. A commercial license is an option when a team needs
-terms different from the AGPL. It is not automatically required because a
-project is commercial, proprietary, in production, or internal.
+AlbumentationsX offers two license options:
 
-Which terms fit depends on the deployment facts, including modification,
-combination, copying or conveyance, and network interaction. Support,
-warranties, maintenance, and service levels are included only when an executed
-agreement or order form expressly says so. See the [AGPL text](LICENSE),
-[licensing details and history](LICENSING.md), and
-[third-party notices](THIRD_PARTY_NOTICES.md).
+- **Commercial license:** use AlbumentationsX in proprietary software under an agreement covering your team,
+  products, and deployments. [Request a quote](https://albumentations.ai/pricing?utm_source=github&utm_medium=referral&utm_campaign=readme).
+- **AGPL-3.0-only:** available at no charge. The AGPL permits commercial use subject to its terms.
+  [Read the license guide](https://albumentations.ai/docs/license/).
 
-### Quick Start
+See the [AGPL text](LICENSE) and [licensing details and history](LICENSING.md) for the applicable terms.
+
+## Quick Start
 
 ```bash
 # Install the PyTorch build for your platform first. For Linux CPU-only:
@@ -71,8 +65,6 @@ transform = A.Compose(
 )
 ```
 
-For commercial licensing inquiries, please visit [our pricing page](https://albumentations.ai/pricing?utm_source=github&utm_medium=referral&utm_campaign=readme).
-
 ---
 
 Here is an example of how you can apply some [pixel-level](#pixel-level-transforms) augmentations to create new images from the original one:
@@ -90,7 +82,7 @@ Here is an example of how you can apply some [pixel-level](#pixel-level-transfor
 ## Table of contents
 
 - [Citing](#citing)
-- [Licensing](#-licensing-commercial-use-is-allowed)
+- [Licensing](#licensing)
 - [Quick Start](#quick-start)
 - [Why AlbumentationsX](#why-albumentationsx)
 - [Authors](#authors)
@@ -502,16 +494,9 @@ We look forward to your contributions to help make the AlbumentationsX ecosystem
 
 ## 📜 License
 
-The current public repository is licensed under **AGPL-3.0-only**. Earlier
-AlbumentationsX releases retain the license terms recorded in the
-[licensing details and history](LICENSING.md). The AGPL permits commercial use subject
-to its terms.
-
-For alternative, scope-specific terms from Albumentations, LLC, visit the
-[pricing page](https://albumentations.ai/pricing?utm_source=github&utm_medium=referral&utm_campaign=readme).
-The [AGPL text](LICENSE), [licensing details](LICENSING.md), and
-[third-party notices](THIRD_PARTY_NOTICES.md) contain the complete
-repository-level details.
+See [Licensing](#licensing) for the two options. The [AGPL text](LICENSE),
+[licensing history](LICENSING.md), and [third-party notices](THIRD_PARTY_NOTICES.md)
+record the applicable terms. Earlier releases retain the permissions that accompanied them.
 
 ## 📞 Contact
 

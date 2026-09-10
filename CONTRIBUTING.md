@@ -19,7 +19,7 @@ For help, ask in the issue, pull request, or Discord discussion.
 ## Contributor License Agreement
 
 Before we can accept your contribution, you must accept our
-[Contributor License Agreement (CLA) Version 2.0](https://github.com/albumentations-team/AlbumentationsX/blob/main/CLA.md).
+[Contributor License Agreement (CLA) Version 2.0](https://github.com/albumentations-team/AlbumentationsX/blob/main/legal/cla/archive/CLA-v2.0-2026-07-14.md).
 It lets
 Albumentations, LLC publish accepted contributions under AGPL-3.0-only and
 offer the same contributions under separately negotiated commercial terms.
@@ -40,7 +40,8 @@ I have read and agree to the AlbumentationsX CLA Version 2.0 (July 14, 2026) as 
 ```
 
 If an employer or another legal entity owns or controls the contribution, use
-the Entity Acceptance process in [CLA.md](https://github.com/albumentations-team/AlbumentationsX/blob/main/CLA.md)
+the Entity Acceptance process in
+[CLA.md](https://github.com/albumentations-team/AlbumentationsX/blob/main/legal/cla/archive/CLA-v2.0-2026-07-14.md)
 instead. A corporate signer
 must identify the exact legal entity, their authority, and the covered
 contributors. Do not use an individual acceptance to license employer-owned

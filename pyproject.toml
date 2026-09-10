@@ -115,7 +115,7 @@ dependencies = [
   "numkong>=7.8.0",
   "numpy>=2.2.6",
   "pydantic>=2.12.4",
-  "pyyaml",
+  "pyyaml>=6.0.3",
   "scipy>=1.15.3",
   "typing-extensions>=4.9.0",
 ]

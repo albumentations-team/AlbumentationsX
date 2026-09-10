@@ -223,7 +223,7 @@ requires-dist = [
     { name = "pillow", marker = "extra == 'text'" },
     { name = "pydantic", specifier = ">=2.12.4" },
     { name = "pyvips", extras = ["binary"], marker = "extra == 'pyvips'" },
-    { name = "pyyaml" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "scipy", specifier = ">=1.15.3" },
     { name = "typing-extensions", specifier = ">=4.9.0" },
 ]

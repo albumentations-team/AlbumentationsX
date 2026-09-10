@@ -29,7 +29,7 @@ requirements:
     - python
     - numpy>=2.2.6
     - scipy>=1.15.3
-    - pyyaml
+    - pyyaml>=6.0.3
     - pydantic>=2.12.4
     - typing-extensions>=4.9.0
     - opencv-python-headless>=5.0.0.93

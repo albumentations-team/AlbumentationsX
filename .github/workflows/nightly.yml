@@ -84,15 +84,9 @@ jobs:
         python-version: "3.10"
         uv-version: "0.12.0"
     - name: Install declared minimum runtime dependencies
-      run: >
-        uv pip install -e .
-        numpy==2.2.6
-        scipy==1.15.3
-        pydantic==2.12.4
-        albucore==0.2.16
-        opencv-python-headless==5.0.0.93
-        hypothesis
-        pytest
+      run: uv pip install --resolution lowest-direct --strict -e ".[headless]"
+    - name: Install test dependencies
+      run: uv pip install hypothesis pytest
     - name: Install CPU-only Torch runtime
       uses: albumentations-team/ci-foundation/actions/torch-cpu@6b9045dbea58026a1e8f96b0392c411934a27199
       with:

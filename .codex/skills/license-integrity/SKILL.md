@@ -75,6 +75,9 @@ change also touches licensing, provenance, or package metadata.
   and pre-import opt-out behavior. A persistent random UUID is not proof of
   anonymity. Telemetry remains default-on with opt-out; its use is limited to
   product analysis and development, not prospect identification or sales.
+- Describe the analytics provider in `docs/privacy.md` as the current implementation.
+  Keep general product wording independent of the provider. When providers change,
+  update the relevant facts and account for versions still using the previous service.
 - Provider retention, storage region, deletion, certifications, and operational
   practices need evidence beyond source code. Do not turn an unverified target
   or a questionnaire question into a public assurance or recurring manual duty.

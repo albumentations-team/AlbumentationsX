@@ -4,7 +4,7 @@ Maintained by Albumentations, LLC. Contact: <vladimir@albumentations.ai>.
 Source reviewed: repository version 2.4.9, September 11, 2026.
 
 AlbumentationsX performs augmentation in the environment where you run Python.
-Its telemetry is **enabled by default** and sends usage metadata to Mixpanel.
+Its telemetry is **enabled by default** and collects usage metadata.
 We collect these statistics solely to support future product analysis and
 development, including transform priorities and environment support.
 
@@ -57,6 +57,13 @@ The library does not link the UUID to your name or email and does not add an IP
 address field to the event. The UUID allows events from the same installation
 to be associated over time.
 
+The client skips telemetry when it detects CI or pytest, deduplicates transform
+lists within a process, and rate-limits sends. These are implementation controls;
+use an explicit opt-out when you want telemetry disabled.
+
+## Analytics provider
+
+Telemetry is processed by our analytics provider, currently Mixpanel.
 The client sends events by HTTPS to `https://api.mixpanel.com/track`.
 [Mixpanel documents](https://docs.mixpanel.com/docs/tracking-best-practices/geolocation)
 default enrichment of events with country, region, and city derived from the
@@ -64,10 +71,6 @@ connection's source IP address; it states that the IP is then removed from the
 event before ingestion. The AX request does not explicitly disable this
 geolocation behavior. This describes the provider's documented default; actual
 stored events and project settings have not been verified for this notice.
-
-The client skips telemetry when it detects CI or pytest, deduplicates transform
-lists within a process, and rate-limits sends. These are implementation controls;
-use an explicit opt-out when you want telemetry disabled.
 
 ## Local storage and previously collected data
 
@@ -79,9 +82,9 @@ changed. Removing it can cause a new identifier to be created on the next enable
 run; removal is not an opt-out.
 
 Opting out stops future telemetry; it does not delete events already received by
-Mixpanel. Provider-side retention, storage region, and deletion settings have not
-been verified for this notice, so no fixed retention period or storage-region
-guarantee is stated here.
+our analytics provider. Provider-side retention, storage region, and deletion
+settings have not been verified for this notice, so no fixed retention period or
+storage-region guarantee is stated here.
 
 For telemetry questions or requests concerning previously collected data, email
 <vladimir@albumentations.ai>. The local UUID can help locate associated events;

@@ -81,8 +81,8 @@ Here is an example of how you can apply some [pixel-level](#pixel-level-transfor
 
 - **Complete Computer Vision Support**: Works with all major CV tasks
 - **Simple, Unified API**: [One consistent interface](#a-simple-example) for all data types - RGB/grayscale/multispectral images, masks, bounding boxes, and keypoints.
-- **Rich Augmentation Library**: [Pixel, spatial, and 3D transforms](#list-of-augmentations) for training data.
-- **Performance**: See the [benchmark results](#performance-comparison) for measured throughput and the versions compared.
+- **Rich Augmentation Library**: [70+ high-quality augmentations](https://albumentations.ai/docs/reference/supported-targets-by-transform/?utm_source=github&utm_medium=referral&utm_campaign=readme) to enhance your training data.
+- **Fast**: Consistently benchmarked as the [fastest augmentation library](https://albumentations.ai/docs/benchmarks/image-benchmarks/?utm_source=github&utm_medium=referral&utm_campaign=readme) also shown [below section](#performance-comparison), with optimizations for production use.
 - **Deep Learning Integration**: Works with [PyTorch](https://pytorch.org/), [TensorFlow](https://www.tensorflow.org/), and other frameworks. Part of the [PyTorch ecosystem](https://pytorch.org/ecosystem/).
 - **Created by Experts**: Built by [developers with deep experience in computer vision and machine learning competitions](#authors).
 

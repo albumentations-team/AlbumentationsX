@@ -14,7 +14,7 @@ AX source contracts; [Coding Guidelines](coding_guidelines.md) explains its diag
 | Write public docstrings | `.codex/skills/docstring-deep-dive/SKILL.md` |
 | Change tests | `.codex/rules/testing-conventions.md` |
 | Change mixing transforms | `.codex/skills/mixing-transforms/SKILL.md` |
-| Change licensing, packaging legal metadata, or CLA text | `.codex/skills/license-integrity/SKILL.md` |
+| Change licensing, procurement/privacy copy, packaging legal metadata, or CLA text | `.codex/skills/license-integrity/SKILL.md` |
 | Validate a completed change | `.codex/skills/validate-and-fix/SKILL.md` |
 
 Read a design document only when the change enters its boundary:

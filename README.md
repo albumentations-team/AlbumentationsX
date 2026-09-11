@@ -47,6 +47,9 @@ See the [AGPL text](https://github.com/albumentations-team/AlbumentationsX/blob/
 and [licensing details and history](https://github.com/albumentations-team/AlbumentationsX/blob/5bac7d5ae4b38f3c2a89c21dc088245613e9e99c/LICENSING.md)
 for the applicable terms.
 
+For supplier questionnaires and purchasing documents, see
+[institutional procurement](https://github.com/albumentations-team/AlbumentationsX/blob/main/LICENSING.md#institutional-procurement).
+
 ## Quick Start
 
 ```bash
@@ -178,6 +181,8 @@ Other installation options are described in the [documentation](https://albument
 ## Documentation
 
 The full documentation is available at **[https://albumentations.ai/docs/](https://albumentations.ai/docs/?utm_source=github&utm_medium=referral&utm_campaign=readme)**.
+For security, release verification, and contributor guides, see the
+[repository documentation](https://github.com/albumentations-team/AlbumentationsX/blob/main/docs/README.md).
 
 For AI-assisted augmentation review, AlbumentationsX can also be used through MCP-capable hosts such as Claude Desktop,
 Cursor, Claude Code, and Codex. The community
@@ -205,7 +210,8 @@ transformed = transform(image=image)
 transformed_image = transformed["image"]
 ```
 
-AlbumentationsX collects anonymous usage statistics to improve the library. This can be disabled with `ALBUMENTATIONS_OFFLINE=1` or `ALBUMENTATIONS_NO_TELEMETRY=1`.
+AlbumentationsX collects usage statistics by default to guide product development.
+See [data collection and opt-out](https://github.com/albumentations-team/AlbumentationsX/blob/main/docs/privacy.md).
 
 ## List of augmentations
 

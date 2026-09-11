@@ -1719,11 +1719,9 @@ class Compose(BaseCompose, HubMixin):
             random state.
         save_applied_params (bool): If True, saves the applied parameters of each transform. Default is False.
             You will need to use the `applied_transforms` key in the output dictionary to access the parameters.
-        telemetry (bool): If True, enables telemetry collection to help improve AlbumentationsX.
-            This collects anonymous usage data including pipeline configuration, environment info,
-            and common parameter patterns. No image data or personal information is collected.
-            Telemetry can be disabled globally via settings.telemetry_enabled = False or by
-            setting the environment variable ALBUMENTATIONS_NO_TELEMETRY=1. Default is True.
+        telemetry (bool): Enables usage statistics for product development. Set False to disable for this pipeline.
+            Default is True. For collected data and global opt-out controls, see
+            https://github.com/albumentations-team/AlbumentationsX/blob/main/docs/privacy.md.
         instance_binding (Sequence[str] | None): Targets that describe the same object in each
             `instances` item. Supported targets are `mask` or `masks`, `bboxes`, and `keypoints`.
             Compose transforms these targets together and removes all fields for an instance when

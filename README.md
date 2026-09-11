@@ -106,6 +106,7 @@ Here is an example of how you can apply some [pixel-level](#pixel-level-transfor
 - [Contribute](#-contribute)
 - [License](#-license)
 - [Contact](#-contact)
+- [Newsletter](#-stay-connected)
 
 ## Authors
 
@@ -513,3 +514,9 @@ record the applicable terms. Earlier releases retain the permissions that accomp
 ## 📞 Contact
 
 For bug reports and feature requests related to AlbumentationsX, please visit [GitHub Issues](https://github.com/albumentations-team/AlbumentationsX/issues). For questions, discussions, and community support, join our active communities on [Discord](https://discord.gg/AKPrrDYNAt), [Twitter](https://twitter.com/albumentations), [LinkedIn](https://www.linkedin.com/company/albumentations/), and [Reddit](https://www.reddit.com/r/Albumentations/). We're here to help with all things AlbumentationsX!
+
+---
+
+## 📫 Stay Connected
+
+Never miss updates, tutorials, and tips from the AlbumentationsX team! [Subscribe to our newsletter](https://albumentations.ai/subscribe?utm_source=github&utm_medium=referral&utm_campaign=readme).

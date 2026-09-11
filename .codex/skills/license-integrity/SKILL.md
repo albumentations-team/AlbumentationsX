@@ -54,7 +54,10 @@ the affected claims. The full legal context and artifact checks apply when the
 change also touches licensing, provenance, or package metadata.
 
 - Describe the product as the AlbumentationsX Python library running in the
-  customer's environment. Keep sales and supplier-assessment text about that product.
+  customer's environment. Lead purchasing copy with product fit, license coverage,
+  and the next step. Include limitations when they affect the buyer's decision
+  or answer a specific question; do not add speculative warnings or repeat
+  security/privacy caveats throughout licensing and procurement pages.
 - AX owns its library assessment documents: `LICENSING.md`, `SECURITY.md`,
   `docs/privacy.md`, and `docs/maintaining/`. Link to the owning document instead
   of copying another procedure.

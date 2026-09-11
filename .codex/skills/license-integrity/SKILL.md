@@ -55,14 +55,14 @@ change also touches licensing, provenance, or package metadata.
 
 - Describe the product as the AlbumentationsX Python library running in the
   customer's environment. Keep sales and supplier-assessment text about that product.
-- AX owns its library documentation: `LICENSING.md`, `SECURITY.md`,
+- AX owns its library assessment documents: `LICENSING.md`, `SECURITY.md`,
   `docs/privacy.md`, and `docs/maintaining/`. Link to the owning document instead
   of copying another procedure.
-- Maintained AX content may link to `albumentations.ai` for library documentation,
-  licensing, Explore transformations, and the README newsletter subscription.
-  Keep the full user documentation link
-  at `https://albumentations.ai/docs/` and the official contact `vladimir@albumentations.ai`.
-  Preserve immutable legal archives and historical notices.
+- `albumentations.ai` is AX's project website. Preserve relevant website links,
+  including documentation, benchmarks, Explore, newsletters, licensing, and funding.
+  Website sign-in, accounts, and saved user content are separate from library
+  execution and the commercial license; do not present them as AX requirements
+  or license features. Keep the official contact `vladimir@albumentations.ai`.
 - Keep telemetry to a brief README mention linking to `docs/privacy.md`, which
   owns the collected fields and global opt-out instructions. API parameter docs
   explain the control and link to that notice. Do not repeat telemetry copy in

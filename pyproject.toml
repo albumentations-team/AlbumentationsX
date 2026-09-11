@@ -212,7 +212,7 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/albumentations-team/AlbumentationsX"
+Homepage = "https://albumentations.ai"
 Documentation = "https://albumentations.ai/docs/"
 "Commercial Licensing" = "https://albumentations.ai/pricing"
 Repository = "https://github.com/albumentations-team/AlbumentationsX"

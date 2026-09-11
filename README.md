@@ -6,7 +6,7 @@
 
 > 📣 **Stay updated!** [Subscribe to our newsletter](https://albumentations.ai/subscribe?utm_source=github&utm_medium=referral&utm_campaign=readme) for the latest releases, tutorials, and tips.
 
-[![License: AGPL-3.0-only](https://img.shields.io/badge/License-AGPL--3.0--only-blue.svg)](https://github.com/albumentations-team/AlbumentationsX/blob/main/LICENSE)
+[![License: AGPL-3.0-only](https://img.shields.io/badge/License-AGPL--3.0--only-blue.svg)](https://github.com/albumentations-team/AlbumentationsX/blob/5bac7d5ae4b38f3c2a89c21dc088245613e9e99c/LICENSE)
 [![Commercial License](https://img.shields.io/badge/Commercial_License-available-brightgreen)](https://albumentations.ai/pricing?utm_source=github&utm_medium=referral&utm_campaign=readme)
 
 [![Docs](https://img.shields.io/badge/docs-albumentations.ai-blue)](https://albumentations.ai/docs/?utm_source=github&utm_medium=referral&utm_campaign=readme) [![Discord](https://img.shields.io/badge/Discord-join-7289da?logo=discord&logoColor=white)](https://discord.gg/AKPrrDYNAt) [![Twitter](https://img.shields.io/badge/Twitter-follow-1da1f2?logo=twitter&logoColor=white)](https://twitter.com/albumentations) [![LinkedIn](https://img.shields.io/badge/LinkedIn-connect-0077b5?logo=linkedin&logoColor=white)](https://www.linkedin.com/company/albumentations/) [![Reddit](https://img.shields.io/badge/Reddit-join-ff4500?logo=reddit&logoColor=white)](https://www.reddit.com/r/Albumentations/)
@@ -43,8 +43,8 @@ AlbumentationsX offers two license options:
   [Read the license guide](https://albumentations.ai/docs/license/).
 
 Commercial, proprietary, internal, or production status alone does not require a commercial license.
-See the [AGPL text](https://github.com/albumentations-team/AlbumentationsX/blob/main/LICENSE)
-and [licensing details and history](https://github.com/albumentations-team/AlbumentationsX/blob/main/LICENSING.md)
+See the [AGPL text](https://github.com/albumentations-team/AlbumentationsX/blob/5bac7d5ae4b38f3c2a89c21dc088245613e9e99c/LICENSE)
+and [licensing details and history](https://github.com/albumentations-team/AlbumentationsX/blob/5bac7d5ae4b38f3c2a89c21dc088245613e9e99c/LICENSING.md)
 for the applicable terms.
 
 For supplier questionnaires and purchasing documents, see
@@ -176,12 +176,11 @@ Choose the one that fits your needs. The library will detect whichever is instal
 `pip install albumentationsx` installs the base dependency set without PyTorch. It is useful for dependency-only
 consumers such as documentation builds. Importing `albumentations` requires the PyTorch build you selected above.
 
-Other installation options are described in the
-[installation guide](https://albumentations.ai/docs/1-introduction/installation/).
+Other installation options are described in the [documentation](https://albumentations.ai/docs/1-introduction/installation/?utm_source=github&utm_medium=referral&utm_campaign=readme).
 
 ## Documentation
 
-The full library documentation is available at [albumentations.ai/docs](https://albumentations.ai/docs/).
+The full documentation is available at **[https://albumentations.ai/docs/](https://albumentations.ai/docs/?utm_source=github&utm_medium=referral&utm_campaign=readme)**.
 For security, release verification, and contributor guides, see the
 [repository documentation](https://github.com/albumentations-team/AlbumentationsX/blob/main/docs/README.md).
 
@@ -506,9 +505,9 @@ We look forward to your contributions to help make the AlbumentationsX ecosystem
 ## 📜 License
 
 See [Licensing](#licensing) for the two options.
-The [AGPL text](https://github.com/albumentations-team/AlbumentationsX/blob/main/LICENSE),
-[licensing history](https://github.com/albumentations-team/AlbumentationsX/blob/main/LICENSING.md),
-and [third-party notices](https://github.com/albumentations-team/AlbumentationsX/blob/main/THIRD_PARTY_NOTICES.md)
+The [AGPL text](https://github.com/albumentations-team/AlbumentationsX/blob/5bac7d5ae4b38f3c2a89c21dc088245613e9e99c/LICENSE),
+[licensing history](https://github.com/albumentations-team/AlbumentationsX/blob/5bac7d5ae4b38f3c2a89c21dc088245613e9e99c/LICENSING.md),
+and [third-party notices](https://github.com/albumentations-team/AlbumentationsX/blob/5bac7d5ae4b38f3c2a89c21dc088245613e9e99c/THIRD_PARTY_NOTICES.md)
 record the applicable terms. Earlier releases retain the permissions that accompanied them.
 
 ## 📞 Contact

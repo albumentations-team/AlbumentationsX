@@ -34,8 +34,6 @@ AGPL, including internal training and model outputs, read the
 
 The product being licensed is the AlbumentationsX Python library. You install
 and run it in your own environment; augmentation processes your data there.
-The library's default-on telemetry and opt-out controls are described in
-[Telemetry and Data Handling](https://github.com/albumentations-team/AlbumentationsX/blob/main/docs/privacy.md).
 
 For a quote, proposed agreement, or supplier questionnaire, email
 <vladimir@albumentations.ai>. Include your legal entity, intended use, requested

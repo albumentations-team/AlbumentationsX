@@ -62,6 +62,11 @@ change also touches licensing, provenance, or package metadata.
   licensing, and Explore transformations. Keep the full user documentation link
   at `https://albumentations.ai/docs/` and the official contact `vladimir@albumentations.ai`.
   Preserve immutable legal archives and historical notices.
+- Keep telemetry to a brief README mention linking to `docs/privacy.md`, which
+  owns the collected fields and global opt-out instructions. API parameter docs
+  explain the control and link to that notice. Do not repeat telemetry copy in
+  licensing or general procurement pages; answer explicit buyer questions in
+  their assessment documents.
 - Verify telemetry disclosures against the event model, collectors, backend,
   and pre-import opt-out behavior. A persistent random UUID is not proof of
   anonymity. Telemetry remains default-on with opt-out; its use is limited to

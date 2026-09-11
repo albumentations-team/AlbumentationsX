@@ -179,7 +179,7 @@ Other installation options are described in the
 ## Documentation
 
 The full library documentation is available at [albumentations.ai/docs](https://albumentations.ai/docs/).
-For data handling, security, and release verification, see the
+For security, release verification, and contributor guides, see the
 [repository documentation](https://github.com/albumentations-team/AlbumentationsX/blob/main/docs/README.md).
 
 For AI-assisted augmentation review, AlbumentationsX can also be used through MCP-capable hosts such as Claude Desktop,

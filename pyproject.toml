@@ -212,8 +212,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://albumentations.ai"
-Documentation = "https://albumentations.ai/docs/"
+Homepage = "https://github.com/albumentations-team/AlbumentationsX"
+Documentation = "https://github.com/albumentations-team/AlbumentationsX/blob/main/docs/README.md"
 "Commercial Licensing" = "https://albumentations.ai/pricing"
 Repository = "https://github.com/albumentations-team/AlbumentationsX"
 Changelog = "https://github.com/albumentations-team/AlbumentationsX/releases"

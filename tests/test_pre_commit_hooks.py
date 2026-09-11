@@ -28,7 +28,7 @@ def test_local_markdown_links_ignore_external_urls_and_fenced_examples(
     source.write_text(
         "[Local](target.md#section)\n"
         "[Root-relative](/docs/target.md#section)\n"
-        "[External](https://albumentations.ai/docs/)\n"
+        "[External](https://example.com/docs/)\n"
         "```markdown\n"
         "[Example](not-a-real-file.md)\n"
         "```\n",

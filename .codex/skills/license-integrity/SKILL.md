@@ -7,11 +7,13 @@ description: Maintain AlbumentationsX license, CLA, provenance notices, and pack
 
 Use this skill for any change to `LICENSE`, `CLA.md`, license history,
 third-party notices, package license metadata, contributor acceptance language,
-or public repository license wording.
+or public repository license wording. Also use it for library procurement and
+privacy disclosures.
 
 ## Required Context
 
-Read these files completely before editing:
+For licensing, CLA, provenance, or packaging changes, read these files completely
+before editing:
 
 1. `docs/maintaining/license-provenance.md`
 2. `LICENSE`
@@ -44,6 +46,28 @@ Read these files completely before editing:
   not contain the inbound CLA or private acceptance records.
 - Build into a fresh directory outside the checkout. A source distribution
   must not contain local build-output directories or nested release artifacts.
+
+## Library Procurement and Privacy Copy
+
+For prose-only changes, read the owning documents and the implementation behind
+the affected claims. The full legal context and artifact checks apply when the
+change also touches licensing, provenance, or package metadata.
+
+- Describe the product as the AlbumentationsX Python library running in the
+  customer's environment. Keep sales and supplier-assessment text about that product.
+- AX owns its library documentation: `LICENSING.md`, `SECURITY.md`,
+  `docs/privacy.md`, and `docs/maintaining/`. Link to the owning document instead
+  of copying another procedure.
+- Maintained AX content may link to `albumentations.ai` only for licensing or
+  Explore transformations. Keep the official contact `vladimir@albumentations.ai`.
+  Preserve immutable legal archives and historical notices.
+- Verify telemetry disclosures against the event model, collectors, backend,
+  and pre-import opt-out behavior. A persistent random UUID is not proof of
+  anonymity. Telemetry remains default-on with opt-out; its use is limited to
+  product analysis and development, not prospect identification or sales.
+- Provider retention, storage region, deletion, certifications, and operational
+  practices need evidence beyond source code. Do not turn an unverified target
+  or a questionnaire question into a public assurance or recurring manual duty.
 
 ## Verification
 

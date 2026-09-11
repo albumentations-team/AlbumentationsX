@@ -294,4 +294,4 @@ Common issues:
 - MCP server repository: <https://github.com/dKosarevsky/albu-mcp>
 - PyPI package: <https://pypi.org/project/albumentationsx-mcp/>
 - MCP Registry entry: <https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.dKosarevsky/albu-mcp>
-- AlbumentationsX documentation: <https://albumentations.ai/docs/>
+- [AlbumentationsX documentation](../README.md)

@@ -59,7 +59,8 @@ change also touches licensing, provenance, or package metadata.
   `docs/privacy.md`, and `docs/maintaining/`. Link to the owning document instead
   of copying another procedure.
 - Maintained AX content may link to `albumentations.ai` for library documentation,
-  licensing, and Explore transformations. Keep the full user documentation link
+  licensing, Explore transformations, and the README newsletter subscription.
+  Keep the full user documentation link
   at `https://albumentations.ai/docs/` and the official contact `vladimir@albumentations.ai`.
   Preserve immutable legal archives and historical notices.
 - Keep telemetry to a brief README mention linking to `docs/privacy.md`, which

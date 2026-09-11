@@ -4,6 +4,8 @@
 ![CI](https://github.com/albumentations-team/AlbumentationsX/workflows/CI/badge.svg)
 [![PyPI Downloads](https://img.shields.io/pypi/dm/albumentationsx.svg?label=PyPI%20downloads)](https://pypi.org/project/albumentationsx/)
 
+> 📣 **Stay updated!** [Subscribe to our newsletter](https://albumentations.ai/subscribe?utm_source=github&utm_medium=referral&utm_campaign=readme) for the latest releases, tutorials, and tips.
+
 [![License: AGPL-3.0-only](https://img.shields.io/badge/License-AGPL--3.0--only-blue.svg)](https://github.com/albumentations-team/AlbumentationsX/blob/main/LICENSE)
 [![Commercial License](https://img.shields.io/badge/Commercial_License-available-brightgreen)](https://albumentations.ai/pricing?utm_source=github&utm_medium=referral&utm_campaign=readme)
 

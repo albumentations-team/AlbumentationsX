@@ -7,7 +7,7 @@
 [![License: AGPL-3.0-only](https://img.shields.io/badge/License-AGPL--3.0--only-blue.svg)](https://github.com/albumentations-team/AlbumentationsX/blob/main/LICENSE)
 [![Commercial License](https://img.shields.io/badge/Commercial_License-available-brightgreen)](https://albumentations.ai/pricing?utm_source=github&utm_medium=referral&utm_campaign=readme)
 
-[![Docs](https://img.shields.io/badge/docs-AlbumentationsX-blue)](https://github.com/albumentations-team/AlbumentationsX/blob/main/docs/README.md) [![Discord](https://img.shields.io/badge/Discord-join-7289da?logo=discord&logoColor=white)](https://discord.gg/AKPrrDYNAt) [![Twitter](https://img.shields.io/badge/Twitter-follow-1da1f2?logo=twitter&logoColor=white)](https://twitter.com/albumentations) [![LinkedIn](https://img.shields.io/badge/LinkedIn-connect-0077b5?logo=linkedin&logoColor=white)](https://www.linkedin.com/company/albumentations/) [![Reddit](https://img.shields.io/badge/Reddit-join-ff4500?logo=reddit&logoColor=white)](https://www.reddit.com/r/Albumentations/)
+[![Docs](https://img.shields.io/badge/docs-albumentations.ai-blue)](https://albumentations.ai/docs/?utm_source=github&utm_medium=referral&utm_campaign=readme) [![Discord](https://img.shields.io/badge/Discord-join-7289da?logo=discord&logoColor=white)](https://discord.gg/AKPrrDYNAt) [![Twitter](https://img.shields.io/badge/Twitter-follow-1da1f2?logo=twitter&logoColor=white)](https://twitter.com/albumentations) [![LinkedIn](https://img.shields.io/badge/LinkedIn-connect-0077b5?logo=linkedin&logoColor=white)](https://www.linkedin.com/company/albumentations/) [![Reddit](https://img.shields.io/badge/Reddit-join-ff4500?logo=reddit&logoColor=white)](https://www.reddit.com/r/Albumentations/)
 
 **AlbumentationsX** is a Python library for image augmentation. It provides high-performance, robust implementations and cutting-edge features for computer vision tasks. Image augmentation is used in deep learning and computer vision to increase the quality of trained models. The purpose of image augmentation is to create new training samples from the existing data.
 
@@ -173,10 +173,14 @@ Choose the one that fits your needs. The library will detect whichever is instal
 `pip install albumentationsx` installs the base dependency set without PyTorch. It is useful for dependency-only
 consumers such as documentation builds. Importing `albumentations` requires the PyTorch build you selected above.
 
+Other installation options are described in the
+[installation guide](https://albumentations.ai/docs/1-introduction/installation/).
+
 ## Documentation
 
-Start with the [repository documentation](https://github.com/albumentations-team/AlbumentationsX/blob/main/docs/README.md)
-for library usage, data handling, security, and release verification.
+The full library documentation is available at [albumentations.ai/docs](https://albumentations.ai/docs/).
+For data handling, security, and release verification, see the
+[repository documentation](https://github.com/albumentations-team/AlbumentationsX/blob/main/docs/README.md).
 
 For AI-assisted augmentation review, AlbumentationsX can also be used through MCP-capable hosts such as Claude Desktop,
 Cursor, Claude Code, and Codex. The community

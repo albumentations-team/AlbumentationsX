@@ -213,7 +213,7 @@ dev = [
 
 [project.urls]
 Homepage = "https://github.com/albumentations-team/AlbumentationsX"
-Documentation = "https://github.com/albumentations-team/AlbumentationsX/blob/main/docs/README.md"
+Documentation = "https://albumentations.ai/docs/"
 "Commercial Licensing" = "https://albumentations.ai/pricing"
 Repository = "https://github.com/albumentations-team/AlbumentationsX"
 Changelog = "https://github.com/albumentations-team/AlbumentationsX/releases"

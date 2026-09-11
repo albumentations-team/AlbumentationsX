@@ -1,5 +1,8 @@
 # AlbumentationsX documentation
 
+The [full user documentation](https://albumentations.ai/docs/) covers the Python API,
+tutorials, and usage guides. This index links to the library documents maintained in this repository.
+
 ## Use the library
 
 - [Installation and a first pipeline](../README.md#quick-start)

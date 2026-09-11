@@ -58,8 +58,9 @@ change also touches licensing, provenance, or package metadata.
 - AX owns its library documentation: `LICENSING.md`, `SECURITY.md`,
   `docs/privacy.md`, and `docs/maintaining/`. Link to the owning document instead
   of copying another procedure.
-- Maintained AX content may link to `albumentations.ai` only for licensing or
-  Explore transformations. Keep the official contact `vladimir@albumentations.ai`.
+- Maintained AX content may link to `albumentations.ai` for library documentation,
+  licensing, and Explore transformations. Keep the full user documentation link
+  at `https://albumentations.ai/docs/` and the official contact `vladimir@albumentations.ai`.
   Preserve immutable legal archives and historical notices.
 - Verify telemetry disclosures against the event model, collectors, backend,
   and pre-import opt-out behavior. A persistent random UUID is not proof of

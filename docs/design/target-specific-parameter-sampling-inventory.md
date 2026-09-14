@@ -75,7 +75,8 @@ group key.
 - `albumentations/augmentations/mixing/copy_paste.py`: `CopyAndPaste`.
 - `albumentations/augmentations/mixing/domain_adaptation.py`: `FDA`.
 - `albumentations/augmentations/transforms3d/transforms.py`: `Affine3D`, `Anisotropy3D`, `Resize3D`, `PadIfNeeded3D`,
-  `CenterCrop3D`, `RandomCrop3D`, `CoarseDropout3D`, `Flip3D`, `CubicSymmetry`, `RandomRotate90_3D`, `GridShuffle3D`.
+  `CenterCrop3D`, `RandomCrop3D`, `RandomResizedCrop3D`, `CoarseDropout3D`, `Flip3D`, `CubicSymmetry`,
+  `RandomRotate90_3D`, `GridShuffle3D`.
 
 ## Content-derived or mixed policy
 

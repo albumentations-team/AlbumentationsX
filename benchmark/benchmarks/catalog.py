@@ -78,6 +78,7 @@ PARAM_OVERRIDES: Mapping[str, Mapping[str, Any]] = {
     "PixelDistributionAdaptation": {"transform_type": "standard"},
     "RandomCrop": {"height": 96, "width": 96},
     "RandomCrop3D": {"size": (4, 48, 48)},
+    "RandomResizedCrop3D": {"size": (4, 48, 48), "scale": (0.2, 0.8), "ratio": 1.2},
     "RandomRotate90_3D": {"axis_pair": (0, 2), "group_element": "r90"},
     "RandomResizedCrop": {"size": (96, 96), "scale": (0.8, 1.0)},
     "RandomSizedBBoxSafeCrop": {"height": 96, "width": 96},

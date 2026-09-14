@@ -53,10 +53,6 @@ class RandomSizedCrop(_BaseRandomSizedCrop):
             - "image": Use INTER_AREA when downscaling images, retain specified interpolation for upscaling and masks
             - "image_mask": Use INTER_AREA when downscaling both images and masks
             Default: None.
-        sampling_method (Literal["standard", "uniform_scale"]): Size distribution. `"standard"`
-            preserves the conditional distribution of feasible area and log-aspect-ratio proposals;
-            `"uniform_scale"` samples uniformly from the feasible crop-area interval. Default:
-            `"standard"`.
         p (float): Probability of applying the transform. Default: 1.0
 
     Targets:
@@ -220,6 +216,10 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
             - "image": Use INTER_AREA when downscaling images, retain specified interpolation for upscaling and masks
             - "image_mask": Use INTER_AREA when downscaling both images and masks
             Default: None.
+        sampling_method (Literal["standard", "uniform_scale"]): Distribution for feasible crop area.
+            `"standard"` preserves the conditional distribution of uniform-area and log-aspect-ratio
+            proposals. `"uniform_scale"` samples uniformly from the feasible crop-area interval.
+            Default: `"standard"`.
         p (float): Probability of applying the transform. Default: 1.0
 
     Targets:

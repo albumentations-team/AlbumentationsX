@@ -116,12 +116,22 @@ def test_random_resized_crop3d_center_fallback_is_used_for_an_empty_region() -> 
 
 
 def test_random_resized_crop3d_scales_xyz_keypoints_after_cropping() -> None:
-    transform = A.RandomResizedCrop3D(size=(16, 32, 32), p=1.0)
+    volume = np.zeros((64, 128, 128, 1), dtype=np.float32)
     keypoints = np.array([[48.0, 64.0, 32.0, 17.0]], dtype=np.float32)
+    transform = A.ReplayCompose(
+        [A.RandomResizedCrop3D(size=(16, 32, 32), scale=(0.125, 0.125), ratio=None, p=1.0)],
+        keypoint_params=A.KeypointParams(coord_format="xyz", remove_invisible=False),
+        seed=137,
+    )
 
-    result = transform.apply_to_keypoints(keypoints, crop_coords=(16, 48, 32, 96, 32, 96))
+    result = transform(volume=volume, keypoints=keypoints)
+    z_min, z_max, y_min, y_max, x_min, x_max = result["replay"]["transforms"][0]["params"]["params"]["crop_coords"]
+    expected = keypoints.copy()
+    expected[:, 0] = (keypoints[:, 0] - x_min) * 32 / (x_max - x_min)
+    expected[:, 1] = (keypoints[:, 1] - y_min) * 32 / (y_max - y_min)
+    expected[:, 2] = (keypoints[:, 2] - z_min) * 16 / (z_max - z_min)
 
-    np.testing.assert_array_equal(result, np.array([[8.0, 16.0, 8.0, 17.0]], dtype=np.float32))
+    np.testing.assert_allclose(result["keypoints"], expected)
 
 
 def test_random_resized_crop3d_replay_and_applied_config_contracts() -> None:

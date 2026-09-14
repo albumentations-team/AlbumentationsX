@@ -248,6 +248,7 @@ VOLUME_ALIAS_TO_TRANSFORM = {
     "pad3d": "Pad3D",
     "pad_if_needed3d": "PadIfNeeded3D",
     "random_crop3d": "RandomCrop3D",
+    "random_resized_crop3d": "RandomResizedCrop3D",
     "random_rotate90_3d": "RandomRotate90_3D",
     "resize3d": "Resize3D",
     "rician_noise": "RicianNoise",

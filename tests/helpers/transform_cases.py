@@ -648,6 +648,16 @@ _BASE_CASE_SPECS: list[list[Any]] = [
     [A.CenterCrop3D, {"size": (2, 30, 30)}],
     [A.RandomCrop3D, {"size": (2, 30, 30)}],
     [
+        A.RandomResizedCrop3D,
+        {
+            "size": (2, 30, 30),
+            "scale": (0.2, 0.8),
+            "ratio": 1.2,
+            "interpolation": cv2.INTER_NEAREST,
+            "mask_interpolation": cv2.INTER_LINEAR,
+        },
+    ],
+    [
         A.CoarseDropout3D,
         {
             "num_holes_range": (1, 3),
@@ -1170,6 +1180,13 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
         "downscale-aware",
         A.RandomResizedCrop,
         {"interpolation": cv2.INTER_CUBIC, "mask_interpolation": cv2.INTER_LINEAR, "area_for_downscale": "image_mask"},
+    ),
+    ("uniform-scale", A.RandomResizedCrop, {"sampling_method": "uniform_scale"}),
+    ("uniform-scale", A.RandomResizedCrop3D, {"sampling_method": "uniform_scale"}),
+    (
+        "output-proportions",
+        A.RandomResizedCrop3D,
+        {"ratio": None, "scale": (0.29296875, 0.29296875), "mask_interpolation": cv2.INTER_NEAREST},
     ),
     ("fixed-element", A.RandomRotate90, {"group_element": "r90"}),
     ("subset-elements", A.RandomRotate90, {"group_elements": ("r90", "r270")}),

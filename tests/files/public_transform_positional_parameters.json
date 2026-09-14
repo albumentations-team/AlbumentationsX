@@ -104,6 +104,7 @@
   "RandomGridShuffle": ["grid", "p"],
   "RandomRain": ["slant_range", "drop_length", "drop_width", "drop_color", "blur_value", "brightness_coefficient", "rain_type", "p"],
   "RandomResizedCrop": ["size", "scale", "ratio", "interpolation", "mask_interpolation", "area_for_downscale", "p"],
+  "RandomResizedCrop3D": ["size", "scale", "ratio", "interpolation", "mask_interpolation", "p"],
   "RandomRotate90": ["p", "group_element", "group_elements"],
   "RandomRotate90_3D": ["axis_pairs", "axis_pair", "group_element", "p"],
   "RandomScale": ["scale_range", "interpolation", "mask_interpolation", "area_for_downscale", "p"],

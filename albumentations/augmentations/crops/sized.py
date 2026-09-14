@@ -5,6 +5,7 @@ from typing import Annotated, Any, Literal
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet
 
+from ._sampling import SamplingMethod, sample_2d_crop_shape
 from ._transforms_shared import (
     ALL_TARGETS,
     CV2_INTER_LINEAR,
@@ -21,6 +22,12 @@ from ._transforms_shared import (
 from .base import (
     _BaseRandomSizedCrop,
 )
+
+
+def _validate_positive_finite_ratio_range(value: tuple[float, float]) -> tuple[float, float]:
+    if not all(math.isfinite(item) and item > 0.0 for item in value):
+        raise ValueError("ratio values must be finite and greater than 0")
+    return value
 
 
 class RandomSizedCrop(_BaseRandomSizedCrop):
@@ -209,6 +216,10 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
             - "image": Use INTER_AREA when downscaling images, retain specified interpolation for upscaling and masks
             - "image_mask": Use INTER_AREA when downscaling both images and masks
             Default: None.
+        sampling_method (Literal["standard", "uniform_scale"]): Distribution for feasible crop area.
+            `"standard"` preserves the conditional distribution of uniform-area and log-aspect-ratio
+            proposals. `"uniform_scale"` samples uniformly from the feasible crop-area interval.
+            Default: `"standard"`.
         p (float): Probability of applying the transform. Default: 1.0
 
     Targets:
@@ -221,9 +232,8 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
     Supported bboxes:
         hbb, obb
     Note:
-        - This transform attempts to crop a random area with an aspect ratio and relative size
-          specified by 'ratio' and 'scale' parameters. If it fails to find a suitable crop after
-          10 attempts, it will return a crop from the center of the image.
+        - Crop dimensions are sampled directly from the feasible region. A centered crop is used
+          only when that region is empty.
         - The crop's aspect ratio is defined as width / height.
         - Bounding boxes that end up fully outside the cropped area will be removed.
         - Keypoints that end up outside the cropped area will be removed.
@@ -232,15 +242,13 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
           downscaling (when the crop is larger than the target size), which provides better quality for size reduction.
 
     Mathematical Details:
-        1. A target area A is sampled from the range [scale[0] * input_area, scale[1] * input_area].
-        2. A target aspect ratio r is sampled from the range [ratio[0], ratio[1]].
-        3. The crop width and height are computed as:
+        1. A target area A and log-aspect ratio r are sampled from their feasible joint region.
+           `sampling_method="standard"` preserves the conditional law of uniform area and
+           log-ratio proposals; `"uniform_scale"` makes A uniform on its feasible interval.
+        2. The crop width and height are computed as:
            w = sqrt(A * r)
            h = sqrt(A / r)
-        4. If w and h are within the input image dimensions, the crop is accepted.
-           Otherwise, steps 1-3 are repeated (up to 10 times).
-        5. If no valid crop is found after 10 attempts, a centered crop is taken.
-        6. The crop is then resized to the specified size.
+        3. The crop is then resized to the specified size.
 
     Examples:
         >>> import numpy as np
@@ -296,13 +304,14 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
         scale: Annotated[tuple[float, float], AfterValidator(check_range_bounds(0, 1)), AfterValidator(nondecreasing)]
         ratio: Annotated[
             tuple[float, float],
-            AfterValidator(check_range_bounds(0, None)),
+            AfterValidator(_validate_positive_finite_ratio_range),
             AfterValidator(nondecreasing),
         ]
         size: Annotated[tuple[int, int], AfterValidator(check_range_bounds(1, None))]
         interpolation: FullInterpolationType
         mask_interpolation: FullInterpolationType
         area_for_downscale: Literal["image", "image_mask"] | None
+        sampling_method: SamplingMethod
 
     def __init__(
         self,
@@ -313,6 +322,8 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
         mask_interpolation: FullInterpolationType = CV2_INTER_NEAREST,
         area_for_downscale: Literal["image", "image_mask"] | None = None,
         p: float = 1.0,
+        *,
+        sampling_method: SamplingMethod = "standard",
     ):
         super().__init__(
             size=size,
@@ -323,6 +334,7 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
         )
         self.scale = scale
         self.ratio = ratio
+        self.sampling_method = sampling_method
 
     def sample_parameters(
         self,
@@ -334,53 +346,41 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
         image_shape = targets.require_aligned_spatial_shape(2)
         image_height, image_width = image_shape
 
-        area = image_height * image_width
+        crop_shape = sample_2d_crop_shape(
+            image_height,
+            image_width,
+            self.scale,
+            self.ratio,
+            self.sampling_method,
+            sampling.py_random,
+        )
+        if crop_shape is None:
+            in_ratio = image_width / image_height
+            if in_ratio < self.ratio[0]:
+                width = image_width
+                height = min(image_height, max(1, round(image_width / self.ratio[0])))
+            elif in_ratio > self.ratio[1]:
+                height = image_height
+                width = min(image_width, max(1, round(image_height * self.ratio[1])))
+            else:
+                width = image_width
+                height = image_height
+            crop_coords = fcrops.get_center_crop_coords(image_shape, (height, width))
+        else:
+            height, width = crop_shape
+            crop_coords = fcrops.get_crop_coords(
+                image_shape,
+                crop_shape,
+                sampling.py_random.random(),
+                sampling.py_random.random(),
+            )
 
-        # Pre-compute constants to avoid repeated calculations
-        scale_min_area = self.scale[0] * area
-        scale_max_area = self.scale[1] * area
-        log_ratio_min = math.log(self.ratio[0])
-        log_ratio_max = math.log(self.ratio[1])
-
-        for _ in range(10):
-            target_area = sampling.py_random.uniform(scale_min_area, scale_max_area)
-            aspect_ratio = math.exp(sampling.py_random.uniform(log_ratio_min, log_ratio_max))
-
-            width = round(math.sqrt(target_area * aspect_ratio))
-            height = round(math.sqrt(target_area / aspect_ratio))
-
-            if 0 < width <= image_width and 0 < height <= image_height:
-                h_start = sampling.py_random.random()
-                w_start = sampling.py_random.random()
-                crop_coords = fcrops.get_crop_coords(image_shape, (height, width), h_start, w_start)
-                sampled_scale = target_area / area
-                sampling.applied_overrides.update(
-                    {
-                        "scale": (sampled_scale, sampled_scale),
-                        "ratio": (aspect_ratio, aspect_ratio),
-                    },
-                )
-                return SampledParams(params={"crop_coords": crop_coords})
-
-        # Fallback to central crop - use proper function
-        in_ratio = image_width / image_height
-        if in_ratio < self.ratio[0]:
-            width = image_width
-            height = round(image_width / self.ratio[0])
-        elif in_ratio > self.ratio[1]:
-            height = image_height
-            width = round(height * self.ratio[1])
-        else:  # whole image
-            width = image_width
-            height = image_height
-
-        crop_coords = fcrops.get_center_crop_coords(image_shape, (height, width))
-        fallback_scale = (width * height) / area
-        fallback_ratio = width / height if height > 0 else 1.0
+        sampled_scale = (width * height) / (image_height * image_width)
+        sampled_ratio = width / height
         sampling.applied_overrides.update(
             {
-                "scale": (fallback_scale, fallback_scale),
-                "ratio": (fallback_ratio, fallback_ratio),
+                "scale": (sampled_scale, sampled_scale),
+                "ratio": (sampled_ratio, sampled_ratio),
             },
         )
         return SampledParams(params={"crop_coords": crop_coords})

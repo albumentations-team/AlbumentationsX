@@ -7,13 +7,18 @@ required by the [CLA](CLA.md).
 
 ## What is reviewed
 
-The reviewed runtime dependency set is recorded in
+The reviewed runtime dependency registry is recorded in
 [`legal/dependency-licenses.json`](legal/dependency-licenses.json). It covers
-the base installation and every declared extra, including transitive packages
-and platform-specific locked versions. The registry records the SPDX expression,
+the union of the base package and every declared extra, including transitive
+packages and platform-specific locked versions. It is not one installation
+recipe. The four OpenCV extras are alternatives; a user selects one when
+AlbumentationsX installs OpenCV. The registry records the SPDX expression,
 evidence source, decision, and any notice handling for each package. Build,
 test, and CI tools are kept outside this runtime registry because they are not
 part of the distributed library.
+
+The release SBOM represents the concrete base runtime export. It does not claim
+that all optional dependencies are installed together.
 
 The registry is a reviewed record, not a blanket list of allowed or forbidden
 licenses. A package can be acceptable in one distribution context and require a
@@ -32,10 +37,10 @@ the reviewed SPDX expressions into the published SBOM. Vladimir Iglovikov makes
 the usual maintainer review and merge decision; no separate label or approval
 service is used.
 
-A version update does not need a new manual decision when its verified license
-information and applicable notices remain the same as the reviewed record. If
-the evidence is missing, contradictory, or changed, treat it as a license
-change and update the record before merge. Never replace unresolved evidence
+A version update requires a new reviewed-version entry. It can retain the prior
+license expression only after its verified license information and applicable
+notices are confirmed unchanged. Missing, contradictory, or changed evidence
+requires an updated decision before merge. Never replace unresolved evidence
 with a generic "allowed" label.
 
 Runtime dependencies are installed separately from the AlbumentationsX wheel

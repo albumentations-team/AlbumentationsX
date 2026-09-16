@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "reviewed_on": "2026-09-16",
-  "scope": "Runtime dependencies resolved by uv for the base package and all declared extras. Build, test, and CI tools are outside this registry.",
+  "scope": "Union of runtime components resolved by uv for the base package and each declared extra. OpenCV profiles are alternatives: an installation selects one of headless, gui, contrib, or contrib-headless. Build, test, and CI tools are outside this registry.",
   "evidence_sources": {
     "pypi": "Locked distribution METADATA and license files, cross-checked at https://pypi.org/project/<name>/<version>/.",
     "pytorch": "Locked PyTorch wheel METADATA and license files from https://download.pytorch.org/whl/cpu/."

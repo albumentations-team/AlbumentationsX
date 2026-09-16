@@ -44,6 +44,7 @@ jobs:
       run: >
         pip-audit
         --requirement runtime-requirements.txt
+        --requirement all-runtime-requirements.txt
         --no-deps
         --disable-pip
         --format=json

@@ -180,6 +180,7 @@ ci-types = [
   "types-setuptools>=84.0.0.20260812",
 ]
 ci-security = [
+  "packaging>=26.3",
   "pip-audit>=2.10.1",
   "zizmor>=1.29.0",
 ]

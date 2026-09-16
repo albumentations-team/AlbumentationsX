@@ -2,8 +2,11 @@
 
 AlbumentationsX records its reviewed runtime dependency set in
 [`legal/dependency-licenses.json`](../../legal/dependency-licenses.json). The
-record covers the base package and all declared extras resolved from `uv.lock`.
-It includes transitive dependencies and the NumPy and SciPy versions selected by
+record covers the union of the base package and each declared extra resolved
+from `uv.lock`. It is not a dependency set installed together. `headless`,
+`gui`, `contrib`, and `contrib-headless` are alternative OpenCV profiles; a user
+selects one when installing OpenCV through an AlbumentationsX extra. The record
+includes transitive dependencies and the NumPy and SciPy versions selected by
 different Python and platform markers. Development, build, and CI tooling are
 out of scope because they do not ship in the library wheel or sdist.
 
@@ -15,12 +18,13 @@ care because their wheels can include additional binary components. Those
 components remain separately installed dependencies; a distributor of a
 combined environment must keep the notices supplied with the relevant wheel.
 
-`tools/verify_dependency_licenses.py` rejects a dependency name absent from the
-registry and writes the reviewed SPDX expressions into the CycloneDX SBOM. The
-release workflow also compares the installed distributions' declared license
-metadata with the identifiers accepted in the registry before publishing that
-SBOM. The security workflow checks the exported dependency graphs. A future
-dependency or license change is reviewed through the procedure in
+`tools/verify_dependency_licenses.py` rejects a dependency name or version
+absent from the registry and writes the reviewed SPDX expressions into the
+CycloneDX SBOM. The release workflow generates that SBOM from the concrete base
+runtime export, then compares each installed distribution's declared license
+metadata with the identifiers accepted in the registry. The security workflow
+checks the exported dependency graphs. A future dependency or license change is
+reviewed through the procedure in
 [`LICENSE_POLICY.md`](../../LICENSE_POLICY.md).
 
 The current package does not copy these runtime dependencies into its wheel or

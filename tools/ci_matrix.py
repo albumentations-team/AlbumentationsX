@@ -104,7 +104,7 @@ CI_DEPENDENCY_GROUPS = {
         "ruff",
     },
     "ci-release": {"asv", "cyclonedx-bom"},
-    "ci-security": {"pip-audit", "zizmor"},
+    "ci-security": {"packaging", "pip-audit", "zizmor"},
     "ci-test": {"defusedxml", "opencv-python-headless", "pytest", "pytest-xdist"},
     "ci-torch-cpu": {"torch"},
     "ci-types": {"mypy", "opencv-python-headless", "pre-commit", "pyrefly"},

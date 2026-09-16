@@ -9,6 +9,7 @@ huggingface-hub>=1.27.0
 hypothesis>=6.165.5
 mypy>=2.3.0
 opencv-python-headless>=5.0.0.93
+packaging>=26.3
 pillow>=12.3.0
 pip-audit>=2.10.1
 pre_commit>=4.6.2

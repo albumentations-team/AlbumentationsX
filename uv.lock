@@ -118,6 +118,7 @@ ci-release = [
     { name = "huggingface-hub" },
     { name = "hypothesis" },
     { name = "opencv-python-headless" },
+    { name = "packaging" },
     { name = "pillow" },
     { name = "pip-audit" },
     { name = "pytest" },
@@ -136,6 +137,7 @@ ci-release = [
     { name = "zizmor" },
 ]
 ci-security = [
+    { name = "packaging" },
     { name = "pip-audit" },
     { name = "zizmor" },
 ]
@@ -260,6 +262,7 @@ ci-release = [
     { name = "huggingface-hub", specifier = ">=1.27.0" },
     { name = "hypothesis", specifier = ">=6.165.5" },
     { name = "opencv-python-headless", specifier = ">=5.0.0.93" },
+    { name = "packaging", specifier = ">=26.3" },
     { name = "pillow", specifier = ">=12.3.0" },
     { name = "pip-audit", specifier = ">=2.10.1" },
     { name = "pytest", specifier = ">=9.1.1" },
@@ -276,6 +279,7 @@ ci-release = [
     { name = "zizmor", specifier = ">=1.29.0" },
 ]
 ci-security = [
+    { name = "packaging", specifier = ">=26.3" },
     { name = "pip-audit", specifier = ">=2.10.1" },
     { name = "zizmor", specifier = ">=1.29.0" },
 ]

@@ -16,6 +16,19 @@ before implementation. You can discuss it in [Discord](https://discord.gg/e6zHCX
 Source code is in `albumentations/`, tests in `tests/`, and documentation in `docs/`.
 For help, ask in the issue, pull request, or Discord discussion.
 
+## Dependencies, third-party material, and AI assistance
+
+Read the [dependency and contribution license policy](LICENSE_POLICY.md) before
+adding a runtime dependency or copying code, data, fonts, binaries, or other
+third-party material. State its source, version, license, and required notices
+in the pull request. A new dependency or license change also needs its reviewed
+record updated in `legal/dependency-licenses.json`.
+
+AI assistance is allowed. Before requesting review, personally read every
+change, understand it, and take responsibility for the code, tests,
+documentation, and pull-request description. See [AI_USAGE.md](AI_USAGE.md)
+for the complete policy. Mentioning AI assistance is encouraged but optional.
+
 ## Contributor License Agreement
 
 Before we can accept your contribution, you must accept our

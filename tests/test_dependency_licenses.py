@@ -151,3 +151,13 @@ def test_registry_rejects_empty_reviewed_versions(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match=r"example-package needs reviewed_versions"):
         load_registry(path)
+
+
+def test_registry_rejects_invalid_spdx_expression(tmp_path: Path) -> None:
+    path = _registry(tmp_path)
+    registry = json.loads(path.read_text(encoding="utf-8"))
+    registry["components"][0]["license_expression"] = "MIT OR"
+    path.write_text(json.dumps(registry), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"example-package has an invalid SPDX license_expression"):
+        load_registry(path)

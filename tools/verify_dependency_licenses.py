@@ -10,6 +10,7 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
+from packaging.licenses import InvalidLicenseExpression, canonicalize_license_expression
 from packaging.markers import InvalidMarker, Marker
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -38,8 +39,13 @@ def _validate_component(component: Any, sources: Mapping[str, Any], previous_nam
         or not all(isinstance(version, str) and version for version in versions)
     ):
         raise ValueError(f"{path}: {name} needs reviewed_versions")
-    if not isinstance(component.get("license_expression"), str) or not component["license_expression"]:
+    expression = component.get("license_expression")
+    if not isinstance(expression, str) or not expression:
         raise ValueError(f"{path}: {name} needs license_expression")
+    try:
+        canonicalize_license_expression(expression)
+    except InvalidLicenseExpression as error:
+        raise ValueError(f"{path}: {name} has an invalid SPDX license_expression") from error
     if not isinstance(component.get("notice"), str) or not component["notice"]:
         raise ValueError(f"{path}: {name} needs notice handling")
     source = component.get("evidence_source")

@@ -30,6 +30,7 @@ from tests.helpers.contract_data import (
     make_mosaic_context,
     make_overlay_context,
     make_reference_context,
+    make_target_image_batch_data,
     make_volume_data,
 )
 
@@ -90,6 +91,7 @@ class TransformContractCase:
 
 
 _BASE_CASE_SPECS: list[list[Any]] = [
+    [A.UniformTemporalSubsample, {"num_frames": 3}],
     [
         A.ImageCompression,
         {
@@ -1357,6 +1359,12 @@ _REFERENCE_METADATA_KEYS = {
     A.HistogramMatching: "hm_metadata",
     A.PixelDistributionAdaptation: "pda_metadata",
 }
+_PRIMARY_DATA_FACTORIES = {
+    A.Colorize: make_grayscale_image_data,
+    A.FromFloat: make_float_image_data,
+    A.ToRGB: make_grayscale_image_data,
+    A.UniformTemporalSubsample: make_target_image_batch_data,
+}
 _EXACT_TRANSFORMS = {
     A.Affine3D,
     A.Anisotropy3D,
@@ -1372,6 +1380,7 @@ _EXACT_TRANSFORMS = {
     A.Resize,
     A.Resize3D,
     A.Transpose,
+    A.UniformTemporalSubsample,
     A.VerticalFlip,
 }
 
@@ -1433,10 +1442,8 @@ def _case_data(
         }
         case = (make_hbb_data, make_binary_region_context(init_kwargs.get("region_key", "dropout_region")))
         metadata_keys = frozenset({init_kwargs.get("region_key", "dropout_region")})
-    elif transform_cls in {A.Colorize, A.ToRGB}:
-        case = (make_grayscale_image_data, make_empty_context)
-    elif transform_cls is A.FromFloat:
-        case = (make_float_image_data, make_empty_context)
+    elif transform_cls in _PRIMARY_DATA_FACTORIES:
+        case = (_PRIMARY_DATA_FACTORIES[transform_cls], make_empty_context)
     elif transform_cls is A.Equalize and init_kwargs.get("mask_params"):
         case = (make_mask_data, make_empty_context)
     else:

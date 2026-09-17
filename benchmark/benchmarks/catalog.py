@@ -82,6 +82,7 @@ PARAM_OVERRIDES: Mapping[str, Mapping[str, Any]] = {
     "Resize": {"height": 128, "width": 128},
     "Resize3D": {"size": (12, 96, 96)},
     "SmallestMaxSize": {"max_size": 160},
+    "UniformTemporalSubsample": {"num_frames": 8},
     "XYMasking": {
         "mask_x_length_range": (12, 12),
         "mask_y_length_range": (12, 12),
@@ -167,6 +168,8 @@ def public_transform_names() -> tuple[str, ...]:
 def _route_for_transform(name: str, transform_cls: type[BasicTransform]) -> str:
     if name in DEDICATED_TENSOR_BENCHMARK_TRANSFORMS:
         return "dedicated_tensor"
+    if name == "UniformTemporalSubsample":
+        return "temporal"
     if issubclass(transform_cls, (Transform3D, VolumeOnlyTransform)):
         return "volume"
     for route, transform_names in (
@@ -321,6 +324,10 @@ def _mixing_data(spec: TransformBenchmarkSpec) -> dict[str, Any]:
     return data
 
 
+def _temporal_data(spec: TransformBenchmarkSpec) -> dict[str, Any]:
+    return {"images": np.stack([make_image(spec.size_name, spec.channels) for _ in range(16)])}
+
+
 def _volume_data(spec: TransformBenchmarkSpec) -> dict[str, Any]:
     volume = make_volume()
     mask3d = (volume[..., 0] > 127).astype(np.uint8)
@@ -334,6 +341,7 @@ DATA_BUILDERS: Mapping[str, Callable[[TransformBenchmarkSpec], dict[str, Any]]] 
     "mask": _mask_data,
     "metadata": _metadata_data,
     "mixing": _mixing_data,
+    "temporal": _temporal_data,
     "volume": _volume_data,
 }
 

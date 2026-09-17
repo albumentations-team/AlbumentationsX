@@ -343,7 +343,6 @@ REFERENCE_TRANSFORMS = (
     "Mosaic",
     "OverlayElements",
     "PixelDistributionAdaptation",
-    "TextImage",
 )
 
 
@@ -402,12 +401,7 @@ VOLUME_CASES = tuple(
     for size_name in VOLUME_SIZES
     for dtype_name in DTYPES
 )
-REFERENCE_CASES = tuple(
-    f"{name}|{size_name}"
-    for name in REFERENCE_TRANSFORMS
-    for size_name in ("small", "medium")
-    if not (name == "TextImage" and size_name == "medium")
-)
+REFERENCE_CASES = tuple(f"{name}|{size_name}" for name in REFERENCE_TRANSFORMS for size_name in ("small", "medium"))
 
 
 class TimeGeometryFullMatrix:

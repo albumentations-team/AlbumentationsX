@@ -286,7 +286,6 @@ Pixel-level transforms will change just an input image and will leave any additi
 - [Solarize](https://albumentations.ai/explore/transform/Solarize/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [Spatter](https://albumentations.ai/explore/transform/Spatter/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [Superpixels](https://albumentations.ai/explore/transform/Superpixels/?utm_source=github&utm_medium=referral&utm_campaign=readme)
-- [TextImage](https://albumentations.ai/explore/transform/TextImage/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [ToFloat](https://albumentations.ai/explore/transform/ToFloat/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [ToGray](https://albumentations.ai/explore/transform/ToGray/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [ToRGB](https://albumentations.ai/explore/transform/ToRGB/?utm_source=github&utm_medium=referral&utm_campaign=readme)

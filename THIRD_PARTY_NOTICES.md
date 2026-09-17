@@ -22,22 +22,3 @@ that accompanied an earlier published AlbumentationsX release.
 
 Files that carry their own license notice remain subject to that notice. This
 document does not replace those file-level notices.
-
-## Liberation Serif Bold Test Font
-
-The source repository redistributes
-`tests/files/LiberationSerif-Bold.ttf` (SHA-256
-`d754ba427cfe0bca54ae052384baa8f842da5bd6550ad4da024ac441e7a7d5ce`) for
-text-rendering tests. Its embedded metadata states:
-
-> Digitized data copyright (c) 2010 Google Corporation, with Reserved Font
-> Arimo, Tinos and Cousine.
-> Copyright (c) 2012 Red Hat, Inc., with Reserved Font Name Liberation.
-
-The font is licensed under the SIL Open Font License, Version 1.1. Its complete
-notice and license are preserved at
-`THIRD_PARTY_LICENSES/OFL-1.1.txt`; the authoritative license text is published by the
-[OFL steward](https://openfontlicense.org/open-font-license-official-text/).
-
-The repository copy of the font remains under OFL-1.1 and is not relicensed
-under the repository default.

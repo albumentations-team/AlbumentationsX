@@ -26,7 +26,6 @@ themselves resolve the license analysis.
 | `LICENSING.md` | Current repository expression, commercial-license path, and license history |
 | `THIRD_PARTY_NOTICES.md` | Notice for inherited and separately licensed material |
 | `THIRD_PARTY_LICENSES/MIT-Albumentations-2.0.8.txt` | Exact MIT notice from legacy tag `2.0.8` |
-| `THIRD_PARTY_LICENSES/OFL-1.1.txt` | OFL-1.1 notice for the source-only Liberation Serif Bold test font |
 | `CLA.md` | CLA version currently offered to contributors |
 | `legal/cla/archive/MANIFEST.md` | Immutable CLA texts, byte hashes, and acceptance-record requirements |
 | `pyproject.toml` | SPDX package metadata and PEP 639 license-file declarations |
@@ -53,14 +52,6 @@ Published tags `2.1.3` through `2.3.1` declared
 as published. Release `2.3.2` is the first prospective
 `AGPL-3.0-only` distribution; never rebuild or republish `2.3.1` with the new
 metadata.
-
-The tracked `tests/files/LiberationSerif-Bold.ttf` is a separate source-only
-test asset under OFL-1.1. Its embedded copyright notices name Google
-Corporation (2010) and Red Hat, Inc. (2012), and its SHA-256 is
-`d754ba427cfe0bca54ae052384baa8f842da5bd6550ad4da024ac441e7a7d5ce`.
-The font and `THIRD_PARTY_LICENSES/OFL-1.1.txt` are excluded from wheel and
-sdist artifacts; their notices accompany redistribution of the Git source
-repository.
 
 ## CLA Versioning
 
@@ -91,8 +82,6 @@ Every wheel and sdist must contain exact copies of:
 These files may appear below the distribution metadata license directory, as
 required by the packaging backend. Neither `CLA.md` nor `legal/cla/` belongs in
 a release artifact: the CLA governs inbound contributions, not package use.
-The source-only Liberation font and `THIRD_PARTY_LICENSES/OFL-1.1.txt` are
-also excluded.
 
 Run:
 
@@ -105,8 +94,8 @@ uv run python tools/verify_legal_integrity.py --artifacts "${artifact_dir}"/*.wh
 
 The verifier checks source metadata, wheel `METADATA`, sdist `PKG-INFO`,
 historical and notice structure, archived CLA hashes, artifact contents, and
-the absence of inbound CLA, source-only font assets, and nested distribution
-artifacts. Always build into a fresh directory outside the checkout so stale
+the absence of inbound CLA and nested distribution artifacts. Always build
+into a fresh directory outside the checkout so stale
 artifacts cannot contaminate a source distribution or be mistaken for the
 current release.
 

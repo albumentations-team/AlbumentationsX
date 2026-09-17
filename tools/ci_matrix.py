@@ -148,10 +148,7 @@ SUPPORT_POLICY_TABLE_ROWS = (
         "| `declared-minimum` | Tests the declared lower runtime bounds on Ubuntu and Python 3.10. | "
         "Nightly and release gate |"
     ),
-    (
-        "| `optional-extras` | Smoke-tests extras such as `pillow`, `text`, `hub`, "
-        "and OpenCV variants. | Advisory until stable |"
-    ),
+    ("| `optional-extras` | Smoke-tests extras such as `hub` and OpenCV variants. | Advisory until stable |"),
     (
         "| `pre-release-probe` | Probes future Python or dependency releases when wheels are available. | "
         "Scheduled advisory |"

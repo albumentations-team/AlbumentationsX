@@ -66,7 +66,6 @@
     "tests/test_serialization.py": 25.06,
     "tests/test_targets.py": 0.624,
     "tests/test_telemetry.py": 0.342,
-    "tests/test_text.py": 0.353,
     "tests/test_transforms.py": 20.406,
     "tests/test_type_consistency.py": 0.534,
     "tests/transforms3d/test_functions.py": 0.314,

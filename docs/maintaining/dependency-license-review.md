@@ -13,8 +13,8 @@ out of scope because they do not ship in the library wheel or sdist.
 The initial review was completed on 2026-09-16 from the locked distribution
 metadata and license files, with the named PyPI release as the source record.
 The registry stores the version variants, SPDX expressions, and any binary-wheel
-notice handling. `opencv-*`, SciPy, NumPy, and `pyvips-binary` need particular
-care because their wheels can include additional binary components. Those
+notice handling. `opencv-*`, SciPy, and NumPy need particular care because
+their wheels can include additional binary components. Those
 components remain separately installed dependencies; a distributor of a
 combined environment must keep the notices supplied with the relevant wheel.
 

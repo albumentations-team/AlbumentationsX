@@ -390,28 +390,6 @@ def test_he_stain_extracts_a_matrix_for_each_image_target(monkeypatch: pytest.Mo
     assert sampled_params.params_for("image2")["stain_matrix"][0, 0] == 200
 
 
-def test_text_image_materializes_normalized_bboxes_for_each_target_shape() -> None:
-    transform = A.TextImage(
-        font_path="./tests/files/LiberationSerif-Bold.ttf",
-        font_size_fraction_range=(0.5, 0.5),
-        p=1.0,
-    )
-    transform.add_targets({"image2": "image"})
-    data = {
-        "image": np.zeros((20, 30, 3), dtype=np.uint8),
-        "image2": np.zeros((10, 12, 3), dtype=np.uint8),
-        "textimage_metadata": {"bbox": (0.1, 0.2, 0.5, 0.7), "text": "target-aware"},
-    }
-
-    sampled_params = transform.sample_parameters(
-        *make_sampling_args(transform, data),
-        SamplingContext.from_owner(transform, {}),
-    )
-
-    assert sampled_params.params_for("image")["overlay_data"][0]["bbox_coords"] == (3, 4, 15, 14)
-    assert sampled_params.params_for("image2")["overlay_data"][0]["bbox_coords"] == (1, 2, 6, 7)
-
-
 def test_rgb_shift_replay_rejects_changed_channel_count() -> None:
     recorded = A.ReplayCompose([A.RGBShift(p=1.0)], seed=137)(
         image=np.zeros((8, 9, 3), dtype=np.uint8),

@@ -715,7 +715,6 @@ def _get_slice_wise_2d_transform_params():
                 A.MaskDropout,
                 A.CropNonEmptyMaskIfExists,
                 A.BBoxSafeRandomCrop,
-                A.TextImage,
                 A.OverlayElements,
                 A.PixelDistributionAdaptation,
                 A.HistogramMatching,

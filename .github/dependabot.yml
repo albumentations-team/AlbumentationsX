@@ -32,3 +32,5 @@ updates:
       github-actions:
         patterns:
           - "*"
+        exclude-patterns:
+          - "albumentations-team/ci-foundation*"

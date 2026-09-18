@@ -5,8 +5,12 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
+import subprocess
 import sys
-from collections.abc import Iterable, Mapping
+import tempfile
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -142,6 +146,42 @@ def check_requirements(registry: Mapping[str, Any], paths: Iterable[Path]) -> li
     return errors
 
 
+@contextmanager
+def export_runtime_requirements() -> Iterator[tuple[Path, ...]]:
+    """Export the locked base and optional runtime requirements for local checks."""
+    uv_executable = shutil.which("uv")
+    if uv_executable is None:
+        raise FileNotFoundError("uv executable is required to export locked runtime requirements")
+
+    with tempfile.TemporaryDirectory(prefix="albumentationsx-runtime-requirements-") as directory:
+        directory_path = Path(directory)
+        paths: list[Path] = []
+        for filename, export_args in (
+            ("runtime-requirements.txt", ()),
+            ("all-runtime-requirements.txt", ("--all-extras",)),
+        ):
+            path = directory_path / filename
+            subprocess.run(  # noqa: S603 - uv and its arguments are fixed by this checker.
+                [
+                    uv_executable,
+                    "-q",
+                    "export",
+                    "--frozen",
+                    "--no-dev",
+                    "--no-emit-project",
+                    "--format",
+                    "requirements-txt",
+                    *export_args,
+                    "--output-file",
+                    str(path),
+                ],
+                check=True,
+                cwd=REPO_ROOT,
+            )
+            paths.append(path)
+        yield tuple(paths)
+
+
 def _component_key(component: Mapping[str, Any]) -> tuple[str, str] | None:
     name = component.get("name")
     version = component.get("version")
@@ -248,12 +288,25 @@ def check_license_evidence(registry: Mapping[str, Any], requirements: Iterable[P
     return errors
 
 
+def _check_requirements_and_evidence(
+    registry: Mapping[str, Any],
+    requirements: Iterable[Path],
+    license_sbom: Path | None,
+) -> list[str]:
+    errors = check_requirements(registry, requirements)
+    if license_sbom is not None:
+        errors.extend(check_license_evidence(registry, requirements, license_sbom))
+    return errors
+
+
 def check(args: argparse.Namespace) -> tuple[dict[str, Any], list[str]]:
     """Run checks requested by the command-line arguments."""
     registry = load_registry(args.registry)
-    errors = check_requirements(registry, args.requirements)
-    if args.license_sbom is not None:
-        errors.extend(check_license_evidence(registry, args.requirements, args.license_sbom))
+    if args.export_runtime:
+        with export_runtime_requirements() as requirements:
+            errors = _check_requirements_and_evidence(registry, requirements, args.license_sbom)
+    else:
+        errors = _check_requirements_and_evidence(registry, args.requirements, args.license_sbom)
     if args.write_sbom:
         if args.sbom is None:
             errors.append("--write-sbom requires --sbom")
@@ -269,6 +322,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY)
     parser.add_argument("--requirements", type=Path, action="append", default=[])
+    parser.add_argument(
+        "--export-runtime",
+        action="store_true",
+        help="export locked base and optional runtime requirements with uv before checking them",
+    )
     parser.add_argument("--sbom", type=Path)
     parser.add_argument("--license-sbom", type=Path)
     parser.add_argument("--write-sbom", action="store_true")
@@ -276,7 +334,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         registry, errors = check(args)
-    except (OSError, TypeError, ValueError, json.JSONDecodeError) as error:
+    except (OSError, subprocess.CalledProcessError, TypeError, ValueError, json.JSONDecodeError) as error:
         errors = [str(error)]
 
     if errors:

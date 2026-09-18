@@ -2487,10 +2487,10 @@ class Compose(BaseCompose, HubMixin):
             if data_value is None or not isinstance(data_value, (np.ndarray, torch.Tensor)):
                 continue
 
-            # Skip arrays with size 0 (empty arrays)
-            if (isinstance(data_value, np.ndarray) and data_value.size == 0) or (
-                isinstance(data_value, torch.Tensor) and data_value.numel() == 0
-            ):
+            if isinstance(data_value, np.ndarray):
+                if data_value.size == 0:
+                    continue
+            elif data_value.numel() == 0:
                 continue
 
             self._process_data_shape(canonical, data_value, shapes, volume_shapes)
@@ -3376,8 +3376,10 @@ class Compose(BaseCompose, HubMixin):
         if not isinstance(data, (np.ndarray, torch.Tensor)):
             raise TypeError(f"{data_name} must be a NumPy array or torch.Tensor")
 
-        # Skip arrays with size 0 (empty arrays)
-        if (isinstance(data, np.ndarray) and data.size == 0) or (isinstance(data, torch.Tensor) and data.numel() == 0):
+        if isinstance(data, np.ndarray):
+            if data.size == 0:
+                return
+        elif data.numel() == 0:
             return
 
         # Process the shape based on data type

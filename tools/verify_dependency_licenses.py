@@ -9,7 +9,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -145,7 +146,8 @@ def check_requirements(registry: Mapping[str, Any], paths: Iterable[Path]) -> li
     return errors
 
 
-def export_runtime_requirements() -> Iterable[Path]:
+@contextmanager
+def export_runtime_requirements() -> Iterator[tuple[Path, ...]]:
     """Export the locked base and optional runtime requirements for local checks."""
     uv_executable = shutil.which("uv")
     if uv_executable is None:
@@ -153,6 +155,7 @@ def export_runtime_requirements() -> Iterable[Path]:
 
     with tempfile.TemporaryDirectory(prefix="albumentationsx-runtime-requirements-") as directory:
         directory_path = Path(directory)
+        paths: list[Path] = []
         for filename, export_args in (
             ("runtime-requirements.txt", ()),
             ("all-runtime-requirements.txt", ("--all-extras",)),
@@ -173,8 +176,10 @@ def export_runtime_requirements() -> Iterable[Path]:
                     str(path),
                 ],
                 check=True,
+                cwd=REPO_ROOT,
             )
-            yield path
+            paths.append(path)
+        yield tuple(paths)
 
 
 def _component_key(component: Mapping[str, Any]) -> tuple[str, str] | None:
@@ -283,15 +288,25 @@ def check_license_evidence(registry: Mapping[str, Any], requirements: Iterable[P
     return errors
 
 
+def _check_requirements_and_evidence(
+    registry: Mapping[str, Any],
+    requirements: Iterable[Path],
+    license_sbom: Path | None,
+) -> list[str]:
+    errors = check_requirements(registry, requirements)
+    if license_sbom is not None:
+        errors.extend(check_license_evidence(registry, requirements, license_sbom))
+    return errors
+
+
 def check(args: argparse.Namespace) -> tuple[dict[str, Any], list[str]]:
     """Run checks requested by the command-line arguments."""
     registry = load_registry(args.registry)
     if args.export_runtime:
-        errors = check_requirements(registry, export_runtime_requirements())
+        with export_runtime_requirements() as requirements:
+            errors = _check_requirements_and_evidence(registry, requirements, args.license_sbom)
     else:
-        errors = check_requirements(registry, args.requirements)
-    if args.license_sbom is not None:
-        errors.extend(check_license_evidence(registry, args.requirements, args.license_sbom))
+        errors = _check_requirements_and_evidence(registry, args.requirements, args.license_sbom)
     if args.write_sbom:
         if args.sbom is None:
             errors.append("--write-sbom requires --sbom")
@@ -319,7 +334,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         registry, errors = check(args)
-    except (OSError, TypeError, ValueError, json.JSONDecodeError) as error:
+    except (OSError, subprocess.CalledProcessError, TypeError, ValueError, json.JSONDecodeError) as error:
         errors = [str(error)]
 
     if errors:

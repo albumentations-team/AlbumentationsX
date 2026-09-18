@@ -12,8 +12,8 @@ dependency review and SBOM controls are documented in
 license boundary is recorded in [LICENSING.md](../../LICENSING.md) and
 [contribution-history.md](contribution-history.md).
 
-The checked source package includes its existing legacy MIT and source-only OFL
-notices as described in [license provenance](license-provenance.md). Runtime
-dependencies are not copied into the wheel or sdist; their license and notice
-records are maintained separately in
+The checked source package includes its existing legacy MIT notice as described
+in [license provenance](license-provenance.md). Runtime dependencies are not
+copied into the wheel or sdist; their license and notice records are maintained
+separately in
 [`legal/dependency-licenses.json`](../../legal/dependency-licenses.json).

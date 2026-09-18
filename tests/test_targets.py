@@ -65,11 +65,7 @@ str2target = {
 
 @pytest.mark.parametrize(
     ["augmentation_cls", "params"],
-    get_primary_image_only_transform_params(
-        custom_arguments={
-            A.TextImage: dict(font_path="./tests/filesLiberationSerif-Bold.ttf"),
-        },
-    ),
+    get_primary_image_only_transform_params(),
 )
 def test_image_only(augmentation_cls, params):
     aug = augmentation_cls(p=1, **params)

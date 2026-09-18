@@ -26,6 +26,5 @@ from .pixel.noise import *
 from .pixel.transforms import *
 from .pixel.weather import *
 from .spectrogram.transform import *
-from .text.transforms import *
 from .transforms3d.transforms import *
 from .utils import *

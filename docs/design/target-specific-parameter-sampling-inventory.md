@@ -92,7 +92,6 @@ realized value is consumed by multiple representations, move the materialization
 - `albumentations/augmentations/mixing/overlay.py`: `OverlayElements`.
 - `albumentations/augmentations/pixel/color_advanced.py`: `HEStain`.
 - `albumentations/augmentations/pixel/color_basic.py`: `Equalize`.
-- `albumentations/augmentations/text/transforms.py`: `TextImage`.
 
 ## Parameters without target-specific values
 

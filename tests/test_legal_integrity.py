@@ -13,7 +13,6 @@ from tools.verify_legal_integrity import (
     FIRST_ONLY_RELEASE,
     REPO_ROOT,
     REQUIRED_LICENSE_FILES,
-    SOURCE_ONLY_NOTICE_FILES,
     collect_artifact_errors,
     collect_source_errors,
     main,
@@ -46,7 +45,6 @@ def _write_wheel(
     files: dict[str, bytes],
     *,
     include_cla: bool = False,
-    include_source_only_asset: bool = False,
     metadata: bytes | None = None,
 ) -> None:
     with zipfile.ZipFile(path, "w") as archive:
@@ -58,8 +56,6 @@ def _write_wheel(
         )
         if include_cla:
             archive.writestr("CLA.md", b"inbound agreement")
-        if include_source_only_asset:
-            archive.writestr("THIRD_PARTY_LICENSES/OFL-1.1.txt", b"source-only")
 
 
 def _write_sdist(
@@ -121,7 +117,7 @@ def test_cli_reports_missing_required_notice_without_artifacts(
     capsys,
 ) -> None:
     missing_notice = "THIRD_PARTY_NOTICES.md"
-    for relative_path in (*REQUIRED_LICENSE_FILES, *SOURCE_ONLY_NOTICE_FILES):
+    for relative_path in REQUIRED_LICENSE_FILES:
         if relative_path == missing_notice:
             continue
         source_path = tmp_path / relative_path
@@ -168,18 +164,6 @@ def test_artifact_rejects_cla(tmp_path: Path) -> None:
     errors = collect_artifact_errors(wheel, expected_files)
 
     assert errors == [f"{wheel.name}: inbound CLA material leaked into artifact as CLA.md"]
-
-
-def test_artifact_rejects_source_only_ofl_asset(tmp_path: Path) -> None:
-    expected_files = _expected_files()
-    wheel = tmp_path / f"albumentationsx-{FIRST_ONLY_RELEASE}-py3-none-any.whl"
-    _write_wheel(wheel, expected_files, include_source_only_asset=True)
-
-    errors = collect_artifact_errors(wheel, expected_files)
-
-    assert errors == [
-        f"{wheel.name}: source-only OFL test asset leaked into artifact as THIRD_PARTY_LICENSES/OFL-1.1.txt",
-    ]
 
 
 def test_sdist_rejects_nested_distribution_artifact(tmp_path: Path) -> None:

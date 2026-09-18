@@ -48,18 +48,9 @@ def test_image_only_augmentations_mask_persists(augmentation_cls, params):
     image = SQUARE_UINT8_IMAGE
     mask = image.copy()
 
-    # Use helper to prepare data with metadata
     data = TransformTestHelper.prepare_test_data(augmentation_cls, image, mask=mask)
 
-    # Build compose with bbox params if needed for TextImage
-    if augmentation_cls == A.TextImage:
-        aug = A.Compose(
-            [augmentation_cls(p=1, **params)],
-            bbox_params=A.BboxParams(coord_format="pascal_voc"),
-            strict=True,
-        )
-    else:
-        aug = A.Compose([augmentation_cls(p=1, **params)], strict=True)
+    aug = A.Compose([augmentation_cls(p=1, **params)], strict=True)
 
     data = aug(**data)
 
@@ -84,14 +75,7 @@ def test_image_only_augmentations(augmentation_cls, params):
         "image": image,
         "mask": mask,
     }
-    if augmentation_cls == A.TextImage:
-        aug = A.Compose(
-            [augmentation_cls(p=1, **params)],
-            bbox_params=A.BboxParams(coord_format="pascal_voc"),
-            strict=True,
-        )
-        data = aug(**data, textimage_metadata={"text": "Hello, world!", "bbox": (0.1, 0.1, 0.9, 0.2)})
-    elif augmentation_cls == A.Mosaic:
+    if augmentation_cls == A.Mosaic:
         data["mosaic_metadata"] = [
             {
                 "image": SQUARE_FLOAT_IMAGE,
@@ -192,11 +176,6 @@ def test_augmentations_wont_change_input(augmentation_cls, params):
         data["overlay_metadata"] = []
     elif augmentation_cls == A.CopyAndPaste:
         data["copy_paste_metadata"] = []
-    elif augmentation_cls == A.TextImage:
-        data["textimage_metadata"] = {
-            "text": "May the transformations be ever in your favor!",
-            "bbox": (0.1, 0.1, 0.9, 0.2),
-        }
     elif augmentation_cls == A.RandomCropNearBBox:
         data["cropping_bbox"] = [0, 0, 10, 10]
     elif augmentation_cls == A.Mosaic:
@@ -238,11 +217,6 @@ def test_augmentations_wont_change_float_input(augmentation_cls, params, image_f
         data["overlay_metadata"] = []
     elif augmentation_cls == A.CopyAndPaste:
         data["copy_paste_metadata"] = []
-    elif augmentation_cls == A.TextImage:
-        data["textimage_metadata"] = {
-            "text": "May the transformations be ever in your favor!",
-            "bbox": (0.1, 0.1, 0.9, 0.2),
-        }
     elif augmentation_cls in (A.MaskDropout, A.ConstrainedCoarseDropout):
         mask = np.zeros((image_float32.shape[0], image_float32.shape[1], 1), dtype=np.uint8)
         mask[:20, :20] = 1
@@ -310,15 +284,6 @@ def test_augmentations_wont_change_shape_rgb(augmentation_cls, params):
         data = {
             "image": image_3ch,
             "copy_paste_metadata": [],
-            "mask": mask_3ch,
-        }
-    elif augmentation_cls == A.TextImage:
-        data = {
-            "image": image_3ch,
-            "textimage_metadata": {
-                "text": "May the transformations be ever in your favor!",
-                "bbox": (0.1, 0.1, 0.9, 0.2),
-            },
             "mask": mask_3ch,
         }
     elif augmentation_cls == A.FromFloat:
@@ -440,11 +405,6 @@ def test_multichannel_image_augmentations(augmentation_cls, params):
         data["overlay_metadata"] = []
     elif augmentation_cls == A.CopyAndPaste:
         data["copy_paste_metadata"] = []
-    elif augmentation_cls == A.TextImage:
-        data["textimage_metadata"] = {
-            "text": "May the transformations be ever in your favor!",
-            "bbox": (0.1, 0.1, 0.9, 0.2),
-        }
     elif augmentation_cls in (A.MaskDropout, A.ConstrainedCoarseDropout):
         mask = np.zeros((image.shape[0], image.shape[1], 1), dtype=np.uint8)
         mask[:20, :20] = 1
@@ -519,11 +479,6 @@ def test_float_multichannel_image_augmentations(augmentation_cls, params):
         data["overlay_metadata"] = []
     elif augmentation_cls == A.CopyAndPaste:
         data["copy_paste_metadata"] = []
-    elif augmentation_cls == A.TextImage:
-        data["textimage_metadata"] = {
-            "text": "May the transformations be ever in your favor!",
-            "bbox": (0.1, 0.1, 0.9, 0.2),
-        }
     elif augmentation_cls in (A.MaskDropout, A.ConstrainedCoarseDropout):
         mask = np.zeros((image.shape[0], image.shape[1], 1), dtype=np.uint8)
         mask[:20, :20] = 1
@@ -600,11 +555,6 @@ def test_multichannel_image_augmentations_diff_channels(augmentation_cls, params
         data["overlay_metadata"] = []
     elif augmentation_cls == A.CopyAndPaste:
         data["copy_paste_metadata"] = []
-    elif augmentation_cls == A.TextImage:
-        data["textimage_metadata"] = {
-            "text": "May the transformations be ever in your favor!",
-            "bbox": (0.1, 0.1, 0.9, 0.2),
-        }
     elif augmentation_cls in (A.MaskDropout, A.ConstrainedCoarseDropout):
         mask = np.zeros((image.shape[0], image.shape[1], 1), dtype=np.uint8)
         mask[:20, :20] = 1
@@ -685,11 +635,6 @@ def test_float_multichannel_image_augmentations_diff_channels(augmentation_cls, 
         data["overlay_metadata"] = []
     elif augmentation_cls == A.CopyAndPaste:
         data["copy_paste_metadata"] = []
-    elif augmentation_cls == A.TextImage:
-        data["textimage_metadata"] = {
-            "text": "May the transformations be ever in your favor!",
-            "bbox": (0.1, 0.1, 0.9, 0.2),
-        }
     elif augmentation_cls in (A.MaskDropout, A.ConstrainedCoarseDropout):
         mask = np.zeros_like(image)[:, :, 0]
         mask[:20, :20] = 1
@@ -948,7 +893,6 @@ def test_pad_if_needed_position(params, image_shape):
             A.HistogramMatching,
             A.PixelDistributionAdaptation,
             A.OverlayElements,
-            A.TextImage,
             A.RGBShift,
             A.HueSaturationValue,
             A.ColorJitter,

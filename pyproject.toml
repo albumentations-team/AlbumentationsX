@@ -126,9 +126,6 @@ contrib-headless = ["opencv-contrib-python-headless>=5.0.0.93"]
 gui = ["opencv-python>=5.0.0.93"]
 headless = ["opencv-python-headless>=5.0.0.93"]
 hub = ["huggingface-hub"]
-pillow = ["pillow"]
-pyvips = ["pyvips[binary]"]
-text = ["pillow"]
 
 [tool.uv.sources]
 torch = { index = "pytorch-cpu" }
@@ -148,7 +145,6 @@ ci-test = [
   "hypothesis>=6.165.5",
   "opencv-python-headless>=5.0.0.93",
   "pillow>=12.3.0",
-  "pyvips[binary]>=3.1.1",
   "pytest>=9.1.1",
   "pytest-mock>=3.15.1",
   "pytest-randomly>=4.1.0",
@@ -165,7 +161,6 @@ ci-quality = [
   "hypothesis>=6.165.5",
   "opencv-python-headless>=5.0.0.93",
   "packaging>=26.3",
-  "pillow>=12.3.0",
   "pre-commit>=4.6.2",
   "pytest>=9.1.1",
   "ruff>=0.16.2",
@@ -232,7 +227,6 @@ exclude = [
   "benchmark",
   "docs",
   "legal",
-  "THIRD_PARTY_LICENSES/OFL-1.1.txt",
   ".github",
   ".codex",
   "conda.recipe",
@@ -417,11 +411,8 @@ warn_unused_ignores = true
 python-version = "3.10"
 project-includes = ["albumentations"]
 ignore-missing-imports = [
-  "PIL",
-  "PIL.Image",
   "huggingface_hub",
   "huggingface_hub.utils",
-  "pyvips",
   "torch",
   "torch.utils.data",
 ]

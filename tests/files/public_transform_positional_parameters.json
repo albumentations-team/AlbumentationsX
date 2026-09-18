@@ -130,7 +130,6 @@
   "Spatter": ["mean_range", "std_range", "gauss_sigma_range", "cutout_threshold_range", "intensity_range", "mode", "color", "p"],
   "SquareSymmetry": ["p", "group_element"],
   "Superpixels": ["p_replace_range", "n_segments_range", "max_size", "interpolation", "p"],
-  "TextImage": ["font_path", "stopwords", "augmentations", "fraction_range", "font_size_fraction_range", "font_color", "clear_bg", "metadata_key", "p"],
   "ThinPlateSpline": ["scale_range", "num_control_points", "interpolation", "mask_interpolation", "keypoint_remapping_method", "p", "border_mode", "fill", "fill_mask", "map_resolution_range"],
   "TimeMasking": ["time_mask_param", "p"],
   "TimeReverse": ["p"],

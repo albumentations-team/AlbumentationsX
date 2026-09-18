@@ -181,12 +181,10 @@ jobs:
       run: >
         uv sync --locked --no-default-groups --group ci-test --inexact
         --group ci-torch-cpu
-        --extra pillow
-        --extra text
         --extra hub
         --extra contrib-headless
     - name: Run optional extras smoke tests
-      run: python -m pytest -q tests/test_text.py tests/test_hub_mixin.py
+      run: python -m pytest -q tests/test_hub_mixin.py
     - name: Collect optional extras environment
       if: always()
       run: >

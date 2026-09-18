@@ -154,7 +154,6 @@ class AnnotationArtifacts(ImageOnlyTransform):
         - Competition: https://www.kaggle.com/competitions/recodai-luc-scientific-image-forgery-detection
 
     See Also:
-        - TextImage: Metadata-driven rendering of text inside known bounding boxes.
         - OverlayElements: Paste supplied overlay images or masks onto an image.
         - CoarseDropout: Remove rectangular regions instead of adding annotation markup.
 

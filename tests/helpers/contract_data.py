@@ -353,17 +353,3 @@ def make_overlay_context(metadata_key: str) -> ContractContextFactory:
         return {metadata_key: [{"image": overlay, "mask": overlay_mask}]}
 
     return factory
-
-
-def make_text_context(metadata_key: str) -> ContractContextFactory:
-    """Build context containing normalized text placement metadata."""
-
-    def factory(rng: np.random.Generator, data: dict[str, Any]) -> dict[str, Any]:
-        return {
-            metadata_key: {
-                "text": "contract",
-                "bbox": (0.1, 0.1, 0.8, 0.25),
-            },
-        }
-
-    return factory

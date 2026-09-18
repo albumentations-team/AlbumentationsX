@@ -38,8 +38,6 @@ PUBLISHED_OR_LATER_VERSIONS = frozenset(
 
 AGPL_TEXT_SHA256 = "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0"
 MIT_208_SHA256 = "bea4dc8e93ae2784bccd45f1cdba53da97b99646bca390c7d725e17b72dc2180"
-OFL_11_SHA256 = "21b459dcbf31a1933546fb2b2511bfcab7c51c500838cef480f2266d8aba93b3"
-LIBERATION_SERIF_BOLD_SHA256 = "d754ba427cfe0bca54ae052384baa8f842da5bd6550ad4da024ac441e7a7d5ce"
 CLA_V1_INITIAL_SHA256 = "0318da3ff5c1d7b6e67ab0affa59e97b7e64902ae591e0c2d9e39a6299f835e9"
 CLA_V1_FORMATTED_SHA256 = "d3ce911a802d2cea06f4deeb406d5667155305f01ba3ef0bd550d41d363b50ed"
 CLA_V2_SHA256 = "cf25a9fedf2fbc0d6f796f9e3bfebf0f5ce133177c8e7865522f614fa682d878"
@@ -51,10 +49,6 @@ REQUIRED_LICENSE_FILES = (
     "LICENSING.md",
     "THIRD_PARTY_NOTICES.md",
     "THIRD_PARTY_LICENSES/MIT-Albumentations-2.0.8.txt",
-)
-SOURCE_ONLY_NOTICE_FILES = (
-    "THIRD_PARTY_LICENSES/OFL-1.1.txt",
-    "tests/files/LiberationSerif-Bold.ttf",
 )
 GITHUB_LICENSEE_CONFLICT_PATHS = ("LICENSE_HISTORY.md", "LICENSES")
 
@@ -89,7 +83,7 @@ def _check_project_metadata(repo_root: Path) -> list[str]:
         errors.append("pyproject project.license-files does not match the four required artifact notices")
 
     build_excludes = set(pyproject.get("tool", {}).get("hatch", {}).get("build", {}).get("exclude", []))
-    required_excludes = ("CLA.md", "legal", "THIRD_PARTY_LICENSES/OFL-1.1.txt")
+    required_excludes = ("CLA.md", "legal")
     errors.extend(
         f"pyproject hatch build exclusions must contain {excluded_path!r}"
         for excluded_path in required_excludes
@@ -114,7 +108,6 @@ def _check_project_metadata(repo_root: Path) -> list[str]:
     required_manifest_lines = (
         "include THIRD_PARTY_LICENSES/MIT-Albumentations-2.0.8.txt",
         "exclude CLA.md",
-        "exclude THIRD_PARTY_LICENSES/OFL-1.1.txt",
         "prune legal",
     )
     errors.extend(
@@ -135,13 +128,6 @@ def _check_license_texts(repo_root: Path) -> list[str]:
     if sha256(mit_bytes) != MIT_208_SHA256:
         errors.append("legacy Albumentations 2.0.8 MIT text changed")
 
-    ofl_bytes = (repo_root / "THIRD_PARTY_LICENSES/OFL-1.1.txt").read_bytes()
-    if sha256(ofl_bytes) != OFL_11_SHA256:
-        errors.append("Liberation Serif Bold OFL-1.1 notice or license text changed")
-
-    font_bytes = (repo_root / "tests/files/LiberationSerif-Bold.ttf").read_bytes()
-    if sha256(font_bytes) != LIBERATION_SERIF_BOLD_SHA256:
-        errors.append("LiberationSerif-Bold.ttf changed; review its provenance and notice before updating the hash")
     return errors
 
 
@@ -171,14 +157,6 @@ def _check_history_and_notices(repo_root: Path) -> list[str]:
     required_notice_phrases = (
         "Copyright (c) 2017 Vladimir Iglovikov, Alexander Buslaev, Alexander Parinov,",
         MIT_208_SHA256,
-        "tests/files/LiberationSerif-Bold.ttf",
-        LIBERATION_SERIF_BOLD_SHA256,
-        "Digitized data copyright (c) 2010 Google Corporation",
-        "Copyright (c) 2012 Red Hat, Inc.",
-        "Arimo, Tinos and Cousine",
-        "Reserved Font Name Liberation",
-        "SIL Open Font License, Version 1.1",
-        "not relicensed under the repository default",
     )
     errors.extend(
         f"THIRD_PARTY_NOTICES.md is missing {phrase!r}" for phrase in required_notice_phrases if phrase not in notices
@@ -271,7 +249,7 @@ def _check_public_copy(repo_root: Path) -> list[str]:
 
 def collect_source_errors(repo_root: Path = REPO_ROOT) -> list[str]:
     """Collect all source-tree legal-integrity violations."""
-    required_source_files = (*REQUIRED_LICENSE_FILES, *SOURCE_ONLY_NOTICE_FILES)
+    required_source_files = REQUIRED_LICENSE_FILES
     errors = [
         f"missing required license or provenance file: {relative_path}"
         for relative_path in required_source_files
@@ -374,10 +352,6 @@ def _forbidden_artifact_errors(artifact: Path, members: Mapping[str, bytes]) -> 
         member_path = PurePosixPath(member_name)
         if member_path.name == "CLA.md" or "legal/cla" in member_name:
             errors.append(f"{artifact.name}: inbound CLA material leaked into artifact as {member_name}")
-        if member_path.name == "LiberationSerif-Bold.ttf" or member_name.endswith(
-            "THIRD_PARTY_LICENSES/OFL-1.1.txt",
-        ):
-            errors.append(f"{artifact.name}: source-only OFL test asset leaked into artifact as {member_name}")
         if artifact.suffix != ".whl" and member_name.endswith((".whl", ".tar.gz")):
             errors.append(f"{artifact.name}: nested distribution artifact leaked into sdist as {member_name}")
     return errors

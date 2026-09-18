@@ -155,7 +155,6 @@ class TestTransformTestHelper:
     def test_requires_special_setup(self):
         """Test special setup requirement detection."""
         assert TransformTestHelper.requires_special_setup(A.OverlayElements)
-        assert TransformTestHelper.requires_special_setup(A.TextImage)
         assert not TransformTestHelper.requires_special_setup(A.HorizontalFlip)
 
     def test_changes_dimensions(self):

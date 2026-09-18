@@ -248,6 +248,7 @@ VOLUME_ALIAS_TO_TRANSFORM = {
     "pad3d": "Pad3D",
     "pad_if_needed3d": "PadIfNeeded3D",
     "random_crop3d": "RandomCrop3D",
+    "random_resized_crop3d": "RandomResizedCrop3D",
     "random_rotate90_3d": "RandomRotate90_3D",
     "resize3d": "Resize3D",
     "rician_noise": "RicianNoise",
@@ -639,7 +640,7 @@ def _coverage_expectation(name: str, route: str) -> CoverageExpectation:
     elif route == "volume":
         required_layers = frozenset({"catalog_smoke", "volumetric_matrix"})
         reason = "public 3D transforms require volumetric matrix coverage"
-    elif route in {"metadata", "mixing", "text"}:
+    elif route in {"metadata", "mixing"}:
         required_layers = frozenset({"catalog_smoke", "reference_data"})
         reason = "reference-data transforms require metadata-path coverage beyond smoke"
     elif route in {"bboxes", "crop_bbox", "mask"}:
@@ -704,7 +705,6 @@ def _route_targets(route: str) -> list[str]:
         "mask": ["image", "mask"],
         "metadata": ["image", "reference_metadata"],
         "mixing": ["image", "reference_metadata"],
-        "text": ["image", "text_metadata"],
         "volume": ["mask3d", "volume"],
     }.get(route, ["image"])
 
@@ -862,7 +862,7 @@ def _parameter_sensitivity_scenario(case: Mapping[str, str], route: str, transfo
 def _reference_data_scenario(case: Mapping[str, str], route: str, transform_name: str) -> dict[str, Any]:
     """Return scenario metadata for a reference-data matrix case."""
     name, size_name = case["case_id"].split("|")
-    targets = ["image", "text_metadata"] if name == "TextImage" else ["image", "reference_metadata"]
+    targets = ["image", "reference_metadata"]
     return {"matrix_name": name, "scope": "compose", "size": size_name, "targets": targets}
 
 

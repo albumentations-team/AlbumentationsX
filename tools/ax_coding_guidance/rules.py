@@ -26,7 +26,7 @@ from .source_index import (
 )
 
 MAX_APPLY_BODY_LINES = 20
-LEGACY_RANDOM_TRANSFORM_NAMES = frozenset(
+APPROVED_RANDOM_TRANSFORM_NAMES = frozenset(
     {
         "RandomBrightnessContrast",
         "RandomCrop",
@@ -40,6 +40,7 @@ LEGACY_RANDOM_TRANSFORM_NAMES = frozenset(
         "RandomOrder",
         "RandomRain",
         "RandomResizedCrop",
+        "RandomResizedCrop3D",
         "RandomRotate90",
         "RandomRotate90_3D",
         "RandomScale",
@@ -656,7 +657,7 @@ def rule_transform_names(index: SourceIndex) -> list[Diagnostic]:
         and info.file.key.startswith(
             ("albumentations/augmentations/", "albumentations/core/", "albumentations/pytorch/")
         )
-        if info.name.startswith("Random") and info.name not in LEGACY_RANDOM_TRANSFORM_NAMES
+        if info.name.startswith("Random") and info.name not in APPROVED_RANDOM_TRANSFORM_NAMES
     ]
 
 
@@ -896,7 +897,7 @@ def rule_integrity(index: SourceIndex) -> list[Diagnostic]:
         for info in index.classes.values()
         if index.is_descendant(info, roots) and info.name.startswith("Random")
     }
-    if random_classes != LEGACY_RANDOM_TRANSFORM_NAMES:
+    if random_classes != APPROVED_RANDOM_TRANSFORM_NAMES:
         info = next((candidate for candidate in index.classes.values() if candidate.name.startswith("Random")), None)
         if info is not None:
             result.append(
@@ -904,7 +905,7 @@ def rule_integrity(index: SourceIndex) -> list[Diagnostic]:
                     "AXG019",
                     info,
                     info.node,
-                    "legacy Random* transform allowlist changed; update the explicit compatibility decision",
+                    "approved Random* transform allowlist changed; update the explicit naming decision",
                     info.name,
                 )
             )

@@ -5,9 +5,9 @@ build-backend = "hatchling.build"
 [project]
 name = "albumentationsx"
 
-version = "2.4.6"
+version = "2.4.10"
 
-description = "Fast, flexible, and advanced augmentation library for deep learning, computer vision, and medical imaging. Albumentations offers a wide range of transformations for both 2D (images, masks, bboxes, keypoints) and 3D (volume data, volumetric masks, keypoints) data, with optimized performance and seamless integration into ML workflows. Licensed under AGPL-3.0-only; alternative commercial terms are also available."
+description = "Fast, flexible, and advanced augmentation library for deep learning, computer vision, and medical imaging. Albumentations offers a wide range of transformations for both 2D (images, masks, bboxes, keypoints) and 3D (volume data, volumetric masks, keypoints) data, with optimized performance and seamless integration into ML workflows. Available under AGPL-3.0-only or a commercial license with agreed coverage for your team, products, and deployments."
 readme = "README.md"
 keywords = [
   "2D augmentation",
@@ -115,7 +115,7 @@ dependencies = [
   "numkong>=7.8.0",
   "numpy>=2.2.6",
   "pydantic>=2.12.4",
-  "pyyaml",
+  "pyyaml>=6.0.3",
   "scipy>=1.15.3",
   "typing-extensions>=4.9.0",
 ]
@@ -126,9 +126,6 @@ contrib-headless = ["opencv-contrib-python-headless>=5.0.0.93"]
 gui = ["opencv-python>=5.0.0.93"]
 headless = ["opencv-python-headless>=5.0.0.93"]
 hub = ["huggingface-hub"]
-pillow = ["pillow"]
-pyvips = ["pyvips[binary]"]
-text = ["pillow"]
 
 [tool.uv.sources]
 torch = { index = "pytorch-cpu" }
@@ -148,7 +145,6 @@ ci-test = [
   "hypothesis>=6.165.5",
   "opencv-python-headless>=5.0.0.93",
   "pillow>=12.3.0",
-  "pyvips[binary]>=3.1.1",
   "pytest>=9.1.1",
   "pytest-mock>=3.15.1",
   "pytest-randomly>=4.1.0",
@@ -165,7 +161,6 @@ ci-quality = [
   "hypothesis>=6.165.5",
   "opencv-python-headless>=5.0.0.93",
   "packaging>=26.3",
-  "pillow>=12.3.0",
   "pre-commit>=4.6.2",
   "pytest>=9.1.1",
   "ruff>=0.16.2",
@@ -180,6 +175,7 @@ ci-types = [
   "types-setuptools>=84.0.0.20260812",
 ]
 ci-security = [
+  "packaging>=26.3",
   "pip-audit>=2.10.1",
   "zizmor>=1.29.0",
 ]
@@ -214,7 +210,7 @@ dev = [
 [project.urls]
 Homepage = "https://albumentations.ai"
 Documentation = "https://albumentations.ai/docs/"
-"Buy Commercial License" = "https://albumentations.ai/pricing"
+"Commercial Licensing" = "https://albumentations.ai/pricing"
 Repository = "https://github.com/albumentations-team/AlbumentationsX"
 Changelog = "https://github.com/albumentations-team/AlbumentationsX/releases"
 Discord = "https://discord.gg/AKPrrDYNAt"
@@ -231,7 +227,6 @@ exclude = [
   "benchmark",
   "docs",
   "legal",
-  "THIRD_PARTY_LICENSES/OFL-1.1.txt",
   ".github",
   ".codex",
   "conda.recipe",
@@ -416,11 +411,8 @@ warn_unused_ignores = true
 python-version = "3.10"
 project-includes = ["albumentations"]
 ignore-missing-imports = [
-  "PIL",
-  "PIL.Image",
   "huggingface_hub",
   "huggingface_hub.utils",
-  "pyvips",
   "torch",
   "torch.utils.data",
 ]

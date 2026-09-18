@@ -16,10 +16,24 @@ before implementation. You can discuss it in [Discord](https://discord.gg/e6zHCX
 Source code is in `albumentations/`, tests in `tests/`, and documentation in `docs/`.
 For help, ask in the issue, pull request, or Discord discussion.
 
+## Dependencies, third-party material, and AI assistance
+
+Read the [dependency and contribution license policy](LICENSE_POLICY.md) before
+adding a runtime dependency or copying code, data, fonts, binaries, or other
+third-party material. State its source, version, license, and required notices
+in the pull request. A new dependency or license change also needs its reviewed
+record updated in `legal/dependency-licenses.json`.
+
+AI assistance is allowed. Before requesting review, personally read every
+change, understand it, and take responsibility for the code, tests,
+documentation, and pull-request description. See [AI_USAGE.md](AI_USAGE.md)
+for the complete policy. Mentioning AI assistance is encouraged but optional.
+
 ## Contributor License Agreement
 
 Before we can accept your contribution, you must accept our
-[Contributor License Agreement (CLA) Version 2.0](CLA.md). It lets
+[Contributor License Agreement (CLA) Version 2.0](https://github.com/albumentations-team/AlbumentationsX/blob/main/legal/cla/archive/CLA-v2.0-2026-07-14.md).
+It lets
 Albumentations, LLC publish accepted contributions under AGPL-3.0-only and
 offer the same contributions under separately negotiated commercial terms.
 You retain ownership of your work.
@@ -39,7 +53,9 @@ I have read and agree to the AlbumentationsX CLA Version 2.0 (July 14, 2026) as 
 ```
 
 If an employer or another legal entity owns or controls the contribution, use
-the Entity Acceptance process in [CLA.md](CLA.md) instead. A corporate signer
+the Entity Acceptance process in
+[CLA.md](https://github.com/albumentations-team/AlbumentationsX/blob/main/legal/cla/archive/CLA-v2.0-2026-07-14.md)
+instead. A corporate signer
 must identify the exact legal entity, their authority, and the covered
 contributors. Do not use an individual acceptance to license employer-owned
 work.

@@ -11,7 +11,6 @@ import inspect
 import warnings
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -19,9 +18,6 @@ import numpy as np
 import albumentations
 from albumentations.core.transforms_interface import BasicTransform, Transform3D, VolumeOnlyTransform
 from benchmarks.common import SIZES, make_image, make_volume
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-FONT_PATH = REPO_ROOT / "tests" / "files" / "LiberationSerif-Bold.ttf"
 
 ABSTRACT_TRANSFORM_NAMES = frozenset(
     {
@@ -78,6 +74,7 @@ PARAM_OVERRIDES: Mapping[str, Mapping[str, Any]] = {
     "PixelDistributionAdaptation": {"transform_type": "standard"},
     "RandomCrop": {"height": 96, "width": 96},
     "RandomCrop3D": {"size": (4, 48, 48)},
+    "RandomResizedCrop3D": {"size": (4, 48, 48), "scale": (0.2, 0.8), "ratio": 1.2},
     "RandomRotate90_3D": {"axis_pair": (0, 2), "group_element": "r90"},
     "RandomResizedCrop": {"size": (96, 96), "scale": (0.8, 1.0)},
     "RandomSizedBBoxSafeCrop": {"height": 96, "width": 96},
@@ -85,11 +82,6 @@ PARAM_OVERRIDES: Mapping[str, Mapping[str, Any]] = {
     "Resize": {"height": 128, "width": 128},
     "Resize3D": {"size": (12, 96, 96)},
     "SmallestMaxSize": {"max_size": 160},
-    "TextImage": {
-        "augmentations": (None,),
-        "font_path": FONT_PATH,
-        "font_size_fraction_range": (0.5, 0.5),
-    },
     "XYMasking": {
         "mask_x_length_range": (12, 12),
         "mask_y_length_range": (12, 12),
@@ -185,7 +177,7 @@ def _route_for_transform(name: str, transform_cls: type[BasicTransform]) -> str:
     ):
         if name in transform_names:
             return route
-    return {"RandomCropNearBBox": "crop_bbox", "TextImage": "text"}.get(name, "image")
+    return "crop_bbox" if name == "RandomCropNearBBox" else "image"
 
 
 def benchmark_specs() -> dict[str, TransformBenchmarkSpec]:
@@ -329,17 +321,6 @@ def _mixing_data(spec: TransformBenchmarkSpec) -> dict[str, Any]:
     return data
 
 
-def _text_data(spec: TransformBenchmarkSpec) -> dict[str, Any]:
-    data = _base_2d_data(spec)
-    data["textimage_metadata"] = [
-        {
-            "bbox": [0.1, 0.1, 0.85, 0.25],
-            "text": "AlbumentationsX benchmark",
-        },
-    ]
-    return data
-
-
 def _volume_data(spec: TransformBenchmarkSpec) -> dict[str, Any]:
     volume = make_volume()
     mask3d = (volume[..., 0] > 127).astype(np.uint8)
@@ -353,7 +334,6 @@ DATA_BUILDERS: Mapping[str, Callable[[TransformBenchmarkSpec], dict[str, Any]]] 
     "mask": _mask_data,
     "metadata": _metadata_data,
     "mixing": _mixing_data,
-    "text": _text_data,
     "volume": _volume_data,
 }
 

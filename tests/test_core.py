@@ -779,7 +779,6 @@ def test_single_transform_compose(
             A.CropNonEmptyMaskIfExists,
             A.BBoxSafeRandomCrop,
             A.OverlayElements,
-            A.TextImage,
             A.RandomCropNearBBox,
             A.Mosaic,
             A.MaskDropout,
@@ -830,7 +829,6 @@ NON_CONTIGUOUS_VOLUMETRIC_CASES = get_primary_dual_transform_params(
         A.CropNonEmptyMaskIfExists,
         A.BBoxSafeRandomCrop,
         A.OverlayElements,
-        A.TextImage,
         A.RandomCropNearBBox,
         A.Mosaic,
         A.MaskDropout,
@@ -915,7 +913,6 @@ def test_compose_preserves_non_contiguous_mask3d(mask3d_shape):
             A.RandomSizedBBoxSafeCrop,
             A.CropNonEmptyMaskIfExists,
             A.OverlayElements,
-            A.TextImage,
             A.FromFloat,
             A.Mosaic,
         },
@@ -1187,7 +1184,6 @@ def test_compose_additional_targets_in_available_keys() -> None:
             A.CropNonEmptyMaskIfExists,
             A.BBoxSafeRandomCrop,
             A.OverlayElements,
-            A.TextImage,
             A.RandomCropNearBBox,
             A.Pad,
             A.Mosaic,
@@ -1300,14 +1296,6 @@ def test_non_contiguous_input_with_compose(augmentation_cls, params, bboxes):
             seed=137,
         )
         data["bboxes"] = bboxes
-    elif augmentation_cls == A.TextImage:
-        aug = A.Compose(
-            [augmentation_cls(p=1, **params)],
-            bbox_params=A.BboxParams(coord_format="pascal_voc"),
-            strict=True,
-            seed=137,
-        )
-        data["textimage_metadata"] = {"text": "Hello, world!", "bbox": (0.1, 0.1, 0.9, 0.2)}
     elif augmentation_cls == A.OverlayElements:
         # requires "metadata" arg
         aug = A.Compose([augmentation_cls(p=1, **params)], strict=True, seed=137)
@@ -1357,7 +1345,6 @@ def test_non_contiguous_input_with_compose(augmentation_cls, params, bboxes):
             A.CropNonEmptyMaskIfExists,
             A.BBoxSafeRandomCrop,
             A.OverlayElements,
-            A.TextImage,
             A.FromFloat,
             A.MaskDropout,
             A.RandomCropNearBBox,
@@ -1413,7 +1400,6 @@ def test_masks_as_target(augmentation_cls, params, masks):
             A.Lambda,
             A.BBoxSafeRandomCrop,
             A.OverlayElements,
-            A.TextImage,
             A.FromFloat,
             A.MaskDropout,
             A.XYMasking,
@@ -1889,7 +1875,6 @@ def test_transform_strict_with_valid_params():
             A.Lambda,
             A.BBoxSafeRandomCrop,
             A.OverlayElements,
-            A.TextImage,
             A.FromFloat,
             A.MaskDropout,
             A.XYMasking,

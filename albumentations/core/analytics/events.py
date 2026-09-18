@@ -18,7 +18,7 @@ class ComposeInitEvent:
     event_type: str = "compose_init"
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     session_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    user_id: str = ""  # Persistent anonymous user ID
+    user_id: str = ""  # Persistent random UUID, shared across events
     pipeline_hash: str = ""
 
     # Environment info - kept as separate fields

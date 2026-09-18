@@ -8,10 +8,17 @@ from typing import Any
 
 import yaml
 
-from tools.ci_matrix import CI_FOUNDATION_SHA, TORCH_RUNTIME_JOBS, _check_ci_dependency_groups
+from tools.ci_matrix import (
+    CI_FOUNDATION_SHA,
+    TORCH_RUNTIME_JOBS,
+    _check_ci_dependency_groups,
+    _check_lower_bound_install_commands,
+    _check_project_runtime_lower_bounds,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SETUP_ACTION = REPO_ROOT / ".github" / "actions" / "setup-ci" / "action.yml"
+NIGHTLY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "nightly.yml"
 
 
 def _jobs(path: Path) -> dict[str, dict[str, Any]]:
@@ -68,3 +75,25 @@ def test_dependency_group_check_reports_broken_include_reference() -> None:
     issues = _check_ci_dependency_groups({"ci-release": [{"include-group": "ci-benhcmark"}]})
 
     assert "refers to non-existent group 'ci-benhcmark'" in "\n".join(issues)
+
+
+def test_lower_bound_job_resolves_runtime_versions_from_project_metadata() -> None:
+    job = _jobs(NIGHTLY_WORKFLOW)["lower_bound_dependencies"]
+    runtime_install = next(
+        step for step in job["steps"] if step.get("name") == "Install declared minimum runtime dependencies"
+    )["run"]
+
+    assert _check_lower_bound_install_commands() == []
+    assert re.search(r"\b[a-zA-Z][\w.-]*(?:===|==|~=|!=|>=|<=|>|<)", runtime_install) is None
+
+
+def test_runtime_dependencies_must_declare_lower_bounds() -> None:
+    assert _check_project_runtime_lower_bounds({"dependencies": ["pyyaml; python_version > '3.10'"]}) == [
+        "pyproject.toml runtime dependency \"pyyaml; python_version > '3.10'\" must declare a lower bound",
+    ]
+    assert (
+        _check_project_runtime_lower_bounds(
+            {"dependencies": ["pyyaml>=6.0.3; python_version > '3.10'"]},
+        )
+        == []
+    )

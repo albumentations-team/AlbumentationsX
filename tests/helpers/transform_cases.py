@@ -30,7 +30,6 @@ from tests.helpers.contract_data import (
     make_mosaic_context,
     make_overlay_context,
     make_reference_context,
-    make_text_context,
     make_volume_data,
 )
 
@@ -538,29 +537,6 @@ _BASE_CASE_SPECS: list[list[Any]] = [
     [A.OverlayElements, {}],
     [A.CopyAndPaste, {}],
     [A.RandomCropNearBBox, {}],
-    [
-        A.TextImage,
-        dict(
-            font_path="./tests/files/LiberationSerif-Bold.ttf",
-            font_size_fraction_range=(0.8, 0.9),
-            font_color=(255, 0, 0),  # red in RGB
-            stopwords=(
-                "a",
-                "the",
-                "is",
-                "of",
-                "it",
-                "and",
-                "to",
-                "in",
-                "on",
-                "with",
-                "for",
-                "at",
-                "by",
-            ),
-        ),
-    ],
     [A.GridElasticDeform, {"num_grid_xy": (10, 10), "magnitude": 10}],
     [A.ShotNoise, {"scale_range": (0.1, 0.3)}],
     [A.RicianNoise, {"std_range": (0.05, 0.15)}],
@@ -647,6 +623,16 @@ _BASE_CASE_SPECS: list[list[Any]] = [
     ],
     [A.CenterCrop3D, {"size": (2, 30, 30)}],
     [A.RandomCrop3D, {"size": (2, 30, 30)}],
+    [
+        A.RandomResizedCrop3D,
+        {
+            "size": (2, 30, 30),
+            "scale": (0.2, 0.8),
+            "ratio": 1.2,
+            "interpolation": cv2.INTER_NEAREST,
+            "mask_interpolation": cv2.INTER_LINEAR,
+        },
+    ],
     [
         A.CoarseDropout3D,
         {
@@ -1171,6 +1157,13 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
         A.RandomResizedCrop,
         {"interpolation": cv2.INTER_CUBIC, "mask_interpolation": cv2.INTER_LINEAR, "area_for_downscale": "image_mask"},
     ),
+    ("uniform-scale", A.RandomResizedCrop, {"sampling_method": "uniform_scale"}),
+    ("uniform-scale", A.RandomResizedCrop3D, {"sampling_method": "uniform_scale"}),
+    (
+        "output-proportions",
+        A.RandomResizedCrop3D,
+        {"ratio": None, "scale": (0.29296875, 0.29296875), "mask_interpolation": cv2.INTER_NEAREST},
+    ),
     ("fixed-element", A.RandomRotate90, {"group_element": "r90"}),
     ("subset-elements", A.RandomRotate90, {"group_elements": ("r90", "r270")}),
     ("fixed-axis-rotation", A.RandomRotate90_3D, {"axis_pair": (0, 2), "group_element": "r90"}),
@@ -1280,17 +1273,6 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
         },
     ),
     ("fixed-element", A.SquareSymmetry, {"group_element": "r90"}),
-    (
-        "augmented-custom-key",
-        A.TextImage,
-        {
-            "augmentations": ("insertion",),
-            "fraction_range": (0.5, 0.8),
-            "font_size_fraction_range": (0.5, 0.7),
-            "clear_bg": True,
-            "metadata_key": "text_blocks",
-        },
-    ),
     (
         "direct-low-resolution",
         A.ThinPlateSpline,
@@ -1441,10 +1423,6 @@ def _case_data(
     elif transform_cls is A.OverlayElements:
         key = init_kwargs.get("metadata_key", "overlay_metadata")
         case = (make_image_data, make_overlay_context(key))
-        metadata_keys = frozenset({key})
-    elif transform_cls is A.TextImage:
-        key = init_kwargs.get("metadata_key", "textimage_metadata")
-        case = (make_image_data, make_text_context(key))
         metadata_keys = frozenset({key})
     elif transform_cls is A.GuidedCoarseDropout:
         compose_kwargs = {

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from packaging.requirements import InvalidRequirement, Requirement
 
 try:
     import tomllib
@@ -89,13 +90,6 @@ FORBIDDEN_WORKFLOWS = (
 )
 MAX_WORKFLOW_TIMEOUT_MINUTES = 90
 
-LOWER_BOUND_REQUIREMENTS = (
-    "numpy==2.2.6",
-    "scipy==1.15.3",
-    "pydantic==2.12.4",
-    "albucore==0.2.16",
-    "opencv-python-headless==5.0.0.93",
-)
 CI_DEPENDENCY_GROUPS = {
     "ci-benchmark": {"asv", "opencv-python-headless"},
     "ci-package": {"pytest", "twine"},
@@ -110,7 +104,7 @@ CI_DEPENDENCY_GROUPS = {
         "ruff",
     },
     "ci-release": {"asv", "cyclonedx-bom"},
-    "ci-security": {"pip-audit", "zizmor"},
+    "ci-security": {"packaging", "pip-audit", "zizmor"},
     "ci-test": {"defusedxml", "opencv-python-headless", "pytest", "pytest-xdist"},
     "ci-torch-cpu": {"torch"},
     "ci-types": {"mypy", "opencv-python-headless", "pre-commit", "pyrefly"},
@@ -154,10 +148,7 @@ SUPPORT_POLICY_TABLE_ROWS = (
         "| `declared-minimum` | Tests the declared lower runtime bounds on Ubuntu and Python 3.10. | "
         "Nightly and release gate |"
     ),
-    (
-        "| `optional-extras` | Smoke-tests extras such as `pillow`, `text`, `hub`, "
-        "and OpenCV variants. | Advisory until stable |"
-    ),
+    ("| `optional-extras` | Smoke-tests extras such as `hub` and OpenCV variants. | Advisory until stable |"),
     (
         "| `pre-release-probe` | Probes future Python or dependency releases when wheels are available. | "
         "Scheduled advisory |"
@@ -373,6 +364,22 @@ def _check_project_torch_metadata(project: dict[str, Any]) -> list[str]:
     return issues
 
 
+def _check_project_runtime_lower_bounds(project: dict[str, Any]) -> list[str]:
+    dependencies = project.get("dependencies")
+    if not isinstance(dependencies, list):
+        return []
+
+    issues: list[str] = []
+    for requirement in dependencies:
+        try:
+            specifiers = Requirement(requirement).specifier if isinstance(requirement, str) else ()
+        except InvalidRequirement:
+            specifiers = ()
+        if not any(specifier.operator in {"===", "==", "~=", ">=", ">"} for specifier in specifiers):
+            issues.append(f"pyproject.toml runtime dependency {requirement!r} must declare a lower bound")
+    return issues
+
+
 def _check_torch_free_install_surfaces() -> list[str]:
     issues: list[str] = []
     development_requirements = _read_text(DEVELOPMENT_REQUIREMENTS)
@@ -430,6 +437,7 @@ def _check_pyproject() -> list[str]:
         )
 
     issues.extend(_check_project_torch_metadata(project))
+    issues.extend(_check_project_runtime_lower_bounds(project))
     issues.extend(_check_torch_free_install_surfaces())
 
     dependency_groups = pyproject.get("dependency-groups", {})
@@ -553,6 +561,30 @@ def _check_lower_bound_torch_runtime() -> list[str]:
     ):
         issues.append(f"{NIGHTLY_WORKFLOW} lower_bound_dependencies must install the shared CPU Torch runtime")
     return issues
+
+
+def _check_lower_bound_install_commands() -> list[str]:
+    job = _workflow_jobs(NIGHTLY_WORKFLOW).get("lower_bound_dependencies")
+    if not isinstance(job, dict):
+        return []
+
+    steps = job.get("steps", [])
+    commands = {
+        step.get("name"): " ".join(str(step.get("run", "")).split())
+        for step in steps
+        if isinstance(step, dict) and isinstance(step.get("name"), str)
+    }
+    expected_commands = {
+        "Install declared minimum runtime dependencies": (
+            'uv pip install --resolution lowest-direct --strict -e ".[headless]"'
+        ),
+        "Install test dependencies": "uv pip install hypothesis pytest",
+    }
+    return [
+        f"{NIGHTLY_WORKFLOW} step {step_name!r} must run {expected_command!r}"
+        for step_name, expected_command in expected_commands.items()
+        if commands.get(step_name) != expected_command
+    ]
 
 
 def _check_workflow_torch_cleanup() -> list[str]:
@@ -786,7 +818,7 @@ def _workflow_job_run_text(job: dict[str, Any]) -> str:
 
 def _check_nightly_workflow() -> list[str]:
     issues = _check_full_matrix_workflow(NIGHTLY_WORKFLOW)
-    issues.extend(_check_text_mentions(NIGHTLY_WORKFLOW, LOWER_BOUND_REQUIREMENTS, "lower-bound dependency"))
+    issues.extend(_check_lower_bound_install_commands())
     issues.extend(
         _check_text_mentions(
             NIGHTLY_WORKFLOW,

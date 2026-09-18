@@ -1,6 +1,6 @@
 """User ID management for telemetry.
 
-This module provides functionality to manage persistent anonymous user IDs
+This module provides functionality to manage persistent random user IDs
 for telemetry purposes, similar to how iterative-telemetry handles it.
 """
 
@@ -31,7 +31,7 @@ def get_user_config_dir() -> Path:
 
 
 class UserIDManager:
-    """Stores and retrieves a persistent anonymous ID in a JSON file under the user config dir.
+    """Stores and retrieves a persistent random ID in a JSON file under the user config dir.
     Atomic writes (temp file + rename) to avoid races.
     """
 

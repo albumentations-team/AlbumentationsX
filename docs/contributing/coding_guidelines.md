@@ -500,7 +500,8 @@ read sampled values from `**params` inside the transform method.
 
 Keep batch and channel axes distinct. Reshaping `(N, H, W, 1)` into `(H, W, N)` adds a transpose and may require a
 copy; OpenCV processes those channels sequentially. Use the
-[benchmark skill](../../.codex/skills/benchmark/SKILL.md) for the required direct and Compose measurements.
+[benchmark skill](https://github.com/albumentations-team/AlbumentationsX/blob/main/.codex/skills/benchmark/SKILL.md)
+for the required direct and Compose measurements.
 
 ### Coordinate Systems
 
@@ -557,7 +558,9 @@ interface; do not repeat it on each override.
 - Use `See also` for two to four related transforms, one per bullet with a selection hint. Keep cross-links reciprocal.
 - Use `Note` bullets for factual details. Put recommendations in `See also`.
 
-Use the [docstring review skill](../../.codex/skills/docstring-deep-dive/SKILL.md) to review reader-facing quality.
+Use the
+[docstring review skill](https://github.com/albumentations-team/AlbumentationsX/blob/main/.codex/skills/docstring-deep-dive/SKILL.md)
+to review reader-facing quality.
 
 ### Examples in Docstrings
 
@@ -663,11 +666,15 @@ np.testing.assert_array_equal(transformed_image, image)
 
 ## Performance Optimization
 
-Use [Performance Optimization](../../.codex/skills/performance-optimization/SKILL.md) and its synchronized reference
+Use
+[Performance Optimization](https://github.com/albumentations-team/AlbumentationsX/blob/main/.codex/skills/performance-optimization/SKILL.md)
+and its synchronized reference
 for runtime audits. The workflow covers removable work, memory traffic, vectorization, grouped reductions, LUTs,
 random generation, backend selection, Albucore ownership, and aliasing.
 
-Treat each candidate as a hypothesis. Use the [benchmark skill](../../.codex/skills/benchmark/SKILL.md) to compare
+Treat each candidate as a hypothesis. Use the
+[benchmark skill](https://github.com/albumentations-team/AlbumentationsX/blob/main/.codex/skills/benchmark/SKILL.md)
+to compare
 baseline and candidate on the affected public routes, and record every measured cell and any regressions.
 
 ### Updating Transform Documentation

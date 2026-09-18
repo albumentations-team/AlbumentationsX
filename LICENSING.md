@@ -8,16 +8,42 @@ licensed under the GNU Affero General Public License, version 3 only
 (`AGPL-3.0-only`). Third-party material and its applicable notices are
 identified in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-The AGPL permits commercial use subject to its terms. Albumentations, LLC also
-offers separately negotiated commercial licenses that provide alternative,
-scope-specific permissions for the versions and uses identified in the
-applicable agreement or order form. A commercial license does not remove the
-AGPL availability of the public repository. Support, warranties, maintenance,
-and service levels are included only when an executed agreement or order form
-expressly says so.
+The AGPL permits commercial use subject to its terms. The public repository
+remains available under AGPL-3.0-only when commercial licenses are also offered.
 
-For commercial licensing inquiries, visit <https://albumentations.ai/pricing>
-or contact <vladimir@albumentations.ai>.
+## Commercial Licensing
+
+Albumentations, LLC offers commercial licenses for proprietary applications
+and services. An agreement can grant rights to use, modify, integrate, host,
+or distribute AlbumentationsX without AGPL source-sharing requirements for
+the use covered by that agreement.
+
+The agreement or order form defines scope-specific permissions for the named
+legal entities, teams, projects or products, versions, deployments, and term,
+including any distribution rights.
+Third-party licenses and notices continue to apply. Support, warranties,
+maintenance, and service levels are included only when an executed agreement
+or order form expressly says so.
+
+[Request a quote](https://albumentations.ai/pricing) for the coverage you need,
+or email <vladimir@albumentations.ai>. To compare the commercial option with
+AGPL, including internal training and model outputs, read the
+[license guide](https://albumentations.ai/docs/license/).
+
+## Institutional Procurement
+
+The product being licensed is the AlbumentationsX Python library. You install
+and run it in your own environment; augmentation processes your data there.
+
+For a quote, proposed agreement, or supplier questionnaire, email
+<vladimir@albumentations.ai>. Include your legal entity, intended use, requested
+coverage, and the forms or documentation requirements for your review.
+
+Existing technical documentation is available for your assessment:
+
+- [Security policy and vulnerability reporting](https://github.com/albumentations-team/AlbumentationsX/blob/main/SECURITY.md)
+- [Supported environments](https://github.com/albumentations-team/AlbumentationsX/blob/main/docs/maintaining/support-policy.md)
+- [Release verification](https://github.com/albumentations-team/AlbumentationsX/blob/main/docs/maintaining/release-verification.md)
 
 ## License History
 

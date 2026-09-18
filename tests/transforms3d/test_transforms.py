@@ -715,7 +715,6 @@ def _get_slice_wise_2d_transform_params():
                 A.MaskDropout,
                 A.CropNonEmptyMaskIfExists,
                 A.BBoxSafeRandomCrop,
-                A.TextImage,
                 A.OverlayElements,
                 A.PixelDistributionAdaptation,
                 A.HistogramMatching,
@@ -1107,6 +1106,12 @@ def test_center_crop3d_keypoints(
                 "interpolation": cv2.INTER_NEAREST,
             },
             A.Resize3D: {"size": (12, 12, 12), "interpolation": cv2.INTER_NEAREST},
+            A.RandomResizedCrop3D: {
+                "size": (6, 6, 6),
+                "scale": (1.0, 1.0),
+                "ratio": 1.0,
+                "interpolation": cv2.INTER_NEAREST,
+            },
         },
         except_augmentations={
             A.CoarseDropout3D,

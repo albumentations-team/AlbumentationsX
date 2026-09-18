@@ -7,6 +7,7 @@ such as spatial dimensions, apply dropout effects, and perform symmetry operatio
 interface and implements specific 3D augmentation logic.
 """
 
+import math
 from collections.abc import Mapping
 from typing import Annotated, Any, ClassVar, Final, Literal, cast
 
@@ -16,6 +17,7 @@ from albucore import resize3d
 from pydantic import AfterValidator, field_validator, model_validator
 from typing_extensions import Self
 
+from albumentations.augmentations.crops._sampling import SamplingMethod, sample_3d_crop_shape
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.transforms3d import functional as f3d
 from albumentations.core.invocation import SamplingContext
@@ -46,6 +48,7 @@ __all__ = [
     "Pad3D",
     "PadIfNeeded3D",
     "RandomCrop3D",
+    "RandomResizedCrop3D",
     "RandomRotate90_3D",
     "Resize3D",
 ]
@@ -70,6 +73,16 @@ AXIS_NAMES_3D: tuple[AxisName3D, ...] = ("x", "y", "z")
 
 def _sampling_volume_shape(targets: TargetSet) -> tuple[int, int, int]:
     return targets.require_aligned_spatial_shape(NUM_DIMENSIONS)
+
+
+def _crop_3d(
+    volume: VolumeType | torch.Tensor,
+    crop_coords: tuple[int, int, int, int, int, int],
+) -> VolumeType | torch.Tensor:
+    if isinstance(volume, torch.Tensor):
+        z_min, z_max, y_min, y_max, x_min, x_max = crop_coords
+        return volume[:, z_min:z_max, y_min:y_max, x_min:x_max]
+    return f3d.crop3d(volume, crop_coords)
 
 
 class Affine3D(Transform3D):
@@ -684,6 +697,176 @@ class Resize3D(Transform3D):
         **params: Any,
     ) -> np.ndarray:
         return f3d.keypoints_scale_3d(keypoints, source_shape, self.size)
+
+
+class RandomResizedCrop3D(Transform3D):
+    """Crop a random feasible 3D region and resize it to a fixed volume shape for classification, sharing geometry
+    across volumes, masks, and XYZ keypoints.
+
+    The transform is intended for volume classification: it changes the sampled source
+    field of view while always returning `size`. It applies the same crop and resize to
+    `volume`, `mask3d`, and XYZ keypoints.
+
+    Args:
+        size (tuple[int, int, int]): Output `(depth, height, width)`.
+        scale (tuple[float, float]): Inclusive range of source-volume fractions before
+            integer rounding. Default: `(0.08, 1.0)`.
+        ratio (float | None): Maximum allowed ratio of the largest crop edge to its
+            smallest edge. `1.0` forces a cube. `None` fixes crop proportions to
+            `size`. Default: `4 / 3`.
+        interpolation (Literal[0, 1]): Volume interpolation: `cv2.INTER_LINEAR` or
+            `cv2.INTER_NEAREST`. Default: `cv2.INTER_LINEAR`.
+        mask_interpolation (Literal[0, 1]): `mask3d` interpolation: `cv2.INTER_LINEAR`
+            or `cv2.INTER_NEAREST`. Default: `cv2.INTER_NEAREST`.
+        p (float): Probability of applying the transform. Default: `1.0`.
+        sampling_method (Literal["standard", "uniform_scale"]): `"standard"` preserves
+            the conditional distribution of feasible uniform-volume and log-shape
+            proposals. `"uniform_scale"` samples uniformly from feasible source volumes.
+            Default: `"standard"`.
+
+    Targets:
+        volume, mask3d, keypoints
+
+    Image types:
+        uint8, float32
+
+    Notes:
+        - NumPy volumes use `(D, H, W)` or `(D, H, W, C)`; CPU tensors use `(C, D, H, W)`.
+        - Keypoints use `(x, y, z)` voxel coordinates. Cropping shifts them before
+          output-grid scaling.
+        - The sampler draws directly from feasible crop geometry. It takes a centered
+          crop only when no valid geometric region exists.
+        - Voxel spacing, orientation, and other physical metadata remain unchanged.
+
+    Examples:
+        >>> import albumentations as A
+        >>> import numpy as np
+        >>> volume = np.random.default_rng(137).random((64, 128, 128, 1), dtype=np.float32)
+        >>> transform = A.Compose([A.RandomResizedCrop3D(size=(32, 64, 64), p=1.0)], strict=True)
+        >>> transform(volume=volume)["volume"].shape
+        (32, 64, 64, 1)
+
+    """
+
+    _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
+
+    class InitSchema(BaseTransformInitSchema):
+        size: Annotated[tuple[int, int, int], AfterValidator(check_range_bounds(1, None))]
+        scale: Annotated[tuple[float, float], AfterValidator(check_range_bounds(0, 1)), AfterValidator(nondecreasing)]
+        ratio: float | None
+        interpolation: Literal[0, 1]
+        mask_interpolation: Literal[0, 1]
+        sampling_method: SamplingMethod
+
+        @field_validator("ratio")
+        @classmethod
+        def _validate_ratio(cls, value: float | None) -> float | None:
+            if value is not None and (not math.isfinite(value) or value < 1.0):
+                raise ValueError("ratio must be finite and at least 1, or None")
+            return value
+
+    def __init__(
+        self,
+        size: tuple[int, int, int],
+        scale: tuple[float, float] = (0.08, 1.0),
+        ratio: float | None = 4.0 / 3.0,
+        interpolation: Literal[0, 1] = CV2_INTER_LINEAR,
+        mask_interpolation: Literal[0, 1] = CV2_INTER_NEAREST,
+        p: float = 1.0,
+        *,
+        sampling_method: SamplingMethod = "standard",
+    ):
+        super().__init__(p=p)
+        self.size = size
+        self.scale = scale
+        self.ratio = ratio
+        self.interpolation = interpolation
+        self.mask_interpolation = mask_interpolation
+        self.sampling_method = sampling_method
+
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
+        sampling: SamplingContext,
+    ) -> SampledParams:
+        source_shape = _sampling_volume_shape(targets)
+        source_depth, source_height, source_width = source_shape
+        crop_shape = sample_3d_crop_shape(
+            source_depth,
+            source_height,
+            source_width,
+            self.size,
+            self.scale,
+            self.ratio,
+            self.sampling_method,
+            sampling.py_random,
+        )
+        if crop_shape is None:
+            if self.ratio is None:
+                output_depth, output_height, output_width = self.size
+                depth_to_height = output_depth / output_height
+                width_to_height = output_width / output_height
+                crop_height = min(
+                    source_height,
+                    max(1, round(min(source_height, source_depth / depth_to_height, source_width / width_to_height))),
+                )
+                crop_depth = min(source_depth, max(1, round(depth_to_height * crop_height)))
+                crop_width = min(source_width, max(1, round(width_to_height * crop_height)))
+            else:
+                smallest_axis = min(source_shape)
+                crop_depth = min(source_depth, max(1, round(self.ratio * smallest_axis)))
+                crop_height = min(source_height, max(1, round(self.ratio * smallest_axis)))
+                crop_width = min(source_width, max(1, round(self.ratio * smallest_axis)))
+            crop_shape = (crop_depth, crop_height, crop_width)
+            z_start = (source_depth - crop_depth) // 2
+            y_start = (source_height - crop_height) // 2
+            x_start = (source_width - crop_width) // 2
+        else:
+            crop_depth, crop_height, crop_width = crop_shape
+            z_start = int(sampling.py_random.random() * (source_depth - crop_depth + 1))
+            y_start = int(sampling.py_random.random() * (source_height - crop_height + 1))
+            x_start = int(sampling.py_random.random() * (source_width - crop_width + 1))
+
+        crop_coords = (
+            z_start,
+            z_start + crop_depth,
+            y_start,
+            y_start + crop_height,
+            x_start,
+            x_start + crop_width,
+        )
+        sampling.applied_overrides["scale"] = (
+            (crop_depth * crop_height * crop_width) / (source_depth * source_height * source_width),
+        ) * 2
+        return SampledParams(params={"crop_coords": crop_coords})
+
+    def apply_to_volume(
+        self,
+        volume: VolumeType | torch.Tensor,
+        crop_coords: tuple[int, int, int, int, int, int],
+        **params: Any,
+    ) -> VolumeType:
+        return cast("VolumeType", resize3d(_crop_3d(volume, crop_coords), self.size, self.interpolation))
+
+    def apply_to_mask3d(
+        self,
+        mask3d: VolumeType | torch.Tensor,
+        crop_coords: tuple[int, int, int, int, int, int],
+        **params: Any,
+    ) -> VolumeType:
+        return cast("VolumeType", resize3d(_crop_3d(mask3d, crop_coords), self.size, self.mask_interpolation))
+
+    def apply_to_keypoints(
+        self,
+        keypoints: np.ndarray,
+        crop_coords: tuple[int, int, int, int, int, int],
+        **params: Any,
+    ) -> np.ndarray:
+        z_min, z_max, y_min, y_max, x_min, x_max = crop_coords
+        cropped = fgeometric.shift_keypoints(keypoints, np.array([-x_min, -y_min, -z_min]))
+        return f3d.keypoints_scale_3d(cropped, (z_max - z_min, y_max - y_min, x_max - x_min), self.size)
 
 
 class _BaseCropAndPad3DInitSchema(BaseTransformInitSchema):

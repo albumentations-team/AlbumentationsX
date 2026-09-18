@@ -161,7 +161,6 @@ def test_binary_mask_interpolation(augmentation_cls, params, image):
             A.CropNonEmptyMaskIfExists,
             A.BBoxSafeRandomCrop,
             A.OverlayElements,
-            A.TextImage,
             A.FromFloat,
             A.MaskDropout,
             A.XYMasking,
@@ -216,7 +215,6 @@ def __test_multiprocessing_support_proc(args):
             A.HistogramMatching,
             A.PixelDistributionAdaptation,
             A.OverlayElements,
-            A.TextImage,
             A.MaskDropout,
             A.Mosaic,
             A.CopyAndPaste,
@@ -288,7 +286,6 @@ def test_force_apply():
     ["augmentation_cls", "params"],
     get_primary_image_only_transform_params(
         except_augmentations={
-            A.TextImage,
             A.FDA,
             A.HistogramMatching,
             A.PixelDistributionAdaptation,
@@ -1892,11 +1889,6 @@ def test_change_image(augmentation_cls, params, image):
         }
     elif augmentation_cls == A.FromFloat:
         data["image"] = SQUARE_FLOAT_IMAGE
-    elif augmentation_cls == A.TextImage:
-        data["textimage_metadata"] = {
-            "text": "May the transformations be ever in your favor!",
-            "bbox": (0.1, 0.1, 0.9, 0.2),
-        }
     elif augmentation_cls in {A.MaskDropout, A.ConstrainedCoarseDropout}:
         mask = np.zeros_like(image)[:, :, 0]
         mask[:20, :20] = 1
@@ -1966,7 +1958,6 @@ def test_change_image(augmentation_cls, params, image):
             A.PlanckianJitter,
             A.OverlayElements,
             A.FromFloat,
-            A.TextImage,
             A.PixelDistributionAdaptation,
             A.MaskDropout,
             A.Pad,
@@ -2778,11 +2769,6 @@ def test_return_nonzero(augmentation_cls, params):
     }
     if augmentation_cls == A.OverlayElements:
         data["overlay_metadata"] = []
-    elif augmentation_cls == A.TextImage:
-        data["textimage_metadata"] = {
-            "text": "May the transformations be ever in your favor!",
-            "bbox": (0.1, 0.1, 0.9, 0.2),
-        }
     elif augmentation_cls == A.ToRGB:
         data["image"] = cv2.randu(np.zeros((100, 100), dtype=np.uint8), 0, 255)
     elif augmentation_cls == A.MaskDropout:
@@ -2961,7 +2947,6 @@ def test_mask_dropout_bboxes(remove_invisible, expected_keypoints):
             A.HistogramMatching,
             A.OverlayElements,
             A.MaskDropout,
-            A.TextImage,
             A.VerticalFlip,
             A.HorizontalFlip,
             A.GridElasticDeform,

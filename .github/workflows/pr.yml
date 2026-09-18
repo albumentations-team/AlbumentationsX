@@ -293,9 +293,19 @@ jobs:
         run: >-
           uv export --frozen --no-dev --no-emit-project
           --format requirements-txt --output-file runtime-requirements.txt
+      - name: Export locked optional runtime dependencies
+        run: >-
+          uv export --frozen --no-dev --all-extras --no-emit-project
+          --format requirements-txt --output-file all-runtime-requirements.txt
+      - name: Check reviewed runtime dependency licenses
+        run: >-
+          python tools/verify_dependency_licenses.py
+          --requirements runtime-requirements.txt
+          --requirements all-runtime-requirements.txt
       - name: Audit locked runtime dependencies
         run: >-
           pip-audit --requirement runtime-requirements.txt
+          --requirement all-runtime-requirements.txt
           --no-deps --disable-pip --format=json --output dependency-audit.json
       - name: Upload dependency audit evidence
         if: always()
@@ -511,6 +521,13 @@ jobs:
             --min-severity=medium \
             --min-confidence=medium \
             .github > "${RUNNER_TEMP}/release-bundle/evidence/security-zizmor.json"
+      - name: Collect installed dependency license evidence
+        run: >-
+          cyclonedx-py environment "$(command -v python)"
+          --pyproject pyproject.toml
+          --mc-type library
+          --output-reproducible
+          --output-file "${RUNNER_TEMP}/release-bundle/evidence/dependency-licenses.cdx.json"
       - name: Generate CycloneDX SBOM
         env:
           PACKAGE_VERSION: ${{ steps.metadata.outputs.package_version }}
@@ -519,6 +536,15 @@ jobs:
           --output-format JSON
           --output-file
           "${RUNNER_TEMP}/release-bundle/public/albumentationsx-${PACKAGE_VERSION}-sbom.cdx.json"
+      - name: Add reviewed licenses to CycloneDX SBOM
+        env:
+          PACKAGE_VERSION: ${{ steps.metadata.outputs.package_version }}
+        run: >-
+          python tools/verify_dependency_licenses.py
+          --requirements "${RUNNER_TEMP}/release-bundle/evidence/runtime-requirements.txt"
+          --license-sbom "${RUNNER_TEMP}/release-bundle/evidence/dependency-licenses.cdx.json"
+          --sbom "${RUNNER_TEMP}/release-bundle/public/albumentationsx-${PACKAGE_VERSION}-sbom.cdx.json"
+          --write-sbom
       - name: Generate correctness and compatibility report
         env:
           PACKAGE_VERSION: ${{ steps.metadata.outputs.package_version }}

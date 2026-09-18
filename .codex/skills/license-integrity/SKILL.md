@@ -7,11 +7,13 @@ description: Maintain AlbumentationsX license, CLA, provenance notices, and pack
 
 Use this skill for any change to `LICENSE`, `CLA.md`, license history,
 third-party notices, package license metadata, contributor acceptance language,
-or public repository license wording.
+or public repository license wording. Also use it for library procurement and
+privacy disclosures.
 
 ## Required Context
 
-Read these files completely before editing:
+For licensing, CLA, provenance, or packaging changes, read these files completely
+before editing:
 
 1. `docs/maintaining/license-provenance.md`
 2. `LICENSE`
@@ -44,6 +46,41 @@ Read these files completely before editing:
   not contain the inbound CLA or private acceptance records.
 - Build into a fresh directory outside the checkout. A source distribution
   must not contain local build-output directories or nested release artifacts.
+
+## Library Procurement and Privacy Copy
+
+For prose-only changes, read the owning documents and the implementation behind
+the affected claims. The full legal context and artifact checks apply when the
+change also touches licensing, provenance, or package metadata.
+
+- Describe the product as the AlbumentationsX Python library running in the
+  customer's environment. Lead purchasing copy with product fit, license coverage,
+  and the next step. Include limitations when they affect the buyer's decision
+  or answer a specific question; do not add speculative warnings or repeat
+  security/privacy caveats throughout licensing and procurement pages.
+- AX owns its library assessment documents: `LICENSING.md`, `SECURITY.md`,
+  `docs/privacy.md`, and `docs/maintaining/`. Link to the owning document instead
+  of copying another procedure.
+- `albumentations.ai` is AX's project website. Preserve relevant website links,
+  including documentation, benchmarks, Explore, newsletters, licensing, and funding.
+  Website sign-in, accounts, and saved user content are separate from library
+  execution and the commercial license; do not present them as AX requirements
+  or license features. Keep the official contact `vladimir@albumentations.ai`.
+- Keep telemetry to a brief README mention linking to `docs/privacy.md`, which
+  owns the collected fields and global opt-out instructions. API parameter docs
+  explain the control and link to that notice. Do not repeat telemetry copy in
+  licensing or general procurement pages; answer explicit buyer questions in
+  their assessment documents.
+- Verify telemetry disclosures against the event model, collectors, backend,
+  and pre-import opt-out behavior. A persistent random UUID is not proof of
+  anonymity. Telemetry remains default-on with opt-out; its use is limited to
+  product analysis and development, not prospect identification or sales.
+- Describe the analytics provider in `docs/privacy.md` as the current implementation.
+  Keep general product wording independent of the provider. When providers change,
+  update the relevant facts and account for versions still using the previous service.
+- Provider retention, storage region, deletion, certifications, and operational
+  practices need evidence beyond source code. Do not turn an unverified target
+  or a questionnaire question into a public assurance or recurring manual duty.
 
 ## Verification
 

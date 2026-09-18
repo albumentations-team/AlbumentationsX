@@ -1,4 +1,4 @@
-"""Telemetry client for tracking anonymous usage statistics."""
+"""Telemetry client for sending optional usage metadata."""
 
 import contextlib
 import time

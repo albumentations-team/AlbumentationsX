@@ -6,7 +6,7 @@
 
 > 📣 **Stay updated!** [Subscribe to our newsletter](https://albumentations.ai/subscribe?utm_source=github&utm_medium=referral&utm_campaign=readme) for the latest releases, tutorials, and tips.
 
-[![License: AGPL-3.0-only](https://img.shields.io/badge/License-AGPL--3.0--only-blue.svg)](LICENSE)
+[![License: AGPL-3.0-only](https://img.shields.io/badge/License-AGPL--3.0--only-blue.svg)](https://github.com/albumentations-team/AlbumentationsX/blob/5bac7d5ae4b38f3c2a89c21dc088245613e9e99c/LICENSE)
 [![Commercial License](https://img.shields.io/badge/Commercial_License-available-brightgreen)](https://albumentations.ai/pricing?utm_source=github&utm_medium=referral&utm_campaign=readme)
 
 [![Docs](https://img.shields.io/badge/docs-albumentations.ai-blue)](https://albumentations.ai/docs/?utm_source=github&utm_medium=referral&utm_campaign=readme) [![Discord](https://img.shields.io/badge/Discord-join-7289da?logo=discord&logoColor=white)](https://discord.gg/AKPrrDYNAt) [![Twitter](https://img.shields.io/badge/Twitter-follow-1da1f2?logo=twitter&logoColor=white)](https://twitter.com/albumentations) [![LinkedIn](https://img.shields.io/badge/LinkedIn-connect-0077b5?logo=linkedin&logoColor=white)](https://www.linkedin.com/company/albumentations/) [![Reddit](https://img.shields.io/badge/Reddit-join-ff4500?logo=reddit&logoColor=white)](https://www.reddit.com/r/Albumentations/)
@@ -30,26 +30,27 @@ Your citation makes the project's research impact visible to funders and helps s
 }
 ```
 
-## 📢 Licensing: commercial use is allowed
+<a id="-licensing-commercial-use-is-allowed"></a>
 
-**AlbumentationsX can be used in commercial projects under the AGPL.** The
-current public repository is available under **AGPL-3.0-only**, an open-source
-license. The AGPL permits commercial use subject to its terms.
+## Licensing
 
-Albumentations, LLC also offers separately negotiated commercial licenses with
-alternative, scope-specific permissions for the versions and uses covered by
-an executed agreement. A commercial license is an option when a team needs
-terms different from the AGPL. It is not automatically required because a
-project is commercial, proprietary, in production, or internal.
+AlbumentationsX offers two license options:
 
-Which terms fit depends on the deployment facts, including modification,
-combination, copying or conveyance, and network interaction. Support,
-warranties, maintenance, and service levels are included only when an executed
-agreement or order form expressly says so. See the [AGPL text](LICENSE),
-[licensing details and history](LICENSING.md), and
-[third-party notices](THIRD_PARTY_NOTICES.md).
+- **Commercial license:** choose alternative permissions for proprietary software under an agreement covering your
+  team, products, and deployments. [Request a quote](https://albumentations.ai/pricing?utm_source=github&utm_medium=referral&utm_campaign=readme)
+  or email [vladimir@albumentations.ai](mailto:vladimir@albumentations.ai).
+- **AGPL-3.0-only:** available at no charge. The AGPL permits commercial use subject to its terms.
+  [Read the license guide](https://albumentations.ai/docs/license/).
 
-### Quick Start
+Commercial, proprietary, internal, or production status alone does not require a commercial license.
+See the [AGPL text](https://github.com/albumentations-team/AlbumentationsX/blob/5bac7d5ae4b38f3c2a89c21dc088245613e9e99c/LICENSE)
+and [licensing details and history](https://github.com/albumentations-team/AlbumentationsX/blob/5bac7d5ae4b38f3c2a89c21dc088245613e9e99c/LICENSING.md)
+for the applicable terms.
+
+For supplier questionnaires and purchasing documents, see
+[institutional procurement](https://github.com/albumentations-team/AlbumentationsX/blob/main/LICENSING.md#institutional-procurement).
+
+## Quick Start
 
 ```bash
 # Install the PyTorch build for your platform first. For Linux CPU-only:
@@ -71,8 +72,6 @@ transform = A.Compose(
 )
 ```
 
-For commercial licensing inquiries, please visit [our pricing page](https://albumentations.ai/pricing?utm_source=github&utm_medium=referral&utm_campaign=readme).
-
 ---
 
 Here is an example of how you can apply some [pixel-level](#pixel-level-transforms) augmentations to create new images from the original one:
@@ -90,7 +89,7 @@ Here is an example of how you can apply some [pixel-level](#pixel-level-transfor
 ## Table of contents
 
 - [Citing](#citing)
-- [Licensing](#-licensing-commercial-use-is-allowed)
+- [Licensing](#licensing)
 - [Quick Start](#quick-start)
 - [Why AlbumentationsX](#why-albumentationsx)
 - [Authors](#authors)
@@ -182,13 +181,15 @@ Other installation options are described in the [documentation](https://albument
 ## Documentation
 
 The full documentation is available at **[https://albumentations.ai/docs/](https://albumentations.ai/docs/?utm_source=github&utm_medium=referral&utm_campaign=readme)**.
+For security, release verification, and contributor guides, see the
+[repository documentation](https://github.com/albumentations-team/AlbumentationsX/blob/main/docs/README.md).
 
 The repository also includes an axis-aware guide for
 [time-frequency and spectrogram augmentation](docs/integrations/time-frequency-augmentation.md).
 
 For AI-assisted augmentation review, AlbumentationsX can also be used through MCP-capable hosts such as Claude Desktop,
 Cursor, Claude Code, and Codex. The community
-[AlbumentationsX MCP integration](docs/integrations/mcp.md) lets assistants inspect transforms, validate pipelines,
+[AlbumentationsX MCP integration](https://github.com/albumentations-team/AlbumentationsX/blob/main/docs/integrations/mcp.md) lets assistants inspect transforms, validate pipelines,
 render bounded local preview batches, compare preview runs, collect concrete feedback, and export reproducible
 AlbumentationsX pipelines.
 
@@ -212,7 +213,8 @@ transformed = transform(image=image)
 transformed_image = transformed["image"]
 ```
 
-AlbumentationsX collects anonymous usage statistics to improve the library. This can be disabled with `ALBUMENTATIONS_OFFLINE=1` or `ALBUMENTATIONS_NO_TELEMETRY=1`.
+AlbumentationsX collects usage statistics by default to guide product development.
+See [data collection and opt-out](https://github.com/albumentations-team/AlbumentationsX/blob/main/docs/privacy.md).
 
 ## List of augmentations
 
@@ -287,7 +289,6 @@ Pixel-level transforms will change just an input image and will leave any additi
 - [Solarize](https://albumentations.ai/explore/transform/Solarize/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [Spatter](https://albumentations.ai/explore/transform/Spatter/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [Superpixels](https://albumentations.ai/explore/transform/Superpixels/?utm_source=github&utm_medium=referral&utm_campaign=readme)
-- [TextImage](https://albumentations.ai/explore/transform/TextImage/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [ToFloat](https://albumentations.ai/explore/transform/ToFloat/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [ToGray](https://albumentations.ai/explore/transform/ToGray/?utm_source=github&utm_medium=referral&utm_campaign=readme)
 - [ToRGB](https://albumentations.ai/explore/transform/ToRGB/?utm_source=github&utm_medium=referral&utm_campaign=readme)
@@ -374,21 +375,22 @@ Where:
 - Volume: 3D array of shape (D, H, W) or (D, H, W, C) where D is depth, H is height, W is width, and C is number of channels (optional)
 - Mask3D: Binary or multi-class 3D mask of shape (D, H, W) where each slice represents segmentation for the corresponding volume slice
 
-| Transform                                                                             | Volume | Mask3D | Keypoints |
-| ------------------------------------------------------------------------------------- | :----: | :----: | :-------: |
-| [Affine3D](https://albumentations.ai/explore/transform/Affine3D/)                     | ✓      | ✓      | ✓         |
-| [Anisotropy3D](https://albumentations.ai/explore/transform/Anisotropy3D/)             | ✓      |        |           |
-| [CenterCrop3D](https://albumentations.ai/explore/transform/CenterCrop3D/)             | ✓      | ✓      | ✓         |
-| [CoarseDropout3D](https://albumentations.ai/explore/transform/CoarseDropout3D/)       | ✓      | ✓      | ✓         |
-| [CubicSymmetry](https://albumentations.ai/explore/transform/CubicSymmetry/)           | ✓      | ✓      | ✓         |
-| [ElasticTransform3D](https://albumentations.ai/explore/transform/ElasticTransform3D/) | ✓      | ✓      | ✓         |
-| [Flip3D](https://albumentations.ai/explore/transform/Flip3D/)                         | ✓      | ✓      | ✓         |
-| [GridShuffle3D](https://albumentations.ai/explore/transform/GridShuffle3D/)           | ✓      | ✓      | ✓         |
-| [Pad3D](https://albumentations.ai/explore/transform/Pad3D/)                           | ✓      | ✓      | ✓         |
-| [PadIfNeeded3D](https://albumentations.ai/explore/transform/PadIfNeeded3D/)           | ✓      | ✓      | ✓         |
-| [RandomCrop3D](https://albumentations.ai/explore/transform/RandomCrop3D/)             | ✓      | ✓      | ✓         |
-| [RandomRotate90_3D](https://albumentations.ai/explore/transform/RandomRotate90_3D/)   | ✓      | ✓      | ✓         |
-| [Resize3D](https://albumentations.ai/explore/transform/Resize3D/)                     | ✓      | ✓      | ✓         |
+| Transform                                                                               | Volume | Mask3D | Keypoints |
+| --------------------------------------------------------------------------------------- | :----: | :----: | :-------: |
+| [Affine3D](https://albumentations.ai/explore/transform/Affine3D/)                       | ✓      | ✓      | ✓         |
+| [Anisotropy3D](https://albumentations.ai/explore/transform/Anisotropy3D/)               | ✓      |        |           |
+| [CenterCrop3D](https://albumentations.ai/explore/transform/CenterCrop3D/)               | ✓      | ✓      | ✓         |
+| [CoarseDropout3D](https://albumentations.ai/explore/transform/CoarseDropout3D/)         | ✓      | ✓      | ✓         |
+| [CubicSymmetry](https://albumentations.ai/explore/transform/CubicSymmetry/)             | ✓      | ✓      | ✓         |
+| [ElasticTransform3D](https://albumentations.ai/explore/transform/ElasticTransform3D/)   | ✓      | ✓      | ✓         |
+| [Flip3D](https://albumentations.ai/explore/transform/Flip3D/)                           | ✓      | ✓      | ✓         |
+| [GridShuffle3D](https://albumentations.ai/explore/transform/GridShuffle3D/)             | ✓      | ✓      | ✓         |
+| [Pad3D](https://albumentations.ai/explore/transform/Pad3D/)                             | ✓      | ✓      | ✓         |
+| [PadIfNeeded3D](https://albumentations.ai/explore/transform/PadIfNeeded3D/)             | ✓      | ✓      | ✓         |
+| [RandomCrop3D](https://albumentations.ai/explore/transform/RandomCrop3D/)               | ✓      | ✓      | ✓         |
+| [RandomResizedCrop3D](https://albumentations.ai/explore/transform/RandomResizedCrop3D/) | ✓      | ✓      | ✓         |
+| [RandomRotate90_3D](https://albumentations.ai/explore/transform/RandomRotate90_3D/)     | ✓      | ✓      | ✓         |
+| [Resize3D](https://albumentations.ai/explore/transform/Resize3D/)                       | ✓      | ✓      | ✓         |
 
 ## A few more examples of **augmentations**
 
@@ -497,7 +499,7 @@ library for each transform.
 
 ## 🤝 Contribute
 
-We thrive on community collaboration! AlbumentationsX wouldn't be the powerful augmentation library it is without contributions from developers like you. Please see our [Contributing Guide](CONTRIBUTING.md) to get started. A huge **Thank You** 🙏 to everyone who contributes!
+We thrive on community collaboration! AlbumentationsX wouldn't be the powerful augmentation library it is without contributions from developers like you. Please see our [Contributing Guide](https://github.com/albumentations-team/AlbumentationsX/blob/main/CONTRIBUTING.md) to get started. A huge **Thank You** 🙏 to everyone who contributes!
 
 [![AlbumentationsX open-source contributors](https://contrib.rocks/image?repo=albumentations-team/AlbumentationsX)](https://github.com/albumentations-team/AlbumentationsX/graphs/contributors)
 
@@ -505,16 +507,11 @@ We look forward to your contributions to help make the AlbumentationsX ecosystem
 
 ## 📜 License
 
-The current public repository is licensed under **AGPL-3.0-only**. Earlier
-AlbumentationsX releases retain the license terms recorded in the
-[licensing details and history](LICENSING.md). The AGPL permits commercial use subject
-to its terms.
-
-For alternative, scope-specific terms from Albumentations, LLC, visit the
-[pricing page](https://albumentations.ai/pricing?utm_source=github&utm_medium=referral&utm_campaign=readme).
-The [AGPL text](LICENSE), [licensing details](LICENSING.md), and
-[third-party notices](THIRD_PARTY_NOTICES.md) contain the complete
-repository-level details.
+See [Licensing](#licensing) for the two options.
+The [AGPL text](https://github.com/albumentations-team/AlbumentationsX/blob/5bac7d5ae4b38f3c2a89c21dc088245613e9e99c/LICENSE),
+[licensing history](https://github.com/albumentations-team/AlbumentationsX/blob/5bac7d5ae4b38f3c2a89c21dc088245613e9e99c/LICENSING.md),
+and [third-party notices](https://github.com/albumentations-team/AlbumentationsX/blob/5bac7d5ae4b38f3c2a89c21dc088245613e9e99c/THIRD_PARTY_NOTICES.md)
+record the applicable terms. Earlier releases retain the permissions that accompanied them.
 
 ## 📞 Contact
 

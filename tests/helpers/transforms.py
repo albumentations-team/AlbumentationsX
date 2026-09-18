@@ -64,10 +64,8 @@ class TransformTestHelper:
         A.HEStain,
     }
 
-    # Transforms that require special setup (overlay, text, etc.)
     SPECIAL_SETUP_TRANSFORMS: ClassVar[set[type]] = {
         A.OverlayElements,
-        A.TextImage,
         A.RandomCropNearBBox,
     }
 
@@ -239,13 +237,6 @@ class TransformTestHelper:
         if transform_cls == A.OverlayElements:
             if "overlay_metadata" not in data:
                 data["overlay_metadata"] = []
-
-        elif transform_cls == A.TextImage:
-            if "textimage_metadata" not in data:
-                data["textimage_metadata"] = {
-                    "text": "May the transformations be ever in your favor!",
-                    "bbox": (0.1, 0.1, 0.9, 0.2),
-                }
 
         elif transform_cls == A.Mosaic:
             if "mosaic_metadata" not in data:

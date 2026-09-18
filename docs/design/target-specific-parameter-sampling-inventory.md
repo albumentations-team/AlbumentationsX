@@ -75,7 +75,8 @@ group key.
 - `albumentations/augmentations/mixing/copy_paste.py`: `CopyAndPaste`.
 - `albumentations/augmentations/mixing/domain_adaptation.py`: `FDA`.
 - `albumentations/augmentations/transforms3d/transforms.py`: `Affine3D`, `Anisotropy3D`, `Resize3D`, `PadIfNeeded3D`,
-  `CenterCrop3D`, `RandomCrop3D`, `CoarseDropout3D`, `Flip3D`, `CubicSymmetry`, `RandomRotate90_3D`, `GridShuffle3D`.
+  `CenterCrop3D`, `RandomCrop3D`, `RandomResizedCrop3D`, `CoarseDropout3D`, `Flip3D`, `CubicSymmetry`,
+  `RandomRotate90_3D`, `GridShuffle3D`.
 
 ## Content-derived or mixed policy
 
@@ -91,7 +92,6 @@ realized value is consumed by multiple representations, move the materialization
 - `albumentations/augmentations/mixing/overlay.py`: `OverlayElements`.
 - `albumentations/augmentations/pixel/color_advanced.py`: `HEStain`.
 - `albumentations/augmentations/pixel/color_basic.py`: `Equalize`.
-- `albumentations/augmentations/text/transforms.py`: `TextImage`.
 
 ## Parameters without target-specific values
 

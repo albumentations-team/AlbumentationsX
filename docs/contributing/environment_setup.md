@@ -97,6 +97,7 @@ uv run python tools/generate_correctness_report.py \
 
 Keep local reports and other temporary artifacts under `_internal/`.
 
-Follow the [Coding Guidelines](coding_guidelines.md) and [Contributing Guide](../../CONTRIBUTING.md) for your change.
+Follow the [Coding Guidelines](coding_guidelines.md) and
+[Contributing Guide](https://github.com/albumentations-team/AlbumentationsX/blob/main/CONTRIBUTING.md) for your change.
 For setup problems, check existing [issues](https://github.com/albumentations-team/AlbumentationsX/issues) or ask in
 [Discord](https://discord.gg/e6zHCXTvaN).

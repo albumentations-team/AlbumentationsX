@@ -126,8 +126,8 @@ Each release publishes:
 The wheel and sdist contain exact copies of `LICENSE`, `LICENSING.md`,
 `THIRD_PARTY_NOTICES.md`, and the preserved Albumentations 2.0.8 MIT notice.
 They exclude the inbound `CLA.md`, private acceptance records, the CLA archive,
-and source-only font assets. See
-[License and CLA Provenance](license-provenance.md) for the complete contract.
+See [License and CLA Provenance](license-provenance.md) for the complete
+contract.
 
 ## Local Checks
 

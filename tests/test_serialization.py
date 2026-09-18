@@ -88,7 +88,6 @@ _DUAL_SERIALIZATION_CASES = tuple(
         A.CoarseDropout,
         A.CropNonEmptyMaskIfExists,
         A.OverlayElements,
-        A.TextImage,
         A.Mosaic,
         A.CopyAndPaste,
     }
@@ -366,9 +365,7 @@ def test_transform_pipeline_serialization_with_keypoints(
 
 
 _IMAGE_ONLY_SERIALIZATION_CASES = tuple(
-    case
-    for case in PRIMARY_TRANSFORM_CONTRACT_CASES
-    if issubclass(case.transform_cls, A.ImageOnlyTransform) and case.transform_cls is not A.TextImage
+    case for case in PRIMARY_TRANSFORM_CONTRACT_CASES if issubclass(case.transform_cls, A.ImageOnlyTransform)
 )
 
 

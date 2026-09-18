@@ -42,7 +42,7 @@ repos:
         files: ^(LICENSE$|LICENSE_HISTORY\.md$|LICENSING\.md$|THIRD_PARTY_NOTICES\.md$|THIRD_PARTY_LICENSES/|CLA\.md$|CONTRIBUTING\.md$|README\.md$|legal/cla/|pyproject\.toml$|MANIFEST\.in$|conda\.recipe/meta\.yaml$|docs/maintaining/license-provenance\.md$|tools/verify_legal_integrity\.py$|tests/test_legal_integrity\.py$|\.github/workflows/(pr|release-candidate|upload_to_pypi)\.yml$)
       - id: check-dependency-license-registry
         name: Check reviewed dependency license registry
-        entry: python tools/verify_dependency_licenses.py
+        entry: python tools/verify_dependency_licenses.py --export-runtime
         language: system
         pass_filenames: false
         files: ^(LICENSE_POLICY\.md$|legal/dependency-licenses\.json$|pyproject\.toml$|uv\.lock$|tools/verify_dependency_licenses\.py$|tests/test_dependency_licenses\.py$|docs/maintaining/dependency-license-review\.md$|\.github/workflows/(pr|security)\.yml$)

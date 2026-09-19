@@ -357,6 +357,22 @@ def test_benchmark_coverage_details_require_family_matrix_for_image_transforms()
     assert missing_family_matrix == []
 
 
+def test_benchmark_coverage_details_map_uniform_temporal_subsample_to_batch_matrix() -> None:
+    temporal = _coverage_for("UniformTemporalSubsample")
+    batch_case_ids = _case_ids_for_layer(temporal, "batch_matrix")
+
+    assert temporal["route"] == "temporal"
+    assert temporal["benchmark_spec"]["constructor_params"] == {"num_frames": 8}
+    assert temporal["coverage_contract"]["status"] == "ok"
+    assert temporal["performance_contract"]["batch"]["status"] == "covered"
+    assert temporal["scenario_contract"]["batch_sizes"] == [4, 8, 16]
+    assert temporal["scenario_contract"]["targets"] == ["images"]
+    assert {
+        "uniform_temporal_subsample|images|small|1|uint8|4",
+        "uniform_temporal_subsample|images|medium|5|float32|16",
+    }.issubset(batch_case_ids)
+
+
 def test_benchmark_coverage_details_map_crop_and_dropout_matrix_to_public_transforms() -> None:
     random_resized_crop = _coverage_for("RandomResizedCrop")
     channel_dropout = _coverage_for("ChannelDropout")

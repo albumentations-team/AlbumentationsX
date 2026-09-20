@@ -20,16 +20,16 @@ class UniformTemporalSubsample(BasicTransform):
     """Select a fixed number of uniformly spaced frames from a video sequence, preserving endpoints and repeating
     nearest frames when upsampling.
 
-    The first and last frames are always selected when the input contains more than
-    one frame. When `num_frames` exceeds the input length, indices are repeated to
-    produce exactly the requested number of frames.
+    Both the first and last frames are selected when `num_frames` is at least two and
+    the input contains more than one frame. When `num_frames` exceeds the input
+    length, indices are repeated to produce exactly the requested number of frames.
 
     Args:
         num_frames (int): Number of frames in the output sequence. Must be positive.
         p (float): Probability of applying the transform. Default: 1.0.
 
     Targets:
-        images
+        image
 
     Input layouts:
         - NumPy: (T, H, W, C)
@@ -39,6 +39,9 @@ class UniformTemporalSubsample(BasicTransform):
         uint8, float32
 
     Note:
+        Supply the video sequence through the `images` target. The singular `image`
+        target is not supported.
+
         Additional targets mapped to `images` receive the same frame indices and
         must have the same number of input frames. Spatial masks, bounding boxes,
         keypoints, volumes, and single images are rejected because their temporal

@@ -989,6 +989,41 @@ def test_resize_keypoints():
 
 
 @pytest.mark.parametrize(
+    "scale, resized_size, alignment",
+    [(2.0, 200, "crop"), (1.3, 130, "crop"), (0.5, 50, "pad")],
+)
+def test_resize_and_center_alignment_keypoints_match_affine_scale(
+    scale: float,
+    resized_size: int,
+    alignment: str,
+) -> None:
+    image = np.zeros((100, 100), dtype=np.uint8)
+    keypoints = [(40.25, 40.75), (50, 50), (59.75, 59.25)]
+    align_transform = (
+        A.CenterCrop(height=100, width=100, p=1)
+        if alignment == "crop"
+        else A.PadIfNeeded(min_height=100, min_width=100, position="center", p=1)
+    )
+    keypoint_params = A.KeypointParams(coord_format="xy")
+    resize_transform = A.Compose(
+        [A.Resize(height=resized_size, width=resized_size, p=1), align_transform],
+        keypoint_params=keypoint_params,
+        telemetry=False,
+    )
+    affine_transform = A.Compose(
+        [A.Affine(scale=(scale, scale), p=1)],
+        keypoint_params=keypoint_params,
+        telemetry=False,
+    )
+
+    resized = resize_transform(image=image, keypoints=keypoints)
+    affine = affine_transform(image=image, keypoints=keypoints)
+
+    assert resized["image"].shape == affine["image"].shape == image.shape
+    np.testing.assert_allclose(resized["keypoints"], affine["keypoints"], atol=1e-5)
+
+
+@pytest.mark.parametrize(
     "transform",
     [
         A.Resize(height=94, width=155, p=1),

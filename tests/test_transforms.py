@@ -1278,9 +1278,27 @@ def test_perspective_keep_size():
     )
 
     np.testing.assert_allclose(res_1["bboxes"], res_2["bboxes"], atol=0.2, rtol=1e-5, equal_nan=False)
-    np.testing.assert_allclose(res_1["keypoints"], res_2["keypoints"], rtol=1e-5, atol=1e-8, equal_nan=False)
 
     assert res_1["image"].shape == img.shape
+
+
+def test_perspective_keep_size_keypoints_follow_single_warp() -> None:
+    image = np.zeros((8, 10), dtype=np.uint8)
+    image[3, 2] = 255
+    matrix = np.diag([2, 2, 1]).astype(np.float32)
+
+    transformed_image = fgeometric.perspective(image, matrix, 20, 16, 0, cv2.BORDER_CONSTANT, True, cv2.INTER_NEAREST)
+    transformed_keypoints = fgeometric.perspective_keypoints(
+        np.array([[2, 3, 0, 0, 1]], dtype=np.float32),
+        image.shape,
+        matrix,
+        20,
+        16,
+        True,
+    )
+
+    np.testing.assert_array_equal(transformed_image, image)
+    np.testing.assert_allclose(transformed_keypoints[0, :2], [2, 3])
 
 
 def test_longest_max_size_list():

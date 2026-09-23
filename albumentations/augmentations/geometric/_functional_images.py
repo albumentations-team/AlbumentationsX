@@ -304,8 +304,8 @@ def perspective_keypoints(
     if keep_size:
         scale_x = width / max_width
         scale_y = height / max_height
-        x = (x + 0.5) * scale_x - 0.5
-        y = (y + 0.5) * scale_y - 0.5
+        x *= scale_x
+        y *= scale_y
         scale *= max(scale_x, scale_y)
 
     transformed_keypoints = np.column_stack([x, y, z, angle, scale])

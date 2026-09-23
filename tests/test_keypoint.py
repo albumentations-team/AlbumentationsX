@@ -60,9 +60,12 @@ def test_angle_to_2pi_range_negative_zero():
         # Valid keypoints
         (np.array([[10, 20, 0, 0.5], [30, 40, 0, 1.5]]), (100, 100), None),
         (np.array([[0, 0, 0, 0], [99, 99, 0, math.pi]]), (100, 100), None),
+        (np.array([[-0.25, 99.25, 0, 0]]), (100, 100), None),
+        (np.array([[-0.5, 99.5, 0, 0]]), (100, 100), None),
         # Invalid x coordinate
         (np.array([[100, 50, 1.0]]), (100, 100), "Expected x for keypoint"),
         (np.array([[-1, 50, 1.0]]), (100, 100), "Expected x for keypoint"),
+        (np.array([[99.6, 50, 1.0]]), (100, 100), "Expected x for keypoint"),
         # Invalid y coordinate
         (np.array([[50, 100, 1.0]]), (100, 100), "Expected y for keypoint"),
         (np.array([[50, -1, 1.0]]), (100, 100), "Expected y for keypoint"),
@@ -156,10 +159,10 @@ def test_filter_keypoints(keypoints, image_shape, remove_invisible, expected):
 
 
 def test_filter_keypoints_with_float_coordinates():
-    keypoints = np.array([[0.5, 0.5, 0.5], [99.9, 99.9, 1.0], [100.1, 100.1, 1.5]])
+    keypoints = np.array([[-0.25, 99.25, 0.5], [99.9, 99.9, 1.0], [-0.5, 0, 1.5], [99.5, 0, 2.0]])
     image_shape = (100, 100)
     remove_invisible = True
-    expected = np.array([[0.5, 0.5, 0.5], [99.9, 99.9, 1.0]])
+    expected = np.array([[-0.25, 99.25, 0.5], [-0.5, 0, 1.5], [99.5, 0, 2.0]])
     result = filter_keypoints(keypoints, image_shape, remove_invisible)
     np.testing.assert_array_almost_equal(result, expected)
 
@@ -589,11 +592,11 @@ def test_keypoint_rotate90(keypoint, expected, group_element: str) -> None:
         # No scaling (scale = 1)
         [[10.0, 20.0, 1, 0, 1], [10.0, 20.0, 1, 0, 1], 1],
         # Uniform scaling up (scale = 2)
-        [[10.0, 20.0, 1, 0, 1], [20.0, 40.0, 1, 0, 2], 2],
+        [[10.0, 20.0, 1, 0, 1], [20.5, 40.5, 1, 0, 2], 2],
         # Uniform scaling down (scale = 0.5)
-        [[10.0, 20.0, 1, 0, 1], [5.0, 10.0, 1, 0, 0.5], 0.5],
+        [[10.0, 20.0, 1, 0, 1], [4.75, 9.75, 1, 0, 0.5], 0.5],
         # Different coordinates, angle, and initial scale
-        [[100.0, 50.0, 1, np.pi / 4, 2], [200.0, 100.0, 1, np.pi / 4, 4], 2],
+        [[100.0, 50.0, 1, np.pi / 4, 2], [200.5, 100.5, 1, np.pi / 4, 4], 2],
     ],
 )
 def test_keypoint_scale(keypoint, expected, scale: float) -> None:
@@ -677,6 +680,11 @@ def test_angle_to_2pi_range(angle, expected) -> None:
             np.array([[10, 10], [20, 20]]),
             (30, 30),
             np.array([[10, 10], [20, 20]]),
+        ),
+        (
+            np.array([[-0.25, 99.25], [99.5, 0], [-0.75, 0]]),
+            (100, 100),
+            np.array([[-0.25, 99.25], [99.5, 0]]),
         ),
     ],
 )
@@ -933,7 +941,7 @@ def test_longest_max_size_keypoints():
     result = aug(image=img, keypoints=keypoints)
     np.testing.assert_array_almost_equal(
         result["keypoints"],
-        [(18, 10, 1, 0, 0)],
+        [(18.5, 10.5, 1, 0, 0)],
         decimal=5,
     )
 
@@ -941,7 +949,7 @@ def test_longest_max_size_keypoints():
     result = aug(image=img, keypoints=keypoints)
     np.testing.assert_array_almost_equal(
         result["keypoints"],
-        [(0.9, 0.5, 1, 0, 0)],
+        [(0.45, 0.05, 1, 0, 0)],
         decimal=5,
     )
 
@@ -956,11 +964,11 @@ def test_smallest_max_size_keypoints():
 
     aug = A.SmallestMaxSize(max_size=100, p=1)
     result = aug(image=img, keypoints=keypoints)
-    np.testing.assert_array_equal(result["keypoints"], [(90, 50, 1, 0, 0)])
+    np.testing.assert_array_equal(result["keypoints"], [(94.5, 54.5, 1, 0, 0)])
 
     aug = A.SmallestMaxSize(max_size=5, p=1)
     result = aug(image=img, keypoints=keypoints)
-    np.testing.assert_array_equal(result["keypoints"], [(4.5, 2.5, 1, 0, 0)])
+    np.testing.assert_array_equal(result["keypoints"], [(4.25, 2.25, 1, 0, 0)])
 
     aug = A.SmallestMaxSize(max_size=10, p=1)
     result = aug(image=img, keypoints=keypoints)
@@ -973,11 +981,68 @@ def test_resize_keypoints():
 
     aug = A.Resize(height=100, width=5, p=1)
     result = aug(image=img, keypoints=keypoints)
-    np.testing.assert_array_equal(result["keypoints"], [(4.5, 10, 1, 0, 0)])
+    np.testing.assert_array_equal(result["keypoints"], [(4.25, 10.5, 1, 0, 0)])
 
     aug = A.Resize(height=50, width=10, p=1)
     result = aug(image=img, keypoints=keypoints)
     np.testing.assert_array_equal(result["keypoints"], [(9, 5, 1, 0, 0)])
+
+
+@pytest.mark.parametrize(
+    "transform",
+    [
+        A.Resize(height=94, width=155, p=1),
+        A.RandomScale(scale_range={"x": (0.1, 0.1), "y": (-0.2, -0.2)}, p=1),
+        A.LongestMaxSize(max_size=155, p=1),
+        A.LetterBox(size=(100, 160), p=1),
+        A.RandomResizedCrop(size=(94, 155), scale=(1, 1), ratio=(97 / 65, 97 / 65), p=1),
+        A.CropAndPad(px=-10, keep_size=True, p=1),
+    ],
+)
+def test_resized_keypoint_tracks_image_blob(transform: BasicTransform) -> None:
+    height, width = 65, 97
+    center_x, center_y = 20.25, 24.5
+    x = np.arange(width)[None, :] + 0.5
+    y = np.arange(height)[:, None] + 0.5
+    image = np.exp(-((x - center_x) ** 2 + (y - center_y) ** 2) / 18).astype(np.float32)
+
+    augmented = A.Compose(
+        [transform],
+        keypoint_params=A.KeypointParams(coord_format="xy", remove_invisible=False),
+        telemetry=False,
+    )(image=image, keypoints=[(center_x - 0.5, center_y - 0.5)])
+
+    output_image = augmented["image"]
+    output_height, output_width = output_image.shape
+    mass = output_image.sum(dtype=np.float64)
+    image_center = np.array(
+        [
+            (output_image.sum(axis=0, dtype=np.float64) * (np.arange(output_width) + 0.5)).sum() / mass,
+            (output_image.sum(axis=1, dtype=np.float64) * (np.arange(output_height) + 0.5)).sum() / mass,
+        ],
+    )
+    keypoint_center = np.asarray(augmented["keypoints"][0]) + 0.5
+    np.testing.assert_allclose(keypoint_center, image_center, atol=0.01)
+
+
+def test_downscaled_edge_keypoint_remains_visible() -> None:
+    augmented = A.Compose(
+        [A.Resize(height=2, width=2, p=1)],
+        keypoint_params=A.KeypointParams(coord_format="xy"),
+        telemetry=False,
+    )(image=np.ones((4, 4), dtype=np.float32), keypoints=[(0, 0)])
+
+    np.testing.assert_array_equal(augmented["keypoints"], [(-0.25, -0.25)])
+
+
+def test_keypoint_on_image_boundary_survives_horizontal_flip() -> None:
+    augmented = A.Compose(
+        [A.HorizontalFlip(p=1)],
+        keypoint_params=A.KeypointParams(coord_format="xy"),
+        telemetry=False,
+    )(image=np.ones((4, 4), dtype=np.float32), keypoints=[(-0.5, 1)])
+
+    np.testing.assert_array_equal(augmented["keypoints"], [(3.5, 1)])
 
 
 @pytest.mark.parametrize(

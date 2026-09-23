@@ -100,6 +100,8 @@ class KeypointParams(Params):
     Note:
         The internal Albumentations format is [x, y, z, angle, scale]. For 2D formats (xy, yx, xya, xys, xyas, xysa),
         z coordinate is set to 0. For formats without angle or scale, these values are set to 0.
+        Integer spatial coordinates denote pixel centers. A point remains inside an axis of length N while its
+        coordinate is in [-0.5, N - 0.5].
 
     """
 
@@ -450,9 +452,9 @@ def check_keypoints(keypoints: np.ndarray, shape: tuple[int, int] | tuple[int, i
     Call when clip_after_transform is True after converting keypoints.
 
     This function validates that:
-    1. All x-coordinates are within [0, width)
-    2. All y-coordinates are within [0, height)
-    3. For 3D keypoints: All z-coordinates are within [0, depth)
+    1. All x-coordinates are within [-0.5, width - 0.5]
+    2. All y-coordinates are within [-0.5, height - 0.5]
+    3. For 3D keypoints: All z-coordinates are within [-0.5, depth - 0.5]
     4. Angles are within the range [0, 2π)
 
     Args:
@@ -485,14 +487,14 @@ def check_keypoints(keypoints: np.ndarray, shape: tuple[int, int] | tuple[int, i
     # failure is known; successful calls are the hot path and need no index or
     # error-string allocations.
     x, y = keypoints[:, 0], keypoints[:, 1]
-    invalid_x = (x < 0) | (x >= width)
-    invalid_y = (y < 0) | (y >= height)
+    invalid_x = (x < -0.5) | (x > width - 0.5)
+    invalid_y = (y < -0.5) | (y > height - 0.5)
     invalid_z: np.ndarray | None = None
     invalid_angles: np.ndarray | None = None
 
     if depth is not None and keypoints.shape[1] > 2:
         z = keypoints[:, 2]
-        invalid_z = (z < 0) | (z >= depth)
+        invalid_z = (z < -0.5) | (z > depth - 0.5)
 
     angle_col = 3 if depth is None else 4
     if keypoints.shape[1] > angle_col:
@@ -546,16 +548,16 @@ def _keypoint_validation_errors(
     for idx in invalid_indices:
         if invalid_x[idx]:
             error_messages.append(
-                f"Expected x for keypoint {keypoints[idx]} to be in range [0, {width}), got {x[idx]}",
+                f"Expected x for keypoint {keypoints[idx]} to be in range [-0.5, {width - 0.5}], got {x[idx]}",
             )
         if invalid_y[idx]:
             error_messages.append(
-                f"Expected y for keypoint {keypoints[idx]} to be in range [0, {height}), got {y[idx]}",
+                f"Expected y for keypoint {keypoints[idx]} to be in range [-0.5, {height - 0.5}], got {y[idx]}",
             )
 
-    if invalid_z is not None:
+    if invalid_z is not None and depth is not None:
         error_messages.extend(
-            f"Expected z for keypoint {keypoints[idx]} to be in range [0, {depth}), got {keypoints[idx, 2]}"
+            f"Expected z for keypoint {keypoints[idx]} to be in range [-0.5, {depth - 0.5}], got {keypoints[idx, 2]}"
             for idx in np.flatnonzero(invalid_z)
         )
 
@@ -598,13 +600,15 @@ def filter_keypoints(
         depth, height, width = shape
 
         x, y, z = keypoints[:, 0], keypoints[:, 1], keypoints[:, 2]
-        visible = (x >= 0) & (x < width) & (y >= 0) & (y < height) & (z >= 0) & (z < depth)
+        visible = (
+            (x >= -0.5) & (x <= width - 0.5) & (y >= -0.5) & (y <= height - 0.5) & (z >= -0.5) & (z <= depth - 0.5)
+        )
     else:
         # Handle 2D case (height, width)
         height, width = shape
 
         x, y = keypoints[:, 0], keypoints[:, 1]
-        visible = (x >= 0) & (x < width) & (y >= 0) & (y < height)
+        visible = (x >= -0.5) & (x <= width - 0.5) & (y >= -0.5) & (y <= height - 0.5)
 
     # Keep the public ownership contract: filtering returns a detached array even
     # when every keypoint survives.

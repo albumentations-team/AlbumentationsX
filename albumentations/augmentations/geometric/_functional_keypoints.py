@@ -136,8 +136,8 @@ def keypoints_scale(
     scale_x: float,
     scale_y: float,
 ) -> np.ndarray:
-    """Scale keypoint x and y by scale_x and scale_y. Use when mapping keypoints after resize or
-    crop. Angle and other extra columns are unchanged.
+    """Scale keypoints in pixel-center coordinates after resize or crop.
+    Angle and other extra columns are unchanged.
 
     Args:
         keypoints (np.ndarray): Array of keypoints with shape (num_keypoints, 2+)
@@ -156,9 +156,8 @@ def keypoints_scale(
         keypoints[:, 4],
     )
 
-    # Scale x and y
-    x_scaled = x * scale_x
-    y_scaled = y * scale_y
+    x_scaled = (x + 0.5) * scale_x - 0.5
+    y_scaled = (y + 0.5) * scale_y - 0.5
 
     # Scale the keypoint scale by the maximum of scale_x and scale_y
     scale_scaled = scale * max(scale_x, scale_y)
@@ -735,8 +734,8 @@ def validate_keypoints(
     keypoints: np.ndarray,
     image_shape: tuple[int, int],
 ) -> np.ndarray:
-    """Drop keypoints outside image bounds. image_shape (H,W). Keeps points with x in [0,W),
-    y in [0,H). Use after transforms that may move points out of frame.
+    """Drop keypoints outside image bounds. image_shape (H,W). Keeps points with x in
+    [-0.5, W - 0.5], y in [-0.5, H - 0.5]. Use after transforms that may move points out of frame.
 
     Args:
         keypoints (np.ndarray): Array of keypoints with shape (N, M) where N is the number of keypoints
@@ -755,7 +754,7 @@ def validate_keypoints(
 
     x, y = keypoints[:, 0], keypoints[:, 1]
 
-    valid_indices = (x >= 0) & (x < cols) & (y >= 0) & (y < rows)
+    valid_indices = (x >= -0.5) & (x <= cols - 0.5) & (y >= -0.5) & (y <= rows - 0.5)
 
     return keypoints[valid_indices]
 

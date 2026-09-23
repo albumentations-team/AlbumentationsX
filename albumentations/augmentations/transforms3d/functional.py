@@ -590,7 +590,7 @@ def keypoints_scale_3d(
     depth_scale, height_scale, width_scale = np.asarray(target_shape, dtype=np.float32) / np.asarray(
         source_shape, dtype=np.float32
     )
-    result = keypoints.copy()
+    result = keypoints.astype(np.result_type(keypoints.dtype, np.float32), copy=True)
     result[:, 0] = (result[:, 0] + 0.5) * width_scale - 0.5
     result[:, 1] = (result[:, 1] + 0.5) * height_scale - 0.5
     result[:, 2] = (result[:, 2] + 0.5) * depth_scale - 0.5

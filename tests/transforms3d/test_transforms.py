@@ -162,8 +162,9 @@ def test_resize_3d_keeps_edge_keypoint_inside_volume() -> None:
     np.testing.assert_array_equal(augmented["keypoints"], [(-0.25, -0.25, -0.25)])
 
 
-def test_resize_3d_preserves_keypoint_attributes_after_xyz_coordinates():
-    keypoints = np.array([[2.0, 2.0, 1.0, 7.0, 11.0], [6.0, 1.0, 0.0, 9.0, 13.0]], dtype=np.float32)
+@pytest.mark.parametrize("dtype", [np.float32, np.int64])
+def test_resize_3d_preserves_keypoint_attributes_after_xyz_coordinates(dtype: type[np.generic]) -> None:
+    keypoints = np.array([[2.0, 2.0, 1.0, 7.0, 11.0], [6.0, 1.0, 0.0, 9.0, 13.0]], dtype=dtype)
 
     result = f3d.keypoints_scale_3d(
         keypoints,

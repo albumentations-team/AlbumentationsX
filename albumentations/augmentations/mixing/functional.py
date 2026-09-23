@@ -32,7 +32,10 @@ from albumentations.core.type_definitions import (
 
 # Type definition for a processed mosaic item
 class ProcessedMosaicItem(TypedDict):
-    """Preprocessed Mosaic grid item: cell RGB image, optional semantic mask, optional (N,H,W) instance masks, bboxes, keypoints."""
+    """Preprocessed Mosaic cell with an image, optional image aliases, masks, bboxes, and keypoints.
+
+    The optional `additional_images` mapping holds an array for each active image alias.
+    """
 
     image: np.ndarray
     additional_images: NotRequired[dict[str, np.ndarray]]
@@ -828,7 +831,28 @@ def _mosaic_cell_geometry_compose(
     with_keypoint_params: bool,
     additional_targets: dict[str, str] | None = None,
 ) -> Compose:
-    """Construct Albumentations Compose per Mosaic grid cell so RGB, mask, and stacked instance masks share identical resize/crop."""
+    """Build a Compose pipeline for one Mosaic cell, sharing resize, crop, and optional padding across image aliases.
+
+    Registered image aliases receive the same geometry as the canonical image. Contain mode pads the crop when needed.
+
+    Args:
+        cell_shape (tuple[int, int]): Intermediate cell height and width.
+        target_shape (tuple[int, int]): Final placement height and width to crop from the cell.
+        fill (float | tuple[float, ...]): Padding value for images and image aliases.
+        fill_mask (float | tuple[float, ...]): Padding value for masks.
+        fit_mode (Literal['cover', 'contain']): Whether to cover or fit inside the cell before cropping.
+        interpolation (FullInterpolationType): Interpolation for images and image aliases.
+        mask_interpolation (FullInterpolationType): Interpolation for masks.
+        cell_position (Literal['top_left', 'top_right', 'center', 'bottom_left', 'bottom_right']): Cell position used to
+            choose the opposite crop corner.
+        with_bbox_params (bool): Whether to configure bbox processing.
+        with_keypoint_params (bool): Whether to configure keypoint processing.
+        additional_targets (dict[str, str] | None): Image alias names mapped to the `image` target type, if any.
+
+    Returns:
+        Compose: Cell pipeline with shared geometry for the canonical image and registered aliases.
+
+    """
     compose_kwargs: dict[str, Any] = {"p": 1.0, "additional_targets": additional_targets}
     if with_bbox_params:
         compose_kwargs["bbox_params"] = {"coord_format": "albumentations"}
@@ -891,26 +915,25 @@ def process_cell_geometry(
     mask_interpolation: FullInterpolationType,
     cell_position: Literal["top_left", "top_right", "center", "bottom_left", "bottom_right"],
 ) -> ProcessedMosaicItem:
-    """Pad and/or crop one item to target_shape. PadIfNeeded and Crop with fit_mode and
-    cell_position; returns ProcessedMosaicItem (image, mask, bboxes, keypoints).
+    """Resize and crop a Mosaic item to its placement, padding when needed and sharing geometry across image aliases.
 
-    Uses a Compose pipeline with PadIfNeeded and Crop to ensure the output
-    matches the target cell dimensions exactly, handling both padding and cropping cases.
+    The optional `item["additional_images"]` maps active alias names to arrays passed through the same Compose pipeline.
 
     Args:
-        cell_shape (tuple[int, int]): Shape of the cell.
-        item (ProcessedMosaicItem): The preprocessed mosaic item dictionary.
-        target_shape (tuple[int, int]): Target shape of the cell.
-        fill (float | tuple[float, ...]): Fill value for image padding.
-        fill_mask (float | tuple[float, ...]): Fill value for mask padding.
-        fit_mode (Literal['cover', 'contain']): Fit mode for the mosaic.
-        interpolation (int): Interpolation method for image.
-        mask_interpolation (int): Interpolation method for mask.
-        cell_position (Literal['top_left', 'top_right', 'center', 'bottom_left', 'bottom_right']): Position
-        of the cell.
+        cell_shape (tuple[int, int]): Intermediate cell height and width.
+        item (ProcessedMosaicItem): Preprocessed cell; `additional_images`, when present, maps alias names to arrays.
+        target_shape (tuple[int, int]): Final placement height and width.
+        fill (float | tuple[float, ...]): Padding value for images and image aliases.
+        fill_mask (float | tuple[float, ...]): Padding value for masks.
+        fit_mode (Literal['cover', 'contain']): Whether to cover or fit inside the cell before cropping.
+        interpolation (FullInterpolationType): Interpolation for images and image aliases.
+        mask_interpolation (FullInterpolationType): Interpolation for masks.
+        cell_position (Literal['top_left', 'top_right', 'center', 'bottom_left', 'bottom_right']): Cell position used to
+            choose the opposite crop corner.
 
-    Returns: (ProcessedMosaicItem): Dictionary containing the geometrically processed image,
-        mask, bboxes, and keypoints, fitting the target dimensions.
+    Returns:
+        ProcessedMosaicItem: Processed image, masks, bboxes, and keypoints, plus a mapping of geometrically processed
+        alias arrays under `additional_images` when aliases are present.
 
     """
     additional_images = item.get("additional_images", {})

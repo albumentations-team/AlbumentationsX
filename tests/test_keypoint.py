@@ -1045,6 +1045,16 @@ def test_keypoint_on_image_boundary_survives_horizontal_flip() -> None:
     np.testing.assert_array_equal(augmented["keypoints"], [(3.5, 1)])
 
 
+def test_flipped_boundary_keypoint_survives_mask_remap() -> None:
+    augmented = A.Compose(
+        [A.HorizontalFlip(p=1), A.GridDistortion(num_steps=2, distort_range=(0, 0), p=1)],
+        keypoint_params=A.KeypointParams(coord_format="xy"),
+        telemetry=False,
+    )(image=np.ones((8, 10), dtype=np.float32), keypoints=[(-0.5, 3)])
+
+    assert augmented["keypoints"].shape == (1, 2)
+
+
 @pytest.mark.parametrize(
     "image_shape, keypoints, distortion_type",
     [

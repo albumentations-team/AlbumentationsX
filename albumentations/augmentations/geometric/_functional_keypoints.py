@@ -533,8 +533,9 @@ def remap_keypoints_via_mask(
     # Create mask where each keypoint has unique index
     kp_mask = np.zeros((height, width), dtype=np.int16)
     for idx, kp in enumerate(keypoints, start=1):
-        x, y = round(kp[0]), round(kp[1])
-        if 0 <= x < width and 0 <= y < height:
+        if -0.5 <= kp[0] <= width - 0.5 and -0.5 <= kp[1] <= height - 0.5:
+            x = min(max(round(kp[0]), 0), width - 1)
+            y = min(max(round(kp[1]), 0), height - 1)
             # Note: cv2.circle takes (x,y) coordinates
             cv2.circle(kp_mask, (x, y), 1, idx, -1)
 

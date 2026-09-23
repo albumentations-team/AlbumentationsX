@@ -174,9 +174,8 @@ class TestRandomScale:
         )
         np.testing.assert_array_almost_equal(data["bboxes"], expected_bboxes, decimal=5)
 
-        # keypoints_scale with scale_x=0.5, scale_y=1.0
         expected_keypoints = np.array(
-            [[15, 20, 0, 0.5, 1], [10, 30, 60, 2.5, 2]],
+            [[14.75, 20, 0, 0.5, 1], [9.75, 30, 60, 2.5, 2]],
             dtype=np.float32,
         )
         np.testing.assert_array_almost_equal(data["keypoints"], expected_keypoints, decimal=5)
@@ -196,3 +195,17 @@ class TestRandomScale:
             bbox_type="obb",
         )
         np.testing.assert_array_almost_equal(result_obb["bboxes"], expected, decimal=5)
+
+    def test_obb_uses_actual_output_size(self):
+        height, width = 65, 97
+        transform = A.Compose(
+            [A.RandomScale(scale_range={"x": (0.1, 0.1), "y": (-0.2, -0.2)}, p=1)],
+            bbox_params=A.BboxParams(coord_format="albumentations", bbox_type="obb"),
+            telemetry=False,
+        )
+        output = transform(image=np.zeros((height, width, 3), dtype=np.uint8), bboxes=[(0.2, 0.3, 0.4, 0.5, 45)])
+
+        output_height, output_width = output["image"].shape[:2]
+        assert (output_height, output_width) == (52, 106)
+        expected_angle = np.degrees(np.arctan2(output_height / height, output_width / width))
+        np.testing.assert_allclose(output["bboxes"][0][4], expected_angle, atol=1e-5)

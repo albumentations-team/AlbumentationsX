@@ -162,8 +162,8 @@ class Crop3D(Transform3D):
         origin_key: str | None = None,
         origin_space: Literal["voxel"] = "voxel",
         pad_if_needed: bool = False,
-        fill: float = 0,
-        fill_mask: float = 0,
+        fill: _FillValue = 0,
+        fill_mask: _FillValue = 0,
         target_overrides: dict[str, dict[str, int | float]] | None = None,
         p: float = 1.0,
     ):

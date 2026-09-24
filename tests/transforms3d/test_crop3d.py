@@ -260,6 +260,21 @@ def test_crop3d_tensor_masks_and_numpy_alias_share_window(dtype, value, channels
     assert result["mask3d"].untyped_storage().data_ptr() != mask.untyped_storage().data_ptr()
 
 
+@pytest.mark.parametrize("compose", [False, True])
+@pytest.mark.parametrize("target", ["mask3d", "coverage"])
+def test_crop3d_rejects_bool_tensor_masks_at_input_boundary(compose, target):
+    transform = A.Crop3D((2, 3, 4), origin=(-1, 1, 2), pad_if_needed=True)
+    transform.add_targets({"coverage": "mask3d"})
+    pipeline = A.Compose([transform], additional_targets={"coverage": "mask3d"}) if compose else transform
+    data = {
+        "volume": np.zeros((3, 5, 7, 1), np.float32),
+        "mask3d": np.ones((3, 5, 7, 1), np.uint8),
+        target: torch.ones((1, 3, 5, 7), dtype=torch.bool),
+    }
+    with pytest.raises(TypeError, match=rf"{target} must have dtype one of .*got torch.bool"):
+        pipeline(**data)
+
+
 def test_crop3d_big_mask_fill_survives_applied_config_and_replay():
     fill = 2**63 + 3
     data = {"volume": np.zeros((3, 5, 7), np.uint8), "mask3d": np.ones((3, 5, 7), np.uint64)}

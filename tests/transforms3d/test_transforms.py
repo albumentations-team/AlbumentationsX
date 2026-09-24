@@ -1136,6 +1136,7 @@ def test_center_crop3d_keypoints(
             A.Pad3D: {"padding": 2},
             A.RandomCrop3D: {"size": (4, 4, 4)},
             A.CenterCrop3D: {"size": (4, 4, 4)},
+            A.Crop3D: {"size": (4, 4, 4), "origin": (1, 1, 1)},
             A.CubicSymmetry: {},
             A.Affine3D: {
                 "rotate_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (90.0, 90.0)},

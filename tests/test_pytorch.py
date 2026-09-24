@@ -170,7 +170,7 @@ def test_post_data_check():
     )
 
     res = transform(image=img, keypoints=keypoints, bboxes=bboxes)
-    np.testing.assert_array_equal(res["keypoints"], [(45, 45), (25, 25)])
+    np.testing.assert_array_equal(res["keypoints"], [(44.75, 44.75), (24.75, 24.75)])
     # Use assert_allclose instead of assert_array_equal
     np.testing.assert_allclose(res["bboxes"], [(0, 0, 45, 45, 0)], rtol=1e-5, atol=1e-5)
 

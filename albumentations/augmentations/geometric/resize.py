@@ -260,8 +260,8 @@ class RandomScale(DualTransform):
         **params: Any,
     ) -> np.ndarray:
         height, width = shape[:2]
-        new_height = max(1, round(height * scale_y))
-        new_width = max(1, round(width * scale_x))
+        new_height = max(1, int(height * scale_y))
+        new_width = max(1, int(width * scale_x))
         return fgeometric.resize_bboxes(
             bboxes,
             image_shape=(height, width),
@@ -274,9 +274,13 @@ class RandomScale(DualTransform):
         keypoints: np.ndarray,
         scale_x: float,
         scale_y: float,
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
-        return fgeometric.keypoints_scale(keypoints, scale_x, scale_y)
+        height, width = shape[:2]
+        new_height = max(1, int(height * scale_y))
+        new_width = max(1, int(width * scale_x))
+        return fgeometric.keypoints_scale(keypoints, new_width / width, new_height / height)
 
 
 class BaseMaxSizeTransform(DualTransform):
@@ -460,9 +464,13 @@ class BaseMaxSizeTransform(DualTransform):
         self,
         keypoints: np.ndarray,
         scale: float,
+        shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
-        return fgeometric.keypoints_scale(keypoints, scale, scale)
+        height, width = shape[:2]
+        new_height = max(1, round(height * scale))
+        new_width = max(1, round(width * scale))
+        return fgeometric.keypoints_scale(keypoints, new_width / width, new_height / height)
 
 
 class LongestMaxSize(BaseMaxSizeTransform):
@@ -1042,16 +1050,17 @@ class LetterBox(DualTransform):
     def apply_to_keypoints(
         self,
         keypoints: np.ndarray,
-        scale: float,
         new_height: int,
         new_width: int,
+        shape: tuple[int, int],
         pad_top: int,
         pad_bottom: int,
         pad_left: int,
         pad_right: int,
         **params: Any,
     ) -> np.ndarray:
-        scaled = fgeometric.keypoints_scale(keypoints, scale, scale)
+        height, width = shape[:2]
+        scaled = fgeometric.keypoints_scale(keypoints, new_width / width, new_height / height)
         return fgeometric.pad_keypoints(
             scaled,
             pad_top,

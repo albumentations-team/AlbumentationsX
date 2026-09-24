@@ -121,12 +121,50 @@ def test_resize_3d_scales_xyz_keypoints():
 
     result = transform(volume=volume, keypoints=keypoints, keypoint_labels=keypoint_labels)
 
-    np.testing.assert_allclose(result["keypoints"], [[4.0, 1.0, 2.0], [12.0, 0.5, 0.0]])
+    np.testing.assert_allclose(result["keypoints"], [[4.5, 0.75, 2.5], [12.5, 0.25, 0.5]])
     assert result["keypoint_labels"] == keypoint_labels
 
 
-def test_resize_3d_preserves_keypoint_attributes_after_xyz_coordinates():
-    keypoints = np.array([[2.0, 2.0, 1.0, 7.0, 11.0], [6.0, 1.0, 0.0, 9.0, 13.0]], dtype=np.float32)
+def test_resize_3d_keypoint_tracks_volume_blob() -> None:
+    depth, height, width = 21, 65, 97
+    center_x, center_y, center_z = 20.25, 24.5, 10.25
+    x = np.arange(width)[None, None, :] + 0.5
+    y = np.arange(height)[None, :, None] + 0.5
+    z = np.arange(depth)[:, None, None] + 0.5
+    volume = np.exp(-((x - center_x) ** 2 + (y - center_y) ** 2 + (z - center_z) ** 2) / 18).astype(np.float32)
+    augmented = A.Compose(
+        [A.Resize3D(size=(29, 94, 155), p=1)],
+        keypoint_params=A.KeypointParams(coord_format="xyz", remove_invisible=False),
+        telemetry=False,
+    )(volume=volume[..., None], keypoints=[(center_x - 0.5, center_y - 0.5, center_z - 0.5)])
+
+    output_volume = augmented["volume"][..., 0]
+    output_depth, output_height, output_width = output_volume.shape
+    mass = output_volume.sum(dtype=np.float64)
+    volume_center = np.array(
+        [
+            (output_volume.sum(axis=(0, 1), dtype=np.float64) * (np.arange(output_width) + 0.5)).sum() / mass,
+            (output_volume.sum(axis=(0, 2), dtype=np.float64) * (np.arange(output_height) + 0.5)).sum() / mass,
+            (output_volume.sum(axis=(1, 2), dtype=np.float64) * (np.arange(output_depth) + 0.5)).sum() / mass,
+        ],
+    )
+    keypoint_center = np.asarray(augmented["keypoints"][0]) + 0.5
+    np.testing.assert_allclose(keypoint_center, volume_center, atol=0.02)
+
+
+def test_resize_3d_keeps_edge_keypoint_inside_volume() -> None:
+    augmented = A.Compose(
+        [A.Resize3D(size=(2, 2, 2), p=1)],
+        keypoint_params=A.KeypointParams(coord_format="xyz"),
+        telemetry=False,
+    )(volume=np.ones((4, 4, 4, 1), dtype=np.float32), keypoints=[(0, 0, 0)])
+
+    np.testing.assert_array_equal(augmented["keypoints"], [(-0.25, -0.25, -0.25)])
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.int64])
+def test_resize_3d_preserves_keypoint_attributes_after_xyz_coordinates(dtype: type[np.generic]) -> None:
+    keypoints = np.array([[2.0, 2.0, 1.0, 7.0, 11.0], [6.0, 1.0, 0.0, 9.0, 13.0]], dtype=dtype)
 
     result = f3d.keypoints_scale_3d(
         keypoints,
@@ -134,7 +172,7 @@ def test_resize_3d_preserves_keypoint_attributes_after_xyz_coordinates():
         target_shape=(4, 2, 16),
     )
 
-    np.testing.assert_array_equal(result, [[4.0, 1.0, 2.0, 7.0, 11.0], [12.0, 0.5, 0.0, 9.0, 13.0]])
+    np.testing.assert_array_equal(result, [[4.5, 0.75, 2.5, 7.0, 11.0], [12.5, 0.25, 0.5, 9.0, 13.0]])
 
 
 @pytest.mark.parametrize("interpolation", [cv2.INTER_CUBIC, cv2.INTER_AREA])

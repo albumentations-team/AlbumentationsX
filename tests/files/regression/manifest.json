@@ -199,11 +199,11 @@
     {
       "behavior_epoch": "2.4",
       "environment": {
-        "albumentations": "2.3.10",
-        "numpy": "2.2.6",
+        "albumentations": "2.4.10",
+        "numpy": "2.5.1",
         "opencv": "5.0.0",
-        "platform": "macOS-26.4.1-arm64-arm-64bit",
-        "python": "3.10.16"
+        "platform": "macOS-27.0-arm64-arm-64bit",
+        "python": "3.12.7"
       },
       "id": "Resize",
       "input_recipe": {
@@ -283,14 +283,14 @@
         },
         "keypoints": {
           "dtype": "float32",
-          "max": 16.0,
-          "min": 4.0,
-          "sha256": "99e1ae1f2f17dcc54dc33e85b0080161f483216a681940e76e2d728b1152cc28",
+          "max": 16.5,
+          "min": 4.5,
+          "sha256": "d1beb74c782dab4454079eca690bb37be234c9d73f2407d7e51fa2416534669b",
           "shape": [
             2,
             2
           ],
-          "sum": 38.0
+          "sum": 40.0
         }
       },
       "params": {

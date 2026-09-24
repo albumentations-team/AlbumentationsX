@@ -378,6 +378,7 @@ Where:
 | [Anisotropy3D](https://albumentations.ai/explore/transform/Anisotropy3D/)               | ✓      |        |           |
 | [CenterCrop3D](https://albumentations.ai/explore/transform/CenterCrop3D/)               | ✓      | ✓      | ✓         |
 | [CoarseDropout3D](https://albumentations.ai/explore/transform/CoarseDropout3D/)         | ✓      | ✓      | ✓         |
+| [Crop3D](https://albumentations.ai/explore/transform/Crop3D/)                           | ✓      | ✓      | ✓         |
 | [CubicSymmetry](https://albumentations.ai/explore/transform/CubicSymmetry/)             | ✓      | ✓      | ✓         |
 | [ElasticTransform3D](https://albumentations.ai/explore/transform/ElasticTransform3D/)   | ✓      | ✓      | ✓         |
 | [Flip3D](https://albumentations.ai/explore/transform/Flip3D/)                           | ✓      | ✓      | ✓         |

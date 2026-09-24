@@ -26,6 +26,7 @@
   "ConstrainedCoarseDropout": ["num_holes_range", "hole_height_range", "hole_width_range", "fill", "fill_mask", "p", "mask_indices", "bbox_labels"],
   "CopyAndPaste": ["min_visibility_after_paste", "blend_mode", "blend_sigma_range", "scale_range", "min_paste_area", "metadata_key", "p"],
   "Crop": ["x_min", "y_min", "x_max", "y_max", "pad_if_needed", "pad_position", "border_mode", "fill", "fill_mask", "p"],
+  "Crop3D": ["size", "origin", "origin_key", "origin_space", "pad_if_needed", "fill", "fill_mask", "target_overrides", "p"],
   "CropAndPad": ["px", "percent", "keep_size", "sample_independently", "interpolation", "mask_interpolation", "border_mode", "fill", "fill_mask", "p"],
   "CropNonEmptyMaskIfExists": ["height", "width", "ignore_values", "ignore_channels", "p"],
   "CubicSymmetry": ["p"],

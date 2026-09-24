@@ -20,6 +20,7 @@ from typing_extensions import Self
 from albumentations.augmentations.crops._sampling import SamplingMethod, sample_3d_crop_shape
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.transforms3d import functional as f3d
+from albumentations.augmentations.transforms3d.crop import Crop3D
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
@@ -41,6 +42,7 @@ __all__ = [
     "Anisotropy3D",
     "CenterCrop3D",
     "CoarseDropout3D",
+    "Crop3D",
     "CubicSymmetry",
     "ElasticTransform3D",
     "Flip3D",

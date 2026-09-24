@@ -683,6 +683,49 @@ def pad_3d_with_params(
     return pad3d(volume, padding, value)
 
 
+def crop3d_window(
+    shape: tuple[int, int, int],
+    origin: tuple[int, int, int],
+    size: tuple[int, int, int],
+    pad_if_needed: bool,
+) -> tuple[tuple[int, int, int, int, int, int], tuple[int, int, int, int, int, int]]:
+    """Resolve a signed window into bounded source coordinates and constant padding."""
+    coords: list[int] = []
+    padding: list[int] = []
+    for bound, start, length in zip(shape, origin, size, strict=True):
+        if not pad_if_needed and (start < 0 or start + length > bound):
+            raise ValueError("Crop window is out of bounds; enable pad_if_needed")
+        low = min(bound, max(0, start))
+        high = min(bound, max(0, start + length))
+        before = min(length, max(0, -start))
+        coords.extend((low, high))
+        padding.extend((before, length - (high - low) - before))
+    return (coords[0], coords[1], coords[2], coords[3], coords[4], coords[5]), (
+        padding[0],
+        padding[1],
+        padding[2],
+        padding[3],
+        padding[4],
+        padding[5],
+    )
+
+
+def crop_and_pad_volume(
+    volume: VolumeType | torch.Tensor,
+    crop_coords: tuple[int, int, int, int, int, int],
+    padding: tuple[int, int, int, int, int, int],
+    fill: float,
+) -> VolumeType | torch.Tensor:
+    """Apply a prevalidated integer window using existing crop and padding adapters."""
+    z_min, z_max, y_min, y_max, x_min, x_max = crop_coords
+    cropped = (
+        volume[:, z_min:z_max, y_min:y_max, x_min:x_max]
+        if isinstance(volume, torch.Tensor)
+        else crop3d(volume, crop_coords)
+    )
+    return pad_3d_with_params(cropped, padding, fill)
+
+
 def crop3d(
     volume: ImageType,
     crop_coords: tuple[int, int, int, int, int, int],

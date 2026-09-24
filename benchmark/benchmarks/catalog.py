@@ -61,6 +61,7 @@ PARAM_OVERRIDES: Mapping[str, Mapping[str, Any]] = {
     "CenterCrop3D": {"size": (4, 48, 48)},
     "ConstrainedCoarseDropout": {"mask_indices": [1]},
     "Crop": {"x_max": 128, "y_max": 128},
+    "Crop3D": {"size": (4, 48, 48), "origin": (1, 2, 3)},
     "CropAndPad": {"px": 8},
     "CropNonEmptyMaskIfExists": {"height": 96, "width": 96},
     "Flip3D": {"flip_axes": (0, 1, 2)},

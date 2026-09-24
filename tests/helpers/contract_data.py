@@ -236,6 +236,11 @@ def make_volume_data(rng: np.random.Generator) -> dict[str, Any]:
     return {"volume": volume, "mask3d": mask3d}
 
 
+def make_crop3d_origin_context(rng: np.random.Generator, data: dict[str, Any]) -> dict[str, Any]:
+    """Supply a fixed DHW origin without coupling localization to Crop3D."""
+    return {"user_data": {"crop_start": (0, 1, 2)}}
+
+
 def make_empty_context(rng: np.random.Generator, data: dict[str, Any]) -> dict[str, Any]:
     """Return no transform-specific context."""
     return {}

@@ -303,6 +303,7 @@ VOLUME_TRANSFORMS: Mapping[str, Factory] = {
         p=1.0,
     ),
     "center_crop3d": lambda: albumentations.CenterCrop3D(size=(4, 48, 48), p=1.0),
+    "crop3d": lambda: albumentations.Crop3D(size=(4, 48, 48), origin=(1, 2, 3), p=1.0),
     "random_crop3d": lambda: albumentations.RandomCrop3D(size=(4, 48, 48), p=1.0),
     "random_resized_crop3d": lambda: albumentations.RandomResizedCrop3D(
         size=(4, 48, 48),

@@ -60,6 +60,7 @@ FUNCTIONAL_3D_KERNELS = (
     "elastic_3d",
     "resize3d",
     "crop3d",
+    "crop_and_pad_volume",
     "pad_3d_with_params",
     "cutout3d",
     "rotate90_3d",
@@ -451,6 +452,10 @@ def _call_crop3d(benchmark: Any) -> np.ndarray:
     return f3d.crop3d(benchmark.volume, benchmark.crop_coords)
 
 
+def _call_crop_and_pad_volume(benchmark: Any) -> np.ndarray:
+    return f3d.crop_and_pad_volume(benchmark.volume, benchmark.crop_coords, (1, 0, 2, 0, 0, 3), 0)
+
+
 def _call_affine_3d(benchmark: Any) -> np.ndarray:
     return f3d.affine_3d(
         benchmark.volume,
@@ -515,6 +520,7 @@ FUNCTIONAL_3D_CALLS: Mapping[str, ImageKernelCall] = {
     "elastic_3d": _call_elastic_3d,
     "resize3d": _call_resize3d,
     "crop3d": _call_crop3d,
+    "crop_and_pad_volume": _call_crop_and_pad_volume,
     "pad_3d_with_params": _call_pad_3d_with_params,
     "cutout3d": _call_cutout3d,
     "rotate90_3d": _call_rotate90_3d,

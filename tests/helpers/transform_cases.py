@@ -20,6 +20,7 @@ from tests.helpers.contract_data import (
     ContractDataFactory,
     make_binary_region_context,
     make_copy_and_paste_context,
+    make_crop3d_origin_context,
     make_crop_near_bbox_context,
     make_empty_context,
     make_float_image_data,
@@ -622,6 +623,7 @@ _BASE_CASE_SPECS: list[list[Any]] = [
         },
     ],
     [A.CenterCrop3D, {"size": (2, 30, 30)}],
+    [A.Crop3D, {"size": (2, 30, 30), "origin": (0, 1, 2)}],
     [A.RandomCrop3D, {"size": (2, 30, 30)}],
     [
         A.RandomResizedCrop3D,
@@ -1362,6 +1364,7 @@ _EXACT_TRANSFORMS = {
     A.Anisotropy3D,
     A.Blur,
     A.CropAndPad,
+    A.Crop3D,
     A.ExposureMatching,
     A.Flip3D,
     A.HorizontalFlip,
@@ -1541,6 +1544,30 @@ def _iter_parameter_mode_cases() -> list[TransformContractCase]:
 TRANSFORM_CONTRACT_CASES = (
     *_iter_base_cases(),
     *_iter_parameter_mode_cases(),
+    TransformContractCase(
+        case_id="crop3d-per-call",
+        transform_cls=A.Crop3D,
+        init_kwargs={"size": (2, 30, 30), "origin_key": "crop_start"},
+        primary_data_factory=make_volume_data,
+        context_factory=make_crop3d_origin_context,
+        metadata_keys=frozenset({"user_data"}),
+        replay_profile=ReplayProfile.EXACT,
+    ),
+    TransformContractCase(
+        case_id="crop3d-mask-fill",
+        transform_cls=A.Crop3D,
+        init_kwargs={
+            "size": (6, 30, 30),
+            "origin": (-1, 1, 2),
+            "pad_if_needed": True,
+            "fill": 7,
+            "fill_mask": 3,
+            "target_overrides": {"mask3d": {"fill": 17}},
+        },
+        primary_data_factory=make_volume_data,
+        required_targets=frozenset({"mask3d"}),
+        replay_profile=ReplayProfile.EXACT,
+    ),
 )
 
 TRANSFORM_CASES_BY_CLASS: dict[type[A.BasicTransform], tuple[TransformContractCase, ...]] = {

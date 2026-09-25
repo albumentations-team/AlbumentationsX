@@ -127,9 +127,9 @@ def test_random_resized_crop3d_scales_xyz_keypoints_after_cropping() -> None:
     result = transform(volume=volume, keypoints=keypoints)
     z_min, z_max, y_min, y_max, x_min, x_max = result["replay"]["transforms"][0]["params"]["params"]["crop_coords"]
     expected = keypoints.copy()
-    expected[:, 0] = (keypoints[:, 0] - x_min) * 32 / (x_max - x_min)
-    expected[:, 1] = (keypoints[:, 1] - y_min) * 32 / (y_max - y_min)
-    expected[:, 2] = (keypoints[:, 2] - z_min) * 16 / (z_max - z_min)
+    expected[:, 0] = (keypoints[:, 0] - x_min + 0.5) * 32 / (x_max - x_min) - 0.5
+    expected[:, 1] = (keypoints[:, 1] - y_min + 0.5) * 32 / (y_max - y_min) - 0.5
+    expected[:, 2] = (keypoints[:, 2] - z_min + 0.5) * 16 / (z_max - z_min) - 0.5
 
     np.testing.assert_allclose(result["keypoints"], expected)
 

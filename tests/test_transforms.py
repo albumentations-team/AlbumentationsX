@@ -1278,9 +1278,27 @@ def test_perspective_keep_size():
     )
 
     np.testing.assert_allclose(res_1["bboxes"], res_2["bboxes"], atol=0.2, rtol=1e-5, equal_nan=False)
-    np.testing.assert_allclose(res_1["keypoints"], res_2["keypoints"], rtol=1e-5, atol=1e-8, equal_nan=False)
 
     assert res_1["image"].shape == img.shape
+
+
+def test_perspective_keep_size_keypoints_follow_single_warp() -> None:
+    image = np.zeros((8, 10), dtype=np.uint8)
+    image[3, 2] = 255
+    matrix = np.diag([2, 2, 1]).astype(np.float32)
+
+    transformed_image = fgeometric.perspective(image, matrix, 20, 16, 0, cv2.BORDER_CONSTANT, True, cv2.INTER_NEAREST)
+    transformed_keypoints = fgeometric.perspective_keypoints(
+        np.array([[2, 3, 0, 0, 1]], dtype=np.float32),
+        image.shape,
+        matrix,
+        20,
+        16,
+        True,
+    )
+
+    np.testing.assert_array_equal(transformed_image, image)
+    np.testing.assert_allclose(transformed_keypoints[0, :2], [2, 3])
 
 
 def test_longest_max_size_list():
@@ -1290,10 +1308,8 @@ def test_longest_max_size_list():
     aug = A.LongestMaxSize(max_size=[5, 10], p=1)
     result = aug(image=img, keypoints=keypoints)
     assert result["image"].shape in [(10, 2, 1), (5, 1, 1)]
-    assert tuple(result["keypoints"][0].tolist()) in [
-        (0.9, 0.5, 33, 0, 0),
-        (1.8, 1.0, 33, 0, 0),
-    ]
+    expected = {(10, 2, 1): (1.4, 0.6, 33, 0, 0), (5, 1, 1): (0.45, 0.05, 33, 0, 0)}[result["image"].shape]
+    np.testing.assert_allclose(result["keypoints"][0], expected)
 
 
 def test_smallest_max_size_list():
@@ -1303,10 +1319,8 @@ def test_smallest_max_size_list():
     aug = A.SmallestMaxSize(max_size=[50, 100], p=1)
     result = aug(image=img, keypoints=keypoints)
     assert result["image"].shape in [(250, 50, 1), (500, 100, 1)]
-    assert tuple(result["keypoints"][0].tolist()) in [
-        (45.0, 25.0, 33, 0, 0),
-        (90.0, 50.0, 33, 0, 0),
-    ]
+    expected = {(250, 50, 1): (47, 27, 33, 0, 0), (500, 100, 1): (94.5, 54.5, 33, 0, 0)}[result["image"].shape]
+    np.testing.assert_allclose(result["keypoints"][0], expected)
 
 
 @pytest.mark.parametrize(
@@ -1607,7 +1621,7 @@ def test_safe_rotate(angle: float, targets: dict, expected: dict):
             A.SafeRotate(angle_range=(angle, angle), border_mode=0, fill=0, p=1),
         ],
         bbox_params=A.BboxParams(coord_format="pascal_voc", min_visibility=0.0),
-        keypoint_params=A.KeypointParams("xyas", angle_in_degrees=True),
+        keypoint_params=A.KeypointParams("xyas", angle_in_degrees=True, remove_invisible=False),
         p=1,
         seed=137,
         strict=True,

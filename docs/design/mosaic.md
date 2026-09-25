@@ -8,15 +8,16 @@ Design the `Mosaic` transform to correctly handle bounding box and keypoint prep
 
 This workflow outlines the data processing logic within the `Mosaic` transform, primarily executed within its `sample_parameters` method or delegated helper functions/methods.
 
-1. **Calculate Geometry & Visible Cell Placements:**
+1. **Validate Raw Additional Metadata and Active Aliases:**
+   * Filter the raw metadata using the canonical image/mask compatibility rules; invalid records warn and are skipped.
+   * Validate every active image and semantic mask alias across the entire remaining pool before geometry or selection.
+     The paired-target requirements are specified in sections 4 and 5 below.
+2. **Calculate Geometry & Visible Cell Placements:**
    * Calculate the mosaic center point (`center_x`, `center_y`).
    * Determine the boundaries of the final crop window (`target_size`) relative to the conceptual large grid.
    * Calculate the placement coordinates `(x_min, y_min, x_max, y_max)` for each *visible* grid cell `(r, c)` on the final output canvas. Result: `cell_placements: dict[(r, c), tuple]`.
    * The number of keys in this dictionary defines the number of visible cells (guaranteed >= 1).
 
-2. **Validate Raw Additional Metadata:**
-   * Access the raw list of dictionaries from `data[self.metadata_key]`.
-   * Filter this list, keeping only valid dictionaries (must be dict, must contain 'image' key). Result: `valid_additional_raw_items`.
 3. **Select Subset of Raw Additional Metadata:**
    * The caller supplies the complete candidate pool. Mosaic never reaches into a dataset or another global source.
    * Determine the number of *additional* items needed for the *visible* cells (`num_additional_needed = len(cell_placements) - 1`. Ensure >= 0).
@@ -124,5 +125,57 @@ are shared and annotation preprocessing is performed once. Shared parameters hol
 The canonical route keeps its existing shared parameters when no image aliases are active.
 
 Replay of the recorded parameters retains target shape/dtype requirements. This does not broaden the
-applied-configuration replay guarantee or introduce Tensor donor metadata, mask aliases, raw uint16
+applied-configuration replay guarantee or introduce Tensor donor metadata, raw uint16 image aliases
 support or a new multimodal metadata schema.
+
+## 5. Paired semantic mask aliases
+
+An active `additional_targets={"auxmask": "mask"}` target uses its own primary and donor arrays.
+An alias is active only when supplied and non-None in the current call; registration alone imposes
+no donor requirement. Compose still requires the canonical `mask` when a mask alias is supplied.
+The supported direct route is `Mosaic.add_targets(...)` followed by a normal transform call with
+the canonical mask and its aliases.
+
+After canonical metadata filtering, and before any Mosaic geometry or donor sampling, validate
+every canonical-valid donor, including surplus candidates and donors unused by a 1x1 mosaic:
+
+- Every donor must have a non-None canonical `mask` whenever a semantic mask alias is active.
+  Omitted or None canonical donor masks raise ValueError identifying the donor and active aliases.
+  No placeholder mask or alias substitution is used. When no semantic mask alias is active,
+  omitted/None donor masks retain the existing `fill_mask` behavior, including image-alias-only calls.
+- Every active alias must be a non-empty NumPy HW/HWC array, spatially aligned with its own image,
+  and have the same dtype and channel count as that alias in the primary sample. Primary aliases
+  are validated too. Different targets may have different dtypes and channels; HW/HWC1 are equivalent.
+  Missing or incompatible aliases raise ValueError identifying the target and donor position in
+  the canonical-valid pool. There is no alias-specific filtering, replacement, or silent cast.
+- Semantic aliases support 1-128 channels. Wider aliases fail before sampling even for identity
+  geometry. This bounds the existing OpenCV cell resize/pad route; canonical-mask-only behavior
+  is unchanged.
+- Tuple `fill_mask` must match each supplied semantic target, including canonical `mask`.
+  Use scalar fill for mixed channel counts. Instance-stack fill policy is unchanged.
+
+Masks use `mask_interpolation` and `fill_mask` through the canonical mask geometry path.
+They inherit its dtype/interpolation support, without the image-alias uint8/float32 restriction.
+For example, uint16/int16 masks retain labels above 255 or below zero; int32 nearest resize works,
+while int32 linear resize retains the canonical OpenCV rejection. This adds no dtype conversion
+or support for combinations that the canonical mask operation rejects.
+
+`ProcessedMosaicItem.additional_masks` carries references through primary/donor preparation
+and existing primary replication, then each cell's existing Compose handles the aliases as masks.
+Geometry, donor selection, and annotation preprocessing are shared. Coordinate shifting,
+instance-ID remapping, and bbox filtering preserve the semantic payload without filtering or
+renumbering its pixels as instance-mask rows. Each mask's `TargetParams` provides its own canvas
+shape and alias key; assembly allocates an independent output with the primary target's dtype
+and public HW/HWC1/HWC representation.
+
+Caller arrays and donor dictionaries, including read-only arrays and views, remain unchanged.
+Applied outputs share no mutable storage with inputs or previous outputs. Skipped Mosaic calls
+retain the existing identity behavior and do not validate donor pairs eagerly. With p=1 throughout,
+pair errors occur before geometry/selection RNG use; no rollback of outer probability draws or
+earlier transforms is promised.
+
+Image and mask aliases can be combined. Constructor serialization and ReplayCompose captured
+parameters retain their existing contracts; mask target requirements record shape and dtype.
+The existing root Tensor fallback accepts primary mask aliases with its supported Tensor dtypes
+and restores each target's container/rank; donor aliases remain NumPy arrays. No new Tensor donor
+schema, instance `masks` alias support, or stronger applied-configuration replay is introduced.

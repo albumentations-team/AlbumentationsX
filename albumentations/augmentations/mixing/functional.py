@@ -32,9 +32,13 @@ from albumentations.core.type_definitions import (
 
 # Type definition for a processed mosaic item
 class ProcessedMosaicItem(TypedDict):
-    """Preprocessed Mosaic grid item: cell RGB image, optional semantic mask, optional (N,H,W) instance masks, bboxes, keypoints."""
+    """Preprocessed Mosaic cell with an image, optional image aliases, masks, bboxes, and keypoints.
+
+    The optional `additional_images` mapping holds an array for each active image alias.
+    """
 
     image: np.ndarray
+    additional_images: NotRequired[dict[str, np.ndarray]]
     mask: NotRequired[np.ndarray | None]
     masks: NotRequired[np.ndarray | None]  # (N, H, W) instance masks aligned with item image
     bboxes: NotRequired[np.ndarray | None]
@@ -825,9 +829,31 @@ def _mosaic_cell_geometry_compose(
     *,
     with_bbox_params: bool,
     with_keypoint_params: bool,
+    additional_targets: dict[str, str] | None = None,
 ) -> Compose:
-    """Construct Albumentations Compose per Mosaic grid cell so RGB, mask, and stacked instance masks share identical resize/crop."""
-    compose_kwargs: dict[str, Any] = {"p": 1.0}
+    """Build a Compose pipeline for one Mosaic cell, sharing resize, crop, and optional padding across image aliases.
+
+    Registered image aliases receive the same geometry as the canonical image. Contain mode pads the crop when needed.
+
+    Args:
+        cell_shape (tuple[int, int]): Intermediate cell height and width.
+        target_shape (tuple[int, int]): Final placement height and width to crop from the cell.
+        fill (float | tuple[float, ...]): Padding value for images and image aliases.
+        fill_mask (float | tuple[float, ...]): Padding value for masks.
+        fit_mode (Literal['cover', 'contain']): Whether to cover or fit inside the cell before cropping.
+        interpolation (FullInterpolationType): Interpolation for images and image aliases.
+        mask_interpolation (FullInterpolationType): Interpolation for masks.
+        cell_position (Literal['top_left', 'top_right', 'center', 'bottom_left', 'bottom_right']): Cell position used to
+            choose the opposite crop corner.
+        with_bbox_params (bool): Whether to configure bbox processing.
+        with_keypoint_params (bool): Whether to configure keypoint processing.
+        additional_targets (dict[str, str] | None): Image alias names mapped to the `image` target type, if any.
+
+    Returns:
+        Compose: Cell pipeline with shared geometry for the canonical image and registered aliases.
+
+    """
+    compose_kwargs: dict[str, Any] = {"p": 1.0, "additional_targets": additional_targets}
     if with_bbox_params:
         compose_kwargs["bbox_params"] = {"coord_format": "albumentations"}
     if with_keypoint_params:
@@ -889,28 +915,28 @@ def process_cell_geometry(
     mask_interpolation: FullInterpolationType,
     cell_position: Literal["top_left", "top_right", "center", "bottom_left", "bottom_right"],
 ) -> ProcessedMosaicItem:
-    """Pad and/or crop one item to target_shape. PadIfNeeded and Crop with fit_mode and
-    cell_position; returns ProcessedMosaicItem (image, mask, bboxes, keypoints).
+    """Resize and crop a Mosaic item to its placement, padding when needed and sharing geometry across image aliases.
 
-    Uses a Compose pipeline with PadIfNeeded and Crop to ensure the output
-    matches the target cell dimensions exactly, handling both padding and cropping cases.
+    The optional `item["additional_images"]` maps active alias names to arrays passed through the same Compose pipeline.
 
     Args:
-        cell_shape (tuple[int, int]): Shape of the cell.
-        item (ProcessedMosaicItem): The preprocessed mosaic item dictionary.
-        target_shape (tuple[int, int]): Target shape of the cell.
-        fill (float | tuple[float, ...]): Fill value for image padding.
-        fill_mask (float | tuple[float, ...]): Fill value for mask padding.
-        fit_mode (Literal['cover', 'contain']): Fit mode for the mosaic.
-        interpolation (int): Interpolation method for image.
-        mask_interpolation (int): Interpolation method for mask.
-        cell_position (Literal['top_left', 'top_right', 'center', 'bottom_left', 'bottom_right']): Position
-        of the cell.
+        cell_shape (tuple[int, int]): Intermediate cell height and width.
+        item (ProcessedMosaicItem): Preprocessed cell; `additional_images`, when present, maps alias names to arrays.
+        target_shape (tuple[int, int]): Final placement height and width.
+        fill (float | tuple[float, ...]): Padding value for images and image aliases.
+        fill_mask (float | tuple[float, ...]): Padding value for masks.
+        fit_mode (Literal['cover', 'contain']): Whether to cover or fit inside the cell before cropping.
+        interpolation (FullInterpolationType): Interpolation for images and image aliases.
+        mask_interpolation (FullInterpolationType): Interpolation for masks.
+        cell_position (Literal['top_left', 'top_right', 'center', 'bottom_left', 'bottom_right']): Cell position used to
+            choose the opposite crop corner.
 
-    Returns: (ProcessedMosaicItem): Dictionary containing the geometrically processed image,
-        mask, bboxes, and keypoints, fitting the target dimensions.
+    Returns:
+        ProcessedMosaicItem: Processed image, masks, bboxes, and keypoints, plus a mapping of geometrically processed
+        alias arrays under `additional_images` when aliases are present.
 
     """
+    additional_images = item.get("additional_images", {})
     geom_pipeline = _mosaic_cell_geometry_compose(
         cell_shape,
         target_shape,
@@ -922,10 +948,11 @@ def process_cell_geometry(
         cell_position,
         with_bbox_params=item.get("bboxes") is not None,
         with_keypoint_params=item.get("keypoints") is not None,
+        additional_targets=dict.fromkeys(additional_images, "image"),
     )
 
     # Prepare input data for the pipeline
-    geom_input: dict[str, Any] = {"image": item["image"]}
+    geom_input: dict[str, Any] = {"image": item["image"], **additional_images}
     item_mask = item.get("mask")
     if item_mask is not None:
         geom_input["mask"] = item_mask
@@ -945,6 +972,8 @@ def process_cell_geometry(
         "bboxes": processed_item.get("bboxes"),
         "keypoints": processed_item.get("keypoints"),
     }
+    if additional_images:
+        result["additional_images"] = {name: processed_item[name] for name in additional_images}
 
     raw_masks = item.get("masks")
     if raw_masks is not None and isinstance(raw_masks, np.ndarray) and raw_masks.size > 0:
@@ -1024,6 +1053,7 @@ def assemble_mosaic_from_processed_cells(
     dtype: np.dtype,
     data_key: Literal["image", "mask"],
     fill: float | tuple[float, ...] | None,  # Value for image fill or mask fill
+    additional_image: str | None = None,
 ) -> np.ndarray:
     """Build mosaic: fill canvas with fill, paste each cell segment at its placement.
     data_key 'image' or 'mask'; handles multi-channel masks. Returns canvas array.
@@ -1042,6 +1072,8 @@ def assemble_mosaic_from_processed_cells(
         fill (float | tuple[float, ...] | None): Value used to initialize the canvas (image fill or mask fill).
               Should be a float/int or a tuple matching the number of channels.
               If None, defaults to 0.
+        additional_image (str | None): Registered image alias to assemble from each cell's additional images.
+            None selects the canonical data_key. Default: None.
 
     Returns:
         np.ndarray: The assembled mosaic canvas.
@@ -1056,16 +1088,26 @@ def assemble_mosaic_from_processed_cells(
 
     # Iterate and paste segments onto the pre-filled canvas
     for placement_coords, cell_data in processed_cells.items():
-        segment = cell_data.get(data_key)
+        segment = (
+            cell_data["additional_images"][additional_image]
+            if additional_image is not None
+            else cell_data.get(data_key)
+        )
 
         # If segment exists, paste it over the filled background
         if segment is not None:
             tgt_x1, tgt_y1, tgt_x2, tgt_y2 = placement_coords
 
-            # Handle dimension mismatch for masks:
-            # If canvas is 3D but segment is 2D, expand segment
-            if data_key == "mask" and len(target_shape) == 3 and segment.ndim == 2:
+            # Normalize equivalent single-channel HW/HWC1 representations to the canvas rank.
+            if (data_key == "mask" or additional_image is not None) and len(target_shape) == 3 and segment.ndim == 2:
                 segment = np.expand_dims(segment, axis=-1)
+            elif (
+                (data_key == "mask" or additional_image is not None)
+                and len(target_shape) == 2
+                and segment.ndim == 3
+                and segment.shape[-1] == 1
+            ):
+                segment = np.squeeze(segment, axis=-1)
 
             canvas[tgt_y1:tgt_y2, tgt_x1:tgt_x2] = segment
 
@@ -1185,6 +1227,8 @@ def _remap_one_mosaic_cell_instance_ids(
         cell_out["mask"] = cell["mask"]
     if "masks" in cell:
         cell_out["masks"] = cell["masks"]
+    if "additional_images" in cell:
+        cell_out["additional_images"] = cell["additional_images"]
 
     bb = cell.get("bboxes")
     kp = cell.get("keypoints")
@@ -1426,6 +1470,8 @@ def shift_all_coordinates(
         }
         if "masks" in cell_data_geom:
             final_cell_data["masks"] = cell_data_geom["masks"]
+        if "additional_images" in cell_data_geom:
+            final_cell_data["additional_images"] = cell_data_geom["additional_images"]
 
         # Perform shifting if data exists
         if bboxes_geom is not None and bboxes_geom.size > 0:

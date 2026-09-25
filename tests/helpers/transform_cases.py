@@ -945,6 +945,9 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
         {"interpolation": cv2.INTER_CUBIC, "mask_interpolation": cv2.INTER_LINEAR},
     ),
     ("rotated-fixed-fill", A.GridMask, {"rotation_range": (10, 20), "fill": 7, "fill_mask": 3}),
+    ("top-left-cells", A.GridMask, {"pattern": "top_left", "cell_mask_ratio_range": (0.3, 0.6)}),
+    ("inverse-cells", A.GridMask, {"pattern": "top_left_inverse", "shift_xy": (2, 3)}),
+    ("diagonal-cells", A.GridMask, {"pattern": "diagonal", "rotation_range": (-0.3, 0.3), "fill_mask": 3}),
     ("asymmetric-grid", A.GridShuffle3D, {"grid_zyx": (1, 2, 2)}),
     ("explicit-preset", A.HEStain, {"method": "preset", "preset": "dark"}),
     (

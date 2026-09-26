@@ -1,5 +1,8 @@
 # NumPy and CPU Tensor Transform Routing
 
+For runnable migrations from frame, slice, and paired-input wrappers to public targets, see
+[Migrating custom augmentation wrappers](../integrations/custom-augmentation-migration.md).
+
 **Status:** Implemented
 
 ## Public behavior

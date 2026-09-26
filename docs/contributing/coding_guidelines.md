@@ -358,6 +358,9 @@ those decisions from the first-target `params["shape"]` field.
 
 ## Transform Development
 
+For tested replacements of historical frame loops, target synchronization wrappers, manual replay, and channel
+splitting, see [Migrating custom augmentation wrappers](../integrations/custom-augmentation-migration.md).
+
 ### Method Definitions
 
 - Don't use default arguments in `apply_xxx` methods:

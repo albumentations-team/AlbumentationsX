@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from tools.ax_coding_guidance import run_sources
 
 
@@ -240,6 +242,36 @@ class Example(ImageOnlyTransform):
         },
     )
     assert {"AXG015", "AXG016", "AXG017", "AXG018"} <= set(ids)
+
+
+@pytest.mark.parametrize(
+    ("method_docstring", "expected_ids"),
+    [("", []), ('"""Forward metadata."""', ["AXG018"])],
+    ids=["without-docstring", "with-docstring"],
+)
+def test_metadata_dispatch_has_the_same_docstring_contract_as_pixel_dispatch(
+    method_docstring: str,
+    expected_ids: list[str],
+) -> None:
+    assert (
+        rule_ids(
+            {
+                "albumentations/augmentations/example.py": f"""
+class Transform3D: pass
+class Example(Transform3D):
+    \"\"\"Forward metadata.
+
+    Examples:
+        >>> Example()
+    \"\"\"
+    def apply_to_user_data(self, data, **params):
+        {method_docstring}
+        return dict(data)
+""",
+            },
+        )
+        == expected_ids
+    )
 
 
 def test_constructor_schema_rule_accepts_explicit_inherited_forwarding() -> None:

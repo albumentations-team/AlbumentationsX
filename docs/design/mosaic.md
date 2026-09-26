@@ -97,3 +97,32 @@ This workflow outlines the data processing logic within the `Mosaic` transform, 
 * **`Mosaic` Preprocessing (Step 4):** `Mosaic` then preprocesses the *selected raw additional items*. The *same* processor instances are used. If these items contain labels not seen in the primary data, the processor's internal `LabelEncoder.update` method is called (implicitly via `processor.preprocess`). This extends the encoder's vocabulary without changing existing encodings. The encoder's state now reflects labels from the primary item *plus* the selected additional items for this specific mosaic instance.
 * **`Compose.postprocess`:** After all transforms (including `Mosaic`) complete, `Compose.postprocess` uses the *final state* of the processors (including the updated `LabelEncoder`) to decode all labels present in the output data back to their original format. Because the encoder was updated during the `Mosaic` step with all labels *actually included* in that mosaic instance, the decoding should be correct for that instance's output.
 * **Scope:** The `LabelEncoder` state is transient *per `Compose` call*. It does not persist across different calls or build a vocabulary over the entire dataset. Its purpose is to handle non-numeric labels correctly *within* a single augmentation pipeline run.
+
+## 4. Paired additional image targets
+
+An active `additional_targets={"thermal": "image"}` target must use the pixels from `thermal`
+in the primary sample and the same selected donor records as `image`. Each target retains its own
+dtype and channels. The public HW/HWC1 representation is restored by the usual invocation boundary.
+
+Before sampling geometry or selecting surplus donors, Mosaic validates every canonical-valid donor
+for each active image alias. The donor alias must be a non-empty HW/HWC NumPy array, have the same
+H/W as that donor's image, and match the primary alias's dtype and channel count. HW and HWC1 are
+compatible. Supported alias dtypes are uint8 and float32; the canonical image and aliases may have
+different dtypes. Tuple fill must match every active image target's channels; scalar fill is shared.
+Active image aliases with more than 128 channels are rejected before geometry and donor selection,
+including when no resize would be needed. This bound avoids the OpenCV failure in the cell resize
+path; both the primary alias and each canonical-valid donor are checked.
+Missing or incompatible alias data raises ValueError rather than substituting RGB or sampling another
+donor pool. Canonical-invalid metadata retains the existing warn-and-skip behavior. An alias registered
+but absent from the current primary call is inactive and places no requirements on donor records.
+
+The internal `ProcessedMosaicItem.additional_images` mapping carries alias arrays through primary
+replication, donor annotation preprocessing, cell geometry and coordinate shifting. Each cell's
+existing Compose receives these arrays as additional image targets, so resizing/cropping/padding
+are shared and annotation preprocessing is performed once. Shared parameters hold the processed cells;
+`TargetParams` supplies each image target's own canvas shape and alias key to the assembly operation.
+The canonical route keeps its existing shared parameters when no image aliases are active.
+
+Replay of the recorded parameters retains target shape/dtype requirements. This does not broaden the
+applied-configuration replay guarantee or introduce Tensor donor metadata, mask aliases, raw uint16
+support or a new multimodal metadata schema.

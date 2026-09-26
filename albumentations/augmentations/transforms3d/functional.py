@@ -583,17 +583,17 @@ def keypoints_scale_3d(
     """Scale XYZ keypoints across voxel grids while leaving every user-provided\
     attribute after their three spatial coordinates unchanged.
 
-    Coordinates use Albumentations' pixel-index convention: `x`, `y`, and `z`
-    scale from the origin by the output-to-input ratio. All remaining columns preserve
-    their input values.
+    Coordinates use Albumentations' pixel-index convention. Each axis scales
+    around voxel centers using the output-to-input size ratio. All remaining
+    columns preserve their input values.
     """
     depth_scale, height_scale, width_scale = np.asarray(target_shape, dtype=np.float32) / np.asarray(
         source_shape, dtype=np.float32
     )
-    result = keypoints.copy()
-    result[:, 0] *= width_scale
-    result[:, 1] *= height_scale
-    result[:, 2] *= depth_scale
+    result = keypoints.astype(np.result_type(keypoints.dtype, np.float32), copy=True)
+    result[:, 0] = (result[:, 0] + 0.5) * width_scale - 0.5
+    result[:, 1] = (result[:, 1] + 0.5) * height_scale - 0.5
+    result[:, 2] = (result[:, 2] + 0.5) * depth_scale - 0.5
     return result
 
 

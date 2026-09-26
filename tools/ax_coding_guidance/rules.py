@@ -1191,6 +1191,7 @@ OPTIONAL_METHOD_DOCS = frozenset(
         "apply_to_mask",
         "apply_to_masks",
         "apply_to_mask3d",
+        "apply_to_user_data",
         "apply_to_bboxes",
         "apply_to_keypoints",
         "sample_parameters",

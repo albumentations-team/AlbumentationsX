@@ -283,6 +283,7 @@ BATCH_ALIAS_TO_TRANSFORM = {
     "spatter_mud": "Spatter",
     "spatter_rain": "Spatter",
     "transpose": "Transpose",
+    "uniform_temporal_subsample": "UniformTemporalSubsample",
     "vertical_flip": "VerticalFlip",
 }
 
@@ -637,6 +638,9 @@ def _coverage_expectation(name: str, route: str) -> CoverageExpectation:
     elif name in ALIAS_COVERAGE_TRANSFORMS:
         required_layers = frozenset({"catalog_smoke", "alias_coverage"})
         reason = "warning alias is covered by its canonical transform and still smoke-tested directly"
+    elif route == "temporal":
+        required_layers = frozenset({"batch_matrix", "catalog_smoke"})
+        reason = "temporal transforms require sequence-length, size, channel, and dtype matrix coverage"
     elif route == "volume":
         required_layers = frozenset({"catalog_smoke", "volumetric_matrix"})
         reason = "public 3D transforms require volumetric matrix coverage"
@@ -705,6 +709,7 @@ def _route_targets(route: str) -> list[str]:
         "mask": ["image", "mask"],
         "metadata": ["image", "reference_metadata"],
         "mixing": ["image", "reference_metadata"],
+        "temporal": ["images"],
         "volume": ["mask3d", "volume"],
     }.get(route, ["image"])
 

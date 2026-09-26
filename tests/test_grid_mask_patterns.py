@@ -3,10 +3,12 @@
 import hashlib
 import json
 
+import cv2
 import numpy as np
 import pytest
 
 import albumentations as A
+from albumentations.augmentations.dropout import functional as fdropout
 
 
 @pytest.mark.parametrize(
@@ -92,6 +94,7 @@ def test_cell_applied_configuration_records_phase(pattern):
     )
     result = transform(image=image)
     records = json.loads(json.dumps(result["applied_transforms"], allow_nan=False))
+    assert records[0][1]["pattern"] == pattern
     replay = A.Compose.from_applied_transforms(records)(image=image)
     np.testing.assert_array_equal(replay["image"], result["image"])
 
@@ -105,6 +108,49 @@ def test_invalid_cell_ratio(ratio):
 def test_invalid_pattern():
     with pytest.raises(ValueError):
         A.GridMask(pattern="unknown")
+
+
+def test_invalid_functional_cell_pattern():
+    with pytest.raises(ValueError, match="Unsupported cell pattern"):
+        fdropout.generate_grid_cell_holes((8, 8), 2, 0.5, "unknown", 0, (0, 0))
+
+
+@pytest.mark.parametrize("shape", [(1, 1), (17, 29), (64, 96)])
+@pytest.mark.parametrize("num_grid", [3, 7, 32])
+@pytest.mark.parametrize("ratio", [0.3, 0.5, 0.8])
+@pytest.mark.parametrize("pattern", ["top_left", "top_left_inverse", "diagonal"])
+@pytest.mark.parametrize("rotation", [0, -0.25])
+def test_cell_row_compression_matches_dense_reference(shape, num_grid, ratio, pattern, rotation):
+    height, width = shape
+    cell_height, cell_width = height / num_grid, width / num_grid
+    keep = np.ones((height + height // num_grid, width + width // num_grid), dtype=np.uint8)
+    for row in range(num_grid + 1):
+        for col in range(num_grid + 1):
+            keep[
+                int(row * cell_height) : int(row * cell_height + ratio * cell_height),
+                int(col * cell_width) : int(col * cell_width + ratio * cell_width),
+            ] = 0
+            if pattern == "diagonal":
+                keep[
+                    int(row * cell_height + cell_height / 2) : int(row * cell_height + cell_height),
+                    int(col * cell_width + cell_width / 2) : int(col * cell_width + cell_width),
+                ] = 0
+    if pattern == "top_left_inverse":
+        keep = 1 - keep
+    if rotation:
+        grid_height, grid_width = keep.shape
+        matrix = cv2.getRotationMatrix2D(((grid_width - 1) / 2, (grid_height - 1) / 2), np.degrees(rotation), 1)
+        keep = cv2.warpAffine(
+            keep,
+            matrix,
+            (grid_width, grid_height),
+            flags=cv2.INTER_NEAREST,
+            borderMode=cv2.BORDER_REFLECT_101,
+        )
+    offset_x, offset_y = 3 % max(1, width // num_grid), 5 % max(1, height // num_grid)
+    expected = fdropout.mask_to_rects(keep[offset_y : offset_y + height, offset_x : offset_x + width])
+    actual = fdropout.generate_grid_cell_holes(shape, num_grid, ratio, pattern, rotation, (3, 5))
+    np.testing.assert_array_equal(actual, expected)
 
 
 @pytest.mark.parametrize("pattern", ["top_left", "top_left_inverse", "diagonal"])

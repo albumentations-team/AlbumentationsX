@@ -1198,29 +1198,47 @@ def generate_grid_cell_holes(
     Returns:
         np.ndarray: Non-overlapping dropped rectangles in [x1, y1, x2, y2] form.
 
+    Raises:
+        ValueError: If pattern is not a supported cell pattern.
+
     """
+    if pattern not in {"top_left", "top_left_inverse", "diagonal"}:
+        raise ValueError(f"Unsupported cell pattern: {pattern}")
     height, width = image_shape
     top, bottom = _grid_cell_axis(height, num_grid, ratio)
     left, right = _grid_cell_axis(width, num_grid, ratio)
-    keep = np.empty((top.size, left.size), dtype=np.uint8)
-    np.logical_and(top[:, None], left[None, :], out=keep)
+    row_ids = top.astype(np.uint8)
+    rows = np.ones((4 if pattern == "diagonal" else 2, left.size), dtype=np.uint8)
+    rows[1] = ~left
     if pattern == "diagonal":
-        keep |= bottom[:, None] & right[None, :]
-    if pattern != "top_left_inverse":
-        np.logical_not(keep, out=keep)
-    if rotation != 0:
-        grid_height, grid_width = keep.shape
-        center = ((grid_width - 1) / 2, (grid_height - 1) / 2)
-        matrix = cv2.getRotationMatrix2D(center, math.degrees(rotation), 1.0)
-        keep = warp_affine(
-            keep[..., None],
-            matrix,
-            (grid_width, grid_height),
-            flags=cv2.INTER_NEAREST,
-            border_mode=cv2.BORDER_REFLECT_101,
-        )[..., 0]
+        row_ids |= bottom.astype(np.uint8) << 1
+        rows[2] = ~right
+        rows[3] = ~(left | right)
+    elif pattern == "top_left_inverse":
+        rows ^= 1
     offset_x = shift_xy[0] % max(1, width // num_grid)
     offset_y = shift_xy[1] % max(1, height // num_grid)
+    if rotation == 0:
+        # Consecutive identical rows have identical zero-runs. Extract them
+        # once, then restore their original heights instead of scanning H*W.
+        row_ids = row_ids[offset_y : offset_y + height]
+        boundaries = np.concatenate(([0], np.flatnonzero(row_ids[1:] != row_ids[:-1]) + 1, [height]))
+        holes = mask_to_rects(rows[row_ids[boundaries[:-1]], offset_x : offset_x + width])
+        holes[:, 1] = boundaries[holes[:, 1]]
+        holes[:, 3] = boundaries[holes[:, 3]]
+        return holes
+
+    keep = rows[row_ids]
+    grid_height, grid_width = keep.shape
+    center = ((grid_width - 1) / 2, (grid_height - 1) / 2)
+    matrix = cv2.getRotationMatrix2D(center, math.degrees(rotation), 1.0)
+    keep = warp_affine(
+        keep[..., None],
+        matrix,
+        (grid_width, grid_height),
+        flags=cv2.INTER_NEAREST,
+        border_mode=cv2.BORDER_REFLECT_101,
+    )[..., 0]
     return mask_to_rects(keep[offset_y : offset_y + height, offset_x : offset_x + width])
 
 

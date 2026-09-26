@@ -39,6 +39,7 @@ __all__ = [
     "fill_volume_holes_with_grayscale",
     "filter_bboxes_by_holes",
     "filter_keypoints_in_holes",
+    "generate_grid_cell_holes",
     "generate_grid_holes",
     "generate_grid_mask_holes",
     "generate_random_fill",
@@ -1161,6 +1162,84 @@ def mask_to_rects(mask: np.ndarray) -> np.ndarray:
     np.maximum.at(y2, rect_ids, row_indices + 1)
 
     return np.stack([xs, y1, xe, y2], axis=1).astype(np.int32)
+
+
+def _grid_cell_axis(length: int, num_grid: int, ratio: float) -> tuple[np.ndarray, np.ndarray]:
+    cell_size = length / num_grid
+    coordinates = np.arange(length + length // num_grid)
+    # The last cell whose floored start is at or before each pixel. Integer
+    # arithmetic also handles subpixel cells without allocating num_grid items.
+    cell_indices = ((coordinates + 1) * num_grid - 1) // length
+    return (
+        coordinates < np.floor(cell_indices * cell_size + ratio * cell_size),
+        (coordinates >= np.floor(cell_indices * cell_size + 0.5 * cell_size))
+        & (coordinates < np.floor(cell_indices * cell_size + cell_size)),
+    )
+
+
+def generate_grid_cell_holes(
+    image_shape: tuple[int, int],
+    num_grid: int,
+    ratio: float,
+    pattern: str,
+    rotation: float,
+    shift_xy: tuple[int, int],
+) -> np.ndarray:
+    """Rasterize a shared cell grid and return its dropped regions as rectangles.
+
+    Args:
+        image_shape (tuple[int, int]): Output height and width.
+        num_grid (int): Number of cells along each axis.
+        ratio (float): Side fraction of each top-left dropped region.
+        pattern (str): top_left, top_left_inverse, or diagonal.
+        rotation (float): Rotation in radians, with nearest-neighbor sampling.
+        shift_xy (tuple[int, int]): Shared crop offset, wrapped within one cell.
+
+    Returns:
+        np.ndarray: Non-overlapping dropped rectangles in [x1, y1, x2, y2] form.
+
+    Raises:
+        ValueError: If pattern is not a supported cell pattern.
+
+    """
+    if pattern not in {"top_left", "top_left_inverse", "diagonal"}:
+        raise ValueError(f"Unsupported cell pattern: {pattern}")
+    height, width = image_shape
+    top, bottom = _grid_cell_axis(height, num_grid, ratio)
+    left, right = _grid_cell_axis(width, num_grid, ratio)
+    row_ids = top.astype(np.uint8)
+    rows = np.ones((4 if pattern == "diagonal" else 2, left.size), dtype=np.uint8)
+    rows[1] = ~left
+    if pattern == "diagonal":
+        row_ids |= bottom.astype(np.uint8) << 1
+        rows[2] = ~right
+        rows[3] = ~(left | right)
+    elif pattern == "top_left_inverse":
+        rows ^= 1
+    offset_x = shift_xy[0] % max(1, width // num_grid)
+    offset_y = shift_xy[1] % max(1, height // num_grid)
+    if rotation == 0:
+        # Consecutive identical rows have identical zero-runs. Extract them
+        # once, then restore their original heights instead of scanning H*W.
+        row_ids = row_ids[offset_y : offset_y + height]
+        boundaries = np.concatenate(([0], np.flatnonzero(row_ids[1:] != row_ids[:-1]) + 1, [height]))
+        holes = mask_to_rects(rows[row_ids[boundaries[:-1]], offset_x : offset_x + width])
+        holes[:, 1] = boundaries[holes[:, 1]]
+        holes[:, 3] = boundaries[holes[:, 3]]
+        return holes
+
+    keep = rows[row_ids]
+    grid_height, grid_width = keep.shape
+    center = ((grid_width - 1) / 2, (grid_height - 1) / 2)
+    matrix = cv2.getRotationMatrix2D(center, math.degrees(rotation), 1.0)
+    keep = warp_affine(
+        keep[..., None],
+        matrix,
+        (grid_width, grid_height),
+        flags=cv2.INTER_NEAREST,
+        border_mode=cv2.BORDER_REFLECT_101,
+    )[..., 0]
+    return mask_to_rects(keep[offset_y : offset_y + height, offset_x : offset_x + width])
 
 
 def generate_grid_mask_holes(

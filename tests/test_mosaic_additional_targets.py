@@ -901,6 +901,38 @@ def test_mosaic_semantic_alias_invalid_primary(bad_alias: Any) -> None:
         transform(**item, mosaic_metadata=[])
 
 
+@pytest.mark.parametrize("direct", [False, True])
+@pytest.mark.parametrize("missing", [False, True])
+@pytest.mark.parametrize("fill_mask", [0, (0,)])
+def test_mosaic_semantic_alias_requires_canonical_primary_before_sampling(
+    direct: bool,
+    missing: bool,
+    fill_mask: int | tuple[int, ...],
+    mocker: MockerFixture,
+) -> None:
+    item: dict[str, Any] = _semantic_item(0)
+    del item["planes"]
+    if missing:
+        del item["mask"]
+    else:
+        item["mask"] = None
+    pipeline = A.Compose(
+        [A.Mosaic(cell_shape=(5, 7), target_size=(10, 14), fill_mask=fill_mask, p=1)],
+        additional_targets={"auxmask": "mask"},
+        seed=137,
+    )
+    mosaic = pipeline.transforms[0]
+    transform = mosaic if direct else pipeline
+    geometry = mocker.spy(mosaic, "_calculate_geometry")
+    selection = mocker.spy(mosaic, "_select_additional_items")
+
+    with pytest.raises(ValueError, match=r"canonical.*mask"):
+        transform(**item, mosaic_metadata=[])
+
+    geometry.assert_not_called()
+    selection.assert_not_called()
+
+
 @pytest.mark.parametrize(("grid", "donor_count"), [((2, 2), 3), ((2, 2), 5), ((1, 1), 2)])
 @pytest.mark.parametrize("missing", [False, True])
 @pytest.mark.parametrize("explicit_seed", [False, True])

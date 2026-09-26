@@ -517,6 +517,10 @@ class Mosaic(DualTransform):
         valid_items: list[dict[str, Any]],
         aliases: tuple[str, ...],
     ) -> None:
+        if data.get("mask") is None:
+            raise ValueError(
+                f"Mosaic primary sample requires a non-None canonical mask for active semantic mask aliases {aliases}"
+            )
         for index, item in enumerate(valid_items):
             if item.get("mask") is None:
                 raise ValueError(

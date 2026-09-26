@@ -832,26 +832,28 @@ def _mosaic_cell_geometry_compose(
     with_keypoint_params: bool,
     additional_targets: dict[str, str] | None = None,
 ) -> Compose:
-    """Build a Compose pipeline for one Mosaic cell, sharing resize, crop, and optional padding across image aliases.
+    """Build a Compose pipeline for one Mosaic cell, sharing resize, crop, and optional padding across image and mask
+    aliases.
 
-    Registered image aliases receive the same geometry as the canonical image. Contain mode pads the crop when needed.
+    Registered aliases receive the same geometry as the canonical image. Image aliases use `interpolation` and `fill`;
+    semantic mask aliases use `mask_interpolation` and `fill_mask`. Contain mode pads the crop when needed.
 
     Args:
         cell_shape (tuple[int, int]): Intermediate cell height and width.
         target_shape (tuple[int, int]): Final placement height and width to crop from the cell.
         fill (float | tuple[float, ...]): Padding value for images and image aliases.
-        fill_mask (float | tuple[float, ...]): Padding value for masks.
+        fill_mask (float | tuple[float, ...]): Padding value for masks and semantic mask aliases.
         fit_mode (Literal['cover', 'contain']): Whether to cover or fit inside the cell before cropping.
         interpolation (FullInterpolationType): Interpolation for images and image aliases.
-        mask_interpolation (FullInterpolationType): Interpolation for masks.
+        mask_interpolation (FullInterpolationType): Interpolation for masks and semantic mask aliases.
         cell_position (Literal['top_left', 'top_right', 'center', 'bottom_left', 'bottom_right']): Cell position used to
             choose the opposite crop corner.
         with_bbox_params (bool): Whether to configure bbox processing.
         with_keypoint_params (bool): Whether to configure keypoint processing.
-        additional_targets (dict[str, str] | None): Image alias names mapped to the `image` target type, if any.
+        additional_targets (dict[str, str] | None): Alias names mapped to the `image` or `mask` target type, if any.
 
     Returns:
-        Compose: Cell pipeline with shared geometry for the canonical image and registered aliases.
+        Compose: Cell pipeline with shared geometry for images, semantic masks, and registered aliases.
 
     """
     compose_kwargs: dict[str, Any] = {"p": 1.0, "additional_targets": additional_targets}

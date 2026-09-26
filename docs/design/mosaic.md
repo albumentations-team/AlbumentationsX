@@ -134,7 +134,8 @@ An active `additional_targets={"auxmask": "mask"}` target uses its own primary a
 An alias is active only when supplied and non-None in the current call; registration alone imposes
 no donor requirement. Compose still requires the canonical `mask` when a mask alias is supplied.
 The supported direct route is `Mosaic.add_targets(...)` followed by a normal transform call with
-the canonical mask and its aliases.
+the canonical mask and its aliases. Direct calls reject an omitted or None primary canonical mask
+with ValueError before geometry or donor selection, for both scalar and tuple `fill_mask`.
 
 After canonical metadata filtering, and before any Mosaic geometry or donor sampling, validate
 every canonical-valid donor, including surplus candidates and donors unused by a 1x1 mosaic:

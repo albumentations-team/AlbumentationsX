@@ -80,10 +80,10 @@ class Mosaic(DualTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Workflow (`sample_parameters`):
-        1. Calculate Geometry & Visible Cells: Determine which grid cells are visible in the final
+        1. Validate Raw Additional Metadata: Filter canonical-incompatible records, then validate
+           active image and semantic mask aliases across the valid donor pool.
+        2. Calculate Geometry & Visible Cells: Determine which grid cells are visible in the final
            `target_size` crop and their placement coordinates on the output canvas.
-        2. Validate Raw Additional Metadata: Filter the list provided via `metadata_key`,
-           keeping only valid items (dicts with an 'image' key).
         3. Select Subset of Raw Additional Metadata: Choose a subset of the valid raw items based
            on the number of visible cells requiring additional data.
         4. Preprocess Selected Raw Additional Items: Preprocess bboxes/keypoints for the *selected*
@@ -124,6 +124,20 @@ class Mosaic(DualTransform):
         raise ValueError before geometry and donor selection, including surplus donors.
         An alias absent from the primary call does not require corresponding donor fields.
 
+        Semantic mask aliases registered as 'mask' also retain their own pixels, dtype and channels
+        through the same donor selection and geometry. They use mask_interpolation and fill_mask.
+        Each supplied, non-None alias requires a non-empty HW/HWC NumPy array in every valid donor,
+        matching that donor's image H/W and its primary alias's dtype and channel count (1-128).
+        HW and HWC1 are compatible. Mask dtypes follow the canonical mask operations; for example,
+        int32 supports nearest resizing but not linear resizing. No dtype conversion is added.
+        Every valid donor must also provide a non-None canonical mask when a semantic mask alias
+        is active. Missing canonical masks or incompatible pairs raise ValueError before geometry
+        and donor selection, including surplus donors and donors unused by a 1x1 mosaic.
+        Registered aliases absent or None in the primary call impose no donor requirement.
+        Without active semantic mask aliases, a missing donor mask keeps the usual fill_mask behavior.
+        Tuple fill_mask must match the channels of every supplied semantic mask target; a scalar
+        supports mixed channel counts. Instance 'masks' aliases are outside this paired-target contract.
+
         If fewer additional images are provided than needed to fill the grid, the primary image
         will be replicated to fill the remaining cells. For example, with a 2x2 grid, if only
         one additional image is provided, the mosaic will contain the primary image in two cells
@@ -149,7 +163,10 @@ class Mosaic(DualTransform):
             - Registered image aliases (np.ndarray): For example, 'thermal' when the call includes
               `thermal` and Compose registers `additional_targets={"thermal": "image"}`.
               Required for each active image alias; see Note for alignment and dtype constraints.
-            - mask (np.ndarray): Semantic mask for the additional image. Optional.
+            - mask (np.ndarray): Semantic mask for the additional image. Required and non-None when
+              a semantic mask alias is active in the primary call; otherwise optional.
+            - Registered semantic mask aliases (np.ndarray): For example, 'auxmask' registered as
+              'mask'. Required for each supplied non-None primary alias; see Note for pair constraints.
             - masks (np.ndarray): Stacked instance masks (N, H, W) for the additional image.
               Optional; same geometry as image. Use with instance_binding / pipeline masks target.
             - bboxes (np.ndarray): Bounding boxes in the **same coordinate format** as
@@ -400,6 +417,26 @@ class Mosaic(DualTransform):
         replicated = [deepcopy(primary) for _ in range(num_replications)]
         return [primary, *additional_items, *replicated]
 
+    def _prepare_mosaic_items(
+        self,
+        data: dict[str, Any],
+        additional_items: list[dict[str, Any]],
+        num_needed: int,
+        image_aliases: tuple[str, ...],
+        mask_aliases: tuple[str, ...],
+    ) -> list[fmixing.ProcessedMosaicItem]:
+        preprocessed = self._preprocess_additional_items(additional_items, data)
+        primary = self.get_primary_data(data)
+        if image_aliases:
+            primary["additional_images"] = {name: data[name] for name in image_aliases}
+            for processed, raw in zip(preprocessed, additional_items, strict=True):
+                processed["additional_images"] = {name: raw[name] for name in image_aliases}
+        if mask_aliases:
+            primary["additional_masks"] = {name: data[name] for name in mask_aliases}
+            for processed, raw in zip(preprocessed, additional_items, strict=True):
+                processed["additional_masks"] = {name: raw[name] for name in mask_aliases}
+        return self._prepare_final_items(primary, preprocessed, num_needed)
+
     @staticmethod
     def _validate_additional_image(
         value: Any,
@@ -456,6 +493,69 @@ class Mosaic(DualTransform):
             for view in targets.by_canonical_type("image")
         )
 
+    @staticmethod
+    def _validate_additional_mask(
+        value: Any,
+        reference: np.ndarray,
+        image_shape: tuple[int, ...],
+        context: str,
+    ) -> None:
+        if not isinstance(value, np.ndarray) or value.ndim not in (2, 3) or any(size == 0 for size in value.shape):
+            raise ValueError(f"Mosaic {context} must be a non-empty HW or HWC NumPy mask")
+        if value.dtype != reference.dtype:
+            raise ValueError(f"Mosaic {context} must have dtype {reference.dtype}")
+        channels = value.shape[2] if value.ndim == 3 else 1
+        reference_channels = reference.shape[2] if reference.ndim == 3 else 1
+        if channels > 128:
+            raise ValueError(f"Mosaic {context} must have at most 128 channels (got {channels})")
+        if value.shape[:2] != image_shape[:2] or channels != reference_channels:
+            raise ValueError(f"Mosaic {context} must match its paired image H/W and primary target channels")
+
+    def _validate_additional_masks(
+        self,
+        data: dict[str, Any],
+        valid_items: list[dict[str, Any]],
+        aliases: tuple[str, ...],
+    ) -> None:
+        if data.get("mask") is None:
+            raise ValueError(
+                f"Mosaic primary sample requires a non-None canonical mask for active semantic mask aliases {aliases}"
+            )
+        for index, item in enumerate(valid_items):
+            if item.get("mask") is None:
+                raise ValueError(
+                    f"Mosaic donor {index} requires a non-None canonical mask "
+                    f"for active semantic mask aliases {aliases}"
+                )
+        for name in aliases:
+            reference = data[name]
+            self._validate_additional_mask(reference, reference, data["image"].shape, f"target {name!r}")
+            for index, item in enumerate(valid_items):
+                self._validate_additional_mask(
+                    item.get(name), reference, item["image"].shape, f"donor {index} target {name!r}"
+                )
+        if isinstance(self.fill_mask, tuple):
+            for name in ("mask", *aliases):
+                mask = data[name]
+                channels = mask.shape[2] if mask.ndim == 3 else 1
+                if len(self.fill_mask) != channels:
+                    raise ValueError(
+                        f"Mosaic fill_mask must match channels of target {name!r}; use a scalar for mixed channels"
+                    )
+
+    def _mask_target_params(self, targets: TargetSet) -> tuple[TargetParams, ...]:
+        return tuple(
+            TargetParams(
+                targets=(view.name,),
+                params={
+                    "target_mask_shape": self._get_target_shape(view.value.shape),
+                    "additional_mask": None if view.name == "mask" else view.name,
+                },
+                requirements=requirements_for_views((view,), shape=True, dtype=True),
+            )
+            for view in targets.by_canonical_type("mask")
+        )
+
     def sample_parameters(
         self,
         params: dict[str, Any],
@@ -464,9 +564,12 @@ class Mosaic(DualTransform):
         sampling: SamplingContext,
     ) -> SampledParams:
         aliases = tuple(view.name for view in targets.by_canonical_type("image") if view.name != "image")
+        mask_aliases = tuple(view.name for view in targets.by_canonical_type("mask") if view.name != "mask")
         valid_items = fmixing.filter_valid_metadata(data.get(self.metadata_key), self.metadata_key, data)
         if aliases:
             self._validate_additional_images(data, valid_items, aliases)
+        if mask_aliases:
+            self._validate_additional_masks(data, valid_items, mask_aliases)
         cell_placements = self._calculate_geometry(data, sampling)
 
         num_cells = len(cell_placements)
@@ -474,18 +577,7 @@ class Mosaic(DualTransform):
 
         additional_items = self._select_additional_items(valid_items, num_additional_needed, sampling)
 
-        preprocessed_additional: list[fmixing.ProcessedMosaicItem] = self._preprocess_additional_items(
-            additional_items, data
-        )
-
-        primary = self.get_primary_data(data)
-        if aliases:
-            primary["additional_images"] = {name: data[name] for name in aliases}
-            preprocessed_additional = [
-                {**processed, "additional_images": {name: raw[name] for name in aliases}}
-                for processed, raw in zip(preprocessed_additional, additional_items, strict=True)
-            ]
-        final_items = self._prepare_final_items(primary, preprocessed_additional, num_additional_needed)
+        final_items = self._prepare_mosaic_items(data, additional_items, num_additional_needed, aliases, mask_aliases)
 
         placement_to_item_index = fmixing.assign_items_to_grid_cells(
             num_items=len(final_items),
@@ -530,6 +622,7 @@ class Mosaic(DualTransform):
         }
         if "mask" in data:
             result["target_mask_shape"] = self._get_target_shape(data["mask"].shape)
+            result["additional_mask"] = None
         if "masks" in data:
             ms = data["masks"].shape
             # Stacked instance masks are (N, H, W); do not treat N as spatial dim.
@@ -543,11 +636,16 @@ class Mosaic(DualTransform):
         # way to mirror the survival, breaking positional alignment on the way to the next
         # transform (the root cause of the Mosaic+Perspective+CopyAndPaste IndexError).
         result.update(self._compute_mosaic_survival(processed_cells, data))
+        target_params: tuple[TargetParams, ...] = ()
         if aliases:
             del result["target_shape"]
             del result["additional_image"]
-            return SampledParams(params=result, target_params=self._image_target_params(targets))
-        return SampledParams(params=result)
+            target_params += self._image_target_params(targets)
+        if mask_aliases:
+            del result["target_mask_shape"]
+            del result["additional_mask"]
+            target_params += self._mask_target_params(targets)
+        return SampledParams(params=result, target_params=target_params)
 
     @staticmethod
     def _filter_cell_masks_to_surviving_bboxes(
@@ -711,6 +809,7 @@ class Mosaic(DualTransform):
         mask: ImageType,
         processed_cells: dict[tuple[int, int, int, int], dict[str, Any]],
         target_mask_shape: tuple[int, int],
+        additional_mask: str | None,
         **params: Any,
     ) -> ImageType:
         return fmixing.assemble_mosaic_from_processed_cells(
@@ -719,6 +818,7 @@ class Mosaic(DualTransform):
             dtype=mask.dtype,
             data_key="mask",
             fill=self.fill_mask,
+            additional_mask=additional_mask,
         )
 
     def apply_to_masks(

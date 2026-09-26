@@ -1,4 +1,4 @@
-"""Issue #68: paired image targets must retain their own pixels through Mosaic."""
+"""Issues #68/#533: paired image and semantic mask aliases retain their own pixels."""
 
 from copy import deepcopy
 from typing import Any, Literal
@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 import pytest
 import torch
+from pytest_mock import MockerFixture
 
 import albumentations as A
 
@@ -79,6 +80,48 @@ def _rgb_placements(image: np.ndarray, items: list[dict[str, np.ndarray]]) -> di
             placements[row, column] = matches[0]
     assert sorted(placements.values()) == [0, 1, 2, 3]
     return placements
+
+
+def _semantic_item(donor_id: int) -> dict[str, np.ndarray]:
+    pattern = np.arange(35).reshape(5, 7)
+    return {
+        "image": _paired_item(donor_id, np.uint8, "hw")["image"],
+        "mask": np.full((5, 7), donor_id + 1, dtype=np.uint8),
+        "auxmask": (pattern + 1000 + 40 * donor_id).astype(np.uint16),
+        "planes": np.stack((pattern - 300 - donor_id, pattern + 400 + donor_id), axis=-1).astype(np.int16),
+    }
+
+
+@pytest.mark.parametrize("direct", [False, True])
+def test_mosaic_semantic_alias_identity(direct: bool) -> None:
+    item = _semantic_item(0)
+    pipeline = _pipeline((1, 1), "contain", {"auxmask": "mask", "planes": "mask"})
+    transform = pipeline.transforms[0] if direct else pipeline
+    result = transform(**item, mosaic_metadata=[])
+
+    for name, value in item.items():
+        np.testing.assert_array_equal(result[name], value, strict=True)
+        assert not np.shares_memory(result[name], value)
+
+
+@pytest.mark.parametrize("fit_mode", ["cover", "contain"])
+@pytest.mark.parametrize("donor_count", [0, 1, 3, 5])
+def test_mosaic_semantic_alias_paired_donors(fit_mode: Literal["cover", "contain"], donor_count: int) -> None:
+    items = [_semantic_item(index) for index in range(donor_count + 1)]
+    originals = deepcopy(items)
+    result = _pipeline((2, 2), fit_mode, {"auxmask": "mask", "planes": "mask"})(**items[0], mosaic_metadata=items[1:])
+
+    selected = []
+    for row in range(2):
+        for column in range(2):
+            region = np.s_[row * 5 : (row + 1) * 5, column * 7 : (column + 1) * 7]
+            donor_id = int(result["image"][region][0, 0, 0]) - 1
+            selected.append(donor_id)
+            for name in items[0]:
+                np.testing.assert_array_equal(result[name][region], originals[donor_id][name], strict=True)
+    assert selected.count(0) == max(1, 4 - donor_count)
+    assert len(set(selected) - {0}) == min(3, donor_count)
+    _assert_unchanged(items, originals)
 
 
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32], ids=["uint8", "float32"])
@@ -575,3 +618,596 @@ def test_mosaic_alias_validation_before_sampling_preserves_retry(explicit_seed: 
     actual = transform(**items[0], mosaic_metadata=items[1:], **seed_kwargs)
     for name in ("image", "thermal"):
         np.testing.assert_array_equal(actual[name], expected[name])
+
+
+@pytest.mark.parametrize("direct", [False, True])
+@pytest.mark.parametrize("primary_hwc1", [False, True])
+def test_mosaic_semantic_alias_hw_hwc1_interchange(direct: bool, primary_hwc1: bool) -> None:
+    items = [_semantic_item(index) for index in range(4)]
+    for index, item in enumerate(items):
+        if (index == 0) == primary_hwc1:
+            item["auxmask"] = item["auxmask"][..., None]
+    pipeline = _pipeline((2, 2), "cover", {"auxmask": "mask", "planes": "mask"})
+    transform = pipeline.transforms[0] if direct else pipeline
+    result = transform(**items[0], mosaic_metadata=items[1:])
+    assert result["auxmask"].shape == ((10, 14, 1) if primary_hwc1 else (10, 14))
+    for (row, column), donor_id in _rgb_placements(result["image"], items).items():
+        tile = result["auxmask"][row * 5 : (row + 1) * 5, column * 7 : (column + 1) * 7]
+        np.testing.assert_array_equal(tile.reshape(5, 7), items[donor_id]["auxmask"].reshape(5, 7))
+
+
+@pytest.mark.parametrize("fit_mode", ["cover", "contain"])
+@pytest.mark.parametrize("downscale", [False, True])
+def test_mosaic_semantic_alias_real_geometry(fit_mode: Literal["cover", "contain"], downscale: bool) -> None:
+    pattern = np.array([[-310, -309, -308, -307], [-210, -209, -208, -207]], dtype=np.int16)
+    source = np.repeat(np.repeat(pattern, 2, axis=0), 2, axis=1) if downscale else pattern
+    target_size = (2, 4) if downscale else (4, 4)
+    transform = A.Compose(
+        [
+            A.Mosaic(
+                grid_yx=(1, 1),
+                cell_shape=target_size,
+                target_size=target_size,
+                fit_mode=fit_mode,
+                interpolation=cv2.INTER_LINEAR,
+                mask_interpolation=cv2.INTER_NEAREST,
+                fill=77,
+                fill_mask=13,
+                p=1,
+            )
+        ],
+        additional_targets={"auxmask": "mask"},
+        seed=137,
+    )
+    result = transform(
+        image=np.zeros((*source.shape, 3), dtype=np.uint8),
+        mask=np.ones(source.shape, dtype=np.uint8),
+        auxmask=source,
+        mosaic_metadata=[],
+    )
+    if downscale:
+        expected = pattern
+    elif fit_mode == "cover":
+        expected = np.repeat(np.repeat(pattern, 2, axis=0), 2, axis=1)[:, :4]
+    else:
+        expected = np.full((4, 4), 13, dtype=np.int16)
+        expected[1:3] = pattern
+        np.testing.assert_array_equal(result["image"][[0, 3]], np.full((2, 4, 3), 77, dtype=np.uint8))
+    np.testing.assert_array_equal(result["auxmask"], expected, strict=True)
+
+
+@pytest.mark.parametrize("fit_mode", ["cover", "contain"])
+def test_mosaic_semantic_alias_donors_with_different_sizes(fit_mode: Literal["cover", "contain"]) -> None:
+    items = []
+    expected_tiles = []
+    for index, scale in enumerate((2, 1, 4, 1)):
+        pattern = np.arange(6, dtype=np.int16).reshape(2, 3) + 1000 + 100 * index
+        source = pattern.repeat(scale, axis=0).repeat(scale, axis=1)
+        expected = pattern.repeat(2, axis=0).repeat(2, axis=1)
+        if index == 3:
+            source = np.full((2, 6), 1370, np.int16)
+            expected[:] = 1370
+            if fit_mode == "contain":
+                expected[[0, 3]] = 13
+        items.append(
+            {
+                "image": np.full((*source.shape, 3), index + 1, np.uint8),
+                "mask": np.full(source.shape, index + 1, np.uint8),
+                "auxmask": source,
+            }
+        )
+        expected_tiles.append(expected)
+    original = deepcopy(items)
+    transform = A.Compose(
+        [
+            A.Mosaic(
+                cell_shape=(4, 6),
+                target_size=(8, 12),
+                center_range=(0.5, 0.5),
+                fit_mode=fit_mode,
+                interpolation=cv2.INTER_NEAREST,
+                fill=77,
+                fill_mask=13,
+                p=1,
+            )
+        ],
+        additional_targets={"auxmask": "mask"},
+        seed=137,
+    )
+    result = transform(**items[0], mosaic_metadata=items[1:])
+    selected = []
+    for row in range(2):
+        for column in range(2):
+            region = np.s_[row * 4 : (row + 1) * 4, column * 6 : (column + 1) * 6]
+            donor_id = int(result["image"][region][2, 3, 0]) - 1
+            selected.append(donor_id)
+            np.testing.assert_array_equal(result["auxmask"][region], expected_tiles[donor_id], strict=True)
+    assert sorted(selected) == [0, 1, 2, 3]
+    _assert_unchanged(items, original)
+
+
+@pytest.mark.parametrize(
+    ("dtype", "channels", "offset"),
+    [(np.uint8, 1, 10), (np.float32, 2, 0.5), (np.uint16, 5, 1000), (np.int16, 1, -300), (np.int32, 2, -70000)],
+)
+def test_mosaic_semantic_alias_nearest_dtype_and_channels(dtype: Any, channels: int, offset: float) -> None:
+    source = (np.arange(6 * channels).reshape(2, 3, channels) + offset).astype(dtype)
+    transform = A.Compose(
+        [A.Mosaic(grid_yx=(1, 1), cell_shape=(4, 6), target_size=(4, 6), p=1)],
+        additional_targets={"auxmask": "mask"},
+        seed=137,
+    )
+    result = transform(
+        image=np.zeros((2, 3, 3), dtype=np.uint8),
+        mask=np.zeros((2, 3), dtype=np.uint8),
+        auxmask=source,
+        mosaic_metadata=[],
+    )
+    np.testing.assert_array_equal(result["auxmask"], source.repeat(2, axis=0).repeat(2, axis=1), strict=True)
+
+
+def test_mosaic_semantic_alias_uses_mask_linear_interpolation() -> None:
+    source = np.array([[0, 1], [1, 0]], dtype=np.float32)
+    expected = np.array(
+        [[0, 0.25, 0.75, 1], [0.25, 0.375, 0.625, 0.75], [0.75, 0.625, 0.375, 0.25], [1, 0.75, 0.25, 0]],
+        dtype=np.float32,
+    )
+    transform = A.Compose(
+        [
+            A.Mosaic(
+                grid_yx=(1, 1),
+                cell_shape=(4, 4),
+                target_size=(4, 4),
+                interpolation=cv2.INTER_NEAREST,
+                mask_interpolation=cv2.INTER_LINEAR,
+                p=1,
+            )
+        ],
+        additional_targets={"auxmask": "mask"},
+        seed=137,
+    )
+    result = transform(image=np.zeros((2, 2, 3), np.uint8), mask=1 - source, auxmask=source, mosaic_metadata=[])
+    np.testing.assert_allclose(result["auxmask"], expected, atol=1e-7, rtol=0)
+    np.testing.assert_allclose(result["mask"], 1 - expected, atol=1e-7, rtol=0)
+
+
+@pytest.mark.parametrize("alias", [False, True])
+def test_mosaic_semantic_alias_int32_linear_matches_canonical_rejection(alias: bool) -> None:
+    source = np.array([[-70000, 80000, 0], [0, 80000, -70000]], dtype=np.int32)
+    data = {"mask": np.zeros((2, 3), np.uint8), "auxmask": source} if alias else {"mask": source}
+    transform = A.Compose(
+        [A.Mosaic(grid_yx=(1, 1), cell_shape=(4, 6), target_size=(4, 6), mask_interpolation=cv2.INTER_LINEAR, p=1)],
+        additional_targets={"auxmask": "mask"} if alias else None,
+        seed=137,
+    )
+    with pytest.raises(cv2.error):
+        transform(image=np.zeros((2, 3, 3), np.uint8), **data, mosaic_metadata=[])
+
+
+@pytest.mark.parametrize("fit_mode", ["cover", "contain"])
+def test_mosaic_semantic_alias_128_channels(fit_mode: Literal["cover", "contain"]) -> None:
+    source = np.broadcast_to(np.arange(128, dtype=np.uint8), (2, 4, 128)).copy()
+    transform = A.Compose(
+        [A.Mosaic(grid_yx=(1, 1), cell_shape=(4, 4), target_size=(4, 4), fit_mode=fit_mode, fill_mask=137, p=1)],
+        additional_targets={"auxmask": "mask"},
+        seed=137,
+    )
+    result = transform(
+        image=np.zeros((2, 4, 3), np.uint8), mask=np.ones((2, 4), np.uint8), auxmask=source, mosaic_metadata=[]
+    )
+    expected = np.broadcast_to(source[0, 0], (4, 4, 128)).copy()
+    if fit_mode == "contain":
+        expected[[0, 3]] = 137
+    np.testing.assert_array_equal(result["auxmask"], expected, strict=True)
+
+
+@pytest.mark.parametrize("donor", [False, True])
+def test_mosaic_semantic_alias_rejects_129_channels_before_sampling(donor: bool, mocker: MockerFixture) -> None:
+    items = [_semantic_item(index) for index in range(2)]
+    items[int(donor)]["auxmask"] = np.zeros((5, 7, 129), dtype=np.uint16)
+    transform = _pipeline((1, 1), "cover", {"auxmask": "mask", "planes": "mask"})
+    geometry = mocker.spy(transform.transforms[0], "_calculate_geometry")
+    selection = mocker.spy(transform.transforms[0], "_select_additional_items")
+    with pytest.raises(ValueError, match=r"target 'auxmask'.*at most 128 channels"):
+        transform(**items[0], mosaic_metadata=items[1:])
+    geometry.assert_not_called()
+    selection.assert_not_called()
+
+
+@pytest.mark.parametrize("fill_mask", [(3, 4), (3,), (3, 4, 5)])
+def test_mosaic_semantic_alias_tuple_fill(fill_mask: tuple[int, ...]) -> None:
+    source = np.full((2, 4, 2), -300, dtype=np.int16)
+    transform = A.Compose(
+        [
+            A.Mosaic(
+                grid_yx=(1, 1),
+                cell_shape=(4, 4),
+                target_size=(4, 4),
+                fit_mode="contain",
+                fill_mask=fill_mask,
+                p=1,
+            )
+        ],
+        additional_targets={"auxmask": "mask"},
+        seed=137,
+    )
+    data = dict(image=np.zeros((2, 4, 3), np.uint8), mask=source + 1, auxmask=source, mosaic_metadata=[])
+    if len(fill_mask) != 2:
+        with pytest.raises(ValueError, match="fill_mask must match channels"):
+            transform(**data)
+        return
+    result = transform(**data)
+    expected = np.empty((4, 4, 2), dtype=np.int16)
+    expected[:] = fill_mask
+    expected[1:3] = source
+    np.testing.assert_array_equal(result["auxmask"], expected, strict=True)
+
+
+def test_mosaic_semantic_alias_tuple_fill_checks_each_target() -> None:
+    transform = A.Compose(
+        [A.Mosaic(grid_yx=(1, 1), cell_shape=(5, 7), target_size=(5, 7), fill_mask=(3,), p=1)],
+        additional_targets={"auxmask": "mask", "planes": "mask"},
+        seed=137,
+    )
+    with pytest.raises(ValueError, match="fill_mask must match channels of target 'planes'"):
+        transform(**_semantic_item(0), mosaic_metadata=[])
+
+
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize(
+    "bad_alias",
+    [
+        "missing",
+        None,
+        [1, 2],
+        np.zeros((0, 7), np.uint16),
+        np.zeros((5, 7, 0), np.uint16),
+        np.zeros((1, 5, 7, 1), np.uint16),
+        np.zeros((5, 6), np.uint16),
+        np.zeros((5, 7), np.int16),
+        np.zeros((5, 7, 2), np.uint16),
+    ],
+)
+def test_mosaic_semantic_alias_invalid_surplus_pair(bad_alias: Any, strict: bool, mocker: MockerFixture) -> None:
+    items: list[dict[str, Any]] = [_semantic_item(index) for index in range(6)]
+    if isinstance(bad_alias, str):
+        del items[-1]["auxmask"]
+    else:
+        items[-1]["auxmask"] = bad_alias
+    original = deepcopy(items)
+    transform = A.Compose(
+        [A.Mosaic(cell_shape=(5, 7), target_size=(10, 14), p=1)],
+        additional_targets={"auxmask": "mask", "planes": "mask"},
+        seed=137,
+        strict=strict,
+    )
+    geometry = mocker.spy(transform.transforms[0], "_calculate_geometry")
+    selection = mocker.spy(transform.transforms[0], "_select_additional_items")
+    with pytest.raises(ValueError, match="Mosaic donor 4 target 'auxmask'"):
+        transform(**items[0], mosaic_metadata=items[1:])
+    geometry.assert_not_called()
+    selection.assert_not_called()
+    np.testing.assert_equal(items, original)
+
+
+@pytest.mark.parametrize(
+    "bad_alias", [[1, 2], np.zeros((0, 7), np.uint16), np.zeros((1, 5, 7, 1), np.uint16), np.zeros((5, 6), np.uint16)]
+)
+def test_mosaic_semantic_alias_invalid_primary(bad_alias: Any) -> None:
+    item = _semantic_item(0)
+    item["auxmask"] = bad_alias
+    transform = _pipeline((1, 1), "cover", {"auxmask": "mask", "planes": "mask"})
+    with pytest.raises((TypeError, ValueError)):
+        transform(**item, mosaic_metadata=[])
+
+
+@pytest.mark.parametrize("direct", [False, True])
+@pytest.mark.parametrize("missing", [False, True])
+@pytest.mark.parametrize("fill_mask", [0, (0,)])
+def test_mosaic_semantic_alias_requires_canonical_primary_before_sampling(
+    direct: bool,
+    missing: bool,
+    fill_mask: int | tuple[int, ...],
+    mocker: MockerFixture,
+) -> None:
+    item: dict[str, Any] = _semantic_item(0)
+    del item["planes"]
+    if missing:
+        del item["mask"]
+    else:
+        item["mask"] = None
+    pipeline = A.Compose(
+        [A.Mosaic(cell_shape=(5, 7), target_size=(10, 14), fill_mask=fill_mask, p=1)],
+        additional_targets={"auxmask": "mask"},
+        seed=137,
+    )
+    mosaic = pipeline.transforms[0]
+    transform = mosaic if direct else pipeline
+    geometry = mocker.spy(mosaic, "_calculate_geometry")
+    selection = mocker.spy(mosaic, "_select_additional_items")
+
+    with pytest.raises(ValueError, match=r"canonical.*mask"):
+        transform(**item, mosaic_metadata=[])
+
+    geometry.assert_not_called()
+    selection.assert_not_called()
+
+
+@pytest.mark.parametrize(("grid", "donor_count"), [((2, 2), 3), ((2, 2), 5), ((1, 1), 2)])
+@pytest.mark.parametrize("missing", [False, True])
+@pytest.mark.parametrize("explicit_seed", [False, True])
+def test_mosaic_semantic_alias_requires_canonical_donor_before_sampling(
+    grid: tuple[int, int],
+    donor_count: int,
+    missing: bool,
+    explicit_seed: bool,
+    mocker: MockerFixture,
+) -> None:
+    items: list[dict[str, Any]] = [_semantic_item(index) for index in range(donor_count + 1)]
+    invalid = deepcopy(items)
+    if missing:
+        del invalid[-1]["mask"]
+    else:
+        invalid[-1]["mask"] = None
+    original = deepcopy(invalid)
+    transform = _pipeline(grid, "cover", {"auxmask": "mask", "planes": "mask"})
+    fresh = _pipeline(grid, "cover", {"auxmask": "mask", "planes": "mask"})
+    geometry = mocker.spy(transform.transforms[0], "_calculate_geometry")
+    selection = mocker.spy(transform.transforms[0], "_select_additional_items")
+    seed_kwargs = {"invocation_seed": 137} if explicit_seed else {}
+    with pytest.raises(ValueError, match=rf"donor {donor_count - 1} requires a non-None canonical mask.*auxmask"):
+        transform(**invalid[0], mosaic_metadata=invalid[1:], **seed_kwargs)
+    geometry.assert_not_called()
+    selection.assert_not_called()
+    np.testing.assert_equal(invalid, original)
+    expected = fresh(**items[0], mosaic_metadata=items[1:], **seed_kwargs)
+    actual = transform(**items[0], mosaic_metadata=items[1:], **seed_kwargs)
+    for name in items[0]:
+        np.testing.assert_array_equal(actual[name], expected[name], strict=True)
+
+
+@pytest.mark.parametrize("explicit_seed", [False, True])
+@pytest.mark.parametrize("grid", [(1, 1), (2, 2)])
+def test_mosaic_semantic_alias_unused_invalid_pair_preserves_retry(
+    explicit_seed: bool,
+    grid: tuple[int, int],
+) -> None:
+    items = [_semantic_item(index) for index in range(6)]
+    invalid = deepcopy(items)
+    del invalid[-1]["auxmask"]
+    transform = _pipeline(grid, "cover", {"auxmask": "mask", "planes": "mask"})
+    fresh = _pipeline(grid, "cover", {"auxmask": "mask", "planes": "mask"})
+    seed_kwargs = {"invocation_seed": 137} if explicit_seed else {}
+    with pytest.raises(ValueError, match="donor 4 target 'auxmask'"):
+        transform(**invalid[0], mosaic_metadata=invalid[1:], **seed_kwargs)
+    actual = transform(**items[0], mosaic_metadata=items[1:], **seed_kwargs)
+    expected = fresh(**items[0], mosaic_metadata=items[1:], **seed_kwargs)
+    for name in items[0]:
+        np.testing.assert_array_equal(actual[name], expected[name], strict=True)
+
+
+@pytest.mark.parametrize("mode", ["canonical", "absent", "none", "image"])
+def test_mosaic_inactive_mask_alias_keeps_missing_canonical_donor_fill(mode: str) -> None:
+    items: list[dict[str, Any]] = [{"image": _paired_item(index, np.uint8, "hw")["image"]} for index in range(4)]
+    items[0]["mask"] = np.ones((5, 7), dtype=np.uint8)
+    items[2]["mask"] = None
+    aliases = {} if mode == "canonical" else {"auxmask": "mask"}
+    if mode == "none":
+        items[0]["auxmask"] = None
+    if mode == "image":
+        aliases["thermal"] = "image"
+        for index, item in enumerate(items):
+            item["thermal"] = _paired_item(index, np.uint8, "hw")["thermal"]
+    transform = A.Compose(
+        [A.Mosaic(cell_shape=(5, 7), target_size=(10, 14), center_range=(0.5, 0.5), fill_mask=13, p=1)],
+        additional_targets=aliases,
+        seed=137,
+    )
+    result = transform(**items[0], mosaic_metadata=items[1:])
+    for (row, column), donor_id in _rgb_placements(result["image"], items).items():
+        expected = np.full((5, 7), 1 if donor_id == 0 else 13, dtype=np.uint8)
+        np.testing.assert_array_equal(result["mask"][row * 5 : (row + 1) * 5, column * 7 : (column + 1) * 7], expected)
+        if mode == "image":
+            np.testing.assert_array_equal(
+                result["thermal"][row * 5 : (row + 1) * 5, column * 7 : (column + 1) * 7],
+                items[donor_id]["thermal"],
+            )
+    assert result.get("auxmask") is None
+
+
+def test_mosaic_semantic_alias_canonical_invalid_donor_is_skipped() -> None:
+    primary = _semantic_item(0)
+    with pytest.warns(UserWarning, match="skipped due to incompatibility"):
+        result = _pipeline((2, 2), "contain", {"auxmask": "mask", "planes": "mask"})(
+            **primary,
+            mosaic_metadata=[{"image": np.zeros((5, 7, 2), dtype=np.uint8)}],
+        )
+    np.testing.assert_array_equal(result["auxmask"], np.tile(primary["auxmask"], (2, 2)))
+    np.testing.assert_array_equal(result["planes"], np.tile(primary["planes"], (2, 2, 1)))
+
+
+@pytest.mark.parametrize("empty", [False, True])
+def test_mosaic_semantic_alias_with_images_and_annotations(empty: bool) -> None:
+    items: list[dict[str, Any]] = [_semantic_item(index) for index in range(4)]
+    for index, item in enumerate(items):
+        item.update(
+            thermal=_paired_item(index, np.uint8, "hw")["thermal"],
+            bboxes=np.empty((0, 4), np.float32) if empty else [[1, 1, 5, 4]],
+            keypoints=np.empty((0, 2), np.float32) if empty else [[2, 2]],
+        )
+        labels = [] if empty else [index]
+        if index:
+            item.update(bbox_labels={"classes": labels}, keypoint_labels={"landmarks": labels})
+        else:
+            item.update(classes=labels, landmarks=labels)
+    original = deepcopy(items)
+    transform = A.Compose(
+        [A.Mosaic(cell_shape=(5, 7), target_size=(10, 14), center_range=(0.5, 0.5), p=1)],
+        additional_targets={"thermal": "image", "auxmask": "mask", "planes": "mask"},
+        bbox_params=A.BboxParams(coord_format="pascal_voc", bbox_type="hbb", label_fields=["classes"]),
+        keypoint_params=A.KeypointParams(coord_format="xy", label_fields=["landmarks"]),
+        seed=137,
+        strict=True,
+    )
+    result = transform(**items[0], mosaic_metadata=items[1:])
+    assert len(result["bboxes"]) == len(result["keypoints"]) == (0 if empty else 4)
+    for (row, column), donor_id in _rgb_placements(result["image"], items).items():
+        region = np.s_[row * 5 : (row + 1) * 5, column * 7 : (column + 1) * 7]
+        for name in ("thermal", "mask", "auxmask", "planes"):
+            np.testing.assert_array_equal(result[name][region], items[donor_id][name], strict=True)
+        if not empty:
+            bbox = result["bboxes"][list(result["classes"]).index(donor_id)]
+            point = result["keypoints"][list(result["landmarks"]).index(donor_id)]
+            np.testing.assert_allclose(
+                bbox, np.array([1, 1, 5, 4]) + [7 * column, 5 * row, 7 * column, 5 * row], atol=1e-6
+            )
+            np.testing.assert_allclose(point, [2 + 7 * column, 2 + 5 * row], atol=1e-6)
+    np.testing.assert_equal(items, original)
+
+
+def test_mosaic_semantic_alias_masks_only_preprocessing() -> None:
+    items = [_semantic_item(index) for index in range(4)]
+    for item in items:
+        item["masks"] = np.ones((1, 5, 7), dtype=np.uint8)
+    original = deepcopy(items)
+    result = _pipeline((2, 2), "contain", {"auxmask": "mask", "planes": "mask"})(
+        **items[0],
+        mosaic_metadata=items[1:],
+    )
+    assert result["masks"].shape == (4, 10, 14)
+    np.testing.assert_array_equal(result["masks"].sum(axis=0), np.ones((10, 14)))
+    for (row, column), donor_id in _rgb_placements(result["image"], items).items():
+        region = np.s_[row * 5 : (row + 1) * 5, column * 7 : (column + 1) * 7]
+        for name in ("auxmask", "planes"):
+            np.testing.assert_array_equal(result[name][region], items[donor_id][name], strict=True)
+    np.testing.assert_equal(items, original)
+
+
+@pytest.mark.parametrize("filtered", [False, True])
+def test_mosaic_semantic_alias_multicell_instance_remapping(filtered: bool) -> None:
+    items: list[dict[str, Any]] = [_semantic_item(index) for index in range(4)]
+    instance_mask = np.zeros((5, 7), dtype=np.uint8)
+    instance_mask[1:4, 1:5] = 1
+    items[0]["instances"] = [
+        {"mask": instance_mask, "bbox": np.array([1, 1, 5, 4], np.float32), "bbox_labels": {"classes": 0}},
+    ]
+    for index, item in enumerate(items[1:], start=1):
+        small = filtered and index == 1
+        mask = instance_mask.copy()
+        if small:
+            mask[:] = 0
+            mask[1, 1] = 1
+        item.update(
+            masks=mask[None],
+            bboxes=np.array([[1, 1, 2, 2] if small else [1, 1, 5, 4]], np.float32),
+            bbox_labels={"classes": [index]},
+        )
+    original = deepcopy(items)
+    transform = A.Compose(
+        [A.Mosaic(cell_shape=(5, 7), target_size=(10, 14), center_range=(0.5, 0.5), p=1)],
+        additional_targets={"auxmask": "mask", "planes": "mask"},
+        bbox_params=A.BboxParams(
+            coord_format="pascal_voc",
+            bbox_type="hbb",
+            label_fields=["classes"],
+            min_area=5 if filtered else 0,
+        ),
+        instance_binding=["masks", "bboxes"],
+        seed=137,
+    )
+    result = transform(**items[0], mosaic_metadata=items[1:])
+    by_class = {instance["bbox_labels"]["classes"]: instance for instance in result["instances"]}
+    assert set(by_class) == ({0, 2, 3} if filtered else {0, 1, 2, 3})
+    for (row, column), donor_id in _rgb_placements(result["image"], items).items():
+        region = np.s_[row * 5 : (row + 1) * 5, column * 7 : (column + 1) * 7]
+        for name in ("auxmask", "planes"):
+            np.testing.assert_array_equal(result[name][region], items[donor_id][name], strict=True)
+        if donor_id in by_class:
+            expected_mask = np.zeros((10, 14), dtype=np.uint8)
+            expected_mask[region] = instance_mask
+            np.testing.assert_array_equal(by_class[donor_id]["mask"], expected_mask)
+            np.testing.assert_allclose(
+                by_class[donor_id]["bbox"],
+                np.array([1, 1, 5, 4]) + [7 * column, 5 * row, 7 * column, 5 * row],
+                atol=1e-6,
+            )
+    np.testing.assert_equal(items, original)
+
+
+def test_mosaic_semantic_alias_readonly_views_and_output_ownership() -> None:
+    items = [_semantic_item(index) for index in range(4)]
+    for item in items:
+        for name, value in item.items():
+            item[name] = value[:, ::-1]
+            item[name].setflags(write=False)
+    original = deepcopy(items)
+    transform = _pipeline((2, 2), "contain", {"auxmask": "mask", "planes": "mask"})
+    with pytest.raises(ValueError, match="canonical mask"):
+        transform(**items[0], mosaic_metadata=[{name: value for name, value in items[1].items() if name != "mask"}])
+    first = transform(**items[0], mosaic_metadata=items[1:], invocation_seed=137)
+    second = transform(**items[0], mosaic_metadata=items[1:], invocation_seed=137)
+    for name in items[0]:
+        np.testing.assert_array_equal(first[name], second[name], strict=True)
+        assert not np.shares_memory(first[name], second[name])
+        for item in items:
+            assert not np.shares_memory(first[name], item[name])
+        first[name][:] = 0
+        assert np.any(second[name])
+    _assert_unchanged(items, original)
+
+
+@pytest.mark.parametrize("direct", [False, True])
+def test_mosaic_semantic_alias_skip_keeps_identity(direct: bool) -> None:
+    item = _semantic_item(0)
+    mosaic = A.Mosaic(p=0)
+    mosaic.add_targets({"auxmask": "mask", "planes": "mask"})
+    transform = mosaic if direct else A.Compose([mosaic], seed=137)
+    result = transform(**item, mosaic_metadata=[{"image": item["image"]}])
+    for name in item:
+        assert result[name] is item[name]
+
+
+@pytest.mark.parametrize("drift", ["dtype", "shape"])
+def test_mosaic_semantic_alias_replay_and_serialization(drift: str) -> None:
+    items = [_semantic_item(index) for index in range(4)]
+    aliases = {"auxmask": "mask", "planes": "mask"}
+    compose = _pipeline((2, 2), "contain", aliases)
+    restored = A.from_dict(A.to_dict(compose))
+    expected = compose(**items[0], mosaic_metadata=items[1:], invocation_seed=137)
+    actual = restored(**items[0], mosaic_metadata=items[1:], invocation_seed=137)
+    replay = A.ReplayCompose(compose.transforms, additional_targets=aliases)
+    replay.set_random_seed(137)
+    recorded = replay(**items[0], mosaic_metadata=items[1:])
+    replayed = A.ReplayCompose.replay(recorded["replay"], **items[0], mosaic_metadata=items[1:])
+    for name in items[0]:
+        np.testing.assert_array_equal(actual[name], expected[name], strict=True)
+        np.testing.assert_array_equal(replayed[name], recorded[name], strict=True)
+    changed = dict(items[0])
+    changed["auxmask"] = (
+        items[0]["auxmask"].astype(np.float32)
+        if drift == "dtype"
+        else np.repeat(items[0]["auxmask"][..., None], 2, axis=-1)
+    )
+    with pytest.raises(ValueError, match="requirements do not match target 'auxmask'"):
+        A.ReplayCompose.replay(recorded["replay"], **changed, mosaic_metadata=items[1:])
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.int16, np.float32])
+@pytest.mark.parametrize("hw", [False, True])
+def test_mosaic_semantic_alias_tensor_fallback(dtype: Any, hw: bool) -> None:
+    items = [_semantic_item(index) for index in range(4)]
+    for item in items:
+        item["auxmask"] = (item["auxmask"] % 251).astype(dtype)
+        if not hw:
+            item["auxmask"] = item["auxmask"][..., None]
+    transform = _pipeline((2, 2), "cover", {"auxmask": "mask", "planes": "mask"})
+    expected = transform(**items[0], mosaic_metadata=items[1:], invocation_seed=137)
+    tensor_primary = {
+        name: torch.from_numpy(value) if value.ndim == 2 else torch.from_numpy(value).permute(2, 0, 1)
+        for name, value in items[0].items()
+    }
+    actual = transform(**tensor_primary, mosaic_metadata=items[1:], invocation_seed=137)
+    for name in items[0]:
+        assert isinstance(actual[name], torch.Tensor)
+        value = actual[name].numpy() if actual[name].ndim == 2 else actual[name].permute(1, 2, 0).numpy()
+        np.testing.assert_array_equal(value, expected[name], strict=True)

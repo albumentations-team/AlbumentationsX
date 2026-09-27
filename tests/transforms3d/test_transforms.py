@@ -12,6 +12,7 @@ import albumentations as A
 from albumentations.augmentations.transforms3d import functional as f3d
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet
+from albumentations.core.type_definitions import Targets
 from tests.conftest import RECTANGULAR_UINT8_IMAGE
 from tests.utils import (
     get_primary_2d_transform_params,
@@ -762,7 +763,8 @@ def _get_slice_wise_2d_transform_params():
                 A.BBoxSubsetSafeRandomCrop,
             },
         )
-        if getattr(augmentation_cls(**params, p=1), "_volume_sampling_is_slice_wise", True)
+        if {Targets.IMAGE, Targets.IMAGES, Targets.VOLUME}.issubset(augmentation_cls._targets)
+        and getattr(augmentation_cls(**params, p=1), "_volume_sampling_is_slice_wise", True)
     ]
 
 
@@ -781,8 +783,6 @@ def test_image_volume_matching(image, augmentation_cls, params):
         "volume": volume,
         "images": images,
     }
-    if augmentation_cls == A.CopyAndPaste:
-        call_kw["copy_paste_metadata"] = []
     transformed = aug(**call_kw)
 
     (
@@ -799,7 +799,7 @@ def test_image_volume_matching(image, augmentation_cls, params):
     ["augmentation_cls", "params"],
     _get_slice_wise_2d_transform_params(),
 )
-def test_image_transforms_matching(image, augmentation_cls, params):
+def test_image_transforms_matching(augmentation_cls, params):
     # Use the same data for both to ensure transforms that depend on image content produce identical results
     test_data = np.random.RandomState(42).randint(0, 256, (5, 100, 100, 3), dtype=np.uint8)
 
@@ -808,10 +808,6 @@ def test_image_transforms_matching(image, augmentation_cls, params):
 
     kw_images: dict[str, Any] = {"images": test_data.copy()}
     kw_volume: dict[str, Any] = {"volume": test_data.copy()}
-    if augmentation_cls == A.CopyAndPaste:
-        kw_images["copy_paste_metadata"] = []
-        kw_volume["copy_paste_metadata"] = []
-
     transformed_1 = aug_1(**kw_images)
     transformed_2 = aug_2(**kw_volume)
 

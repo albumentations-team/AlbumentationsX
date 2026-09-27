@@ -63,8 +63,7 @@ class ChannelShuffle(ImageOnlyTransform):
             Default: None.
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets:
-        image, volume
+    Targets: image, images, volume
 
     Image types:
         uint8, float32
@@ -175,8 +174,7 @@ class ChannelSwap(ChannelShuffle):
             Default: (2, 1, 0).
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets:
-        image, volume
+    Targets: image, images, volume
 
     Image types:
         uint8, float32

@@ -439,6 +439,15 @@ class ComposeInvocationState:
 
 
 @dataclass(slots=True)
+class FrameInvocationState:
+    """Keep frame-local annotation state together when temporal selection reorders or repeats frames."""
+
+    instance_count: int | None = None
+    channel_restorations: dict[str, ChannelRestorationState] = field(default_factory=dict)
+    processors: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
 class InvocationObservation:
     """Keeps caller-local snapshots from an observing call, exposing detached parameters without retaining configured
     transforms or shared state.
@@ -471,6 +480,8 @@ class InvocationContext:
     collect_applied: bool = False
     root_key: object | None = None
     has_tensor_inputs: bool | None = None
+    frame_binding: tuple[str, str] | None = None
+    frames: list[FrameInvocationState] = field(default_factory=list)
     _py_random: random.Random | None = None
     _random_generator: np.random.Generator | None = None
     _reserved_random_streams: _ReservedRandomStreams | None = None
@@ -481,7 +492,7 @@ class InvocationContext:
     _first_compose_state: ComposeInvocationState | None = None
     _compose_states: dict[object, ComposeInvocationState] | None = None
     _processor_sessions: dict[int, dict[str, Any]] | None = None
-    _active_processors: dict[str, Any] | None = None
+    active_processors: dict[str, Any] | None = None
     _active_processors_by_id: dict[int, Any] | None = None
     _filtered_processor_ids: set[int] | None = None
     _sampling_context: SamplingContext | None = None
@@ -599,12 +610,24 @@ class InvocationContext:
         if sessions is not None:
             return sessions
 
+        sessions = self.new_processor_sessions(configured_processors)
+        self._processor_sessions[configured_id] = sessions
+        return sessions
+
+    @staticmethod
+    def new_processor_sessions(
+        configured_processors: dict[str, Any],
+        *,
+        shared_processors: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         sessions = {}
         for name, processor in configured_processors.items():
+            if shared_processors is not None and not processor.params.label_fields:
+                sessions[name] = shared_processors[name]
+                continue
             session = copy.copy(processor)
             session.label_manager = LabelManager()
             sessions[name] = session
-        self._processor_sessions[configured_id] = sessions
         return sessions
 
     def activate_processors(self, configured_processors: dict[str, Any]) -> dict[str, Any]:
@@ -616,7 +639,7 @@ class InvocationContext:
         annotation state into every transform node.
         """
         sessions = self.processors(configured_processors)
-        self._active_processors = sessions
+        self.active_processors = sessions
         self._active_processors_by_id = {
             id(configured_processor): sessions[name] for name, configured_processor in configured_processors.items()
         }
@@ -626,7 +649,7 @@ class InvocationContext:
         """Return the active annotation processor for this invocation, keeping each leaf detached
         from root configuration and sessions owned by other callers.
         """
-        return None if self._active_processors is None else self._active_processors.get(name)
+        return None if self.active_processors is None else self.active_processors.get(name)
 
     def get_processor_session(self, configured_processor: object) -> Any | None:
         """Return a call-local session for this policy identity, letting nested containers filter

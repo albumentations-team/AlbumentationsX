@@ -46,8 +46,7 @@ class GuidedCoarseDropout(BaseDropout):
             None leaves masks unchanged. Default: None.
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets:
-        image, mask, bboxes, keypoints
+    Targets: image, images, mask, bboxes, keypoints
 
     Image types:
         uint8, float32
@@ -81,7 +80,7 @@ class GuidedCoarseDropout(BaseDropout):
 
     """
 
-    _targets = (Targets.IMAGE, Targets.MASK, Targets.BBOXES, Targets.KEYPOINTS)
+    _targets = (Targets.IMAGE, Targets.IMAGES, Targets.MASK, Targets.BBOXES, Targets.KEYPOINTS)
     _supported_bbox_types: frozenset[str] = frozenset({"hbb"})
 
     class InitSchema(BaseDropoutInitSchema):

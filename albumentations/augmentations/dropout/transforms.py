@@ -165,7 +165,7 @@ class BaseDropout(DualTransform):
 
     """
 
-    _targets: tuple[Targets, ...] | Targets = ALL_TARGETS
+    _targets: tuple[Targets | str, ...] | Targets | str = ALL_TARGETS
 
     InitSchema: ClassVar[type[BaseTransformInitSchema]] = BaseDropoutInitSchema
 
@@ -299,8 +299,7 @@ class PixelDropout(DualTransform):
         p (float): Probability of applying the transform. Should be in the range [0, 1].
             Default: 0.5
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32

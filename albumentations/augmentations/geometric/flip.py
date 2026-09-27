@@ -86,8 +86,7 @@ class VerticalFlip(DualTransform):
     Args:
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -196,8 +195,7 @@ class HorizontalFlip(DualTransform):
     Args:
         p (float): probability of applying the transform. Default: 0.5.
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -304,8 +302,7 @@ class Transpose(DualTransform):
     Args:
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -444,8 +441,7 @@ class D4(DualTransform):
             always apply this specific D4 group element instead of sampling randomly. Use for TTA.
             Default: None (random choice).
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -646,8 +642,7 @@ class SquareSymmetry(D4):
             always apply this specific D4 group element instead of sampling randomly. Use for TTA.
             Default: None (random choice).
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32

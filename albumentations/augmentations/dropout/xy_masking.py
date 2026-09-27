@@ -104,8 +104,7 @@ class XYMasking(BaseDropout):
             If None, mask regions corresponding to image dropouts are unchanged. Defaults to None.
         p (float): Probability of applying the transform. Defaults to 0.5.
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32

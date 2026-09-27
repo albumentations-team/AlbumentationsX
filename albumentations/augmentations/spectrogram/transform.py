@@ -37,8 +37,7 @@ class TimeReverse(HorizontalFlip):
     Args:
         p (float): probability of applying the transform. Default: 0.5.
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -100,8 +99,7 @@ class TimeMasking(XYMasking):
             Must be a positive integer. Length of the mask is uniformly sampled from (0, time_mask_param).
         p (float): probability of applying the transform. Default: 0.5.
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -181,8 +179,7 @@ class FrequencyMasking(XYMasking):
             Must be a positive integer. Length of the mask is uniformly sampled from (0, freq_mask_param).
         p (float): probability of applying the transform. Default: 0.5.
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32

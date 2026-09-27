@@ -25,7 +25,7 @@ def test_anisotropy3d_is_volume_only() -> None:
 
     assert isinstance(transform, A.VolumeOnlyTransform)
     assert transform._targets == (Targets.VOLUME,)
-    assert set(transform.targets) == {"user_data", "volume"}
+    assert set(transform.targets) == {"volume"}
 
 
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])

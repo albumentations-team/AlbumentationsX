@@ -65,10 +65,6 @@ def _supports_profile(
     raw_targets = transform._targets
     target_values = raw_targets if isinstance(raw_targets, tuple) else (raw_targets,)
     declared_targets = {target.name.lower() for target in target_values}
-    if "image" in declared_targets:
-        declared_targets.add("images")
-    if "mask" in declared_targets:
-        declared_targets.add("masks")
     if not profile.required_targets <= declared_targets:
         return False
     supported_channel_counts = getattr(transform, "_supported_channel_counts", None)

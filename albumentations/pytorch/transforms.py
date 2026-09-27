@@ -52,15 +52,14 @@ class ToTensorV2(BaseTensorTransform):
             `[num_channels, height, width]`.
         p (float): Probability of applying the transform. Default: 1.0.
 
-    Targets:
-        image, mask
+    Targets: image, images, mask, masks
 
     Examples:
         >>> transform = ToTensorV2(transpose_mask=True)
 
     """
 
-    _targets = (Targets.IMAGE, Targets.MASK)
+    _targets = (Targets.IMAGE, Targets.IMAGES, Targets.MASK, Targets.MASKS)
 
     class InitSchema(BaseTransformInitSchema):
         transpose_mask: bool
@@ -68,22 +67,6 @@ class ToTensorV2(BaseTensorTransform):
     def __init__(self, transpose_mask: bool = False, p: float = 1.0):
         super().__init__(p=p)
         self.transpose_mask = transpose_mask
-
-    @property
-    def targets(self) -> dict[str, Any]:
-        """Mapping of target name to function (image, images, mask, masks). Compose uses this
-        to dispatch apply vs apply_to_images/apply_to_mask/apply_to_masks.
-
-        Returns:
-            dict[str, Any]: Dictionary mapping target names to corresponding transform functions.
-
-        """
-        return {
-            "image": self.apply,
-            "images": self.apply_to_images,
-            "mask": self.apply_to_mask,
-            "masks": self.apply_to_masks,
-        }
 
     def apply(self, img: ImageType, *args: Any, **params: Any) -> torch.Tensor:
         if img.ndim not in {MONO_CHANNEL_DIMENSIONS, NUM_MULTI_CHANNEL_DIMENSIONS}:
@@ -131,8 +114,7 @@ class ToTensor3D(BaseTensorTransform):
     Args:
         p (float): Probability of applying the transform. Default: 1.0
 
-    Targets:
-        volume, mask3d
+    Targets: volume, mask3d
 
     Examples:
         >>> transform = ToTensor3D(p=1.0)
@@ -143,20 +125,6 @@ class ToTensor3D(BaseTensorTransform):
 
     def __init__(self, p: float = 1.0):
         super().__init__(p=p)
-
-    @property
-    def targets(self) -> dict[str, Any]:
-        """Return mapping of target name to target function (volume, mask3d). Compose uses
-        this to dispatch apply_to_volume vs apply_to_mask3d.
-
-        Returns:
-            dict[str, Any]: Dictionary mapping target names to corresponding transform functions
-
-        """
-        return {
-            "volume": self.apply_to_volume,
-            "mask3d": self.apply_to_mask3d,
-        }
 
     def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> torch.Tensor:
         if volume.ndim == NUM_VOLUME_DIMENSIONS:  # D,H,W,C

@@ -54,8 +54,7 @@ class GridDropout(BaseDropout):
             Only used when random_offset is False. Default: (0, 0).
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32

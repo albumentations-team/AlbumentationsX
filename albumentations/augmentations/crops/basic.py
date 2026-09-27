@@ -52,8 +52,7 @@ class RandomCrop(BaseCropAndPad):
             Position of padding. Default: 'center'.
         p (float): Probability of applying the transform. Default: 1.0.
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -228,8 +227,7 @@ class CenterCrop(BaseCropAndPad):
             Position of padding. Default: 'center'.
         p (float): Probability of applying the transform. Default: 1.0.
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -402,8 +400,7 @@ class Crop(BaseCropAndPad):
             Position of padding. Default: 'center'.
         p (float): Probability of applying the transform. Default: 1.0.
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -681,8 +678,7 @@ class CropAndPad(DualTransform):
         p (float):
             Probability of applying the transform. Default: 1.0.
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32

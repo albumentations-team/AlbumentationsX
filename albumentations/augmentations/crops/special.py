@@ -44,8 +44,7 @@ class CropNonEmptyMaskIfExists(BaseCrop):
             For example, if background is the first channel, set `ignore_channels=[0]` to ignore it. Default: None.
         p (float): Probability of applying the transform. Default: 1.0.
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -233,8 +232,7 @@ class RandomCropNearBBox(BaseCrop):
         cropping_bbox_key (str): Additional target key for cropping box. Default `cropping_bbox`.
         p (float): probability of applying the transform. Default: 1.
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -323,8 +321,7 @@ class RandomCropFromBorders(BaseCrop):
             Must be in the range [0.0, 1.0]. Default: 0.1
         p (float): Probability of applying the transform. Default: 1.0
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32

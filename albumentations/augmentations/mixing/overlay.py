@@ -41,8 +41,7 @@ class OverlayElements(DualTransform):
         - mask_id (int): An optional identifier for the mask. If provided, the regions specified by the mask will
                          be labeled with this identifier in the output mask.
 
-    Targets:
-        image, mask
+    Targets: image, mask
 
     Image types:
         uint8, float32

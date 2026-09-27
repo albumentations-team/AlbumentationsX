@@ -48,8 +48,7 @@ class MaskDropout(DualTransform):
             to be kept. Only applicable if bounding box augmentation is enabled. Default: 0.0
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32

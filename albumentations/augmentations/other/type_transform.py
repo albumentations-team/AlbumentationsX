@@ -43,8 +43,7 @@ class ToFloat(ImageOnlyTransform):
             Default: None.
         p (float): Probability of applying the transform. Default: 1.0.
 
-    Targets:
-        image, volume
+    Targets: image, images, volume
 
     Image types:
         uint8, float32
@@ -108,8 +107,7 @@ class FromFloat(ImageOnlyTransform):
         max_value (float | None): The maximum value for the output dtype. If None, 255 for uint8.
         p (float): Probability of applying the transform. Default: 1.0.
 
-    Targets:
-        image, volume
+    Targets: image, images, volume
 
     Image types:
         float32

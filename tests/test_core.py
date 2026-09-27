@@ -829,6 +829,7 @@ NON_CONTIGUOUS_VOLUMETRIC_CASES = get_primary_dual_transform_params(
         A.CropNonEmptyMaskIfExists,
         A.BBoxSafeRandomCrop,
         A.OverlayElements,
+        A.CopyAndPaste,
         A.RandomCropNearBBox,
         A.Mosaic,
         A.MaskDropout,
@@ -1187,6 +1188,7 @@ def test_compose_additional_targets_in_available_keys() -> None:
             A.RandomCropNearBBox,
             A.Pad,
             A.Mosaic,
+            A.CopyAndPaste,
             A.FDA,
             A.HistogramMatching,
             A.PixelDistributionAdaptation,
@@ -2479,6 +2481,8 @@ def test_user_data_custom_override() -> None:
     image = np.zeros((100, 100, 3), dtype=np.uint8)
 
     class FlipAwareFlip(A.HorizontalFlip):
+        _targets = (*A.HorizontalFlip._targets, "user_data")
+
         def apply_to_user_data(self, data: dict, **params: Any) -> dict:
             return {**data, "flipped": True}
 
@@ -2495,11 +2499,15 @@ def test_user_data_survives_multi_transform_pipeline() -> None:
     call_log: list[str] = []
 
     class LoggingFlip(A.HorizontalFlip):
+        _targets = (*A.HorizontalFlip._targets, "user_data")
+
         def apply_to_user_data(self, data: list, **params: Any) -> list:
             call_log.append("flip")
             return [*data, "flip"]
 
     class LoggingBlur(A.GaussianBlur):
+        _targets = (*A.GaussianBlur._targets, "user_data")
+
         def apply_to_user_data(self, data: list, **params: Any) -> list:
             call_log.append("blur")
             return [*data, "blur"]
@@ -2542,6 +2550,8 @@ def test_user_data_passthrough_when_transform_skipped_p0() -> None:
     payload = {"value": 137}
 
     class MutatingFlip(A.HorizontalFlip):
+        _targets = (*A.HorizontalFlip._targets, "user_data")
+
         def apply_to_user_data(self, data: dict, **params: Any) -> dict:
             return {**data, "mutated": True}
 
@@ -2557,10 +2567,14 @@ def test_user_data_oneof() -> None:
     image = np.zeros((100, 100, 3), dtype=np.uint8)
 
     class FlipMutator(A.HorizontalFlip):
+        _targets = (*A.HorizontalFlip._targets, "user_data")
+
         def apply_to_user_data(self, data: list, **params: Any) -> list:
             return [*data, "flip"]
 
     class BlurMutator(A.GaussianBlur):
+        _targets = (*A.GaussianBlur._targets, "user_data")
+
         def apply_to_user_data(self, data: list, **params: Any) -> list:
             return [*data, "blur"]
 
@@ -2578,10 +2592,14 @@ def test_user_data_someof() -> None:
     image = np.zeros((100, 100, 3), dtype=np.uint8)
 
     class FlipMutator(A.HorizontalFlip):
+        _targets = (*A.HorizontalFlip._targets, "user_data")
+
         def apply_to_user_data(self, data: list, **params: Any) -> list:
             return [*data, "flip"]
 
     class BlurMutator(A.GaussianBlur):
+        _targets = (*A.GaussianBlur._targets, "user_data")
+
         def apply_to_user_data(self, data: list, **params: Any) -> list:
             return [*data, "blur"]
 
@@ -2598,10 +2616,14 @@ def test_user_data_sequential() -> None:
     image = np.zeros((100, 100, 3), dtype=np.uint8)
 
     class A1(A.NoOp):
+        _targets = (*A.NoOp._targets, "user_data")
+
         def apply_to_user_data(self, data: list, **params: Any) -> list:
             return [*data, "a"]
 
     class B1(A.NoOp):
+        _targets = (*A.NoOp._targets, "user_data")
+
         def apply_to_user_data(self, data: list, **params: Any) -> list:
             return [*data, "b"]
 
@@ -2616,15 +2638,19 @@ def test_user_data_random_order() -> None:
     image = np.zeros((100, 100, 3), dtype=np.uint8)
 
     class FlipMutator(A.HorizontalFlip):
+        _targets = (*A.HorizontalFlip._targets, "user_data")
+
         def apply_to_user_data(self, data: list, **params: Any) -> list:
             return [*data, "flip"]
 
     class BlurMutator(A.GaussianBlur):
+        _targets = (*A.GaussianBlur._targets, "user_data")
+
         def apply_to_user_data(self, data: list, **params: Any) -> list:
             return [*data, "blur"]
 
     transform = A.Compose(
-        [A.RandomOrder([FlipMutator(p=1.0), BlurMutator(p=1.0)], n=2, p=1.0)],
+        [A.RandomOrder([FlipMutator(p=1.0), BlurMutator(p=1.0)], n=2, replace=False, p=1.0)],
     )
     result = transform(image=image, user_data=[])
 
@@ -2636,6 +2662,8 @@ def test_user_data_replay_compose() -> None:
     image = np.zeros((100, 100, 3), dtype=np.uint8)
 
     class FlipMutator(A.HorizontalFlip):
+        _targets = (*A.HorizontalFlip._targets, "user_data")
+
         def apply_to_user_data(self, data: dict, **params: Any) -> dict:
             return {**data, "flipped": True}
 
@@ -2654,6 +2682,8 @@ def test_user_data_additional_targets() -> None:
     image = np.zeros((100, 100, 3), dtype=np.uint8)
 
     class FlipMutator(A.HorizontalFlip):
+        _targets = (*A.HorizontalFlip._targets, "user_data")
+
         def apply_to_user_data(self, data: dict, **params: Any) -> dict:
             return {**data, "mutated": True}
 
@@ -2667,14 +2697,21 @@ def test_user_data_additional_targets() -> None:
 
 
 def test_user_data_strict_mode() -> None:
-    """user_data works with strict=True (strict arg validation)."""
+    """An explicitly declared user_data handler works with strict validation."""
     image = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    class FlipMutator(A.HorizontalFlip):
+        _targets = (*A.HorizontalFlip._targets, "user_data")
+
+        def apply_to_user_data(self, data: dict, **params: Any) -> dict:
+            return {**data, "flipped": True}
+
     transform = A.Compose(
-        [A.HorizontalFlip(p=1.0)],
+        [FlipMutator(p=1.0)],
         strict=True,
     )
-    result = transform(image=image, user_data={"foo": 137})
-    assert result["user_data"] == {"foo": 137}
+    result = transform(image=image, user_data={"flipped": False})
+    assert result["user_data"] == {"flipped": True}
 
 
 def test_user_data_with_bboxes() -> None:
@@ -2725,6 +2762,8 @@ def test_user_data_batch_images() -> None:
     images = np.zeros((3, 50, 50, 3), dtype=np.uint8)
 
     class BatchMutator(A.NoOp):
+        _targets = (*A.NoOp._targets, "user_data")
+
         def apply_to_user_data(self, data: dict, **params: Any) -> dict:
             return {**data, "batch_count": data.get("batch_count", 0) + 1}
 
@@ -2739,6 +2778,8 @@ def test_user_data_exception_propagates() -> None:
     image = np.zeros((100, 100, 3), dtype=np.uint8)
 
     class FailingTransform(A.HorizontalFlip):
+        _targets = (*A.HorizontalFlip._targets, "user_data")
+
         def apply_to_user_data(self, data: Any, **params: Any) -> Any:
             raise ValueError("user_data error")
 
@@ -2764,6 +2805,8 @@ def test_user_data_custom_override_returns_new_object() -> None:
     payload = {"x": 1}
 
     class NewObjTransform(A.HorizontalFlip):
+        _targets = (*A.HorizontalFlip._targets, "user_data")
+
         def apply_to_user_data(self, data: dict, **params: Any) -> dict:
             return {"x": data["x"] + 1}
 
@@ -2779,6 +2822,8 @@ def test_user_data_targets_as_params() -> None:
     image = np.zeros((100, 100, 3), dtype=np.uint8)
 
     class UserDataAwareTransform(A.NoOp):
+        _targets = (*A.NoOp._targets, "user_data")
+
         targets_as_params = ("user_data",)
 
         def sample_parameters(
@@ -2799,28 +2844,6 @@ def test_user_data_targets_as_params() -> None:
 
     assert result["user_data"]["seen"] is True
     assert result["user_data"]["x"] == 137
-
-
-def test_user_data_additional_targets_transform_without_user_data_in_targets() -> None:
-    """additional_targets={'x': 'user_data'} works for transforms whose targets omit user_data.
-
-    Transforms like ToTensorV2 define targets without user_data. add_targets() must use
-    _key2func (which always has user_data) rather than self.targets to avoid KeyError.
-    """
-
-    # Minimal transform whose targets dict does NOT include user_data (like ToTensorV2)
-    class ImageOnlyTargets(A.NoOp):
-        @property
-        def targets(self) -> dict[str, Any]:
-            return {"image": self.apply_to_images, "images": self.apply_to_images}
-
-    image = np.zeros((50, 50, 3), dtype=np.uint8)
-    transform = A.Compose(
-        [ImageOnlyTargets(p=1.0)],
-        additional_targets={"caption": "user_data"},
-    )
-    result = transform(image=image, caption={"text": "a dog"})
-    assert result["caption"] == {"text": "a dog"}
 
 
 # ── applied_config tests ──────────────────────────────────────────────────────

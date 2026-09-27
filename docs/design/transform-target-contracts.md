@@ -4,6 +4,19 @@
 **Scope:** public `DualTransform` execution plus Tensor routing for `ImageOnlyTransform` targets
 **Primary readers:** maintainers adding transform modes, targets, metadata requirements, or target-specific behavior
 
+## Declaration and execution are one contract
+
+For every concrete public transform, its `Targets:` docstring, effective `_targets`, and active dispatch keys must
+name the same targets. `BasicTransform` builds the dispatch table from `_targets` alone and resolves the selected
+`apply*` handler through the class hierarchy, so a working inherited handler counts. A missing handler or inherited
+stub does not implement a target. `images` and `masks` are explicit collection targets; they do not follow from
+`image` or `mask`. The built-in `user_data` passthrough is not an active target; a transform may opt in with an
+explicit declaration and its own handler.
+
+`tests/test_docstrings.py` checks the docstring against `_targets`; `tests/test_targets.py` checks that dispatch keys
+match the declaration and do not resolve to base-class stubs. The generated target cluster then
+executes each selected target through the public `Compose` route.
+
 ## What adding a registry case now covers
 
 Every registered `DualTransform` mode automatically runs against each applicable core target profile. A new constructor
@@ -99,8 +112,8 @@ by a read-only array.
 1. the case class is a `DualTransform`, or an `ImageOnlyTransform` for the dedicated Tensor profiles;
 2. the profile contains every target required by the case;
 3. a required target is non-empty when the mode needs data from it;
-4. the transform's declared `_targets` contain every profile target, including batch forms derived from their singular
-   target;
+4. the transform's declared `_targets` contain every profile target exactly as supplied, including `images` and
+   `masks` when those collection routes are supported;
 5. the requested bbox type is declared; and
 6. the profile channel count is supported when the transform declares a restriction.
 

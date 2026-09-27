@@ -54,8 +54,7 @@ class RandomScale(DualTransform):
             Default: None.
         p (float): probability of applying the transform. Default: 0.5.
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -497,8 +496,7 @@ class LongestMaxSize(BaseMaxSizeTransform):
             Default: None.
         p (float): probability of applying the transform. Default: 1.
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -624,8 +622,7 @@ class SmallestMaxSize(BaseMaxSizeTransform):
             Default: None.
         p (float): Probability of applying the transform. Default: 1.
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -740,8 +737,7 @@ class Resize(DualTransform):
             Default: None.
         p (float): probability of applying the transform. Default: 1.
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -897,8 +893,7 @@ class LetterBox(DualTransform):
             Where to place the resized image on the canvas. Default: `"center"`.
         p (float): Probability of applying the transform. Default: `1.0`.
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32

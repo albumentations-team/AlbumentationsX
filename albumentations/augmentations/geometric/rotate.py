@@ -101,8 +101,7 @@ class RandomRotate90(DualTransform):
             from the provided non-empty subset of C4 group elements. Invalid or empty subsets raise `ValueError`.
             Mutually exclusive with `group_element`. Default: None (random choice).
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -298,8 +297,7 @@ class Rotate(DualTransform):
             Default: cv2.INTER_NEAREST.
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -609,8 +607,7 @@ class SafeRotate(Affine):
             Default: cv2.INTER_NEAREST.
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32

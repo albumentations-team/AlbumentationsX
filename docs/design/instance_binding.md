@@ -207,6 +207,48 @@ Valid binding targets: `"mask"`, `"masks"`, `"bboxes"`, `"keypoints"`. Minimum 2
 
 `_resync_instance_ids` raises `RuntimeError` on contract violations.
 
+## Frame Binding
+
+`frame_binding` associates an image collection with one annotation collection. It is independent of
+`instance_binding`, so the two can be combined for per-frame instance annotations.
+
+Use `frame_binding=["images", "masks"]` when each image has one semantic mask. Both arrays have
+the same leading frame count; frame `i` in `masks` belongs to frame `i` in `images`.
+
+Use `frame_binding=["images", "frame_annotations"]` when annotations vary by frame:
+
+```python
+A.Compose(
+    transforms,
+    bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["class_id"]),
+    frame_binding=["images", "frame_annotations"],
+)(
+    images=video,
+    frame_annotations=[
+        {"bboxes": [[2, 3, 10, 12]], "class_id": ["cat"]},
+        {},
+    ],
+)
+```
+
+Each entry is a per-frame mapping and may contain `mask`, `masks`, `bboxes`, `keypoints`, and their
+configured label fields. Empty mappings represent frames without annotations. To combine frame
+binding with instance binding, place an `instances` list in each frame mapping; an empty frame may
+use `{}` or `{"instances": []}`. Each instance uses the schema described above.
+
+Each frame owns its processor sessions, label encoders, channel restoration, and instance count
+in one invocation-local record. This preserves each frame's label values and input container type.
+When a sampler needs annotations from several frames, their label columns are encoded into a
+shared sampling vocabulary. Target handlers and final decoding use the frame's own processors.
+
+The frame count must match `images`. A transform uses the same sampled spatial parameters for the
+images and annotations it processes. The generic sampled-parameter path can select frame indices
+and applies that selection to the configured image/annotation pair. This binding change adds no
+temporal transform; it supplies the infrastructure for one to be implemented separately.
+
+An `additional_targets` alias to `images` or frame-bound `masks` is checked against the canonical
+collection's frame count and follows its frame selection. `frame_annotations` has no alias route.
+
 ## Preprocessing (Unpack)
 
 1. Pop `data["instances"]` list.

@@ -90,8 +90,7 @@ class RandomSnow(ImageOnlyTransform):
             noise-based overlay with depth and sparkle. Default: "bleach".
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets:
-        image, volume
+    Targets: image, images, volume
 
     Image types:
         uint8, float32
@@ -241,8 +240,7 @@ class RandomGravel(ImageOnlyTransform):
             Each patch will contain multiple gravel particles. Default: 2.
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets:
-        image, volume
+    Targets: image, images, volume
 
     Image types:
         uint8, float32
@@ -391,8 +389,7 @@ class RandomRain(ImageOnlyTransform):
         rain_type (Literal['drizzle', 'heavy', 'torrential', 'default']): Type of rain to simulate.
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets:
-        image, volume
+    Targets: image, images, volume
 
     Image types:
         uint8, float32
@@ -565,8 +562,7 @@ class RandomFog(ImageOnlyTransform):
         alpha_coef (float): Transparency of the fog circles in [0, 1]. Default: 0.08.
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets:
-        image, volume
+    Targets: image, images, volume
 
     Image types:
         uint8, float32
@@ -732,8 +728,7 @@ class RandomSunFlare(ImageOnlyTransform):
 
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets:
-        image, volume
+    Targets: image, images, volume
 
     Image types:
         uint8, float32
@@ -974,8 +969,7 @@ class RandomShadow(ImageOnlyTransform):
             means darker shadow. Should be two float values between 0 and 1. Default: (0.5, 0.5).
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets:
-        image, volume
+    Targets: image, images, volume
 
     Image types:
         uint8, float32
@@ -1156,8 +1150,7 @@ class Spatter(ImageOnlyTransform):
             If None uses default colors based on mode (rain: (238, 238, 175), mud: (20, 42, 63)).
         p (float): probability of applying the transform. Default: 0.5.
 
-    Targets:
-        image, volume
+    Targets: image, images, volume
 
     Image types:
         uint8, float32
@@ -1432,8 +1425,7 @@ class AtmosphericFog(ImageOnlyTransform):
             Default: "linear".
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets:
-        image, volume
+    Targets: image, images, volume
 
     Image types:
         uint8, float32

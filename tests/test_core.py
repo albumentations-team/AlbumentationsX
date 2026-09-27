@@ -2677,8 +2677,9 @@ def test_user_data_replay_compose() -> None:
     assert replayed["user_data"]["flipped"] is True
 
 
-def test_user_data_additional_targets() -> None:
-    """additional_targets can alias a key to user_data processing."""
+@pytest.mark.parametrize("custom_handler", [False, True])
+def test_user_data_additional_targets(custom_handler: bool) -> None:
+    """Aliases preserve user_data unless the transform declares a custom handler."""
     image = np.zeros((100, 100, 3), dtype=np.uint8)
 
     class FlipMutator(A.HorizontalFlip):
@@ -2688,16 +2689,18 @@ def test_user_data_additional_targets() -> None:
             return {**data, "mutated": True}
 
     transform = A.Compose(
-        [FlipMutator(p=1.0)],
+        [FlipMutator(p=1.0) if custom_handler else A.HorizontalFlip(p=1.0)],
         additional_targets={"caption": "user_data"},
+        strict=True,
     )
     result = transform(image=image, caption={"mutated": False})
 
-    assert result["caption"]["mutated"] is True
+    assert result["caption"] == {"mutated": custom_handler}
 
 
-def test_user_data_strict_mode() -> None:
-    """An explicitly declared user_data handler works with strict validation."""
+@pytest.mark.parametrize("custom_handler", [False, True])
+def test_user_data_strict_mode(custom_handler: bool) -> None:
+    """Strict validation accepts user_data independently of active target support."""
     image = np.zeros((100, 100, 3), dtype=np.uint8)
 
     class FlipMutator(A.HorizontalFlip):
@@ -2707,11 +2710,12 @@ def test_user_data_strict_mode() -> None:
             return {**data, "flipped": True}
 
     transform = A.Compose(
-        [FlipMutator(p=1.0)],
+        [FlipMutator(p=1.0) if custom_handler else A.HorizontalFlip(p=1.0)],
         strict=True,
     )
     result = transform(image=image, user_data={"flipped": False})
-    assert result["user_data"] == {"flipped": True}
+    assert result["user_data"] == {"flipped": custom_handler}
+    assert ("user_data" in transform.transforms[0].available_keys) == custom_handler
 
 
 def test_user_data_with_bboxes() -> None:

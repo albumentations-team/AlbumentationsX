@@ -313,21 +313,37 @@ def test_bbox_safe_crop_samples_from_annotations_across_frames() -> None:
         )
 
 
-def test_sampled_frame_indices_select_bound_images_and_annotations() -> None:
+@pytest.mark.parametrize("tensor_input", [False, True])
+def test_sampled_frame_indices_select_bound_images_and_annotations(
+    monkeypatch: pytest.MonkeyPatch,
+    tensor_input: bool,
+) -> None:
     images = _clip()
     masks = np.arange(3 * 8 * 12, dtype=np.uint8).reshape(3, 8, 12)
-    invocation = InvocationContext(frame_binding=("images", "masks"))
-    transform = A.HorizontalFlip(p=1)
+    if tensor_input:
+        images = torch.from_numpy(np.moveaxis(images, -1, 1))
+        masks = torch.from_numpy(masks)
+    monkeypatch.setattr(
+        A.HorizontalFlip,
+        "sample_parameters",
+        lambda *args, **kwargs: SampledParams(params={}, frame_indices=(2, 0, 2)),
+    )
+    compose = A.ReplayCompose(
+        [A.HorizontalFlip(p=1)],
+        frame_binding=["images", "masks"],
+        strict=True,
+        telemetry=False,
+    )
 
-    with invocation:
-        result = transform.apply_with_params(
-            SampledParams(params={}, frame_indices=(2, 0, 2)),
-            images=images,
-            masks=masks,
-        )
+    result = compose(images=images, masks=masks)
+    replayed = A.ReplayCompose.replay(result["replay"], images=images, masks=masks)
 
-    np.testing.assert_array_equal(result["images"], images[[2, 0, 2], :, ::-1])
-    np.testing.assert_array_equal(result["masks"], masks[[2, 0, 2], :, ::-1])
+    expected_images = images[[2, 0, 2]].flip(-1) if tensor_input else images[[2, 0, 2], :, ::-1]
+    expected_masks = masks[[2, 0, 2]].flip(-1) if tensor_input else masks[[2, 0, 2], :, ::-1]
+    assert_contract_values_equal(result["images"], expected_images)
+    assert_contract_values_equal(result["masks"], expected_masks)
+    assert_contract_values_equal(replayed["images"], expected_images)
+    assert_contract_values_equal(replayed["masks"], expected_masks)
 
 
 @pytest.mark.parametrize("transform_cls", [A.HorizontalFlip, A.InvertImg])

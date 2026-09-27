@@ -1866,6 +1866,7 @@ class Compose(BaseCompose, HubMixin):
         self._set_semantic_mask_label_mappings_for_transforms(self.transforms, normalized_mask_mappings)
         if not self.transforms:  # if no transforms -> do nothing, all keys will be available
             self._available_keys.update(AVAILABLE_KEYS)
+        self._available_keys.add("user_data")
         if self._instance_binding:
             self._available_keys.add("instances")
         if self._frame_binding == ("images", "frame_annotations"):

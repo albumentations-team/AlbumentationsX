@@ -11,7 +11,7 @@ name the same targets. `BasicTransform` builds the dispatch table from `_targets
 `apply*` handler through the class hierarchy, so a working inherited handler counts. A missing handler or inherited
 stub does not implement a target. `images` and `masks` are explicit collection targets; they do not follow from
 `image` or `mask`. The built-in `user_data` passthrough is not an active target; a transform may opt in with an
-explicit declaration and its own handler.
+explicit declaration and its own handler. `Compose` accepts this passthrough field with `strict=True`.
 
 `Targets:` must be a section header on its own line, with the target list indented below it.
 `tests/test_docstrings.py` reads this section from `albu-spec`'s parsed docstring and compares it with `_targets`;

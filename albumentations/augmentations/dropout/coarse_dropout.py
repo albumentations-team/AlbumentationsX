@@ -53,7 +53,8 @@ class CoarseDropout(BaseDropout):
             If None, mask regions corresponding to image dropouts are unchanged. Default: None
         p (float): Probability of applying the transform. Default: 0.5
 
-    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
+    Targets:
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -225,7 +226,8 @@ class Erasing(BaseDropout):
             If None, mask regions are not modified. Default: None
         p (float): Probability of applying the transform. Default: 0.5
 
-    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
+    Targets:
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -398,7 +400,8 @@ class ConstrainedCoarseDropout(BaseDropout):
             When multiple label fields are specified in BboxParams, only the first
             label field is used for filtering.
 
-    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
+    Targets:
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32

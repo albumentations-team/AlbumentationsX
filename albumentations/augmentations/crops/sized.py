@@ -55,7 +55,8 @@ class RandomSizedCrop(_BaseRandomSizedCrop):
             Default: None.
         p (float): Probability of applying the transform. Default: 1.0
 
-    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
+    Targets:
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -221,7 +222,8 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
             Default: `"standard"`.
         p (float): Probability of applying the transform. Default: 1.0
 
-    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
+    Targets:
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32

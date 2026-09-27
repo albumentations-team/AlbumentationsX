@@ -52,7 +52,8 @@ class ToTensorV2(BaseTensorTransform):
             `[num_channels, height, width]`.
         p (float): Probability of applying the transform. Default: 1.0.
 
-    Targets: image, images, mask, masks
+    Targets:
+        image, images, mask, masks
 
     Examples:
         >>> transform = ToTensorV2(transpose_mask=True)
@@ -114,7 +115,8 @@ class ToTensor3D(BaseTensorTransform):
     Args:
         p (float): Probability of applying the transform. Default: 1.0
 
-    Targets: volume, mask3d
+    Targets:
+        volume, mask3d
 
     Examples:
         >>> transform = ToTensor3D(p=1.0)

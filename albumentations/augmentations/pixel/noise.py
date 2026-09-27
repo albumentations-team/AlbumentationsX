@@ -136,7 +136,8 @@ class StochasticConvolution(_FullVolumeNoiseTransform):
             `cv2.BORDER_REFLECT_101`.
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -276,7 +277,8 @@ class GaussNoise(_FullVolumeNoiseTransform):
             Default: False.
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -411,7 +413,8 @@ class ISONoise(_FullVolumeNoiseTransform):
 
         p (float): Probability of applying the transform. Default: 0.5
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -553,7 +556,8 @@ class MultiplicativeNoise(ImageOnlyTransform):
 
         p (float): Probability of applying the transform. Default: 0.5
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -704,7 +708,8 @@ class ShotNoise(_FullVolumeNoiseTransform):
             Higher = more noise. e.g. 0.1 ≈ low, 1.0 ≈ moderate, 10.0 ≈ high. Default: (0.1, 0.3).
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -990,16 +995,14 @@ class AdditiveNoise(ImageOnlyTransform):
         per_channel (bool): When `spatial_mode="patch"`, whether to sample independent noise for every channel.
             If False, the same noise is shared across channels. Default: False.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
 
     Number of channels:
         Any
-
-    Targets:
-        image, volume
 
     Examples:
         >>> import numpy as np
@@ -1212,7 +1215,8 @@ class SaltAndPepper(_FullVolumeNoiseTransform):
 
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -1374,7 +1378,8 @@ class FilmGrain(_FullVolumeNoiseTransform):
             1 = full resolution (fine); larger = coarser, more clumped. Default: (1, 3).
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -1508,7 +1513,8 @@ class RicianNoise(_FullVolumeNoiseTransform):
             share one pair of fields across channels. Default: False.
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -1656,7 +1662,8 @@ class KSpaceSpikeNoise(_FullVolumeNoiseTransform):
             channel. If False, share one set of spikes across all channels. Default: False.
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32

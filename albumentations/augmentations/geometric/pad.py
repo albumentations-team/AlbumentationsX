@@ -67,7 +67,8 @@ class Pad(DualTransform):
         border_mode (OpenCV flag): OpenCV border mode
         p (float): probability of applying the transform. Default: 1.0.
 
-    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
+    Targets:
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -362,7 +363,8 @@ class PadIfNeeded(Pad):
         fill_mask (tuple[float, ...] | float | None): Similar to `fill` but used for padding masks. Default is None.
         p (float): Probability of applying the transform. Default is 1.0.
 
-    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
+    Targets:
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32

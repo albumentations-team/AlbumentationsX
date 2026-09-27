@@ -105,7 +105,8 @@ class CopyAndPaste(DualTransform):
               the names declared in `KeypointParams.label_fields`. A list value is accepted when
               the object has multiple keypoints.
 
-    Targets: image, mask, masks, bboxes, keypoints
+    Targets:
+        image, mask, masks, bboxes, keypoints
 
     Keypoints vs instance masks:
         When the pipeline supplies instance masks as `masks` (N, H, W) and

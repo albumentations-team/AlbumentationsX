@@ -112,7 +112,8 @@ class AnnotationArtifacts(ImageOnlyTransform):
             When omitted, `line_length_ratio_range` controls their length. Default: None.
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32

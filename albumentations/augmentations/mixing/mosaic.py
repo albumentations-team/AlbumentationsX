@@ -130,7 +130,8 @@ class Mosaic(DualTransform):
         and the additional image in one cell, with one visible cell selected from these three.
         Stacked instance masks on the `masks` key (N, H, W) are transformed via `apply_to_masks`.
 
-    Targets: image, mask, masks, bboxes, keypoints
+    Targets:
+        image, mask, masks, bboxes, keypoints
 
     Image types:
         uint8, float32

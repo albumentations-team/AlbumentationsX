@@ -113,7 +113,8 @@ class Affine3D(Transform3D):
             Default: `0`.
         p (float): Probability of applying the transform. Default: `0.5`.
 
-    Targets: volume, mask3d, keypoints
+    Targets:
+        volume, mask3d, keypoints
 
     Image types:
         uint8, float32
@@ -294,7 +295,8 @@ class ElasticTransform3D(Transform3D):
         fill_mask (tuple[float, ...] | float): Constant fill for `mask3d`. Default: `0`.
         p (float): Probability of applying the transform. Default: `0.5`.
 
-    Targets: volume, mask3d, keypoints
+    Targets:
+        volume, mask3d, keypoints
 
     Image types:
         uint8, float32
@@ -503,7 +505,8 @@ class Anisotropy3D(VolumeOnlyTransform):
         antialias (bool): Apply a low-pass filter while reducing spatial resolution. Default: `True`.
         p (float): Probability of applying the transform. Default: `0.5`.
 
-    Targets: volume
+    Targets:
+        volume
 
     Image types:
         uint8, float32
@@ -615,7 +618,8 @@ class Resize3D(Transform3D):
             `cv2.INTER_LINEAR` or `cv2.INTER_NEAREST`. Default: `cv2.INTER_NEAREST`.
         p (float): Probability of applying the transform. Default: `1.0`.
 
-    Targets: volume, mask3d, keypoints
+    Targets:
+        volume, mask3d, keypoints
 
     Image types:
         uint8, float32
@@ -720,7 +724,8 @@ class RandomResizedCrop3D(Transform3D):
             proposals. `"uniform_scale"` samples uniformly from feasible source volumes.
             Default: `"standard"`.
 
-    Targets: volume, mask3d, keypoints
+    Targets:
+        volume, mask3d, keypoints
 
     Image types:
         uint8, float32
@@ -1005,8 +1010,6 @@ class Pad3D(BasePad3D):
     """Add voxels around a 3D volume. Padding: int or per-side (depth, height, width); fill,
     fill_mask. For fixed-size batches or avoiding crop boundaries.
 
-    Targets: volume, mask3d, keypoints
-
     Args:
         padding (int, tuple[int, int, int] or tuple[int, int, int, int, int, int]): Padding values. Can be:
             * int - pad all sides by this value
@@ -1159,7 +1162,8 @@ class PadIfNeeded3D(BasePad3D):
         fill_mask (tuple[float, ...] | float): Value to fill the border voxels for masks. Default: 0
         p (float): Probability of applying the transform. Default: 1.0
 
-    Targets: volume, mask3d, keypoints
+    Targets:
+        volume, mask3d, keypoints
 
     Image types:
         uint8, float32
@@ -1580,8 +1584,6 @@ class CenterCrop3D(BaseCropAndPad3D):
     """Take the center sub-volume to fixed (depth, height, width). pad_if_needed fills when smaller;
     fill, fill_mask. For fixed-size 3D inputs (e.g. CT, MRI).
 
-    Targets: volume, mask3d, keypoints
-
     Args:
         size (tuple[int, int, int]): Desired output size of the crop in format (depth, height, width)
         pad_if_needed (bool): Whether to pad if the volume is smaller than desired crop size. Default: False
@@ -1742,8 +1744,6 @@ class RandomCrop3D(BaseCropAndPad3D):
     """Extract a random 3D sub-volume of given (depth, height, width). pad_if_needed when smaller;
     fill, fill_mask. For spatial augmentation of volumetric data.
 
-    Targets: volume, mask3d, keypoints
-
     Args:
         size (tuple[int, int, int]): Desired output size of the crop in format (depth, height, width)
         pad_if_needed (bool): Whether to pad if the volume is smaller than desired crop size. Default: False
@@ -1899,7 +1899,8 @@ class CoarseDropout3D(Transform3D):
             If None, mask regions corresponding to volume dropouts are unchanged. Default: None
         p (float): Probability of applying the transform. Default: 0.5
 
-    Targets: volume, mask3d, keypoints
+    Targets:
+        volume, mask3d, keypoints
 
     Image types:
         uint8, float32
@@ -2138,7 +2139,8 @@ class Flip3D(Transform3D):
             Use `()` for identity. Default: None.
         p (float): Probability of applying the transform. Default: 1.0.
 
-    Targets: volume, mask3d, keypoints
+    Targets:
+        volume, mask3d, keypoints
 
     Image types:
         uint8, float32
@@ -2300,7 +2302,8 @@ class CubicSymmetry(Transform3D):
     Args:
         p (float): Probability of applying the transform. Default: 1.0
 
-    Targets: volume, mask3d, keypoints
+    Targets:
+        volume, mask3d, keypoints
 
     Image types:
         uint8, float32
@@ -2408,7 +2411,8 @@ class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified 
             Use for TTA. Default: None (random choice).
         p (float): Probability of applying the transform. Default: 1.0.
 
-    Targets: volume, mask3d, keypoints
+    Targets:
+        volume, mask3d, keypoints
 
     Image types:
         uint8, float32
@@ -2547,7 +2551,8 @@ class GridShuffle3D(Transform3D):
         p (float): Probability that the transform will be applied. Should be in the range [0, 1].
             Default: 0.5
 
-    Targets: volume, mask3d, keypoints
+    Targets:
+        volume, mask3d, keypoints
 
     Note:
         - This transform maintains consistency across all targets. If applied to a volume and its corresponding

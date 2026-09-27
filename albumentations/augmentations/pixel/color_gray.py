@@ -71,7 +71,8 @@ class ToGray(ImageOnlyTransform):
           such as in some medical imaging applications.
         - "pca" might be used in advanced image analysis tasks or when dealing with hyperspectral images.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -228,7 +229,8 @@ class ToRGB(ImageOnlyTransform):
         num_output_channels (int): The number of channels in the output image. Default: 3.
         p (float): Probability of applying the transform. Default: 1.0.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -329,7 +331,8 @@ class Colorize(ImageOnlyTransform):
             the midpoint position is sampled. Ignored when `mid is None`. Default: (127, 127).
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -469,7 +472,8 @@ class ToSepia(ImageOnlyTransform):
     Args:
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -562,7 +566,8 @@ class FancyPCA(ImageOnlyTransform):
             random noise for each principal component. Default: 0.1.
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32

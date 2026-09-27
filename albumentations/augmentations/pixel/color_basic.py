@@ -59,7 +59,8 @@ class RandomToneCurve(ImageOnlyTransform):
             preserving the original color relationships. Default: False
         p (float): Probability of applying the transform. Default: 0.5
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -200,7 +201,8 @@ class HueSaturationValue(ImageOnlyTransform):
 
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -319,7 +321,8 @@ class Solarize(ImageOnlyTransform):
             Default: (0.5, 0.5) (corresponds to 127.5 for uint8 and 0.5 for float32).
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -424,7 +427,8 @@ class Posterize(ImageOnlyTransform):
 
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -551,7 +555,8 @@ class Equalize(ImageOnlyTransform):
             Default: ()
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -712,7 +717,8 @@ class RandomBrightnessContrast(ImageOnlyTransform):
             the complete input dtype range maps inside the output range without clipping. Default: False.
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -884,7 +890,8 @@ class ExposureMatching(ImageOnlyTransform):
             Both values must be non-negative. Use `None` to leave the gain unbounded. Default: None.
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -1039,7 +1046,8 @@ class CLAHE(ImageOnlyTransform):
         - Tile grid size affects the adaptiveness of the method. More tiles increase local
           adaptiveness but can lead to an unnatural look if set too high.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -1117,7 +1125,8 @@ class RandomGamma(ImageOnlyTransform):
             Default: 1e-7.
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -1234,7 +1243,8 @@ class AutoContrast(ImageOnlyTransform):
             - "pil": Uses linear scaling like PIL.ImageOps.autocontrast
         p (float): Probability of applying the transform. Default: 0.5
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32

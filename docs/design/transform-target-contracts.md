@@ -13,9 +13,10 @@ stub does not implement a target. `images` and `masks` are explicit collection t
 `image` or `mask`. The built-in `user_data` passthrough is not an active target; a transform may opt in with an
 explicit declaration and its own handler.
 
-`tests/test_docstrings.py` checks the docstring against `_targets`; `tests/test_targets.py` checks that dispatch keys
-match the declaration and do not resolve to base-class stubs. The generated target cluster then
-executes each selected target through the public `Compose` route.
+`Targets:` must be a section header on its own line, with the target list indented below it.
+`tests/test_docstrings.py` reads this section from `albu-spec`'s parsed docstring and compares it with `_targets`;
+`tests/test_targets.py` checks that dispatch keys match the declaration and do not resolve to base-class stubs.
+The generated target cluster then executes each selected target through the public `Compose` route.
 
 ## What adding a registry case now covers
 

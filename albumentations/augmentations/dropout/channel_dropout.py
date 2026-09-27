@@ -57,7 +57,8 @@ class ChannelDropout(ImageOnlyTransform):
         ValueError: If the upper bound of channel_drop_range is greater than or
             equal to the number of channels in the input image.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32

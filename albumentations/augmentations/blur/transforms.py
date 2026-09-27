@@ -89,7 +89,8 @@ class Blur(ImageOnlyTransform):
         - This blur method averages all pixels under the kernel area, which can
           reduce noise but also reduce image detail.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -214,7 +215,8 @@ class MotionBlur(Blur):
 
         p (float): Probability of applying the transform. Default: 0.5
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Examples of angle vs direction:
         1. Horizontal motion (angle=0°):
@@ -471,7 +473,8 @@ class MedianBlur(Blur):
 
         p (float): Probability of applying the transform. Default: 0.5
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -614,7 +617,8 @@ class ModeFilter(ImageOnlyTransform):
             are automatically bumped to the next odd number. Default: (3, 7).
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -725,7 +729,8 @@ class GaussianBlur(ImageOnlyTransform):
 
         p (float): Probability of applying the transform. Default: 0.5
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -1028,7 +1033,8 @@ class GlassBlur(ImageOnlyTransform):
         p (float): Probability of applying the transform. Should be in the range [0, 1].
             Default: 0.5
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -1393,7 +1399,8 @@ class AdvancedBlur(ImageOnlyTransform):
         "Real-ESRGAN: Training Real-World Blind Super-Resolution with Pure Synthetic Data"
         https://arxiv.org/abs/2107.10833
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -1547,7 +1554,8 @@ class Defocus(ImageOnlyTransform):
         p (float): Probability of applying the transform. Should be in the range [0, 1].
             Default: 0.5
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -1696,7 +1704,8 @@ class ZoomBlur(ImageOnlyTransform):
             building the zoom levels; sampled per image. Both ends must be > 0. Default: (0.01, 0.03).
         p (float): probability of applying the transform. Default: 0.5.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
 
     Image types:
         uint8, float32

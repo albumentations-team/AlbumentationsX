@@ -68,7 +68,8 @@ class BBoxSafeRandomCrop(BaseCrop):
             Defaults to 0.0.
         p (float, optional): Probability of applying the transform. Defaults to 1.0.
 
-    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
+    Targets:
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -223,7 +224,8 @@ class RandomSizedBBoxSafeCrop(BBoxSafeRandomCrop):
             Default: cv2.INTER_NEAREST.
         p (float): Probability of applying the transform. Default: 1.0.
 
-    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
+    Targets:
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -437,7 +439,8 @@ class BBoxSubsetSafeRandomCrop(BBoxSafeRandomCrop):
             Defaults to (0.5, 2.0).
         p (float, optional): Probability of applying the transform. Defaults to 1.0.
 
-    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
+    Targets:
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -625,7 +628,8 @@ class AtLeastOneBBoxRandomCrop(BaseCrop):
             Defaults to 0.0.
         p (float, optional): Probability of applying the transform. Defaults to 1.0.
 
-    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
+    Targets:
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32

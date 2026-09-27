@@ -3,6 +3,7 @@
 import re
 
 import pytest
+from albu_spec import get_transform_metadata
 from google_docstring_parser import parse_google_docstring
 
 import albumentations as A
@@ -76,15 +77,19 @@ def get_class_bbox_types(cls) -> set[str]:
 
 @pytest.mark.parametrize("transform_cls", PUBLIC_TRANSFORM_CLASSES)
 def test_docstring_targets_match_class_property(transform_cls):
-    """Test that 'Targets:' in docstring matches _targets class property."""
+    """Require albu-spec to parse the documented targets exactly as declared."""
     transform_name = transform_cls.__name__
     docstring = transform_cls.__doc__
 
     assert docstring, f"{transform_name} has no docstring"
 
-    target_match = re.search(r"^\s*Targets:\s*(.+?)\s*$", docstring, flags=re.MULTILINE)
-    assert target_match is not None, f"{transform_name} has no 'Targets:' section in docstring"
-    docstring_targets = {name.strip().lower() for name in target_match.group(1).split(",")}
+    target_headers = re.findall(r"^[ \t]*Targets:[ \t]*$", docstring, flags=re.MULTILINE)
+    assert len(target_headers) == 1, f"{transform_name}: require exactly one 'Targets:' section header on its own line"
+    parsed_docstring = get_transform_metadata(transform_cls).docstring_parsed
+    assert parsed_docstring is not None, f"{transform_name} has no parsed docstring"
+    parsed_targets = parsed_docstring.extra_sections.get("Targets")
+    assert parsed_targets, f"{transform_name} has no parsed 'Targets:' section"
+    docstring_targets = {name.strip().lower() for name in parsed_targets.split(",")}
     class_targets = get_class_targets(transform_cls)
 
     assert class_targets, f"{transform_name} has no _targets property"

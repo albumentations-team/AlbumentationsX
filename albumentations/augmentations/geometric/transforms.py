@@ -93,7 +93,8 @@ class Perspective(DualTransform):
             Default: cv2.INTER_NEAREST.
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
+    Targets:
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -478,7 +479,8 @@ class Affine(DualTransform):
             This makes the zooming in and out process more balanced.
         p (float): probability of applying the transform. Default: 0.5.
 
-    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
+    Targets:
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -869,7 +871,8 @@ class ShiftScaleRotate(Affine):
             Default: cv2.INTER_NEAREST.
         p (float): probability of applying the transform. Default: 0.5.
 
-    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
+    Targets:
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -1049,7 +1052,8 @@ class GridElasticDeform(DualTransform):
             Default: cv2.INTER_NEAREST
         p (float): Probability of applying the transform. Default: 1.0.
 
-    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
+    Targets:
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -1238,7 +1242,8 @@ class RandomGridShuffle(DualTransform):
         p (float): Probability that the transform will be applied. Should be in the range [0, 1].
             Default: 0.5
 
-    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
+    Targets:
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -1420,7 +1425,8 @@ class Morphological(DualTransform):
             Default is 'dilation'.
         p (float, optional): The probability of applying this transformation. Default is 0.5.
 
-    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
+    Targets:
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32

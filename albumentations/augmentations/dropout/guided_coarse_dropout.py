@@ -46,7 +46,8 @@ class GuidedCoarseDropout(BaseDropout):
             None leaves masks unchanged. Default: None.
         p (float): Probability of applying the transform. Default: 0.5.
 
-    Targets: image, images, mask, bboxes, keypoints
+    Targets:
+        image, images, mask, bboxes, keypoints
 
     Image types:
         uint8, float32

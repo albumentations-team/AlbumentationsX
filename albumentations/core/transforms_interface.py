@@ -1471,7 +1471,11 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         Examples:
             >>> import albumentations as A
             >>> class FlipAwareTransform(A.HorizontalFlip):
-            ...     'Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d, user_data'
+            ...     '''Flip images and update captions.
+            ...
+            ...     Targets:
+            ...         image, images, mask, masks, bboxes, keypoints, volume, mask3d, user_data
+            ...     '''
             ...     _targets = (*A.HorizontalFlip._targets, "user_data")
             ...
             ...     def apply_to_user_data(self, data: dict, **params) -> dict:
@@ -1592,7 +1596,8 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 class DualTransform(BasicTransform):
     """Base class for spatial transforms that apply to images and masks.
 
-    Targets: image, images, mask, masks, volume, mask3d
+    Targets:
+        image, images, mask, masks, volume, mask3d
 
     Concrete subclasses declare bbox and keypoint support when they implement those routes.
 
@@ -2022,7 +2027,8 @@ class ImageOnlyTransform(BasicTransform):
     """Transform applied to image (and volume) only. Does not transform masks, bboxes, or
     keypoints; use DualTransform for those.
 
-    Targets: image, images, volume
+    Targets:
+        image, images, volume
     """
 
     _targets = (Targets.IMAGE, Targets.IMAGES, Targets.VOLUME)
@@ -2032,7 +2038,8 @@ class NoOp(DualTransform):
     """Identity transform (does nothing). Passes all targets through unchanged. Use as placeholder
     or in conditional pipelines.
 
-    Targets: image, images, mask, masks, bboxes, keypoints, volume, mask3d
+    Targets:
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -2119,7 +2126,8 @@ class Transform3D(DualTransform):
 
     Concrete subclasses can declare keypoint support when they implement it.
 
-    Targets: volume, mask3d
+    Targets:
+        volume, mask3d
 
     Target layouts:
         volume: 3D numpy array of shape (D, H, W, C)
@@ -2181,7 +2189,8 @@ class VolumeOnlyTransform(BasicTransform):
     is appropriate for acquisition and photometric artifacts that do not alter
     label geometry.
 
-    Targets: volume
+    Targets:
+        volume
     """
 
     _targets = (Targets.VOLUME,)

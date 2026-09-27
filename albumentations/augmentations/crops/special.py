@@ -6,6 +6,7 @@ from typing_extensions import Self
 
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet
+from albumentations.core.type_definitions import Targets
 
 from ._transforms_shared import (
     ALL_TARGETS,
@@ -45,7 +46,7 @@ class CropNonEmptyMaskIfExists(BaseCrop):
         p (float): Probability of applying the transform. Default: 1.0.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, mask3d
+        image, mask, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -140,6 +141,8 @@ class CropNonEmptyMaskIfExists(BaseCrop):
         >>> transformed_keypoint_labels = transformed['keypoint_labels']  # Labels for visible keypoints
 
     """
+
+    _targets = (Targets.IMAGE, Targets.MASK, Targets.BBOXES, Targets.KEYPOINTS, Targets.VOLUME, Targets.MASK3D)
 
     class InitSchema(BaseTransformInitSchema):
         ignore_values: list[int] | None

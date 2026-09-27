@@ -10,7 +10,7 @@ and serialization capabilities that are inherited by concrete transform implemen
 import inspect
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from functools import cache
 from typing import Annotated, Any, ClassVar, cast, get_args, get_type_hints
 from warnings import warn
@@ -23,6 +23,7 @@ from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field
 
 from albumentations.core.bbox_utils import BboxProcessor
+from albumentations.core.binding import FrameBinding, TargetResult
 from albumentations.core.invocation import (
     InvocationContext,
     InvocationRngOwner,
@@ -59,7 +60,6 @@ from albumentations.core.validation import ValidatedTransformMeta
 from .serialization import Serializable, SerializableMeta, get_shortest_class_fullname
 from .type_definitions import (
     ALL_TARGETS,
-    NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS,
     ImageType,
     StackedMasks4D,
     Targets,
@@ -293,6 +293,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
     _applied_replay_class: ClassVar[type["BasicTransform"] | None] = None
     _sampling_spatial_rank: ClassVar[int | None] = None
     _runtime_generated_params: ClassVar[frozenset[str]] = frozenset()
+    _runtime_binding_params: ClassVar[Mapping[str, None]] = {}
     _preserves_input_image_range: ClassVar[bool] = True  # image targets retain the input dtype's normalized range
     _removed_sampling_hooks: ClassVar[frozenset[str]] = frozenset({"get_params", "get_params_dependent_on_data"})
 
@@ -305,6 +306,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         Albumentations sampling override fail at import or class-definition time.
         """
         super().__init_subclass__(**kwargs)
+        cls._runtime_binding_params = FrameBinding.empty_parameters(cls._runtime_generated_params)
         removed_hooks = sorted(cls._removed_sampling_hooks.intersection(cls.__dict__))
         if removed_hooks:
             names = ", ".join(removed_hooks)
@@ -316,12 +318,17 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
     def _tensor_fallback_route(self, data: Mapping[str, Any]) -> _TensorFallbackRoute:
         """Collect visible Tensor targets and declared Tensor metadata for one leaf."""
         is_tensor_terminal = getattr(self, "_is_tensor_terminal", False)
+        functions = self._dispatch_functions()
+        invocation = get_current_invocation()
+        aliases = self._additional_targets
+        if invocation is not None and invocation.frame_state is not None:
+            aliases = {**aliases, **invocation.frame_state.routes}
         targets = tuple(
-            (data_name, self._additional_targets.get(data_name, data_name))
+            (data_name, aliases.get(data_name, data_name))
             for data_name, value in data.items()
             if isinstance(value, torch.Tensor)
-            and self._additional_targets.get(data_name, data_name) in TENSOR_TARGETS
-            and (is_tensor_terminal or data_name in self._key2func or data_name in self.targets_as_params)
+            and aliases.get(data_name, data_name) in TENSOR_TARGETS
+            and (is_tensor_terminal or data_name in functions or data_name in self.targets_as_params)
         )
         for data_name, target in targets:
             validate_tensor_input(data[data_name], data_name, target)
@@ -379,8 +386,9 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
     def _uses_tensor_fallback(self, route: _TensorFallbackRoute) -> bool:
         """Return whether the complete leaf invocation must use its NumPy path."""
+        functions = self._dispatch_functions()
         return bool(route.metadata) or any(
-            data_name not in self._key2func or not _handler_has_tensor_path(self._key2func[data_name])
+            data_name not in functions or not _handler_has_tensor_path(functions[data_name])
             for data_name, _ in route.targets
         )
 
@@ -688,23 +696,14 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         """Samples parameters after probability succeeds and records policy only for replay, trace, or explicit
         observation that needs the durable artifact.
         """
-        sampling_data = (
-            self._frame_sampling_data(kwargs)
-            if type(self).sample_parameters is not BasicTransform.sample_parameters
-            and invocation is not None
-            and invocation.frame_binding == ("images", "frame_annotations")
-            else kwargs
-        )
         targets = (
-            None
-            if type(self).sample_parameters is BasicTransform.sample_parameters
-            else self._build_target_set(sampling_data)
+            None if type(self).sample_parameters is BasicTransform.sample_parameters else self._build_target_set(kwargs)
         )
-        params = self.update_transform_params(params={}, data=sampling_data, invocation=invocation, targets=targets)
+        params = self.update_transform_params(params={}, data=kwargs, invocation=invocation, targets=targets)
 
         if self.targets_as_params:
-            missing_keys = set(self.targets_as_params).difference(sampling_data.keys())
-            if missing_keys and not (missing_keys == {"image"} and "images" in sampling_data):
+            missing_keys = set(self.targets_as_params).difference(kwargs.keys())
+            if missing_keys and not (missing_keys == {"image"} and "images" in kwargs):
                 msg = f"{self.__class__.__name__} requires {self.targets_as_params} missing keys: {missing_keys}"
                 raise ValueError(msg)
 
@@ -714,11 +713,13 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             and not self.deterministic
             and type(self).apply_with_params in {BasicTransform.apply_with_params, DualTransform.apply_with_params}
         ):
+            if invocation is not None and invocation.frame_state is not None:
+                return self.apply_with_params(SampledParams(params=params), **kwargs)
             return self.apply_with_uniform_params(params, **kwargs)
 
         applied_overrides, sampled_params = self._sample_parameters(
             params=params,
-            data=sampling_data,
+            data=kwargs,
             targets=targets,
             invocation=invocation,
             collect_applied=collect_applied,
@@ -728,9 +729,8 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             params={**params, **sampled_params.params},
             target_params=sampled_params.target_params,
             target_schema=targets.schema() if targets is not None and sampled_params.target_params else None,
-            frame_indices=sampled_params.frame_indices,
         )
-        self._validate_sampled_params(effective_params, targets, sampling_data)
+        self._validate_sampled_params(effective_params, targets, kwargs)
 
         if state is not None:
             state.params = effective_params.to_dict()
@@ -852,13 +852,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
     def _apply_replay_in_route(self, state: TransformInvocationState | None, **kwargs: Any) -> Any:
         sampled_params = SampledParams.from_dict(deepcopy(self._replay_params))
-        invocation = get_current_invocation()
-        sampling_data = (
-            self._frame_sampling_data(kwargs)
-            if invocation is not None and invocation.frame_binding == ("images", "frame_annotations")
-            else kwargs
-        )
-        targets = self._build_target_set(sampling_data)
+        targets = self._build_target_set(kwargs)
         self._validate_spatial_targets(targets)
         sampled_params.validate(
             targets,
@@ -970,22 +964,18 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             "Only transforms that override `inverse()` can be used for TTA inversion.",
         )
 
+    def _dispatch_functions(self) -> dict[str, Callable[..., Any]]:
+        invocation = get_current_invocation()
+        if invocation is None or invocation.frame_state is None:
+            return self._key2func
+        return invocation.frame_state.functions(self.invocation_key, self._key2func)
+
     def apply_with_uniform_params(self, params: Mapping[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
         """Apply one parameter mapping to every target without target-specific values."""
-        res: dict[str, Any] = {}
-        for key, arg in kwargs.items():
-            if key in self._key2func and arg is not None:
-                res[key] = self._key2func[key](arg, **params)
-            elif (
-                key == "frame_annotations"
-                and arg is not None
-                and (invocation := get_current_invocation()) is not None
-                and invocation.frame_binding == ("images", "frame_annotations")
-            ):
-                res[key] = self.apply_to_frame_annotations(arg, **params)
-            else:
-                res[key] = arg
-        return res
+        return {
+            key: self._key2func[key](arg, **params) if key in self._key2func and arg is not None else arg
+            for key, arg in kwargs.items()
+        }
 
     def apply_with_params(
         self,
@@ -993,163 +983,36 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         *args: Any,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """Apply transforms with parameters. Dispatches each target (image, mask, bboxes, etc.) to
-        the corresponding apply_* method.
-        """
-        if sampled_params.frame_indices is not None:
-            kwargs = self._select_frame_targets(kwargs, sampled_params.frame_indices)
-        res: dict[str, Any] = {}
+        """Dispatch sampled parameters to target handlers and retain explicitly returned binding IDs."""
+        invocation = get_current_invocation()
+        binding = None if invocation is None else invocation.frame_state
+        functions = self._key2func if binding is None else binding.functions(self.invocation_key, self._key2func)
+        if not self._runtime_binding_params:
+            return {
+                key: functions[key](arg, **sampled_params.params_for(key))
+                if key in functions and arg is not None
+                else arg
+                for key, arg in kwargs.items()
+            }
+        result: dict[str, Any] = {}
+        ownership: dict[str, TargetResult[Any]] = {}
         for key, arg in kwargs.items():
-            if key in self._key2func and arg is not None:
-                target_function = self._key2func[key]
-                res[key] = target_function(arg, **sampled_params.params_for(key))
-            elif (
-                key == "frame_annotations"
-                and arg is not None
-                and (invocation := get_current_invocation()) is not None
-                and invocation.frame_binding == ("images", "frame_annotations")
-            ):
-                res[key] = self.apply_to_frame_annotations(arg, sampled_params=sampled_params)
-            else:
-                res[key] = arg
-        return res
-
-    def _select_frame_targets(
-        self,
-        data: dict[str, Any],
-        frame_indices: tuple[int, ...],
-    ) -> dict[str, Any]:
-        """Select the configured frame collections before applying a sampled temporal operation."""
-        images = data.get("images")
-        if images is None:
-            raise ValueError("frame selection requires `images`")
-        frame_count = len(images)
-        if any(index >= frame_count for index in frame_indices):
-            raise ValueError(f"frame_indices must be in [0, {frame_count})")
-
-        invocation = get_current_invocation()
-        frame_binding = None if invocation is None else invocation.frame_binding
-        selected_names = self._get_frame_target_names(data, frame_binding)
-        bound_names = selected_names
-        selected_names = (
-            *selected_names,
-            *(alias for alias, target in self._additional_targets.items() if target in bound_names and alias in data),
-        )
-        for name in selected_names:
-            value = data.get(name)
-            if value is None:
+            handler = functions.get(key)
+            if handler is None or arg is None:
+                result[key] = arg
                 continue
-            data[name] = self._select_frame_collection(name, value, frame_indices)
-
-        if invocation is not None and "frame_annotations" in selected_names and "frame_annotations" in data:
-            invocation.frames = (
-                [
-                    replace(
-                        frame,
-                        filtered_processor_ids=None
-                        if frame.filtered_processor_ids is None
-                        else frame.filtered_processor_ids.copy(),
-                    )
-                    for frame in (invocation.frames[index] for index in frame_indices)
-                ]
-                if invocation.frames
-                else []
-            )
-        return data
-
-    def _get_frame_target_names(
-        self,
-        data: Mapping[str, Any],
-        frame_binding: tuple[str, str] | None,
-    ) -> tuple[str, ...]:
-        annotation_keys = {"mask", "masks", "bboxes", "keypoints", "instances", "frame_annotations"}
-        supplied_annotations = {
-            canonical for name in data if (canonical := self._additional_targets.get(name, name)) in annotation_keys
-        }
-        if frame_binding is None:
-            if supplied_annotations:
-                raise ValueError(
-                    "frame selection with annotations requires Compose(frame_binding=...) to identify their frames",
-                )
-            return ("images",)
-
-        image_name, annotation_name = frame_binding
-        unbound = supplied_annotations - {annotation_name}
-        if unbound:
-            raise ValueError(f"frame selection cannot align unbound targets: {sorted(unbound)}")
-        return image_name, annotation_name
-
-    @staticmethod
-    def _select_frame_collection(
-        name: str,
-        value: Any,
-        frame_indices: tuple[int, ...],
-    ) -> Any:
-        if isinstance(value, torch.Tensor):
-            indices = torch.tensor(frame_indices, dtype=torch.long, device=value.device)
-            return value.index_select(0, indices)
-        if name == "frame_annotations":
-            return [deepcopy(value[index]) for index in frame_indices]
-        return np.take(value, frame_indices, axis=0)
-
-    def apply_to_frame_annotations(
-        self,
-        annotations: Sequence[Mapping[str, Any]],
-        *,
-        sampled_params: SampledParams | None = None,
-        **params: Any,
-    ) -> list[dict[str, Any]]:
-        """Apply each declared nested target handler to its corresponding frame annotations."""
-        transformed_frames: list[dict[str, Any]] = []
-        invocation = get_current_invocation()
-        active_frame = None if invocation is None else invocation.active_frame
-        try:
-            for frame_index, frame in enumerate(annotations):
-                if invocation is not None and invocation.frames:
-                    invocation.active_frame = invocation.frames[frame_index]
-                transformed_frames.append(
-                    self._apply_frame_annotations(frame, invocation, sampled_params=sampled_params, **params),
-                )
-        finally:
-            if invocation is not None:
-                invocation.active_frame = active_frame
-        return transformed_frames
-
-    def _apply_frame_annotations(
-        self,
-        frame: Mapping[str, Any],
-        invocation: InvocationContext | None,
-        *,
-        sampled_params: SampledParams | None = None,
-        **params: Any,
-    ) -> dict[str, Any]:
-        route = None
-        if invocation is not None and invocation.active_frame is not None and invocation.active_frame.tensor_targets:
-            tensor_targets = invocation.active_frame.tensor_targets
-            if any(
-                name in self._key2func
-                and not _handler_has_tensor_path(self._key2func[name])
-                and isinstance(frame.get(name), torch.Tensor)
-                for name, _ in tensor_targets
-            ):
-                route = _TensorFallbackRoute(
-                    targets=tuple(
-                        (name, canonical)
-                        for name, canonical in tensor_targets
-                        if name in self._key2func and isinstance(frame.get(name), torch.Tensor)
-                    ),
-                    metadata=(),
-                )
-                frame = self._enter_tensor_fallback(frame, route)
-        transformed: dict[str, Any] = {}
-        for name, value in frame.items():
-            handler = self._key2func.get(name)
-            if handler is not None and value is not None:
-                target_params = params if sampled_params is None else sampled_params.params_for(name)
-                transformed[name] = handler(value, **target_params)
+            params = sampled_params.params_for(key)
+            metadata = self._runtime_binding_params if binding is None else binding.parameters(key)
+            params = {**params, **metadata}
+            value = handler(arg, **params)
+            if isinstance(value, TargetResult):
+                result[key] = value.values
+                ownership[key] = value
             else:
-                transformed[name] = value
-        return transformed if route is None else self._restore_tensor_fallback(transformed, route)
+                result[key] = value
+        if ownership and binding is not None:
+            binding.accept(ownership)
+        return result
 
     def set_deterministic(self, flag: bool, save_key: str = "replay") -> "BasicTransform":
         """Set transform to be deterministic. When True, params are saved under save_key for
@@ -1249,7 +1112,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
         return np.require(result, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else result
 
-    def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
+    def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType | TargetResult[ImageType]:
         """Apply transform on images. Input shape (N, H, W, C); uses _apply_to_batch with per-image
         apply. Returns same format. Batch API.
 
@@ -1261,7 +1124,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             **params (Any): Additional parameters specific to the transform
 
         Returns:
-            ImageType: Transformed images as numpy array in the same format as input
+            ImageType | TargetResult[ImageType]: Transformed array, optionally with explicitly updated binding IDs.
 
         """
         return self._apply_to_batch(images, lambda img: self.apply(img, *args, **params))
@@ -1279,7 +1142,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             VolumeType: Transformed volume as numpy array in the same format as input
 
         """
-        return self.apply_to_images(volume, *args, **params)
+        return cast("VolumeType", self.apply_to_images(volume, *args, **params))
 
     def update_transform_params(
         self,
@@ -1333,84 +1196,12 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         return params
 
     def _build_target_set(self, data: Mapping[str, Any]) -> TargetSet:
-        canonical_by_name = {name: self._additional_targets.get(name, name) for name in self._key2func}
-        return TargetSet.from_data(data, canonical_by_name)
-
-    def _frame_sampling_data(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Expose nested annotation values to existing samplers and target descriptors."""
-        frames = data.get("frame_annotations")
-        if not frames:
-            return data
-
-        values_by_name: dict[str, list[tuple[int, str, Any]]] = {}
-        alias_values: dict[str, list[tuple[int, str, Any]]] = {}
-        for frame_index, frame in enumerate(frames):
-            for name, value in frame.items():
-                if name in self._key2func and value is not None:
-                    entry = (frame_index, name, value)
-                    values_by_name.setdefault(name, []).append(entry)
-                    canonical = self._additional_targets.get(name, name)
-                    if canonical != name:
-                        alias_values.setdefault(canonical, []).append(entry)
-
-        sampling_data = dict(data)
-        for target_name, values in values_by_name.items():
-            canonical = self._additional_targets.get(target_name, target_name)
-            if (
-                target_name not in sampling_data
-                and (combined := self._combine_frame_target(canonical, values)) is not None
-            ):
-                sampling_data[target_name] = combined
-        for canonical, values in alias_values.items():
-            if (
-                canonical not in sampling_data
-                and (combined := self._combine_frame_target(canonical, values)) is not None
-            ):
-                sampling_data[canonical] = combined
-        return sampling_data
-
-    def _combine_frame_target(self, target_name: str, values: list[tuple[int, str, Any]]) -> Any | None:
-        arrays = [
-            tensor_metadata_to_numpy(value, target_name) if isinstance(value, torch.Tensor) else value
-            for _, _, value in values
-        ]
-        if not all(isinstance(value, np.ndarray) for value in arrays):
-            return None
-        if target_name == "mask":
-            combined = arrays[0].copy()
-            for array in arrays[1:]:
-                combined = np.maximum(combined, array)
-            return combined
-        if target_name in {"masks", "bboxes", "keypoints"}:
-            nonempty = [array for array in arrays if len(array)]
-            combined = np.concatenate(nonempty, axis=0) if nonempty else arrays[0]
-            if target_name in {"bboxes", "keypoints"} and len(combined):
-                self._encode_frame_sampling_labels(target_name, values, combined)
-            return combined
-        return arrays[0]
-
-    def _encode_frame_sampling_labels(
-        self,
-        target_name: str,
-        values: list[tuple[int, str, Any]],
-        combined: np.ndarray,
-    ) -> None:
-        processor = self.get_processor(target_name)
-        if not isinstance(processor, (BboxProcessor, KeypointsProcessor)) or not processor.params.label_fields:
-            return
+        functions = self._dispatch_functions()
+        aliases = self._additional_targets
         invocation = get_current_invocation()
-        if invocation is None:
-            raise RuntimeError("frame label sampling requires an active invocation")
-        label_fields = processor.params.label_fields
-        label_offset = combined.shape[1] - len(label_fields)
-        for field_index, label_field in enumerate(label_fields):
-            labels: list[Any] = []
-            column = label_offset + field_index
-            for frame_index, data_name, array in values:
-                if len(array):
-                    frame_processor = invocation.frames[frame_index].processors[target_name]
-                    labels.extend(frame_processor.label_manager.restore_field(data_name, label_field, array[:, column]))
-            combined[:, column] = processor.label_manager.process_field(target_name, label_field, labels).ravel()
+        if invocation is not None and invocation.frame_state is not None:
+            aliases = {**aliases, **invocation.frame_state.routes}
+        return TargetSet.from_data(data, {name: aliases.get(name, name) for name in functions})
 
     def _validate_spatial_targets(self, targets: TargetSet) -> None:
         if self._sampling_spatial_rank is not None:
@@ -1941,12 +1732,16 @@ class DualTransform(BasicTransform):
 
         """
         result = keypoints.copy()
-        label_col_start = 5  # After [x, y, z, angle, scale]
+        label_col_start = keypoints.shape[1] - len(label_fields)
         instance_id_col_idx = None
         if "_kp_instance_id" in label_fields:
             candidate_col_idx = label_col_start + label_fields.index("_kp_instance_id")
             if candidate_col_idx < keypoints.shape[1]:
                 instance_id_col_idx = candidate_col_idx
+
+        invocation = get_current_invocation()
+        if instance_id_col_idx is None and invocation is not None and invocation.frame_state is not None:
+            instance_id_col_idx = invocation.frame_state.frame_columns.get("keypoints")
 
         # For each label field with mapping, perform row swapping
         for i, label_field in enumerate(label_fields):
@@ -2042,25 +1837,6 @@ class DualTransform(BasicTransform):
         if self._semantic_mask_label_mappings:
             res = self._apply_label_mapping_to_semantic_masks(res, **params)
         return res
-
-    def _apply_frame_annotations(
-        self,
-        frame: Mapping[str, Any],
-        invocation: InvocationContext | None,
-        *,
-        sampled_params: SampledParams | None = None,
-        **params: Any,
-    ) -> dict[str, Any]:
-        transformed = super()._apply_frame_annotations(frame, invocation, sampled_params=sampled_params, **params)
-        keypoint_params = params if sampled_params is None else sampled_params.params_for("keypoints")
-        mask_params = params if sampled_params is None else sampled_params.params
-        if transformed.get("keypoints") is not None:
-            transformed["keypoints"] = self._apply_label_mapping_to_keypoints(
-                transformed["keypoints"], **keypoint_params
-            )
-        if self._semantic_mask_label_mappings:
-            self._apply_label_mapping_to_semantic_masks(transformed, **mask_params)
-        return transformed
 
 
 class ImageOnlyTransform(BasicTransform):
@@ -2211,7 +1987,7 @@ class Transform3D(DualTransform):
         result = keypoints.copy()
         for label_offset, label_field in enumerate(processor.params.label_fields):
             mapping = field_mappings.get(label_field)
-            column_index = NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS + label_offset
+            column_index = keypoints.shape[1] - len(processor.params.label_fields) + label_offset
             if not mapping or column_index >= keypoints.shape[1]:
                 continue
             source_values = keypoints[:, column_index]

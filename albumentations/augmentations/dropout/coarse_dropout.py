@@ -19,6 +19,7 @@ from albumentations.core.bbox_utils import denormalize_bboxes
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
 from albumentations.core.transform_params import SampledParams, TargetSet
+from albumentations.core.type_definitions import Targets
 
 __all__ = ["CoarseDropout", "ConstrainedCoarseDropout", "Erasing"]
 
@@ -401,7 +402,7 @@ class ConstrainedCoarseDropout(BaseDropout):
             label field is used for filtering.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, mask3d
+        image, mask, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -453,6 +454,8 @@ class ConstrainedCoarseDropout(BaseDropout):
         ... )
 
     """
+
+    _targets = (Targets.IMAGE, Targets.MASK, Targets.BBOXES, Targets.KEYPOINTS, Targets.VOLUME, Targets.MASK3D)
 
     class InitSchema(BaseDropoutInitSchema):
         num_holes_range: Annotated[

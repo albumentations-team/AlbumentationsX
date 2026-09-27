@@ -6,7 +6,6 @@ import pytest
 import torch
 
 import albumentations as A
-from albumentations.core.invocation import ChannelRestorationState, FrameInvocationState, InvocationContext
 from albumentations.core.transform_params import SampledParams
 from albumentations.pytorch import ToTensorV2
 from tests.helpers.contract_assertions import assert_contract_values_equal
@@ -14,6 +13,12 @@ from tests.helpers.contract_assertions import assert_contract_values_equal
 
 def _clip(frame_count: int = 3, height: int = 8, width: int = 12) -> np.ndarray:
     return np.arange(frame_count * height * width, dtype=np.uint8).reshape(frame_count, height, width, 1)
+
+
+def _labeled_coordinate_params(target: str) -> dict[str, A.BboxParams | A.KeypointParams]:
+    if target == "bboxes":
+        return {"bbox_params": A.BboxParams(coord_format="pascal_voc", label_fields=["label"])}
+    return {"keypoint_params": A.KeypointParams(coord_format="xy", label_fields=["label"])}
 
 
 def test_image_and_mask_binding_validates_one_mask_per_frame() -> None:
@@ -155,7 +160,7 @@ def test_frame_labels_keep_their_own_encoding_and_container_type() -> None:
     assert result["frame_annotations"][1]["label"].dtype == annotations[1]["label"].dtype
 
 
-def test_keypoint_label_mapping_uses_each_frame_encoder() -> None:
+def test_keypoint_label_mapping_preserves_frame_labels() -> None:
     annotations = [
         {"keypoints": [[1, 2]], "label": ["left"]},
         {"keypoints": [[2, 3], [4, 3]], "label": ["a", "left"]},
@@ -177,35 +182,6 @@ def test_keypoint_label_mapping_uses_each_frame_encoder() -> None:
     assert result["frame_annotations"][1]["label"] == ["a", "right"]
     np.testing.assert_allclose(result["frame_annotations"][0]["keypoints"], [[10, 2]])
     np.testing.assert_allclose(result["frame_annotations"][1]["keypoints"], [[9, 3], [7, 3]])
-
-
-def test_annotation_sampler_uses_labels_from_all_frames() -> None:
-    annotations = [
-        {"bboxes": [[1, 2, 4, 5]], "label": ["cat"]},
-        {"bboxes": [[16, 11, 19, 15]], "label": ["dog"]},
-    ]
-    compose = A.Compose(
-        [
-            A.ConstrainedCoarseDropout(
-                num_holes_range=(1, 1),
-                hole_height_range=(1, 1),
-                hole_width_range=(1, 1),
-                bbox_labels=["cat"],
-                fill=137,
-                p=1,
-            )
-        ],
-        bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["label"]),
-        frame_binding=["images", "frame_annotations"],
-        seed=137,
-        telemetry=False,
-    )
-
-    result = compose(images=np.zeros((2, 16, 20, 1), dtype=np.uint8), frame_annotations=annotations)
-
-    np.testing.assert_array_equal(result["images"][:, 2:5, 1:4], np.full((2, 3, 3, 1), 137, dtype=np.uint8))
-    np.testing.assert_array_equal(result["images"][:, 11:15, 16:19], np.zeros((2, 4, 3, 1), dtype=np.uint8))
-    assert result["frame_annotations"][1]["label"] == ["dog"]
 
 
 @pytest.mark.parametrize(("nested", "serialize"), [(False, False), (True, False), (False, True)])
@@ -369,6 +345,7 @@ def test_frame_tensor_annotations_preserve_layout_and_type(mask_channels: int | 
 
 
 @pytest.mark.parametrize("p", [0, 1])
+@pytest.mark.parametrize("location", ["only", "next_frame", "alias"])
 @pytest.mark.parametrize(
     "invalid_tensor",
     [
@@ -377,16 +354,25 @@ def test_frame_tensor_annotations_preserve_layout_and_type(mask_channels: int | 
         torch.zeros((8, 12), device="meta"),
     ],
 )
-def test_frame_tensor_validation_precedes_root_probability(p: float, invalid_tensor: torch.Tensor) -> None:
+def test_frame_tensor_validation_precedes_root_probability(
+    p: float,
+    invalid_tensor: torch.Tensor,
+    location: str,
+) -> None:
+    index = 1 if location == "next_frame" else 0
+    name = "mask_copy" if location == "alias" else "mask"
+    annotations = [{"mask": torch.zeros((8, 12))} for _ in range(index + 1)]
+    annotations[index][name] = invalid_tensor
     compose = A.Compose(
         [A.NoOp(p=1)],
         p=p,
+        additional_targets={"mask_copy": "mask"} if location == "alias" else None,
         frame_binding=["images", "frame_annotations"],
         telemetry=False,
     )
 
-    with pytest.raises((ValueError, TypeError), match=r"frame_annotations\[0\].mask"):
-        compose(images=_clip(frame_count=1), frame_annotations=[{"mask": invalid_tensor}])
+    with pytest.raises((ValueError, TypeError), match=rf"frame_annotations\[{index}\]\.{name}"):
+        compose(images=_clip(frame_count=len(annotations)), frame_annotations=annotations)
 
 
 def test_frame_tensor_targets_reject_numpy_to_tensor_terminal() -> None:
@@ -423,14 +409,14 @@ def test_frame_tensor_mask_uses_native_handler(monkeypatch: pytest.MonkeyPatch) 
 def test_frame_tensor_restoration_follows_selection_and_replay(monkeypatch: pytest.MonkeyPatch) -> None:
     masks = [torch.arange(8 * 12, dtype=torch.float32).reshape(8, 12), torch.ones((1, 8, 12))]
     annotations = [{"mask": mask, "mask_copy": mask.clone()} for mask in masks]
-    transform = A.HorizontalFlip(p=1)
+    transform = A.UniformTemporalSubsample(num_frames=3)
     monkeypatch.setattr(
-        A.HorizontalFlip,
+        A.UniformTemporalSubsample,
         "sample_parameters",
-        lambda *args, **kwargs: SampledParams(params={}, frame_indices=(1, 0, 1)),
+        lambda *args, **kwargs: SampledParams(params={"frame_indices": (1, 0, 1)}),
     )
     compose = A.ReplayCompose(
-        [transform],
+        [transform, A.HorizontalFlip(p=1)],
         additional_targets={"mask_copy": "mask"},
         frame_binding=["images", "frame_annotations"],
         telemetry=False,
@@ -486,12 +472,12 @@ def test_sampled_frame_indices_select_bound_images_and_annotations(
         images = torch.from_numpy(np.moveaxis(images, -1, 1))
         masks = torch.from_numpy(masks)
     monkeypatch.setattr(
-        A.HorizontalFlip,
+        A.UniformTemporalSubsample,
         "sample_parameters",
-        lambda *args, **kwargs: SampledParams(params={}, frame_indices=(2, 0, 2)),
+        lambda *args, **kwargs: SampledParams(params={"frame_indices": (2, 0, 2)}),
     )
     compose = A.ReplayCompose(
-        [A.HorizontalFlip(p=1)],
+        [A.UniformTemporalSubsample(num_frames=3), A.HorizontalFlip(p=1)],
         frame_binding=["images", "masks"],
         strict=True,
         telemetry=False,
@@ -508,66 +494,52 @@ def test_sampled_frame_indices_select_bound_images_and_annotations(
     assert_contract_values_equal(replayed["masks"], expected_masks)
 
 
-@pytest.mark.parametrize("transform_cls", [A.HorizontalFlip, A.InvertImg])
-def test_sampled_frame_indices_select_aliases_of_bound_collections(transform_cls: type[A.BasicTransform]) -> None:
+def test_sampled_frame_indices_select_aliases_of_bound_collections() -> None:
     images = _clip()
     masks = np.arange(3 * 8 * 12, dtype=np.uint8).reshape(3, 8, 12)
     images_copy = images + 5
     masks_copy = masks + 7
-    transform = transform_cls(p=1)
-    transform.add_targets({"images_copy": "images", "masks_copy": "masks"})
-    invocation = InvocationContext(frame_binding=("images", "masks"))
+    compose = A.Compose(
+        [A.UniformTemporalSubsample(num_frames=2)],
+        additional_targets={"images_copy": "images", "masks_copy": "masks"},
+        frame_binding=["images", "masks"],
+        telemetry=False,
+    )
+    result = compose(images=images, masks=masks, images_copy=images_copy, masks_copy=masks_copy)
 
-    with invocation:
-        result = transform.apply_with_params(
-            SampledParams(params={}, frame_indices=(2, 0)),
-            images=images,
-            masks=masks,
-            images_copy=images_copy,
-            masks_copy=masks_copy,
-        )
-
-    if transform_cls is A.HorizontalFlip:
-        np.testing.assert_array_equal(result["images"], images[[2, 0], :, ::-1])
-        np.testing.assert_array_equal(result["masks"], masks[[2, 0], :, ::-1])
-        np.testing.assert_array_equal(result["images_copy"], images_copy[[2, 0], :, ::-1])
-        np.testing.assert_array_equal(result["masks_copy"], masks_copy[[2, 0], :, ::-1])
-    else:
-        np.testing.assert_array_equal(result["images"], 255 - images[[2, 0]])
-        np.testing.assert_array_equal(result["masks"], masks[[2, 0]])
-        np.testing.assert_array_equal(result["images_copy"], 255 - images_copy[[2, 0]])
-        np.testing.assert_array_equal(result["masks_copy"], masks_copy[[2, 0]])
+    np.testing.assert_array_equal(result["images"], images[[0, 2]])
+    np.testing.assert_array_equal(result["masks"], masks[[0, 2]])
+    np.testing.assert_array_equal(result["images_copy"], images_copy[[0, 2]])
+    np.testing.assert_array_equal(result["masks_copy"], masks_copy[[0, 2]])
 
 
 def test_frame_indices_require_binding_for_annotation_aliases() -> None:
-    transform = A.InvertImg(p=1)
-    transform.add_targets({"boxes": "bboxes"})
+    compose = A.Compose(
+        [A.UniformTemporalSubsample(num_frames=1)],
+        bbox_params=A.BboxParams(coord_format="pascal_voc"),
+        additional_targets={"boxes": "bboxes"},
+        telemetry=False,
+    )
 
     with pytest.raises(ValueError, match=r"requires Compose\(frame_binding"):
-        transform.apply_with_params(
-            SampledParams(params={}, frame_indices=(0,)),
-            images=_clip(),
-            boxes=np.zeros((1, 4), dtype=np.float32),
-        )
+        compose(images=_clip(), boxes=[[1, 2, 4, 5]])
 
 
-def test_sampled_frame_indices_copy_repeated_frame_annotations() -> None:
+def test_sampled_frame_indices_copy_repeated_frame_annotations(monkeypatch: pytest.MonkeyPatch) -> None:
     images = _clip()
     masks = [np.full((8, 12), index, dtype=np.uint8) for index in range(3)]
-    frame_annotations = [{"mask": mask} for mask in masks]
-    invocation = InvocationContext(frame_binding=("images", "frame_annotations"))
-    restorations = [{"mask": ChannelRestorationState("mask", mask, mask[..., None])} for mask in masks]
-    invocation.frames = [
-        FrameInvocationState(instance_count=count, channel_restorations=restoration)
-        for count, restoration in zip((1, 0, 2), restorations, strict=True)
-    ]
-
-    with invocation:
-        result = A.NoOp(p=1).apply_with_params(
-            SampledParams(params={}, frame_indices=(2, 0, 2)),
-            images=images,
-            frame_annotations=frame_annotations,
-        )
+    annotations = [{"mask": mask} for mask in masks]
+    monkeypatch.setattr(
+        A.UniformTemporalSubsample,
+        "sample_parameters",
+        lambda *args, **kwargs: SampledParams(params={"frame_indices": (2, 0, 2)}),
+    )
+    compose = A.Compose(
+        [A.UniformTemporalSubsample(num_frames=3)],
+        frame_binding=["images", "frame_annotations"],
+        telemetry=False,
+    )
+    result = compose(images=images, frame_annotations=annotations)
 
     assert [int(frame["mask"][0, 0]) for frame in result["frame_annotations"]] == [2, 0, 2]
     assert result["frame_annotations"][0] is not result["frame_annotations"][2]
@@ -575,11 +547,6 @@ def test_sampled_frame_indices_copy_repeated_frame_annotations() -> None:
     result["frame_annotations"][0]["mask"][0, 0] = 137
     assert result["frame_annotations"][2]["mask"][0, 0] == 2
     assert masks[2][0, 0] == 2
-    assert [frame.instance_count for frame in invocation.frames] == [2, 1, 2]
-    assert all(
-        selected.channel_restorations is restorations[index]
-        for selected, index in zip(invocation.frames, (2, 0, 2), strict=True)
-    )
 
 
 def test_frame_annotations_require_explicit_binding() -> None:
@@ -631,3 +598,317 @@ def test_replay_compose_replays_frame_annotations() -> None:
 
     assert_contract_values_equal(replayed["images"], recorded["images"])
     assert_contract_values_equal(replayed["frame_annotations"], recorded["frame_annotations"])
+
+
+def test_temporal_handlers_receive_flat_masks_and_rebased_ids(monkeypatch: pytest.MonkeyPatch) -> None:
+    annotations = [
+        {
+            "instances": [
+                {"mask": np.full((8, 12), 1, dtype=np.uint8), "keypoints": [[1, 2], [3, 4]]},
+                {"mask": np.full((8, 12), 2, dtype=np.uint8), "keypoints": []},
+            ]
+        },
+        {"instances": []},
+        {"instances": [{"mask": np.full((8, 12), 3, dtype=np.uint8), "keypoints": [[5, 6]]}]},
+    ]
+    incoming = []
+    original = A.UniformTemporalSubsample.apply_to_masks
+
+    def apply_to_masks(self, masks, frame_indices, **params):
+        incoming.append((masks.shape, params["frame_ids"].copy(), params["instance_ids"].copy()))
+        return original(self, masks, frame_indices, **params)
+
+    monkeypatch.setattr(A.UniformTemporalSubsample, "apply_to_masks", apply_to_masks)
+    monkeypatch.setattr(
+        A.UniformTemporalSubsample,
+        "sample_parameters",
+        lambda self, *args, **kwargs: SampledParams(
+            params={"frame_indices": (2, 0, 2, 1, 0) if self.num_frames == 5 else (4, 2, 0)},
+        ),
+    )
+    compose = A.Compose(
+        [A.UniformTemporalSubsample(num_frames=5), A.HorizontalFlip(p=1), A.UniformTemporalSubsample(num_frames=3)],
+        keypoint_params=A.KeypointParams(coord_format="xy"),
+        instance_binding=["masks", "keypoints"],
+        frame_binding=["images", "frame_annotations"],
+        telemetry=False,
+    )
+    result = compose(images=_clip(), frame_annotations=annotations)
+
+    np.testing.assert_array_equal(incoming[0][1], [0, 0, 2])
+    np.testing.assert_array_equal(incoming[0][2], [0, 1, 2])
+    np.testing.assert_array_equal(incoming[1][1], [0, 1, 1, 2, 4, 4])
+    np.testing.assert_array_equal(incoming[1][2], np.arange(6))
+    assert incoming[0][0] == (3, 8, 12, 1)
+    frames = result["frame_annotations"]
+    assert [len(frame["instances"]) for frame in frames] == [2, 1, 1]
+    np.testing.assert_array_equal(result["images"], _clip()[[0, 2, 2], :, ::-1])
+    np.testing.assert_allclose(frames[0]["instances"][0]["keypoints"], [[10, 2], [8, 4]])
+    assert frames[0]["instances"][1]["keypoints"].shape == (0, 2)
+    np.testing.assert_allclose(frames[1]["instances"][0]["keypoints"], [[6, 6]])
+    np.testing.assert_allclose(frames[2]["instances"][0]["keypoints"], [[6, 6]])
+    frames[1]["instances"][0]["mask"][0, 0] = 137
+    assert frames[2]["instances"][0]["mask"][0, 0] == 3
+
+
+def test_frame_keypoint_mapping_does_not_swap_rows_between_frames() -> None:
+    compose = A.Compose(
+        [A.HorizontalFlip(p=1)],
+        keypoint_params=A.KeypointParams(
+            coord_format="xy",
+            label_fields=["label"],
+            label_mapping={"HorizontalFlip": {"label": {"left": "right", "right": "left"}}},
+        ),
+        frame_binding=["images", "frame_annotations"],
+        telemetry=False,
+    )
+    result = compose(
+        images=_clip(frame_count=2),
+        frame_annotations=[
+            {"keypoints": [[1, 2]], "label": ["left"]},
+            {"keypoints": [[5, 6]], "label": ["right"]},
+        ],
+    )
+    first, second = result["frame_annotations"]
+    np.testing.assert_allclose(first["keypoints"], [[10, 2]])
+    np.testing.assert_allclose(second["keypoints"], [[6, 6]])
+    assert first["label"] == ["right"]
+    assert second["label"] == ["left"]
+
+
+def test_frame_annotation_aliases_preserve_extra_columns() -> None:
+    compose = A.Compose(
+        [A.UniformTemporalSubsample(num_frames=5), A.HorizontalFlip(p=1)],
+        bbox_params=A.BboxParams(coord_format="pascal_voc"),
+        keypoint_params=A.KeypointParams(coord_format="xy"),
+        additional_targets={"boxes": "bboxes", "points": "keypoints"},
+        frame_binding=["images", "frame_annotations"],
+        telemetry=False,
+    )
+    result = compose(
+        images=_clip(),
+        frame_annotations=[
+            {"boxes": [[1, 2, 4, 5, 137]], "points": [[1, 2, 137]]},
+            {},
+            {"boxes": [[2, 3, 5, 6, 138]], "points": [[5, 6, 138]]},
+        ],
+    )
+    frames = result["frame_annotations"]
+    assert frames[2] == frames[3] == {}
+    np.testing.assert_allclose(frames[0]["boxes"], [[8, 2, 11, 5, 137]])
+    np.testing.assert_allclose(frames[1]["points"], [[10, 2, 137]])
+    np.testing.assert_allclose(frames[4]["boxes"], [[7, 3, 10, 6, 138]])
+    np.testing.assert_allclose(frames[4]["points"], [[6, 6, 138]])
+
+
+def test_frame_binding_allows_video_without_annotations() -> None:
+    compose = A.Compose(
+        [A.UniformTemporalSubsample(num_frames=2)],
+        bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["label"]),
+        frame_binding=["images", "frame_annotations"],
+        telemetry=False,
+    )
+    result = compose(images=_clip())
+
+    assert set(result) == {"images"}
+    np.testing.assert_array_equal(result["images"], _clip()[[0, 2]])
+
+
+def test_frame_instances_require_instance_binding() -> None:
+    compose = A.Compose([A.NoOp()], frame_binding=["images", "frame_annotations"], telemetry=False)
+    with pytest.raises(ValueError, match="requires Compose\\(instance_binding"):
+        compose(images=_clip(frame_count=1), frame_annotations=[{"instances": []}])
+
+
+@pytest.mark.parametrize("binding", [["bboxes", "keypoints"], ["mask", "bboxes"]])
+@pytest.mark.parametrize("target", ["mask", "masks", "bboxes", "keypoints"])
+@pytest.mark.parametrize("alias", [False, True])
+def test_frame_instance_binding_rejects_targets_outside_instances(binding, target, alias) -> None:
+    name = "annotation" if alias else target
+    compose = A.Compose(
+        [A.HorizontalFlip(p=1)],
+        bbox_params=A.BboxParams(coord_format="pascal_voc"),
+        keypoint_params=A.KeypointParams(coord_format="xy"),
+        instance_binding=binding,
+        additional_targets={name: target} if alias else None,
+        frame_binding=["images", "frame_annotations"],
+        telemetry=False,
+    )
+    values = {
+        "mask": np.zeros((8, 12), dtype=np.uint8),
+        "masks": np.zeros((1, 8, 12), dtype=np.uint8),
+        "bboxes": [[1, 2, 4, 5]],
+        "keypoints": [[1, 2]],
+    }
+    annotations = {"instances": [], name: values[target]}
+
+    with pytest.raises(ValueError, match="Put bound frame objects in an `instances` list"):
+        compose(images=_clip(frame_count=1), frame_annotations=[annotations])
+
+
+@pytest.mark.parametrize("labels", [["cat"], np.array(["cat"])])
+def test_frame_annotation_aliases_share_configured_labels(labels) -> None:
+    compose = A.Compose(
+        [A.UniformTemporalSubsample(num_frames=3), A.HorizontalFlip(p=1)],
+        bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["label"]),
+        additional_targets={"boxes": "bboxes"},
+        frame_binding=["images", "frame_annotations"],
+        telemetry=False,
+    )
+    result = compose(
+        images=_clip(frame_count=2),
+        frame_annotations=[
+            {"bboxes": [[1, 2, 4, 5]], "boxes": [[2, 3, 5, 6]], "label": labels},
+            {},
+        ],
+    )
+    for frame in result["frame_annotations"][:2]:
+        np.testing.assert_allclose(frame["bboxes"], [[8, 2, 11, 5]])
+        np.testing.assert_allclose(frame["boxes"], [[7, 3, 10, 6]])
+        np.testing.assert_array_equal(frame["label"], ["cat"])
+        assert type(frame["label"]) is type(labels)
+    assert result["frame_annotations"][2] == {}
+
+
+@pytest.mark.parametrize("target", ["bboxes", "keypoints"])
+@pytest.mark.parametrize("alias_count", [1, 2])
+@pytest.mark.parametrize("tensor", [False, True])
+def test_frame_alias_labels_stay_with_their_target(target, alias_count, tensor) -> None:
+    alias = "boxes" if target == "bboxes" else "points"
+    rows = np.array([[1, 2, 4, 5], [2, 3, 5, 6]] if target == "bboxes" else [[1, 2], [5, 6]], dtype=np.float32)
+    transformed = np.array([[8, 2, 11, 5], [7, 3, 10, 6]] if target == "bboxes" else [[10, 2], [6, 6]])
+    annotations = [
+        {target: torch.from_numpy(rows[:1]) if tensor else rows[:1], "label": np.array([137], dtype=np.int32)},
+        {
+            alias: torch.from_numpy(rows[:alias_count]) if tensor else rows[:alias_count],
+            "label": ["dog", "wolf"][:alias_count],
+        },
+        {},
+    ]
+    original = deepcopy(annotations)
+    compose = A.Compose(
+        [A.UniformTemporalSubsample(num_frames=5), A.HorizontalFlip(p=1)],
+        additional_targets={alias: target},
+        frame_binding=["images", "frame_annotations"],
+        telemetry=False,
+        **_labeled_coordinate_params(target),
+    )
+
+    result = compose(images=_clip(), frame_annotations=annotations)
+
+    for frame in result["frame_annotations"][:2]:
+        np.testing.assert_allclose(frame[target], transformed[:1])
+        np.testing.assert_array_equal(frame["label"], [137])
+        assert frame["label"].dtype == np.int32
+        assert isinstance(frame[target], torch.Tensor) == tensor
+    for frame in result["frame_annotations"][2:4]:
+        np.testing.assert_allclose(frame[alias], transformed[:alias_count])
+        assert frame["label"] == ["dog", "wolf"][:alias_count]
+        assert isinstance(frame[alias], torch.Tensor) == tensor
+    assert result["frame_annotations"][4] == {}
+    assert_contract_values_equal(annotations, original)
+
+
+@pytest.mark.parametrize("target", ["bboxes", "keypoints"])
+def test_frame_shared_labels_reject_different_survivors(target) -> None:
+    alias = "boxes" if target == "bboxes" else "points"
+    rows = [[1, 1, 3, 3], [8, 1, 10, 3]] if target == "bboxes" else [[1, 1], [8, 1]]
+    compose = A.Compose(
+        [A.Crop(x_min=0, y_min=0, x_max=6, y_max=8, p=1)],
+        additional_targets={alias: target},
+        frame_binding=["images", "frame_annotations"],
+        telemetry=False,
+        **_labeled_coordinate_params(target),
+    )
+
+    with pytest.raises(ValueError, match=r"label.*conflicting"):
+        compose(
+            images=_clip(frame_count=1),
+            frame_annotations=[{target: rows, alias: rows[::-1], "label": ["cat", "dog"]}],
+        )
+
+
+@pytest.mark.parametrize("target", ["bboxes", "keypoints"])
+def test_frame_alias_labels_follow_filtering_to_empty(target) -> None:
+    alias = "boxes" if target == "bboxes" else "points"
+    rows = [[1, 1, 3, 3, 137], [8, 1, 10, 3, 138]] if target == "bboxes" else [[1, 1, 137], [8, 1, 138]]
+    compose = A.Compose(
+        [A.UniformTemporalSubsample(num_frames=3), A.Crop(x_min=0, y_min=0, x_max=6, y_max=8, p=1)],
+        additional_targets={alias: target},
+        frame_binding=["images", "frame_annotations"],
+        telemetry=False,
+        **_labeled_coordinate_params(target),
+    )
+
+    result = compose(
+        images=_clip(frame_count=2),
+        frame_annotations=[
+            {target: rows, "label": ["cat", "removed"]},
+            {alias: rows[1:], "label": np.array(["dog"])},
+        ],
+    )
+
+    for frame in result["frame_annotations"][:2]:
+        np.testing.assert_allclose(frame[target], rows[:1])
+        assert frame["label"] == ["cat"]
+    empty = result["frame_annotations"][2]
+    assert empty[alias].shape == (0, len(rows[0]))
+    np.testing.assert_array_equal(empty["label"], np.array([], dtype="<U3"))
+
+
+@pytest.mark.parametrize("target", ["bboxes", "keypoints"])
+def test_frame_labels_validate_lengths_per_frame(target) -> None:
+    rows = [[1, 2, 4, 5], [2, 3, 5, 6]] if target == "bboxes" else [[1, 2], [5, 6]]
+    compose = A.Compose(
+        [A.NoOp(p=1)],
+        frame_binding=["images", "frame_annotations"],
+        telemetry=False,
+        **_labeled_coordinate_params(target),
+    )
+
+    with pytest.raises(ValueError, match=f"The lengths of {target} and label do not match"):
+        compose(
+            images=_clip(frame_count=2),
+            frame_annotations=[{target: rows, "label": ["cat"]}, {target: rows[:1], "label": ["dog", "wolf"]}],
+        )
+
+
+@pytest.mark.parametrize("target", ["bboxes", "keypoints"])
+@pytest.mark.parametrize("representation", ["list", "array", "extra_columns"])
+def test_empty_frame_coordinates_preserve_public_width(target, representation) -> None:
+    width = (4 if target == "bboxes" else 2) + (representation == "extra_columns")
+    values = [] if representation == "list" else np.empty((0, width) if representation == "extra_columns" else (0,))
+    compose = A.Compose(
+        [A.NoOp(p=1)],
+        frame_binding=["images", "frame_annotations"],
+        telemetry=False,
+        **_labeled_coordinate_params(target),
+    )
+
+    result = compose(images=_clip(frame_count=1), frame_annotations=[{target: values, "label": []}])
+
+    frame = result["frame_annotations"][0]
+    assert frame[target].shape == (0, width)
+    assert frame["label"] == []
+
+
+def test_frame_binding_sampler_sees_only_declared_targets(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen = []
+    original = A.RandomBrightnessContrast.sample_parameters
+
+    def sample_parameters(self, params, data, targets, sampling):
+        seen.extend((view.name, view.canonical_type) for view in targets.ordered)
+        return original(self, params, data, targets, sampling)
+
+    monkeypatch.setattr(A.RandomBrightnessContrast, "sample_parameters", sample_parameters)
+    masks = np.arange(2 * 8 * 12, dtype=np.uint8).reshape(2, 8, 12)
+    compose = A.Compose(
+        [A.RandomBrightnessContrast(brightness_limit=0, contrast_limit=0, p=1)],
+        frame_binding=["images", "frame_annotations"],
+        telemetry=False,
+    )
+    result = compose(images=_clip(frame_count=2), frame_annotations=[{"mask": mask} for mask in masks])
+
+    assert seen == [("images", "images")]
+    for frame, mask in zip(result["frame_annotations"], masks, strict=True):
+        np.testing.assert_array_equal(frame["mask"], mask)

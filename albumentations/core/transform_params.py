@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import inspect
-import operator
 from collections.abc import Callable, Hashable, Mapping
 from dataclasses import dataclass
 from functools import lru_cache
@@ -29,7 +28,6 @@ _TARGET_ORDER = {
 }
 _PARAMETER_SCHEMA = 3
 _PARAMETER_PAYLOAD_KEYS = frozenset({"parameter_schema", "target_schema", "params", "target_params"})
-_OPTIONAL_PARAMETER_PAYLOAD_KEYS = frozenset({"frame_indices"})
 _TARGET_PARAMETER_PAYLOAD_KEYS = frozenset({"targets", "params", "requirements"})
 _TARGET_REQUIREMENT_PAYLOAD_KEYS = frozenset(
     {
@@ -289,18 +287,6 @@ class SampledParams:
     params: Mapping[str, Any]
     target_params: tuple[TargetParams, ...] = ()
     target_schema: Mapping[str, str] | None = None
-    frame_indices: tuple[int, ...] | None = None
-
-    def __post_init__(self) -> None:
-        if self.frame_indices is None:
-            return
-        if any(
-            not isinstance(index, (int, np.integer)) or isinstance(index, (bool, np.bool_)) or index < 0
-            for index in self.frame_indices
-        ):
-            raise SampledParamsError("frame_indices must contain non-negative integers")
-        indices = tuple(operator.index(index) for index in self.frame_indices)
-        object.__setattr__(self, "frame_indices", indices)
 
     def validate(
         self,
@@ -380,24 +366,16 @@ class SampledParams:
         return resolved
 
     def to_dict(self) -> dict[str, Any]:
-        payload: dict[str, Any] = {
+        return {
             "parameter_schema": _PARAMETER_SCHEMA,
             "target_schema": None if self.target_schema is None else dict(self.target_schema),
             "params": dict(self.params),
             "target_params": [target_params.to_dict() for target_params in self.target_params],
         }
-        if self.frame_indices is not None:
-            payload["frame_indices"] = list(self.frame_indices)
-        return payload
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> SampledParams:
-        keys = set(payload)
-        if (
-            payload.get("parameter_schema") != _PARAMETER_SCHEMA
-            or not keys >= _PARAMETER_PAYLOAD_KEYS
-            or keys - _PARAMETER_PAYLOAD_KEYS - _OPTIONAL_PARAMETER_PAYLOAD_KEYS
-        ):
+        if payload.get("parameter_schema") != _PARAMETER_SCHEMA or set(payload) != _PARAMETER_PAYLOAD_KEYS:
             raise SampledParamsError("unsupported or legacy transform parameter schema")
         raw_target_params = payload.get("target_params", ())
         if not isinstance(raw_target_params, list):
@@ -424,14 +402,10 @@ class SampledParams:
                 ),
             )
         target_schema = payload.get("target_schema")
-        frame_indices = payload.get("frame_indices")
-        if frame_indices is not None and not isinstance(frame_indices, list):
-            raise SampledParamsError("frame_indices must be a list or null")
         return cls(
             params=dict(payload.get("params", {})),
             target_params=tuple(target_params),
             target_schema=None if target_schema is None else dict(target_schema),
-            frame_indices=None if frame_indices is None else tuple(frame_indices),
         )
 
 

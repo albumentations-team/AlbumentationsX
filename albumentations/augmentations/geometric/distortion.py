@@ -461,7 +461,6 @@ class ElasticTransform(BaseRemapTransform):
             params=runtime_params,
             target_params=sampled_params.target_params,
             target_schema=sampled_params.target_schema,
-            frame_indices=sampled_params.frame_indices,
         )
         return super().apply_with_params(runtime_sampled_params, *args, **kwargs)
 

@@ -197,6 +197,7 @@ class DataProcessor(ABC, Generic[ParamsT]):
         self.params = params
         self.data_fields = [self.default_data_name]
         self.label_manager = LabelManager()
+        self.label_data: dict[str, dict[str, Any]] | None = None
         # Cached so get_shape lookups can resolve aliased image/mask/volume keys
         # (e.g. {'custom_image_key': 'image'}). Updated by add_targets.
         self._additional_targets: dict[str, str] = {}
@@ -280,7 +281,6 @@ class DataProcessor(ABC, Generic[ParamsT]):
     ) -> dict[str, Any]:
         for data_name in set(self.data_fields) & set(data.keys()):
             data[data_name] = self._process_single_field(
-                data_name,
                 data[data_name],
                 shape,
                 filter_already_applied=filter_already_applied,
@@ -289,7 +289,6 @@ class DataProcessor(ABC, Generic[ParamsT]):
 
     def _process_single_field(
         self,
-        data_name: str,
         field_data: Any,
         shape: tuple[int, int] | tuple[int, int, int],
         *,
@@ -298,7 +297,7 @@ class DataProcessor(ABC, Generic[ParamsT]):
         if not filter_already_applied:
             field_data = self.filter(field_data, shape)
 
-        if data_name == "keypoints" and len(field_data) == 0:
+        if self.default_data_name == "keypoints" and len(field_data) == 0:
             field_data = self._create_empty_keypoints_array()
 
         return self.check_and_convert(field_data, shape, direction="from")
@@ -442,14 +441,20 @@ class DataProcessor(ABC, Generic[ParamsT]):
         if not self.params.label_fields:
             return data
 
+        processed = False
         for data_name in set(self.data_fields) & set(data.keys()):
             # Skip empty sequences (will be converted to proper empty arrays in check_and_convert)
             if isinstance(data[data_name], Sequence) and len(data[data_name]) == 0:
+                self.label_manager.metadata.pop(data_name, None)
                 continue
             if isinstance(data[data_name], np.ndarray) and not data[data_name].size:
+                self.label_manager.metadata.pop(data_name, None)
                 continue
             data[data_name] = self._process_label_fields(data, data_name)
-
+            processed = True
+        if processed and self.label_data is None:
+            for label_field in self.params.label_fields:
+                del data[label_field]
         return data
 
     def _process_label_fields(self, data: dict[str, Any], data_name: str) -> np.ndarray:
@@ -458,10 +463,12 @@ class DataProcessor(ABC, Generic[ParamsT]):
         if not label_fields:
             return data_array
 
+        labels = data if self.label_data is None else self.label_data[data_name]
         encoded_columns: list[np.ndarray] = []
         for label_field in label_fields:
-            self._validate_label_field_length(data, data_name, label_field)
-            encoded_columns.append(self.label_manager.process_field(data_name, label_field, data[label_field]))
+            if self.label_data is None:
+                self.validate_label_field_length(len(data_array), len(labels[label_field]), data_name, label_field)
+            encoded_columns.append(self.label_manager.process_field(data_name, label_field, labels[label_field]))
 
         result = np.empty(
             (data_array.shape[0], data_array.shape[1] + len(encoded_columns)),
@@ -470,15 +477,20 @@ class DataProcessor(ABC, Generic[ParamsT]):
         result[:, : data_array.shape[1]] = data_array
         for index, encoded_column in enumerate(encoded_columns, start=data_array.shape[1]):
             result[:, index] = encoded_column[:, 0]
-        for label_field in label_fields:
-            del data[label_field]
         return result
 
-    def _validate_label_field_length(self, data: dict[str, Any], data_name: str, label_field: str) -> None:
-        if len(data[data_name]) != len(data[label_field]):
+    def validate_label_field_length(
+        self,
+        data_length: int,
+        label_length: int,
+        data_name: str,
+        label_field: str,
+    ) -> None:
+        """Validate the label count for one coordinate target at the input boundary."""
+        if data_length != label_length:
             raise ValueError(
                 f"The lengths of {data_name} and {label_field} do not match. "
-                f"Got {len(data[data_name])} and {len(data[label_field])} respectively.",
+                f"Got {data_length} and {label_length} respectively.",
             )
 
     def remove_label_fields_from_data(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -496,10 +508,13 @@ class DataProcessor(ABC, Generic[ParamsT]):
             return data
 
         for data_name in set(self.data_fields) & set(data.keys()):
+            labels = data if self.label_data is None else self.label_data[data_name]
             if not data[data_name].size:
-                self._handle_empty_data_array(data)
+                self._handle_empty_data_array(labels)
+                if self.default_data_name == "bboxes" and data_name in self.label_manager.metadata:
+                    data[data_name] = data[data_name][:, : -len(self.params.label_fields)]
                 continue
-            self._remove_label_fields(data, data_name)
+            self._remove_label_fields(data, data_name, labels)
 
         return data
 
@@ -508,7 +523,7 @@ class DataProcessor(ABC, Generic[ParamsT]):
             for label_field in self.params.label_fields:
                 data[label_field] = self.label_manager.handle_empty_data()
 
-    def _remove_label_fields(self, data: dict[str, Any], data_name: str) -> None:
+    def _remove_label_fields(self, data: dict[str, Any], data_name: str, labels: dict[str, Any]) -> None:
         if self.params.label_fields is None:
             return
 
@@ -518,6 +533,6 @@ class DataProcessor(ABC, Generic[ParamsT]):
 
         for idx, label_field in enumerate(self.params.label_fields):
             encoded_labels = data_array[:, non_label_columns + idx]
-            data[label_field] = self.label_manager.restore_field(data_name, label_field, encoded_labels)
+            labels[label_field] = self.label_manager.restore_field(data_name, label_field, encoded_labels)
 
         data[data_name] = data_array[:, :non_label_columns]

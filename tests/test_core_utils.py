@@ -34,7 +34,7 @@ def test_label_encoder(input_labels, expected_encoded, expected_decoded):
 
     # Test inverse_transform
     decoded = encoder.inverse_transform(encoded)
-    np.testing.assert_array_equal(decoded, expected_decoded)
+    assert decoded.tolist() == expected_decoded
 
 
 @pytest.mark.parametrize(
@@ -140,7 +140,7 @@ def test_label_encoder_update(
     if initial_labels:
         original_encoded = encoder.transform(initial_labels)
         original_decoded = encoder.inverse_transform(original_encoded)
-        np.testing.assert_array_equal(original_decoded, np.array(initial_labels).flatten())
+        assert original_decoded.tolist() == list(initial_labels)
 
     # Ensure transform/inverse_transform work with updated labels (if not empty)
     if update_labels:
@@ -154,7 +154,7 @@ def test_label_encoder_update(
         if update_labels_list:
             updated_encoded = encoder.transform(update_labels_list)
             updated_decoded = encoder.inverse_transform(updated_encoded)
-            np.testing.assert_array_equal(updated_decoded, np.array(update_labels_list).flatten())
+            assert updated_decoded.tolist() == update_labels_list
 
 
 def test_label_encoder_update_numeric_noop():

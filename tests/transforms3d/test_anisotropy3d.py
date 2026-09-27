@@ -24,8 +24,32 @@ def test_anisotropy3d_is_volume_only() -> None:
     transform = _fixed_anisotropy()
 
     assert isinstance(transform, A.VolumeOnlyTransform)
-    assert transform._targets == (Targets.VOLUME,)
-    assert set(transform.targets) == {"volume"}
+    assert transform._targets == (Targets.VOLUME, Targets.VOLUMES)
+    assert set(transform.targets) == {"volume", "volumes"}
+
+
+@pytest.mark.parametrize("tensor", [False, True])
+def test_anisotropy3d_volume_collection_leaves_masks_unchanged(tensor: bool) -> None:
+    volume = TestDataFactory.create_volume((5, 11, 13, 3), seed=137)
+    volumes = np.stack([volume, volume])
+    mask3d = TestDataFactory.create_volume((5, 11, 13, 1), seed=138)[..., 0]
+    if tensor:
+        volumes = torch.from_numpy(np.ascontiguousarray(volumes.transpose(0, 4, 1, 2, 3)))
+        mask3d = torch.from_numpy(mask3d)
+
+    result = A.Compose([_fixed_anisotropy()], seed=137, strict=True)(volumes=volumes, mask3d=mask3d)
+
+    transformed = result["volumes"]
+    assert transformed.shape == volumes.shape
+    assert transformed.dtype == volumes.dtype
+    if tensor:
+        assert not torch.equal(transformed, volumes)
+        torch.testing.assert_close(transformed[0], transformed[1])
+        torch.testing.assert_close(result["mask3d"], mask3d)
+    else:
+        assert not np.array_equal(transformed, volumes)
+        np.testing.assert_array_equal(transformed[0], transformed[1])
+        np.testing.assert_array_equal(result["mask3d"], mask3d)
 
 
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])

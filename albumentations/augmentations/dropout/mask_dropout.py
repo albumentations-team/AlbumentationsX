@@ -49,7 +49,7 @@ class MaskDropout(DualTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, mask, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
         uint8, float32
@@ -119,7 +119,16 @@ class MaskDropout(DualTransform):
 
     """
 
-    _targets = (Targets.IMAGE, Targets.MASK, Targets.BBOXES, Targets.KEYPOINTS, Targets.VOLUME, Targets.MASK3D)
+    _targets = (
+        Targets.IMAGE,
+        Targets.MASK,
+        Targets.BBOXES,
+        Targets.KEYPOINTS,
+        Targets.VOLUME,
+        Targets.VOLUMES,
+        Targets.MASK3D,
+        Targets.MASKS3D,
+    )
 
     class InitSchema(BaseTransformInitSchema):
         max_objects_range: Annotated[

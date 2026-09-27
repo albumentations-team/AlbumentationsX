@@ -1,8 +1,12 @@
+from typing import Any
+
 import numpy as np
 import pytest
 import torch
 
 import albumentations as A
+from albumentations.core.invocation import SamplingContext
+from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.type_definitions import Targets
 from tests.utils import get_primary_filtered_transform_params
 
@@ -62,9 +66,11 @@ def test_declared_targets_have_active_handlers(transform_cls: type[A.BasicTransf
     inherited_dependencies = {
         A.BasicTransform.apply_to_images: "apply",
         A.BasicTransform.apply_to_volume: "apply_to_images",
+        A.BasicTransform.apply_to_volumes: "apply_to_volume",
         A.DualTransform.apply_to_mask: "apply",
         A.DualTransform.apply_to_masks: "apply_to_mask",
         A.DualTransform.apply_to_mask3d: "apply_to_mask",
+        A.DualTransform.apply_to_masks3d: "apply_to_mask3d",
         A.Transform3D.apply_to_mask3d: "apply_to_volume",
     }
 
@@ -86,10 +92,14 @@ def test_declared_targets_have_active_handlers(transform_cls: type[A.BasicTransf
     [
         (A.BasicTransform, Targets.IMAGES),
         (A.BasicTransform, Targets.VOLUME),
+        (A.BasicTransform, Targets.VOLUMES),
         (A.DualTransform, Targets.MASK),
         (A.DualTransform, Targets.MASKS),
         (A.DualTransform, Targets.MASK3D),
+        (A.DualTransform, Targets.MASKS3D),
         (A.Transform3D, Targets.MASK3D),
+        (A.Transform3D, Targets.VOLUMES),
+        (A.Transform3D, Targets.MASKS3D),
     ],
 )
 def test_declaration_check_rejects_inherited_wrapper_around_stub(base_cls, target) -> None:
@@ -118,3 +128,183 @@ def test_image_and_collection_targets_use_independent_inherited_routes(target: T
 
     assert set(transform._key2func) == {name}
     np.testing.assert_array_equal(result[name], 255 - source)
+
+
+def test_volume_collection_reuses_one_sampled_parameter_set_for_every_item() -> None:
+    class SharedParameters3D(A.Transform3D):
+        def __init__(self) -> None:
+            super().__init__(p=1.0)
+            self.sample_calls = 0
+            self.applied_offsets: list[int] = []
+            self.volume_shapes: list[tuple[int, ...]] = []
+
+        def sample_parameters(
+            self,
+            params: dict[str, Any],
+            data: dict[str, Any],
+            targets: TargetSet,
+            sampling: SamplingContext,
+        ) -> SampledParams:
+            self.sample_calls += 1
+            return SampledParams(params={"offset": self.sample_calls})
+
+        def apply_to_volume(self, volume: np.ndarray, offset: int, **params) -> np.ndarray:
+            self.applied_offsets.append(offset)
+            self.volume_shapes.append(volume.shape)
+            return volume + offset
+
+    transform = SharedParameters3D()
+    volumes = np.zeros((2, 3, 4, 5, 1), dtype=np.uint8)
+    masks3d = np.ones((3, 3, 4, 5), dtype=np.uint8)
+
+    result = A.Compose([transform], strict=True, telemetry=False)(volumes=volumes, masks3d=masks3d)
+
+    assert transform.sample_calls == 1
+    assert transform.applied_offsets == [1] * 5
+    assert transform.volume_shapes == [(3, 4, 5, 1)] * 5
+    np.testing.assert_array_equal(result["volumes"], volumes + 1)
+    np.testing.assert_array_equal(result["masks3d"], masks3d + 1)
+
+
+def test_empty_volume_collections_keep_their_input_objects() -> None:
+    volumes = np.empty((0, 3, 4, 5), dtype=np.uint8)
+    masks3d = np.empty((0, 3, 4, 5), dtype=np.uint8)
+
+    result = A.Compose([A.NoOp(p=1.0)], strict=True, telemetry=False)(volumes=volumes, masks3d=masks3d)
+
+    assert result["volumes"] is volumes
+    assert result["masks3d"] is masks3d
+
+
+@pytest.mark.parametrize("empty_target", ["volumes", "masks3d"])
+@pytest.mark.parametrize("tensor", [False, True])
+def test_empty_volume_collections_follow_resize_shape(empty_target: str, tensor: bool) -> None:
+    volumes = np.zeros((2, 3, 5, 7, 1), dtype=np.uint8)
+    masks3d = np.zeros((2, 3, 5, 7), dtype=np.uint8)
+    if empty_target == "volumes":
+        volumes = volumes[:0]
+    else:
+        masks3d = masks3d[:0]
+    if tensor:
+        volumes = torch.from_numpy(volumes.transpose(0, 4, 1, 2, 3))
+        masks3d = torch.from_numpy(masks3d)
+
+    result = A.Compose([A.Resize3D(size=(6, 8, 10), p=1.0)], strict=True, telemetry=False)(
+        volumes=volumes,
+        masks3d=masks3d,
+    )
+
+    assert A.core.utils.get_volumes_shape(result[empty_target]) == (6, 8, 10)
+    assert result[empty_target].shape[0] == 0
+
+
+def test_equalize_callable_mask_accepts_empty_volume_collection() -> None:
+    volumes = np.empty((0, 2, 5, 7, 1), dtype=np.uint8)
+    image_shapes: list[tuple[int, ...]] = []
+
+    def make_mask(image: np.ndarray) -> np.ndarray:
+        image_shapes.append(image.shape)
+        return np.ones(image.shape[:2], dtype=np.uint8)
+
+    result = A.Compose([A.Equalize(mask=make_mask, p=1.0)], strict=True, telemetry=False)(volumes=volumes)
+
+    assert image_shapes == [(5, 7, 1)]
+    assert result["volumes"].shape == volumes.shape
+
+
+def test_equalize_callable_mask_rejects_zero_depth_volume_collection() -> None:
+    volumes = np.empty((1, 0, 5, 7, 1), dtype=np.uint8)
+    transform = A.Compose([A.Equalize(mask=lambda image: np.ones(image.shape[:2], dtype=np.uint8), p=1.0)])
+
+    with pytest.raises(ValueError, match="zero-depth volume collection"):
+        transform(volumes=volumes)
+
+
+@pytest.mark.parametrize("target", ["volumes", "masks3d"])
+def test_pixel_dropout_treats_zero_depth_collection_as_empty(target: str) -> None:
+    shape = (1, 0, 5, 7, 1) if target == "volumes" else (1, 0, 5, 7)
+    values = np.empty(shape, dtype=np.uint8)
+
+    result = A.Compose([A.PixelDropout(dropout_prob=1.0, drop_value=0, p=1.0)])(**{target: values})
+
+    assert result[target].shape == values.shape
+
+
+@pytest.mark.parametrize("target", ["volumes", "masks3d"])
+def test_direct_flip3d_accepts_channel_free_collections(target: str) -> None:
+    values = np.arange(3 * 5 * 7, dtype=np.uint8).reshape(1, 3, 5, 7)
+
+    result = A.Flip3D(flip_axes=(0,), p=1.0)(**{target: values})
+
+    np.testing.assert_array_equal(result[target], values[:, ::-1])
+
+
+@pytest.mark.parametrize("target", ["volumes", "masks3d"])
+def test_tensor_volume_collection_alias_uses_numpy_fallback(target: str) -> None:
+    volumes = np.arange(2 * 3 * 5 * 7, dtype=np.uint8).reshape(2, 3, 5, 7, 1)
+    extra = torch.from_numpy(volumes.copy()).permute(0, 4, 1, 2, 3)
+    transform = A.Compose(
+        [A.Flip3D(flip_axes=(0, 2), p=1)],
+        additional_targets={"extra": target},
+        strict=True,
+        telemetry=False,
+    )
+
+    result = transform(**{target: volumes, "extra": extra})
+
+    np.testing.assert_array_equal(result[target], volumes[:, ::-1, :, ::-1])
+    torch.testing.assert_close(result["extra"], extra.flip((2, 4)))
+
+
+@pytest.mark.parametrize("target", [Targets.VOLUMES, Targets.MASKS3D])
+def test_tensor_collection_only_declaration_uses_native_single_handler(target: Targets) -> None:
+    class CollectionOnly(A.Transform3D):
+        _targets = (target,)
+
+        def apply_to_volume(self, volume: np.ndarray | torch.Tensor, **params):
+            assert isinstance(volume, torch.Tensor)
+            return volume + 1
+
+        def apply_to_mask3d(self, mask3d: np.ndarray | torch.Tensor, **params):
+            return self.apply_to_volume(mask3d, **params)
+
+    collection = torch.zeros((2, 1, 3, 5, 7), dtype=torch.uint8)
+    name = target.name.lower()
+
+    result = A.Compose([CollectionOnly(p=1)], strict=True, telemetry=False)(**{name: collection})
+
+    torch.testing.assert_close(result[name], collection + 1)
+
+
+def test_compose_checks_spatial_shapes_for_volume_collections() -> None:
+    volumes = np.zeros((2, 3, 4, 5, 1), dtype=np.uint8)
+    masks3d = np.zeros((3, 4, 4, 5), dtype=np.uint8)
+
+    with pytest.raises(ValueError, match="Depth, Height and Width"):
+        A.Compose([A.NoOp(p=1.0)], telemetry=False)(volumes=volumes, masks3d=masks3d)
+
+
+def test_dithering_reuses_random_noise_across_volume_collection() -> None:
+    volume = np.arange(3 * 7 * 9 * 2, dtype=np.uint8).reshape(3, 7, 9, 2)
+    volumes = np.stack([volume, volume])
+
+    result = A.Compose([A.Dithering(method="random", n_colors=4, p=1.0)], seed=137, telemetry=False)(
+        volumes=volumes,
+    )
+
+    np.testing.assert_array_equal(result["volumes"][0], result["volumes"][1])
+    assert not np.array_equal(result["volumes"][0], volume)
+
+
+def test_exposure_matching_uses_common_per_depth_gains_for_volume_collection() -> None:
+    volumes = np.broadcast_to(
+        np.array([[0.1, 0.2], [0.3, 0.6]], dtype=np.float32)[..., None, None, None], (2, 2, 3, 4, 1)
+    ).copy()
+    transform = A.ExposureMatching(target_mean_range=(0.4, 0.4), p=1.0)
+
+    result = A.Compose([transform], strict=True, telemetry=False)(volumes=volumes)
+
+    expected = np.broadcast_to(
+        np.array([[0.2, 0.2], [0.6, 0.6]], dtype=np.float32)[..., None, None, None], volumes.shape
+    )
+    np.testing.assert_allclose(result["volumes"], expected)

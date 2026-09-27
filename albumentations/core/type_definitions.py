@@ -111,7 +111,9 @@ class Targets(Enum):
         BBOXES (str): Bounding box target.
         KEYPOINTS (str): Keypoint coordinates target.
         VOLUME (str): 3D volume target.
+        VOLUMES (str): Collection of 3D volumes.
         MASK3D (str): 3D mask target.
+        MASKS3D (str): Collection of 3D masks.
         USER_DATA (str): Arbitrary user-defined data target.
 
     """
@@ -123,7 +125,9 @@ class Targets(Enum):
     BBOXES = "BBoxes"
     KEYPOINTS = "Keypoints"
     VOLUME = "Volume"
+    VOLUMES = "Volumes"
     MASK3D = "Mask3D"
+    MASKS3D = "Masks3D"
     USER_DATA = "user_data"
 
 
@@ -135,7 +139,9 @@ ALL_TARGETS = (
     Targets.BBOXES,
     Targets.KEYPOINTS,
     Targets.VOLUME,
+    Targets.VOLUMES,
     Targets.MASK3D,
+    Targets.MASKS3D,
 )
 
 

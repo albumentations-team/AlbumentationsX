@@ -116,14 +116,14 @@ class ToTensor3D(BaseTensorTransform):
         p (float): Probability of applying the transform. Default: 1.0
 
     Targets:
-        volume, mask3d
+        volume, volumes, mask3d, masks3d
 
     Examples:
         >>> transform = ToTensor3D(p=1.0)
 
     """
 
-    _targets = (Targets.VOLUME, Targets.MASK3D)
+    _targets = (Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D)
 
     def __init__(self, p: float = 1.0):
         super().__init__(p=p)
@@ -137,3 +137,13 @@ class ToTensor3D(BaseTensorTransform):
 
     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> torch.Tensor:
         return self.apply_to_volume(mask3d, **params)
+
+    def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> torch.Tensor:
+        if volumes.ndim == NUM_VOLUME_DIMENSIONS + 1:  # N,D,H,W,C
+            return torch.from_numpy(np.ascontiguousarray(volumes.transpose(0, 4, 1, 2, 3)))
+        if volumes.ndim == NUM_VOLUME_DIMENSIONS:  # N,D,H,W
+            return torch.from_numpy(np.ascontiguousarray(volumes[:, np.newaxis, ...]))
+        raise TypeError(f"volumes must be a 4D or 5D array (N,D,H,W) or (N,D,H,W,C), got {volumes.ndim}D array")
+
+    def apply_to_masks3d(self, masks3d: np.ndarray, **params: Any) -> torch.Tensor:
+        return self.apply_to_volumes(masks3d, **params)

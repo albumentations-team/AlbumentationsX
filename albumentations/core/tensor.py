@@ -8,7 +8,7 @@ from numpy.typing import NDArray
 
 TENSOR_ANNOTATION_TARGETS: Final[frozenset[str]] = frozenset({"bboxes", "keypoints"})
 TENSOR_SPATIAL_TARGETS: Final[frozenset[str]] = frozenset(
-    {"image", "images", "volume", "mask", "masks", "mask3d"},
+    {"image", "images", "volume", "volumes", "mask", "masks", "mask3d", "masks3d"},
 )
 TENSOR_TARGETS: Final[frozenset[str]] = TENSOR_SPATIAL_TARGETS | TENSOR_ANNOTATION_TARGETS
 
@@ -16,9 +16,11 @@ TENSOR_CANONICAL_RANKS: Final[dict[str, int]] = {
     "image": 3,
     "images": 4,
     "volume": 4,
+    "volumes": 5,
     "mask": 3,
     "masks": 4,
     "mask3d": 4,
+    "masks3d": 5,
     "bboxes": 2,
     "keypoints": 2,
 }
@@ -27,14 +29,17 @@ TENSOR_CHANNELLESS_RANKS: Final[dict[str, int]] = {
     "mask": 2,
     "masks": 3,
     "mask3d": 3,
+    "masks3d": 4,
 }
 TENSOR_CHANNEL_AXIS: Final[dict[str, int]] = {
     "image": 0,
     "images": 1,
     "volume": 0,
+    "volumes": 1,
     "mask": 0,
     "masks": 1,
     "mask3d": 0,
+    "masks3d": 1,
 }
 TENSOR_IMAGE_DTYPES: Final[frozenset[torch.dtype]] = frozenset({torch.uint8, torch.float32})
 TENSOR_MASK_DTYPES: Final[frozenset[torch.dtype]] = frozenset({torch.uint8, torch.int16, torch.float32})
@@ -43,18 +48,22 @@ TENSOR_TARGET_DTYPES: Final[dict[str, frozenset[torch.dtype]]] = {
     "image": TENSOR_IMAGE_DTYPES,
     "images": TENSOR_IMAGE_DTYPES,
     "volume": TENSOR_IMAGE_DTYPES,
+    "volumes": TENSOR_IMAGE_DTYPES,
     "mask": TENSOR_MASK_DTYPES,
     "masks": TENSOR_MASK_DTYPES,
     "mask3d": TENSOR_MASK_DTYPES,
+    "masks3d": TENSOR_MASK_DTYPES,
     **dict.fromkeys(TENSOR_ANNOTATION_TARGETS, TENSOR_ANNOTATION_DTYPES),
 }
 TENSOR_SHAPE_DESCRIPTIONS: Final[dict[str, str]] = {
     "image": "(H, W) or (C, H, W)",
     "images": "(N, C, H, W)",
     "volume": "(C, D, H, W)",
+    "volumes": "(N, C, D, H, W)",
     "mask": "(H, W) or (C, H, W)",
     "masks": "(N, H, W) or (N, C, H, W)",
     "mask3d": "(D, H, W) or (C, D, H, W)",
+    "masks3d": "(N, D, H, W) or (N, C, D, H, W)",
     "bboxes": "(N, K)",
     "keypoints": "(N, K)",
 }
@@ -62,9 +71,11 @@ TENSOR_CANONICAL_SHAPE_DESCRIPTIONS: Final[dict[str, str]] = {
     "image": "(C, H, W)",
     "images": "(N, C, H, W)",
     "volume": "(C, D, H, W)",
+    "volumes": "(N, C, D, H, W)",
     "mask": "(C, H, W)",
     "masks": "(N, C, H, W)",
     "mask3d": "(C, D, H, W)",
+    "masks3d": "(N, C, D, H, W)",
     "bboxes": "(N, K)",
     "keypoints": "(N, K)",
 }
@@ -87,7 +98,7 @@ def validate_tensor_input(value: torch.Tensor, data_name: str, canonical_name: s
     if expected_rank is None:
         raise TypeError(
             f"{data_name} is a torch.Tensor, but Tensor input is currently supported only for "
-            "image, images, volume, mask, masks, mask3d, bboxes, and keypoints targets",
+            "image, images, volume, volumes, mask, masks, mask3d, masks3d, bboxes, and keypoints targets",
         )
     _validate_plain_cpu_tensor(value, data_name)
 
@@ -116,6 +127,8 @@ def tensor_to_numpy_spatial(value: torch.Tensor, target: str) -> NDArray[np.gene
         return value.permute(0, 2, 3, 1).numpy()
     if target in {"volume", "mask3d"}:
         return value.permute(1, 2, 3, 0).numpy()
+    if target in {"volumes", "masks3d"}:
+        return value.permute(0, 2, 3, 4, 1).numpy()
     if target == "mask":
         return value.permute(1, 2, 0).numpy()
     if target == "masks":
@@ -164,7 +177,7 @@ def numpy_to_tensor_spatial(value: NDArray[np.generic], target: str) -> torch.Te
         value = np.moveaxis(value, -1, 1)
     elif target in {"volume", "mask", "mask3d"}:
         value = np.moveaxis(value, -1, 0)
-    elif target == "masks":
+    elif target in {"volumes", "masks3d"} or target == "masks":
         value = np.moveaxis(value, -1, 1)
     else:
         raise TypeError(f"{target} is not a spatial Tensor target")

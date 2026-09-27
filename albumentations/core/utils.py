@@ -42,6 +42,8 @@ def get_shape(data: dict[str, Any]) -> tuple[int, int]:
         return _get_shape_from_images(data["images"])
     if "volume" in data:
         return _get_shape_from_volume(data["volume"])
+    if "volumes" in data:
+        return _get_shape_from_volumes(data["volumes"])
     raise ValueError("No image or volume found in data", data.keys())
 
 
@@ -61,7 +63,7 @@ def get_image_data(data: dict[str, Any]) -> dict[str, Any]:
         ValueError: If no valid image/volume data keys are found in the dictionary.
 
     """
-    for target in ("image", "images", "volume"):
+    for target in ("image", "images", "volume", "volumes"):
         array = data.get(target)
         if array is None:
             continue
@@ -73,18 +75,24 @@ def get_image_data(data: dict[str, Any]) -> dict[str, Any]:
             elif target == "images":
                 height, width = shape[2], shape[3]
                 num_channels = int(shape[1])
-            else:
+            elif target == "volume":
                 _, height, width = get_volume_shape(array)
                 num_channels = int(shape[0])
+            else:
+                _, height, width = get_volumes_shape(array)
+                num_channels = int(shape[1]) if len(shape) == 5 else 1
         elif target == "image":
             height, width = shape[0], shape[1]
             num_channels = shape[-1]
         elif target == "images":
             height, width = shape[1], shape[2]
             num_channels = shape[-1]
-        else:
+        elif target == "volume":
             _, height, width = get_volume_shape(array)
             num_channels = shape[-1]
+        else:
+            _, height, width = get_volumes_shape(array)
+            num_channels = shape[-1] if len(shape) == 5 else 1
         return {
             "dtype": array.dtype,
             "height": height,
@@ -102,10 +110,23 @@ def get_volume_shape(volume: np.ndarray | torch.Tensor) -> tuple[int, int, int]:
     """
     if volume.ndim == NUM_VOLUME_DIMENSIONS - 1:
         return cast("tuple[int, int, int]", tuple(volume.shape))
+    if volume.ndim != NUM_VOLUME_DIMENSIONS:
+        raise ValueError(f"A single volume must have 3 or 4 dimensions, got shape {tuple(volume.shape)}")
     return cast(
         "tuple[int, int, int]",
         tuple(volume.shape[1:] if isinstance(volume, torch.Tensor) else volume.shape[:-1]),
     )
+
+
+def get_volumes_shape(volumes: np.ndarray | torch.Tensor) -> tuple[int, int, int]:
+    """Return `(D, H, W)` from a collection in NDHWC or NCDHW layout."""
+    if volumes.ndim == 4:
+        return cast("tuple[int, int, int]", tuple(volumes.shape[1:]))
+    if volumes.ndim != 5:
+        raise ValueError(f"A volume collection must have 4 or 5 dimensions, got shape {tuple(volumes.shape)}")
+    if isinstance(volumes, torch.Tensor):
+        return cast("tuple[int, int, int]", tuple(volumes.shape[2:]))
+    return cast("tuple[int, int, int]", tuple(volumes.shape[1:4]))
 
 
 def _get_shape_from_image(img: np.ndarray | torch.Tensor) -> tuple[int, int]:
@@ -131,6 +152,12 @@ def _get_shape_from_volume(vol: np.ndarray | torch.Tensor) -> tuple[int, int]:
     get_shape when data has 'volume' key.
     """
     _, height, width = get_volume_shape(vol)
+    return height, width
+
+
+def _get_shape_from_volumes(volumes: np.ndarray | torch.Tensor) -> tuple[int, int]:
+    """Extract `(H, W)` from an NDHWC NumPy or NCDHW Tensor collection."""
+    _, height, width = get_volumes_shape(volumes)
     return height, width
 
 

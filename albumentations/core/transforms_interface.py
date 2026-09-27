@@ -65,7 +65,7 @@ from .type_definitions import (
     Targets,
     VolumeType,
 )
-from .utils import format_args, get_volume_shape
+from .utils import format_args, get_volume_shape, get_volumes_shape
 
 __all__ = [
     "BasicTransform",
@@ -89,9 +89,25 @@ _TARGET_APPLY_METHODS = {
     "bboxes": "apply_to_bboxes",
     "keypoints": "apply_to_keypoints",
     "volume": "apply_to_volume",
+    "volumes": "apply_to_volumes",
     "mask3d": "apply_to_mask3d",
+    "masks3d": "apply_to_masks3d",
     "user_data": "apply_to_user_data",
 }
+
+_SHARED_SHAPE_INDICES = {
+    "image_chw": (1, 2, 0),
+    "mask_chw": (1, 2, 0),
+    "images_nchw": (2, 3, 1),
+    "masks_nchw": (2, 3, 1),
+    "volume_cdhw": (2, 3, 0),
+    "mask3d_cdhw": (2, 3, 0),
+    "volumes_ncdhw": (3, 4, 1),
+    "masks3d_ncdhw": (3, 4, 1),
+    "volumes_ndhwc": (2, 3, 4),
+    "masks3d_ndhwc": (2, 3, 4),
+}
+_BATCH_SHARED_SHAPE_TARGETS = {"images", "volume", "volumes", "masks", "mask3d", "masks3d"}
 
 _TARGET_NAMES = {target: target.name.lower() for target in Targets}
 
@@ -387,10 +403,20 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
     def _uses_tensor_fallback(self, route: _TensorFallbackRoute) -> bool:
         """Return whether the complete leaf invocation must use its NumPy path."""
         functions = self._dispatch_functions()
-        return bool(route.metadata) or any(
-            data_name not in functions or not _handler_has_tensor_path(functions[data_name])
-            for data_name, _ in route.targets
-        )
+        if route.metadata:
+            return True
+        for data_name, _ in route.targets:
+            handler = functions.get(data_name)
+            if handler is None:
+                return True
+            implementation = getattr(handler, "__func__", handler)
+            if implementation is BasicTransform.apply_to_volumes:
+                handler = getattr(self, self._target_apply_methods.get("volume", _TARGET_APPLY_METHODS["volume"]))
+            elif implementation is DualTransform.apply_to_masks3d:
+                handler = getattr(self, self._target_apply_methods.get("mask3d", _TARGET_APPLY_METHODS["mask3d"]))
+            if not _handler_has_tensor_path(handler):
+                return True
+        return False
 
     @staticmethod
     def _enter_tensor_fallback(
@@ -1049,6 +1075,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         apply_fn: Callable[[np.ndarray], np.ndarray],
         *,
         ensure_contiguous: bool = False,
+        transform_empty_batch: bool = False,
     ) -> np.ndarray:
         """Apply a function to each element in a batch with pre-allocation. Uses first element to
         determine output shape; avoids per-call allocation.
@@ -1057,13 +1084,21 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             batch (np.ndarray): Input batch array of shape (N, ...)
             apply_fn (Callable[[np.ndarray], np.ndarray]): Function to apply to each element
             ensure_contiguous (bool): Whether to ensure C-contiguous output
+            transform_empty_batch (bool): Whether to infer empty output shape by applying the function to one item.
 
         Returns:
             np.ndarray: Transformed batch array.
 
         """
         if len(batch) == 0:
-            return np.require(batch, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else batch
+            if not transform_empty_batch:
+                return np.require(batch, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else batch
+            representative = np.zeros(batch.shape[1:], dtype=batch.dtype)
+            first_result = apply_fn(representative)
+            if first_result.shape == batch.shape[1:] and first_result.dtype == batch.dtype:
+                return np.require(batch, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else batch
+            result = np.empty((0, *first_result.shape), dtype=first_result.dtype)
+            return np.require(result, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else result
 
         # Process first element to determine output shape
         first_result = apply_fn(batch[0])
@@ -1082,6 +1117,28 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             result[i] = apply_fn(batch[i])
 
         return np.require(result, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else result
+
+    @staticmethod
+    def _apply_to_tensor_batch(
+        batch: torch.Tensor,
+        apply_fn: Callable[[torch.Tensor], torch.Tensor],
+    ) -> torch.Tensor:
+        if len(batch) == 0:
+            representative = torch.zeros(batch.shape[1:], dtype=batch.dtype, device=batch.device)
+            first = apply_fn(representative)
+            if first.shape == batch.shape[1:] and first.dtype == batch.dtype and first.device == batch.device:
+                return batch
+            return torch.empty((0, *first.shape), dtype=first.dtype, device=first.device)
+
+        first = apply_fn(batch[0])
+        if len(batch) == 1:
+            return first.unsqueeze(0)
+
+        result = torch.empty((len(batch), *first.shape), dtype=first.dtype, device=first.device)
+        result[0].copy_(first)
+        for index in range(1, len(batch)):
+            result[index].copy_(apply_fn(batch[index]))
+        return result
 
     @staticmethod
     def _apply_to_batch_same_shape(
@@ -1144,6 +1201,23 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         """
         return cast("VolumeType", self.apply_to_images(volume, *args, **params))
 
+    def apply_to_volumes(
+        self,
+        volumes: Annotated[NDArray[np.generic], torch.Tensor],
+        *args: Any,
+        **params: Any,
+    ) -> NDArray[np.generic] | torch.Tensor:
+        """Apply the existing single-volume route to each item of an NDHWC or NCDHW collection."""
+        volume_method = self._target_apply_methods.get("volume", _TARGET_APPLY_METHODS["volume"])
+        apply_fn = getattr(self, volume_method)
+        if isinstance(volumes, np.ndarray):
+            return self._apply_to_batch(
+                volumes,
+                lambda volume: apply_fn(volume, *args, **params),
+                transform_empty_batch=True,
+            )
+        return self._apply_to_tensor_batch(volumes, lambda volume: apply_fn(volume, *args, **params))
+
     def update_transform_params(
         self,
         params: dict[str, Any],
@@ -1172,14 +1246,13 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             for view in targets.ordered:
                 if view.descriptor.shape is not None:
                     shape = view.descriptor.shape
+                    shape_indices = _SHARED_SHAPE_INDICES.get(view.descriptor.layout)
                     shared_shape: tuple[int, ...]
-                    if view.descriptor.layout in {"image_chw", "mask_chw"}:
-                        shared_shape = (shape[1], shape[2], shape[0])
-                    elif view.descriptor.layout in {"images_nchw", "masks_nchw"}:
-                        shared_shape = (shape[2], shape[3], shape[1])
-                    elif view.descriptor.layout in {"volume_cdhw", "mask3d_cdhw"}:
-                        shared_shape = (shape[2], shape[3], shape[0])
-                    elif view.canonical_type in {"images", "volume", "masks", "mask3d"}:
+                    if view.canonical_type in {"volumes", "masks3d"} and len(shape) == 4:
+                        shared_shape = (shape[-2], shape[-1], 1)
+                    elif shape_indices is not None:
+                        shared_shape = tuple(shape[index] for index in shape_indices)
+                    elif view.canonical_type in _BATCH_SHARED_SHAPE_TARGETS:
                         shared_shape = shape[1:]
                     else:
                         shared_shape = shape
@@ -1217,6 +1290,12 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
                 if isinstance(value, torch.Tensor) or value.ndim == 4
                 else (height, width)
             )
+        if key in {"volumes", "masks3d"}:
+            _, height, width = get_volumes_shape(value)
+            channel_count = 1
+            if value.ndim == 5:
+                channel_count = value.shape[1] if isinstance(value, torch.Tensor) else value.shape[-1]
+            return height, width, channel_count
         if not isinstance(value, torch.Tensor):
             return value.shape if key in {"image", "mask"} else value.shape[1:]
         if key in {"image", "mask"}:
@@ -1230,7 +1309,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
         Data-dependent samplers receive target descriptors and must not call this helper.
         """
-        for key in ("image", "images", "volume", "mask", "masks", "mask3d"):
+        for key in ("image", "images", "volume", "volumes", "mask", "masks", "mask3d", "masks3d"):
             value = data.get(key)
             if value is not None:
                 return self._shared_shape_from_data_key(key, value)
@@ -1427,7 +1506,7 @@ class DualTransform(BasicTransform):
     """Base class for spatial transforms that apply to images and masks.
 
     Targets:
-        image, images, mask, masks, volume, mask3d
+        image, images, mask, masks, volume, volumes, mask3d, masks3d
 
     Concrete subclasses declare bbox and keypoint support when they implement those routes.
 
@@ -1517,7 +1596,9 @@ class DualTransform(BasicTransform):
         Targets.MASK,
         Targets.MASKS,
         Targets.VOLUME,
+        Targets.VOLUMES,
         Targets.MASK3D,
+        Targets.MASKS3D,
     )
     _target_apply_methods: ClassVar[Mapping[str, str]] = {"volume": "apply_to_images"}
     _sampling_spatial_rank = 2
@@ -1594,6 +1675,22 @@ class DualTransform(BasicTransform):
 
     def apply_to_mask3d(self, mask3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
         return self._apply_to_batch(mask3d, lambda mask: self.apply_to_mask(mask, *args, **params))
+
+    def apply_to_masks3d(
+        self,
+        masks3d: Annotated[NDArray[np.generic], torch.Tensor],
+        *args: Any,
+        **params: Any,
+    ) -> NDArray[np.generic] | torch.Tensor:
+        """Apply the existing single-mask3d route to each item in a collection."""
+        apply_fn = getattr(self, self._target_apply_methods.get("mask3d", _TARGET_APPLY_METHODS["mask3d"]))
+        if isinstance(masks3d, np.ndarray):
+            return self._apply_to_batch(
+                masks3d,
+                lambda mask3d: apply_fn(mask3d, *args, **params),
+                transform_empty_batch=True,
+            )
+        return self._apply_to_tensor_batch(masks3d, lambda mask3d: apply_fn(mask3d, *args, **params))
 
     def _get_label_transform_name(self, **params: Any) -> str | None:
         """Get the transform name to use for label mapping. For most transforms returns class
@@ -1707,7 +1804,7 @@ class DualTransform(BasicTransform):
             canonical_name = self._additional_targets.get(data_name, data_name)
             if (
                 data_name in self._key2func
-                and canonical_name in {"mask", "masks", "mask3d"}
+                and canonical_name in {"mask", "masks", "mask3d", "masks3d"}
                 and isinstance(value, (np.ndarray, torch.Tensor))
             ):
                 data[data_name] = self._remap_semantic_mask_labels(value, mapping, uint8_lut)
@@ -1844,10 +1941,10 @@ class ImageOnlyTransform(BasicTransform):
     keypoints; use DualTransform for those.
 
     Targets:
-        image, images, volume
+        image, images, volume, volumes
     """
 
-    _targets = (Targets.IMAGE, Targets.IMAGES, Targets.VOLUME)
+    _targets = (Targets.IMAGE, Targets.IMAGES, Targets.VOLUME, Targets.VOLUMES)
 
 
 class NoOp(DualTransform):
@@ -1855,7 +1952,7 @@ class NoOp(DualTransform):
     or in conditional pipelines.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
         uint8, float32
@@ -1936,6 +2033,12 @@ class NoOp(DualTransform):
     def apply_to_mask3d(self, mask3d: Annotated[VolumeType, torch.Tensor], **params: Any) -> VolumeType:
         return mask3d
 
+    def apply_to_volumes(self, volumes: Annotated[NDArray[np.generic], torch.Tensor], **params: Any) -> Any:
+        return volumes
+
+    def apply_to_masks3d(self, masks3d: Annotated[NDArray[np.generic], torch.Tensor], **params: Any) -> Any:
+        return masks3d
+
 
 class Transform3D(DualTransform):
     """Base class for 3D transforms that apply to volume data and mask3d.
@@ -1943,14 +2046,21 @@ class Transform3D(DualTransform):
     Concrete subclasses can declare keypoint support when they implement it.
 
     Targets:
-        volume, mask3d
+        volume, volumes, mask3d, masks3d
 
     Target layouts:
-        volume: 3D numpy array of shape (D, H, W, C)
-        mask3d: 3D numpy array of shape (D, H, W) or (D, H, W, C)
+        volume: NumPy array of shape (D, H, W, C)
+        volumes: NumPy array of shape (N, D, H, W, C)
+        mask3d: NumPy array of shape (D, H, W) or (D, H, W, C)
+        masks3d: NumPy array of shape (N, D, H, W) or (N, D, H, W, C)
     """
 
-    _targets: tuple[Targets | str, ...] | Targets | str = (Targets.VOLUME, Targets.MASK3D)
+    _targets: tuple[Targets | str, ...] | Targets | str = (
+        Targets.VOLUME,
+        Targets.VOLUMES,
+        Targets.MASK3D,
+        Targets.MASKS3D,
+    )
     _target_apply_methods: ClassVar[Mapping[str, str]] = {"volume": "apply_to_volume"}
     _sampling_spatial_rank = 3
 
@@ -2006,10 +2116,10 @@ class VolumeOnlyTransform(BasicTransform):
     label geometry.
 
     Targets:
-        volume
+        volume, volumes
     """
 
-    _targets = (Targets.VOLUME,)
+    _targets = (Targets.VOLUME, Targets.VOLUMES)
 
     def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> VolumeType:
         raise NotImplementedError

@@ -44,7 +44,7 @@ class ToFloat(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 1.0.
 
     Targets:
-        image, images, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -109,7 +109,7 @@ class FromFloat(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 1.0.
 
     Targets:
-        image, images, volume
+        image, images, volume, volumes
 
     Image types:
         float32

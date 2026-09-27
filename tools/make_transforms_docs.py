@@ -247,10 +247,11 @@ def generated_transform_docs() -> tuple[str, str, str]:
         targets_to_check=ALL_TARGETS,
         split_bboxes=True,
     )
+    targets_3d = [Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D, Targets.KEYPOINTS]
     transforms_3d_table = make_transforms_targets_table(
         transforms_3d,
-        header=["Transform"] + [target.value for target in [Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS]],
-        targets_to_check=[Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS],
+        header=["Transform", *[target.value for target in targets_3d]],
+        targets_to_check=targets_3d,
     )
     return image_only_transform_links, dual_transform_table, transforms_3d_table
 

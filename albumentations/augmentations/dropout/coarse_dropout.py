@@ -55,7 +55,7 @@ class CoarseDropout(BaseDropout):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
         uint8, float32
@@ -228,7 +228,7 @@ class Erasing(BaseDropout):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
         uint8, float32
@@ -402,7 +402,7 @@ class ConstrainedCoarseDropout(BaseDropout):
             label field is used for filtering.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, mask, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
         uint8, float32
@@ -455,7 +455,16 @@ class ConstrainedCoarseDropout(BaseDropout):
 
     """
 
-    _targets = (Targets.IMAGE, Targets.MASK, Targets.BBOXES, Targets.KEYPOINTS, Targets.VOLUME, Targets.MASK3D)
+    _targets = (
+        Targets.IMAGE,
+        Targets.MASK,
+        Targets.BBOXES,
+        Targets.KEYPOINTS,
+        Targets.VOLUME,
+        Targets.VOLUMES,
+        Targets.MASK3D,
+        Targets.MASKS3D,
+    )
 
     class InitSchema(BaseDropoutInitSchema):
         num_holes_range: Annotated[

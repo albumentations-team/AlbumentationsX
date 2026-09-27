@@ -244,12 +244,14 @@ class Example(ImageOnlyTransform):
     assert {"AXG015", "AXG016", "AXG017", "AXG018"} <= set(ids)
 
 
+@pytest.mark.parametrize("method_name", ["apply_to_user_data", "apply_to_volumes", "apply_to_masks3d"])
 @pytest.mark.parametrize(
     ("method_docstring", "expected_ids"),
     [("", []), ('"""Forward metadata."""', ["AXG018"])],
     ids=["without-docstring", "with-docstring"],
 )
-def test_metadata_dispatch_has_the_same_docstring_contract_as_pixel_dispatch(
+def test_dispatch_methods_have_the_same_docstring_contract_as_pixel_dispatch(
+    method_name: str,
     method_docstring: str,
     expected_ids: list[str],
 ) -> None:
@@ -264,7 +266,7 @@ class Example(Transform3D):
     Examples:
         >>> Example()
     \"\"\"
-    def apply_to_user_data(self, data, **params):
+    def {method_name}(self, data, **params):
         {method_docstring}
         return dict(data)
 """,

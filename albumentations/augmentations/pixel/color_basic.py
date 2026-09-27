@@ -36,11 +36,35 @@ from ._color_shared import (
 
 def _equalize_mask_input(view: TargetView) -> ImageType:
     """Return the image unit Equalize will receive when it applies a target."""
-    if view.canonical_type not in {"images", "volume"}:
+    if view.canonical_type not in {"images", "volume", "volumes"}:
         return view.value
+    if view.canonical_type == "volumes":
+        if view.value.shape[0] == 0:
+            return np.empty(view.value.shape[2:], dtype=view.value.dtype)
+        if view.value.shape[1] == 0:
+            raise ValueError("Equalize cannot sample a mask from a zero-depth volume collection")
+        return view.value[0, 0]
     if view.value.shape[0] == 0:
         return np.empty(view.value.shape[1:], dtype=view.value.dtype)
     return view.value[0]
+
+
+def _volume_collection_exposure_gains(
+    volumes: np.ndarray,
+    target_mean: float,
+    gain_range: tuple[float, float] | None,
+) -> np.ndarray:
+    """Compute one per-depth gain shared by every member of a volume collection."""
+    item_count, depth, height, width, channels = volumes.shape
+    if item_count == 0:
+        return np.ones(depth, dtype=np.float32)
+
+    sums = np.sum(volumes, axis=(0, 2, 3, 4), dtype=np.float64)
+    normalized_means = sums / (item_count * height * width * channels * albucore.MAX_VALUES_BY_DTYPE[volumes.dtype])
+    gains = target_mean / np.maximum(normalized_means, 1e-6)
+    if gain_range is not None:
+        np.clip(gains, gain_range[0], gain_range[1], out=gains)
+    return gains.astype(np.float32)
 
 
 class RandomToneCurve(ImageOnlyTransform):
@@ -60,7 +84,7 @@ class RandomToneCurve(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image, images, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -202,7 +226,7 @@ class HueSaturationValue(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -322,7 +346,7 @@ class Solarize(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -428,7 +452,7 @@ class Posterize(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -556,7 +580,7 @@ class Equalize(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -718,7 +742,7 @@ class RandomBrightnessContrast(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -879,9 +903,10 @@ class ExposureMatching(ImageOnlyTransform):
     model exposure changes whose strength depends on the input brightness.
 
     The transform samples one normalized target mean per call and computes the multiplicative gain
-    from each image's global mean. Image batches and the `volume` target share the sampled target while deriving
-    one gain per image or depth slice. Values that exceed the dtype range are clipped, so saturation
-    can keep the resulting mean below the sampled target. A zero image remains zero.
+    from each image's global mean. Image batches and the `volume` target derive one gain per image or depth slice.
+    A `volumes` collection derives one gain per depth by pooling corresponding slices across its batch, then reuses
+    those gains for every volume. Values that exceed the dtype range are clipped, so saturation can keep the resulting
+    mean below the sampled target. A zero image remains zero.
 
     Args:
         target_mean_range (tuple[float, float]): Lower and upper bounds for the normalized target mean.
@@ -891,7 +916,7 @@ class ExposureMatching(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -902,6 +927,7 @@ class ExposureMatching(ImageOnlyTransform):
     Note:
         - The global mean includes every pixel and channel.
         - For `images` and `volume`, each image or slice gets its own gain.
+        - For `volumes`, the gain at each depth is shared across the collection.
         - Clipping saturated pixels is a one-pass operation; the transform does not compensate for
           the resulting difference between the requested and achieved means.
 
@@ -999,8 +1025,12 @@ class ExposureMatching(ImageOnlyTransform):
         sampling.applied_overrides["target_mean_range"] = target_mean
         groups: list[TargetParams] = []
         for view in targets.image_like():
-            gain = fpixel.get_exposure_gains(view.value, target_mean, self.gain_range)
-            gain = float(gain) if view.canonical_type == "image" else np.asarray(gain).tolist()
+            volume_collection = view.canonical_type == "volumes"
+            if volume_collection:
+                gain = _volume_collection_exposure_gains(view.value, target_mean, self.gain_range).tolist()
+            else:
+                gain = fpixel.get_exposure_gains(view.value, target_mean, self.gain_range)
+                gain = float(gain) if view.canonical_type == "image" else np.asarray(gain).tolist()
             groups.append(
                 TargetParams(
                     targets=(view.name,),
@@ -1008,11 +1038,15 @@ class ExposureMatching(ImageOnlyTransform):
                     requirements=requirements_for_views(
                         (view,),
                         shape=view.canonical_type in {"images", "volume"},
+                        spatial_shape=volume_collection,
+                        channels=volume_collection,
+                        dtype=volume_collection,
+                        sampling_topology=volume_collection,
                     ),
                 ),
             )
         if not groups:
-            raise RuntimeError("Expected image, images, or volume data for exposure matching")
+            raise RuntimeError("Expected image, images, volume, or volumes data for exposure matching")
 
         return SampledParams(params={"target_mean": target_mean}, target_params=tuple(groups))
 
@@ -1047,7 +1081,7 @@ class CLAHE(ImageOnlyTransform):
           adaptiveness but can lead to an unnatural look if set too high.
 
     Targets:
-        image, images, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -1126,7 +1160,7 @@ class RandomGamma(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -1244,7 +1278,7 @@ class AutoContrast(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image, images, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32

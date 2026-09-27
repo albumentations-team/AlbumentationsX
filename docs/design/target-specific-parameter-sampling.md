@@ -383,7 +383,8 @@ arrays, and samplers with no target-specific parameters take the same fast path 
 ### Base parameters
 
 Core-derived values such as interpolation, fill values, and annotation processor metadata enter through `params`. The core
-combines them with `SampledParams.params` after checking for duplicate keys.
+combines them with `SampledParams.params` after checking for duplicate keys. The `volumes` and `masks3d` base routes
+sample once per transform invocation and reuse the same parameters for every collection item.
 
 The existing `params["shape"]` compatibility field remains for existing geometry and application code. It is normalized
 to the canonical 2D shape for batched images, volumes, batched masks, and 3D masks. New target-sensitive sampling must not
@@ -413,7 +414,9 @@ Every migrated target-sensitive transform documents and tests its correlation po
 - compatible targets in one group consume the exact same realized parameters;
 - different groups share policy parameters and draw separate representation-specific values;
 - a transform may share a normalized latent program and materialize it per group when that preserves stronger alignment;
-- batches and volumes remain different topologies unless the transform explicitly defines them as compatible.
+- image batches, volume collections, and single volumes have distinct topology labels; a transform groups them only
+  when its parameter contract supports that sharing. Parameters passed through a plural 3D handler are common to its
+  collection items.
 
 This preserves the usual `additional_targets` expectation for compatible aligned images while supporting aliases that differ in
 channels or dtype.

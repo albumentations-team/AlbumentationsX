@@ -72,7 +72,7 @@ class ColorJitter(ImageOnlyTransform):
 
 
     Targets:
-        image, images, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -237,7 +237,7 @@ class ChromaticAberration(ImageOnlyTransform):
             Default: 0.5.
 
     Targets:
-        image, images, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -449,7 +449,7 @@ class PlanckianJitter(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image, images, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -632,7 +632,7 @@ class RGBShift(AdditiveNoise):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -814,7 +814,7 @@ class HEStain(ImageOnlyTransform):
             Default: None.
 
     Targets:
-        image, images, volume
+        image, images, volume, volumes
 
     Number of channels:
         3
@@ -1122,7 +1122,12 @@ class HEStain(ImageOnlyTransform):
 
         groups = []
         for view in targets.image_like():
-            image = view.value if view.canonical_type == "image" else view.value[0]
+            if view.canonical_type == "image":
+                image = view.value
+            elif view.canonical_type == "volumes":
+                image = view.value[0, 0]
+            else:
+                image = view.value[0]
             groups.append(
                 TargetParams(
                     targets=(view.name,),
@@ -1164,7 +1169,7 @@ class PhotoMetricDistort(ImageOnlyTransform):
         p (float): Probability of applying the overall transform. Default: `0.5`.
 
     Targets:
-        image, images, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32

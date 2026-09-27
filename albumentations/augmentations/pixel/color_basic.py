@@ -40,7 +40,7 @@ def _equalize_mask_input(view: TargetView) -> ImageType:
         return view.value
     if view.value.shape[0] == 0:
         if view.canonical_type == "volumes":
-            raise ValueError("Equalize cannot sample a mask from an empty volume collection")
+            return np.empty(view.value.shape[2:], dtype=view.value.dtype)
         return np.empty(view.value.shape[1:], dtype=view.value.dtype)
     if view.canonical_type == "volumes":
         return view.value[0, 0]

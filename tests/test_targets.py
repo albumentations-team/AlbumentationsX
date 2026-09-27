@@ -176,6 +176,42 @@ def test_empty_volume_collections_keep_their_input_objects() -> None:
     assert result["masks3d"] is masks3d
 
 
+@pytest.mark.parametrize("empty_target", ["volumes", "masks3d"])
+@pytest.mark.parametrize("tensor", [False, True])
+def test_empty_volume_collections_follow_resize_shape(empty_target: str, tensor: bool) -> None:
+    volumes = np.zeros((2, 3, 5, 7, 1), dtype=np.uint8)
+    masks3d = np.zeros((2, 3, 5, 7), dtype=np.uint8)
+    if empty_target == "volumes":
+        volumes = volumes[:0]
+    else:
+        masks3d = masks3d[:0]
+    if tensor:
+        volumes = torch.from_numpy(volumes.transpose(0, 4, 1, 2, 3))
+        masks3d = torch.from_numpy(masks3d)
+
+    result = A.Compose([A.Resize3D(size=(6, 8, 10), p=1.0)], strict=True, telemetry=False)(
+        volumes=volumes,
+        masks3d=masks3d,
+    )
+
+    assert A.core.utils.get_volumes_shape(result[empty_target]) == (6, 8, 10)
+    assert result[empty_target].shape[0] == 0
+
+
+def test_equalize_callable_mask_accepts_empty_volume_collection() -> None:
+    volumes = np.empty((0, 2, 5, 7, 1), dtype=np.uint8)
+    image_shapes: list[tuple[int, ...]] = []
+
+    def make_mask(image: np.ndarray) -> np.ndarray:
+        image_shapes.append(image.shape)
+        return np.ones(image.shape[:2], dtype=np.uint8)
+
+    result = A.Compose([A.Equalize(mask=make_mask, p=1.0)], strict=True, telemetry=False)(volumes=volumes)
+
+    assert image_shapes == [(5, 7, 1)]
+    assert result["volumes"].shape == volumes.shape
+
+
 @pytest.mark.parametrize("target", ["volumes", "masks3d"])
 def test_tensor_volume_collection_alias_uses_numpy_fallback(target: str) -> None:
     volumes = np.arange(2 * 3 * 5 * 7, dtype=np.uint8).reshape(2, 3, 5, 7, 1)

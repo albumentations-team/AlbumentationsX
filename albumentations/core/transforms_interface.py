@@ -1075,6 +1075,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         apply_fn: Callable[[np.ndarray], np.ndarray],
         *,
         ensure_contiguous: bool = False,
+        transform_empty_batch: bool = False,
     ) -> np.ndarray:
         """Apply a function to each element in a batch with pre-allocation. Uses first element to
         determine output shape; avoids per-call allocation.
@@ -1083,13 +1084,21 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             batch (np.ndarray): Input batch array of shape (N, ...)
             apply_fn (Callable[[np.ndarray], np.ndarray]): Function to apply to each element
             ensure_contiguous (bool): Whether to ensure C-contiguous output
+            transform_empty_batch (bool): Whether to infer empty output shape by applying the function to one item.
 
         Returns:
             np.ndarray: Transformed batch array.
 
         """
         if len(batch) == 0:
-            return np.require(batch, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else batch
+            if not transform_empty_batch:
+                return np.require(batch, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else batch
+            representative = np.zeros(batch.shape[1:], dtype=batch.dtype)
+            first_result = apply_fn(representative)
+            if first_result.shape == batch.shape[1:] and first_result.dtype == batch.dtype:
+                return np.require(batch, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else batch
+            result = np.empty((0, *first_result.shape), dtype=first_result.dtype)
+            return np.require(result, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else result
 
         # Process first element to determine output shape
         first_result = apply_fn(batch[0])
@@ -1115,7 +1124,11 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         apply_fn: Callable[[torch.Tensor], torch.Tensor],
     ) -> torch.Tensor:
         if len(batch) == 0:
-            return batch
+            representative = torch.zeros(batch.shape[1:], dtype=batch.dtype, device=batch.device)
+            first = apply_fn(representative)
+            if first.shape == batch.shape[1:] and first.dtype == batch.dtype and first.device == batch.device:
+                return batch
+            return torch.empty((0, *first.shape), dtype=first.dtype, device=first.device)
 
         first = apply_fn(batch[0])
         if len(batch) == 1:
@@ -1198,7 +1211,11 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         volume_method = self._target_apply_methods.get("volume", _TARGET_APPLY_METHODS["volume"])
         apply_fn = getattr(self, volume_method)
         if isinstance(volumes, np.ndarray):
-            return self._apply_to_batch(volumes, lambda volume: apply_fn(volume, *args, **params))
+            return self._apply_to_batch(
+                volumes,
+                lambda volume: apply_fn(volume, *args, **params),
+                transform_empty_batch=True,
+            )
         return self._apply_to_tensor_batch(volumes, lambda volume: apply_fn(volume, *args, **params))
 
     def update_transform_params(
@@ -1665,7 +1682,11 @@ class DualTransform(BasicTransform):
         """Apply the existing single-mask3d route to each item in a collection."""
         apply_fn = getattr(self, self._target_apply_methods.get("mask3d", _TARGET_APPLY_METHODS["mask3d"]))
         if isinstance(masks3d, np.ndarray):
-            return self._apply_to_batch(masks3d, lambda mask3d: apply_fn(mask3d, *args, **params))
+            return self._apply_to_batch(
+                masks3d,
+                lambda mask3d: apply_fn(mask3d, *args, **params),
+                transform_empty_batch=True,
+            )
         return self._apply_to_tensor_batch(masks3d, lambda mask3d: apply_fn(mask3d, *args, **params))
 
     def _get_label_transform_name(self, **params: Any) -> str | None:

@@ -92,10 +92,11 @@ _REPLAY_PARAM_ANNOTATIONS_CACHE: dict[type, dict[str, Any]] = {}
 
 @dataclass(frozen=True, slots=True)
 class _TensorBoundaryState:
-    """Keep Tensor annotation restoration local to one Compose invocation."""
+    """Keep top-level Tensor routing and annotation restoration local to one Compose invocation."""
 
     has_tensor_inputs: bool = False
     annotation_targets: tuple[tuple[str, str], ...] = ()
+    frame_annotation_targets: tuple[tuple[int, tuple[tuple[str, str], ...]], ...] = ()
 
 
 _EMPTY_TENSOR_BOUNDARY_STATE = _TensorBoundaryState()
@@ -1216,21 +1217,27 @@ class BaseCompose(InvocationRngOwner, Serializable):
     ) -> dict[str, Any]:
         if "frame_annotations" not in data:
             return data
-        resync_instances = isinstance(self, Compose) and self._instance_binding and compiled_child.may_change_bboxes
+        policy = cast("Compose", invocation.frame_annotation_policy)
+        resync_instances = policy._instance_binding and compiled_child.may_change_bboxes  # noqa: SLF001 - root binding policy
         if not resync_instances and not any(
             self._compiled_child_requires_filter(compiled_child, processor)
-            for processor in self.check_each_transform or ()
+            for processor in policy.check_each_transform or ()
         ):
             return data
         frames = data["frame_annotations"]
         images = data["images"]
-        for frame_index, frame in enumerate(frames):
-            frame_data = {"image": images[frame_index], **frame}
-            BaseCompose.check_data_post_transform(self, frame_data, transform, compiled_child, invocation)
-            if resync_instances:
-                self._resync_instance_ids(frame_data)
-            frame_data.pop("image")
-            frames[frame_index] = frame_data
+        active_frame = invocation.active_frame
+        try:
+            for frame_index, frame in enumerate(frames):
+                invocation.active_frame = invocation.frames[frame_index]
+                frame_data = {"image": images[frame_index], **frame}
+                BaseCompose.check_data_post_transform(policy, frame_data, transform, compiled_child, invocation)
+                if resync_instances:
+                    policy._resync_instance_ids(frame_data)  # noqa: SLF001 - root binding policy
+                frame_data.pop("image")
+                frames[frame_index] = frame_data
+        finally:
+            invocation.active_frame = active_frame
         return data
 
     def _bbox_filter_with_mirror(
@@ -2343,27 +2350,33 @@ class Compose(BaseCompose, HubMixin):
         """
         if self._additional_targets:
             self._validate_additional_target_sources(data)
-        if self._frame_binding is not None or "frame_annotations" in data:
+        frame_targets = (
             self._validate_frame_binding_data(data)
-        tensor_boundary_state = self._validate_tensor_inputs(data)
+            if self._frame_binding is not None or "frame_annotations" in data
+            else ()
+        )
+        tensor_boundary_state = self._validate_tensor_inputs(data, frame_targets)
         if self.save_applied_params and self.main_compose:
             data["applied_transforms"] = []
         return tensor_boundary_state
 
-    def _validate_frame_binding_data(self, data: Mapping[str, Any]) -> None:
+    def _validate_frame_binding_data(
+        self,
+        data: Mapping[str, Any],
+    ) -> tuple[tuple[int, tuple[tuple[str, str], ...]], ...]:
         if self._frame_binding is None:
             if "frame_annotations" in data:
                 raise ValueError("`frame_annotations` requires Compose(frame_binding=['images', 'frame_annotations'])")
-            return
+            return ()
 
         image_name, annotation_name = self._frame_binding
         self._validate_frame_binding_target_keys(data, annotation_name, (image_name, annotation_name))
         self._validate_frame_binding_alias_lengths(data, (image_name, annotation_name))
         annotations = data.get(annotation_name)
         if annotations is None:
-            return
+            return ()
 
-        self._validate_frame_binding_annotation_type(annotation_name, annotations)
+        frame_targets = self._validate_frame_binding_annotation_type(annotation_name, annotations)
         images = data.get(image_name)
         if images is None:
             raise ValueError(f"`{annotation_name}` requires `{image_name}`")
@@ -2374,6 +2387,7 @@ class Compose(BaseCompose, HubMixin):
                 f"frame binding requires `{image_name}` and `{annotation_name}` to have the same length; "
                 f"got {len(images)} and {len(annotations)}",
             )
+        return frame_targets
 
     def _validate_frame_binding_alias_lengths(
         self,
@@ -2421,18 +2435,32 @@ class Compose(BaseCompose, HubMixin):
                 f"put frame-aligned targets inside `{annotation_name}`; unbound top-level targets: {sorted(unbound)}",
             )
 
-    @staticmethod
-    def _validate_frame_binding_annotation_type(annotation_name: str, annotations: Any) -> None:
-        if annotation_name == "frame_annotations":
-            if not isinstance(annotations, Sequence) or isinstance(annotations, (str, bytes, np.ndarray)):
-                raise TypeError("`frame_annotations` must be a sequence of per-frame mappings")
-            for index, frame in enumerate(annotations):
-                if not isinstance(frame, Mapping):
-                    raise TypeError(f"frame_annotations[{index}] must be a mapping")
-                if {"image", "images"}.intersection(frame):
-                    raise ValueError(f"frame_annotations[{index}] cannot contain `image` or `images`")
-        elif not isinstance(annotations, (np.ndarray, torch.Tensor)):
-            raise TypeError("`masks` must be a NumPy array or torch.Tensor")
+    def _validate_frame_binding_annotation_type(
+        self,
+        annotation_name: str,
+        annotations: Any,
+    ) -> tuple[tuple[int, tuple[tuple[str, str], ...]], ...]:
+        if annotation_name != "frame_annotations":
+            if not isinstance(annotations, (np.ndarray, torch.Tensor)):
+                raise TypeError("`masks` must be a NumPy array or torch.Tensor")
+            return ()
+        frame_targets = []
+        if not isinstance(annotations, Sequence) or isinstance(annotations, (str, bytes, np.ndarray)):
+            raise TypeError("`frame_annotations` must be a sequence of per-frame mappings")
+        for index, frame in enumerate(annotations):
+            if not isinstance(frame, Mapping):
+                raise TypeError(f"frame_annotations[{index}] must be a mapping")
+            if "image" in frame or "images" in frame:
+                raise ValueError(f"frame_annotations[{index}] cannot contain `image` or `images`")
+            targets = []
+            for name, value in frame.items():
+                canonical = self._additional_targets.get(name, name)
+                if isinstance(value, torch.Tensor) and canonical in TENSOR_TARGETS:
+                    validate_tensor_input(value, f"frame_annotations[{index}].{name}", canonical)
+                    targets.append((name, canonical))
+            if targets:
+                frame_targets.append((index, tuple(targets)))
+        return tuple(frame_targets)
 
     def _apply_children(self, data: dict[str, Any], invocation: InvocationContext | None) -> dict[str, Any]:
         """Runs child nodes and root policy in order, reusing the active invocation and resynchronizing bound instances
@@ -2460,28 +2488,36 @@ class Compose(BaseCompose, HubMixin):
                 msg = f"Additional target '{alias}' requires canonical target '{target}' to be present."
                 raise ValueError(msg)
 
-    def _validate_tensor_inputs(self, data: dict[str, Any]) -> _TensorBoundaryState:
+    def _validate_tensor_inputs(
+        self,
+        data: dict[str, Any],
+        frame_targets: tuple[tuple[int, tuple[tuple[str, str], ...]], ...],
+    ) -> _TensorBoundaryState:
         """Validate every supplied Tensor target before Compose samples probability or parameters."""
         has_direct_tensor = any(isinstance(value, torch.Tensor) for value in data.values())
-        if not has_direct_tensor and (
-            not self._tensor_metadata_keys or not any(key in data for key in self._tensor_metadata_keys)
-        ):
+        has_metadata = self._tensor_metadata_keys and any(key in data for key in self._tensor_metadata_keys)
+        if not frame_targets and not has_direct_tensor and not has_metadata:
             return _EMPTY_TENSOR_BOUNDARY_STATE
 
         annotation_targets: list[tuple[str, str]] = []
-        has_tensor_target = False
-        for data_name, value in data.items():
-            canonical_name = self._additional_targets.get(data_name, data_name)
-            if not isinstance(value, torch.Tensor) or canonical_name not in TENSOR_TARGETS:
-                continue
-            has_tensor_target = True
-            validate_tensor_input(value, data_name, canonical_name)
-            if canonical_name in TENSOR_ANNOTATION_TARGETS:
-                annotation_targets.append((data_name, canonical_name))
+        has_tensor_target = bool(frame_targets)
+        has_top_level_tensor = False
+        if has_direct_tensor:
+            for data_name, value in data.items():
+                canonical_name = self._additional_targets.get(data_name, data_name)
+                if not isinstance(value, torch.Tensor) or canonical_name not in TENSOR_TARGETS:
+                    continue
+                has_tensor_target = True
+                has_top_level_tensor = True
+                validate_tensor_input(value, data_name, canonical_name)
+                if canonical_name in TENSOR_ANNOTATION_TARGETS:
+                    annotation_targets.append((data_name, canonical_name))
 
-        for path, metadata_target, value in self._iter_declared_tensor_metadata_inputs(self.transforms, data):
-            has_tensor_target = True
-            validate_tensor_metadata_input(value, path, metadata_target)
+        if has_metadata:
+            for path, metadata_target, value in self._iter_declared_tensor_metadata_inputs(self.transforms, data):
+                has_tensor_target = True
+                has_top_level_tensor = True
+                validate_tensor_metadata_input(value, path, metadata_target)
 
         if not has_tensor_target:
             return _EMPTY_TENSOR_BOUNDARY_STATE
@@ -2489,7 +2525,11 @@ class Compose(BaseCompose, HubMixin):
             raise TypeError(
                 "ToTensorV2 and ToTensor3D accept NumPy input only; remove them from this Tensor Compose pipeline",
             )
-        return _TensorBoundaryState(has_tensor_inputs=True, annotation_targets=tuple(annotation_targets))
+        return _TensorBoundaryState(
+            has_tensor_inputs=has_top_level_tensor,
+            annotation_targets=tuple(annotation_targets),
+            frame_annotation_targets=frame_targets,
+        )
 
     @staticmethod
     def _declared_tensor_metadata_keys(transforms: TransformsSeqType) -> frozenset[str]:
@@ -2571,6 +2611,8 @@ class Compose(BaseCompose, HubMixin):
         invocation = get_current_invocation()
         if invocation is not None and self.main_compose:
             invocation.frame_binding = self._frame_binding
+            if self._frame_binding == ("images", "frame_annotations"):
+                invocation.frame_annotation_policy = self
 
         if self.main_compose and self._frame_binding == ("images", "frame_annotations"):
             self._prepare_frame_annotation_instances(data)
@@ -2589,10 +2631,10 @@ class Compose(BaseCompose, HubMixin):
             self._validate_data(data)
 
         # Add channel dimensions first, before processors run
+        tensor_boundary_state = tensor_boundary_state or _EMPTY_TENSOR_BOUNDARY_STATE
         self._preprocess_arrays(data)
         if self.main_compose and self._frame_binding == ("images", "frame_annotations"):
-            self._preprocess_frame_annotation_arrays(data)
-        tensor_boundary_state = tensor_boundary_state or _EMPTY_TENSOR_BOUNDARY_STATE
+            self._preprocess_frame_annotation_arrays(data, tensor_boundary_state)
         if tensor_boundary_state.annotation_targets:
             self._bridge_tensor_annotations_to_numpy(data, tensor_boundary_state)
         self._preprocess_processors(data)
@@ -2619,16 +2661,22 @@ class Compose(BaseCompose, HubMixin):
             else:
                 self._require_instance_binding_data_present(frame)
 
-    def _preprocess_frame_annotation_arrays(self, data: dict[str, Any]) -> None:
+    def _preprocess_frame_annotation_arrays(self, data: dict[str, Any], tensor_boundary: _TensorBoundaryState) -> None:
         invocation = get_current_invocation()
         if invocation is None:
             raise RuntimeError("frame annotation preprocessing requires an active invocation")
         frames = data.get("frame_annotations")
         if frames is None:
             return
+        for frame_index, targets in tensor_boundary.frame_annotation_targets:
+            invocation.frames[frame_index].tensor_targets = targets
         for frame_index, frame in enumerate(frames):
+            frame_state = invocation.frames[frame_index]
             self._ensure_contiguous(frame)
-            self._add_grayscale_channels(frame, invocation.frames[frame_index].channel_restorations)
+            self._add_grayscale_channels(frame, frame_state.channel_restorations)
+            for name, canonical in frame_state.tensor_targets:
+                if canonical in TENSOR_ANNOTATION_TARGETS:
+                    frame[name] = tensor_to_numpy_annotation(frame[name], canonical)
 
     def _bridge_tensor_annotations_to_numpy(
         self,
@@ -2985,33 +3033,46 @@ class Compose(BaseCompose, HubMixin):
         invocation_state = invocation.get_compose_state(self)
         frames = data["frame_annotations"]
         images = data["images"]
-        for frame_index, frame in enumerate(frames):
-            frame_state = invocation.frames[frame_index]
-            frame_data = {"image": images[frame_index], **frame}
-            if self._instance_binding:
-                self._filter_bound_bboxes_before_postprocess(frame_data)
-            for name, processor in frame_state.processors.items():
-                processor.postprocess(
+        active_frame = invocation.active_frame
+        try:
+            for frame_index, frame in enumerate(frames):
+                frame_state = invocation.frames[frame_index]
+                invocation.active_frame = frame_state
+                frame_data = {"image": images[frame_index], **frame}
+                if self._instance_binding:
+                    self._filter_bound_bboxes_before_postprocess(frame_data)
+                for name, processor in frame_state.processors.items():
+                    processor.postprocess(
+                        frame_data,
+                        filter_already_applied=invocation.was_processor_filtered(self._configured_processors[name]),
+                    )
+                if (
+                    self._instance_binding
+                    and invocation_state is not None
+                    and invocation_state.repack_after_processors
+                    and frame_state.instance_count is not None
+                ):
+                    self._repack_instances(
+                        frame_data,
+                        instance_count=frame_state.instance_count,
+                        channel_restorations=frame_state.channel_restorations,
+                    )
+                for name, canonical in frame_state.tensor_targets:
+                    value = frame_data.get(name)
+                    if isinstance(value, np.ndarray):
+                        frame_data[name] = (
+                            numpy_to_tensor_annotation(value, canonical)
+                            if canonical in TENSOR_ANNOTATION_TARGETS
+                            else numpy_to_tensor_spatial(value, canonical)
+                        )
+                self._remove_grayscale_channels(
                     frame_data,
-                    filter_already_applied=invocation.was_processor_filtered(self._configured_processors[name]),
+                    frame_state.channel_restorations,
                 )
-            if (
-                self._instance_binding
-                and invocation_state is not None
-                and invocation_state.repack_after_processors
-                and frame_state.instance_count is not None
-            ):
-                self._repack_instances(
-                    frame_data,
-                    instance_count=frame_state.instance_count,
-                    channel_restorations=frame_state.channel_restorations,
-                )
-            self._remove_grayscale_channels(
-                frame_data,
-                frame_state.channel_restorations,
-            )
-            frame_data.pop("image")
-            frames[frame_index] = frame_data
+                frame_data.pop("image")
+                frames[frame_index] = frame_data
+        finally:
+            invocation.active_frame = active_frame
 
     def _get_user_bbox_label_fields(self) -> list[str]:
         return list(self._bbox_label_map.values())

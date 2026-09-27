@@ -241,6 +241,12 @@ in one invocation-local record. This preserves each frame's label values and inp
 When a sampler needs annotations from several frames, their label columns are encoded into a
 shared sampling vocabulary. Target handlers and final decoding use the frame's own processors.
 
+Frame annotation targets accept the same NumPy and CPU Tensor layouts as top-level targets.
+Nested Tensors are validated before sampling. Bboxes and keypoints use the root annotation bridge;
+spatial targets use each leaf's existing native Tensor or NumPy fallback route. Frame selection carries
+their restoration state with each selected frame. Nested containers use the root's binding policy at each annotation
+boundary; filtering one frame never marks another frame's processor as filtered.
+
 The frame count must match `images`. A transform uses the same sampled spatial parameters for the
 images and annotations it processes. The generic sampled-parameter path can select frame indices
 and applies that selection to the configured image/annotation pair. This binding change adds no

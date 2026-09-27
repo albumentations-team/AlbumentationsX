@@ -424,11 +424,14 @@ class SampledParams:
                 ),
             )
         target_schema = payload.get("target_schema")
+        frame_indices = payload.get("frame_indices")
+        if frame_indices is not None and not isinstance(frame_indices, list):
+            raise SampledParamsError("frame_indices must be a list or null")
         return cls(
             params=dict(payload.get("params", {})),
             target_params=tuple(target_params),
             target_schema=None if target_schema is None else dict(target_schema),
-            frame_indices=None if payload.get("frame_indices") is None else tuple(payload["frame_indices"]),
+            frame_indices=None if frame_indices is None else tuple(frame_indices),
         )
 
 

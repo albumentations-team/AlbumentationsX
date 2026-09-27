@@ -8,6 +8,7 @@ import torch
 import albumentations as A
 from albumentations.core.invocation import ChannelRestorationState, FrameInvocationState, InvocationContext
 from albumentations.core.transform_params import SampledParams
+from albumentations.pytorch import ToTensorV2
 from tests.helpers.contract_assertions import assert_contract_values_equal
 
 
@@ -261,7 +262,8 @@ def test_frame_binding_combines_with_instance_binding_and_empty_frames() -> None
     assert frames[0]["instances"][0]["mask"].shape == (16, 20)
 
 
-def test_frame_instance_filtering_does_not_change_other_frames() -> None:
+@pytest.mark.parametrize("nested", [False, True])
+def test_frame_instance_filtering_does_not_change_other_frames(nested: bool) -> None:
     images = _clip(frame_count=2, height=16, width=20)
     outside_mask = np.zeros((16, 20), dtype=np.uint8)
     outside_mask[:2, :2] = 1
@@ -271,8 +273,9 @@ def test_frame_instance_filtering_does_not_change_other_frames() -> None:
         {"instances": [{"mask": outside_mask, "bbox": [0, 0, 2, 2]}]},
         {"instances": [{"mask": inside_mask, "bbox": [10, 6, 14, 10]}]},
     ]
+    transform = A.CenterCrop(height=8, width=10, p=1)
     compose = A.Compose(
-        [A.CenterCrop(height=8, width=10, p=1)],
+        [A.Compose([transform], telemetry=False) if nested else transform],
         bbox_params=A.BboxParams(coord_format="pascal_voc", min_visibility=0.1),
         instance_binding=["masks", "bboxes"],
         frame_binding=["images", "frame_annotations"],
@@ -285,6 +288,165 @@ def test_frame_instance_filtering_does_not_change_other_frames() -> None:
     assert [len(frame["instances"]) for frame in frames] == [0, 1]
     np.testing.assert_array_equal(frames[1]["instances"][0]["mask"], inside_mask[4:12, 5:15])
     np.testing.assert_allclose(frames[1]["instances"][0]["bbox"], [5, 2, 9, 6])
+
+
+@pytest.mark.parametrize("check_each_transform", [False, True])
+@pytest.mark.parametrize("nested", [False, True])
+def test_frame_instance_visibility_filter_is_frame_local(check_each_transform: bool, nested: bool) -> None:
+    mask = np.zeros((16, 20), dtype=np.uint8)
+    mask[6:10, 10:14] = 1
+    annotations = [
+        {"instances": [{"mask": mask, "bbox": [10, 6, 14, 10], "bbox_labels": {"label": "keep"}}]},
+        {
+            "instances": [
+                {"mask": mask, "bbox": [0, 0, 14, 10], "bbox_labels": {"label": "drop"}},
+                {"mask": mask, "bbox": [10, 6, 14, 10], "bbox_labels": {"label": "keep too"}},
+            ]
+        },
+    ]
+    transform = A.CenterCrop(height=8, width=10, p=1)
+    compose = A.Compose(
+        [A.Compose([transform], telemetry=False) if nested else transform],
+        bbox_params=A.BboxParams(
+            coord_format="pascal_voc",
+            min_visibility=0.5,
+            label_fields=["label"],
+            check_each_transform=check_each_transform,
+        ),
+        instance_binding=["masks", "bboxes"],
+        frame_binding=["images", "frame_annotations"],
+        telemetry=False,
+    )
+
+    result = compose(images=_clip(frame_count=2, height=16, width=20), frame_annotations=annotations)
+
+    frames = result["frame_annotations"]
+    assert [len(frame["instances"]) for frame in frames] == [1, 1]
+    assert frames[0]["instances"][0]["bbox_labels"] == {"label": "keep"}
+    np.testing.assert_array_equal(frames[0]["instances"][0]["mask"], mask[4:12, 5:15])
+    np.testing.assert_allclose(frames[0]["instances"][0]["bbox"], [5, 2, 9, 6])
+    assert frames[1]["instances"][0]["bbox_labels"] == {"label": "keep too"}
+    np.testing.assert_array_equal(frames[1]["instances"][0]["mask"], mask[4:12, 5:15])
+    np.testing.assert_allclose(frames[1]["instances"][0]["bbox"], [5, 2, 9, 6])
+
+
+@pytest.mark.parametrize("mask_channels", [None, 1, 3])
+@pytest.mark.parametrize("tensor_images", [False, True])
+def test_frame_tensor_annotations_preserve_layout_and_type(mask_channels: int | None, tensor_images: bool) -> None:
+    mask_shape = (8, 12) if mask_channels is None else (mask_channels, 8, 12)
+    mask = torch.arange(np.prod(mask_shape), dtype=torch.float32).reshape(mask_shape)
+    annotations = [
+        {
+            "mask": mask,
+            "bboxes": torch.tensor([[1, 2, 4, 5]], dtype=torch.float32),
+            "keypoints": torch.tensor([[1, 2]], dtype=torch.float32),
+            "label": ["cat"],
+        },
+        {},
+    ]
+    images = _clip(frame_count=2)
+    if tensor_images:
+        images = torch.from_numpy(images.transpose(0, 3, 1, 2))
+    compose = A.Compose(
+        [A.Resize(height=4, width=6, p=1)],
+        bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["label"]),
+        keypoint_params=A.KeypointParams(coord_format="xy"),
+        frame_binding=["images", "frame_annotations"],
+        telemetry=False,
+    )
+
+    result = compose(images=images, frame_annotations=annotations)
+
+    frame = result["frame_annotations"][0]
+    assert isinstance(frame["mask"], torch.Tensor)
+    expected_shape = (4, 6) if mask_channels is None else (mask_channels, 4, 6)
+    assert frame["mask"].shape == expected_shape
+    torch.testing.assert_close(frame["mask"], mask[..., ::2, ::2])
+    torch.testing.assert_close(frame["bboxes"], torch.tensor([[0.5, 1, 2, 2.5]], dtype=torch.float32))
+    torch.testing.assert_close(frame["keypoints"], torch.tensor([[0.25, 0.75]], dtype=torch.float32))
+    assert frame["label"] == ["cat"]
+    assert result["frame_annotations"][1] == {}
+
+
+@pytest.mark.parametrize("p", [0, 1])
+@pytest.mark.parametrize(
+    "invalid_tensor",
+    [
+        torch.zeros((8, 12), dtype=torch.float32, requires_grad=True),
+        torch.zeros((8, 12), dtype=torch.float64),
+        torch.zeros((8, 12), device="meta"),
+    ],
+)
+def test_frame_tensor_validation_precedes_root_probability(p: float, invalid_tensor: torch.Tensor) -> None:
+    compose = A.Compose(
+        [A.NoOp(p=1)],
+        p=p,
+        frame_binding=["images", "frame_annotations"],
+        telemetry=False,
+    )
+
+    with pytest.raises((ValueError, TypeError), match=r"frame_annotations\[0\].mask"):
+        compose(images=_clip(frame_count=1), frame_annotations=[{"mask": invalid_tensor}])
+
+
+def test_frame_tensor_targets_reject_numpy_to_tensor_terminal() -> None:
+    compose = A.Compose(
+        [ToTensorV2(p=1)],
+        frame_binding=["images", "frame_annotations"],
+        telemetry=False,
+    )
+
+    with pytest.raises(TypeError, match="accept NumPy input only"):
+        compose(images=_clip(frame_count=1), frame_annotations=[{"mask": torch.zeros((8, 12))}])
+
+
+def test_frame_tensor_mask_uses_native_handler(monkeypatch: pytest.MonkeyPatch) -> None:
+    original = A.HorizontalFlip.apply_to_mask
+
+    def apply_to_mask(self: A.HorizontalFlip, mask: torch.Tensor, **params: object) -> torch.Tensor:
+        assert isinstance(mask, torch.Tensor)
+        return original(self, mask, **params)
+
+    monkeypatch.setattr(A.HorizontalFlip, "apply_to_mask", apply_to_mask)
+    mask = torch.arange(8 * 12, dtype=torch.float32).reshape(8, 12)
+    compose = A.Compose(
+        [A.HorizontalFlip(p=1)],
+        frame_binding=["images", "frame_annotations"],
+        telemetry=False,
+    )
+
+    result = compose(images=_clip(frame_count=1), frame_annotations=[{"mask": mask}])
+
+    torch.testing.assert_close(result["frame_annotations"][0]["mask"], mask.flip(-1))
+
+
+def test_frame_tensor_restoration_follows_selection_and_replay(monkeypatch: pytest.MonkeyPatch) -> None:
+    masks = [torch.arange(8 * 12, dtype=torch.float32).reshape(8, 12), torch.ones((3, 8, 12))]
+    annotations = [{"mask": mask, "mask_copy": mask.clone()} for mask in masks]
+    transform = A.HorizontalFlip(p=1)
+    monkeypatch.setattr(
+        A.HorizontalFlip,
+        "sample_parameters",
+        lambda *args, **kwargs: SampledParams(params={}, frame_indices=(1, 0, 1)),
+    )
+    compose = A.ReplayCompose(
+        [transform],
+        additional_targets={"mask_copy": "mask"},
+        frame_binding=["images", "frame_annotations"],
+        telemetry=False,
+    )
+    images = _clip(frame_count=2)
+
+    result = compose(images=images, frame_annotations=annotations)
+    replayed = A.ReplayCompose.replay(result["replay"], images=images, frame_annotations=annotations)
+
+    for output in (result, replayed):
+        for frame, index in zip(output["frame_annotations"], (1, 0, 1), strict=True):
+            torch.testing.assert_close(frame["mask"], masks[index].flip(-1))
+            torch.testing.assert_close(frame["mask_copy"], masks[index].flip(-1))
+    result["frame_annotations"][0]["mask"][0, 0, 0] = 137
+    assert result["frame_annotations"][2]["mask"][0, 0, 0] == 1
+    assert masks[1][0, 0, 0] == 1
 
 
 def test_bbox_safe_crop_samples_from_annotations_across_frames() -> None:

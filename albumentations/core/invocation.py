@@ -10,7 +10,7 @@ from collections.abc import Callable
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from types import TracebackType
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
 
@@ -23,6 +23,10 @@ from albumentations.core.random_utils import (
     _RuntimeRngContext,
     _should_sync_runtime_rng,
 )
+
+if TYPE_CHECKING:
+    from albumentations.core.composition import Compose
+    from albumentations.core.utils import DataProcessor
 
 
 class InvocationOwner(Protocol):
@@ -445,6 +449,8 @@ class FrameInvocationState:
     instance_count: int | None = None
     channel_restorations: dict[str, ChannelRestorationState] = field(default_factory=dict)
     processors: dict[str, Any] = field(default_factory=dict)
+    filtered_processor_ids: set[int] | None = None
+    tensor_targets: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(slots=True)
@@ -482,6 +488,8 @@ class InvocationContext:
     has_tensor_inputs: bool | None = None
     frame_binding: tuple[str, str] | None = None
     frames: list[FrameInvocationState] = field(default_factory=list)
+    active_frame: FrameInvocationState | None = None
+    frame_annotation_policy: Compose | None = None
     _py_random: random.Random | None = None
     _random_generator: np.random.Generator | None = None
     _reserved_random_streams: _ReservedRandomStreams | None = None
@@ -603,6 +611,8 @@ class InvocationContext:
         Processor policy and target aliases are immutable during execution. Label encoders and metadata are not: each
         session gets a fresh LabelManager so categorical labels from one sample cannot affect another sample.
         """
+        if self.active_frame is not None:
+            return self.active_frame.processors
         configured_id = id(configured_processors)
         if self._processor_sessions is None:
             self._processor_sessions = {}
@@ -649,12 +659,15 @@ class InvocationContext:
         """Return the active annotation processor for this invocation, keeping each leaf detached
         from root configuration and sessions owned by other callers.
         """
-        return None if self.active_processors is None else self.active_processors.get(name)
+        processors = self.active_processors if self.active_frame is None else self.active_frame.processors
+        return None if processors is None else processors.get(name)
 
-    def get_processor_session(self, configured_processor: object) -> Any | None:
+    def get_processor_session(self, configured_processor: DataProcessor[Any]) -> Any | None:
         """Return a call-local session for this policy identity, letting nested containers filter
         annotations without mutating persistent root configuration.
         """
+        if self.active_frame is not None:
+            return self.active_frame.processors.get(configured_processor.default_data_name)
         if self._active_processors_by_id is None:
             return None
         return self._active_processors_by_id.get(id(configured_processor))
@@ -683,6 +696,11 @@ class InvocationContext:
         intentionally not. Recording the policy key lets the root reuse its last
         per-node filtering decision instead of scanning the same annotations again.
         """
+        if self.active_frame is not None:
+            if self.active_frame.filtered_processor_ids is None:
+                self.active_frame.filtered_processor_ids = set()
+            self.active_frame.filtered_processor_ids.add(id(configured_processor))
+            return
         if self._filtered_processor_ids is None:
             self._filtered_processor_ids = set()
         self._filtered_processor_ids.add(id(configured_processor))
@@ -691,6 +709,9 @@ class InvocationContext:
         """Report whether this invocation already filtered one policy so root finalization skips
         duplicate clipping, label encoding, and target traversal work.
         """
+        if self.active_frame is not None:
+            filtered = self.active_frame.filtered_processor_ids
+            return filtered is not None and id(configured_processor) in filtered
         return self._filtered_processor_ids is not None and id(configured_processor) in self._filtered_processor_ids
 
     def observation(self) -> InvocationObservation:

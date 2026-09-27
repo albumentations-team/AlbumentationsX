@@ -10,7 +10,7 @@ and serialization capabilities that are inherited by concrete transform implemen
 import inspect
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cache
 from typing import Annotated, Any, ClassVar, cast, get_args, get_type_hints
 from warnings import warn
@@ -1042,7 +1042,19 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             data[name] = self._select_frame_collection(name, value, frame_indices)
 
         if invocation is not None and "frame_annotations" in selected_names and "frame_annotations" in data:
-            invocation.frames = [invocation.frames[index] for index in frame_indices] if invocation.frames else []
+            invocation.frames = (
+                [
+                    replace(
+                        frame,
+                        filtered_processor_ids=None
+                        if frame.filtered_processor_ids is None
+                        else frame.filtered_processor_ids.copy(),
+                    )
+                    for frame in (invocation.frames[index] for index in frame_indices)
+                ]
+                if invocation.frames
+                else []
+            )
         return data
 
     def _get_frame_target_names(
@@ -1090,24 +1102,45 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         """Apply each declared nested target handler to its corresponding frame annotations."""
         transformed_frames: list[dict[str, Any]] = []
         invocation = get_current_invocation()
-        processors = None if invocation is None else invocation.active_processors
+        active_frame = None if invocation is None else invocation.active_frame
         try:
             for frame_index, frame in enumerate(annotations):
                 if invocation is not None and invocation.frames:
-                    invocation.active_processors = invocation.frames[frame_index].processors
-                transformed_frames.append(self._apply_frame_annotations(frame, sampled_params=sampled_params, **params))
+                    invocation.active_frame = invocation.frames[frame_index]
+                transformed_frames.append(
+                    self._apply_frame_annotations(frame, invocation, sampled_params=sampled_params, **params),
+                )
         finally:
             if invocation is not None:
-                invocation.active_processors = processors
+                invocation.active_frame = active_frame
         return transformed_frames
 
     def _apply_frame_annotations(
         self,
         frame: Mapping[str, Any],
+        invocation: InvocationContext | None,
         *,
         sampled_params: SampledParams | None = None,
         **params: Any,
     ) -> dict[str, Any]:
+        route = None
+        if invocation is not None and invocation.active_frame is not None and invocation.active_frame.tensor_targets:
+            tensor_targets = invocation.active_frame.tensor_targets
+            if any(
+                name in self._key2func
+                and not _handler_has_tensor_path(self._key2func[name])
+                and isinstance(frame.get(name), torch.Tensor)
+                for name, _ in tensor_targets
+            ):
+                route = _TensorFallbackRoute(
+                    targets=tuple(
+                        (name, canonical)
+                        for name, canonical in tensor_targets
+                        if name in self._key2func and isinstance(frame.get(name), torch.Tensor)
+                    ),
+                    metadata=(),
+                )
+                frame = self._enter_tensor_fallback(frame, route)
         transformed: dict[str, Any] = {}
         for name, value in frame.items():
             handler = self._key2func.get(name)
@@ -1116,7 +1149,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
                 transformed[name] = handler(value, **target_params)
             else:
                 transformed[name] = value
-        return transformed
+        return transformed if route is None else self._restore_tensor_fallback(transformed, route)
 
     def set_deterministic(self, flag: bool, save_key: str = "replay") -> "BasicTransform":
         """Set transform to be deterministic. When True, params are saved under save_key for
@@ -1337,11 +1370,17 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         return sampling_data
 
     def _combine_frame_target(self, target_name: str, values: list[tuple[int, str, Any]]) -> Any | None:
-        arrays = [value for _, _, value in values]
+        arrays = [
+            tensor_metadata_to_numpy(value, target_name) if isinstance(value, torch.Tensor) else value
+            for _, _, value in values
+        ]
         if not all(isinstance(value, np.ndarray) for value in arrays):
             return None
         if target_name == "mask":
-            return np.maximum.reduce(arrays)
+            combined = arrays[0].copy()
+            for array in arrays[1:]:
+                combined = np.maximum(combined, array)
+            return combined
         if target_name in {"masks", "bboxes", "keypoints"}:
             nonempty = [array for array in arrays if len(array)]
             combined = np.concatenate(nonempty, axis=0) if nonempty else arrays[0]
@@ -2007,11 +2046,12 @@ class DualTransform(BasicTransform):
     def _apply_frame_annotations(
         self,
         frame: Mapping[str, Any],
+        invocation: InvocationContext | None,
         *,
         sampled_params: SampledParams | None = None,
         **params: Any,
     ) -> dict[str, Any]:
-        transformed = super()._apply_frame_annotations(frame, sampled_params=sampled_params, **params)
+        transformed = super()._apply_frame_annotations(frame, invocation, sampled_params=sampled_params, **params)
         keypoint_params = params if sampled_params is None else sampled_params.params_for("keypoints")
         mask_params = params if sampled_params is None else sampled_params.params
         if transformed.get("keypoints") is not None:

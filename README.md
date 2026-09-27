@@ -322,7 +322,7 @@ Spatial-level transforms will simultaneously change both an input image as well 
 | [GridDropout](https://albumentations.ai/explore/transform/GridDropout/)                           | ✓     | ✓      | ✓    | ✓     | ✓            |              | ✓         | ✓      | ✓      |
 | [GridElasticDeform](https://albumentations.ai/explore/transform/GridElasticDeform/)               | ✓     | ✓      | ✓    | ✓     | ✓            |              | ✓         | ✓      | ✓      |
 | [GridMask](https://albumentations.ai/explore/transform/GridMask/)                                 | ✓     | ✓      | ✓    | ✓     | ✓            |              | ✓         | ✓      | ✓      |
-| [GuidedCoarseDropout](https://albumentations.ai/explore/transform/GuidedCoarseDropout/)           | ✓     | ✓      | ✓    |       | ✓            |              | ✓         |        |        |
+| [GuidedCoarseDropout](https://albumentations.ai/explore/transform/GuidedCoarseDropout/)           | ✓     | ✓      | ✓    | ✓     | ✓            |              | ✓         |        |        |
 | [HorizontalFlip](https://albumentations.ai/explore/transform/HorizontalFlip/)                     | ✓     | ✓      | ✓    | ✓     | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [Lambda](https://albumentations.ai/explore/transform/Lambda/)                                     | ✓     | ✓      | ✓    | ✓     | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [LetterBox](https://albumentations.ai/explore/transform/LetterBox/)                               | ✓     | ✓      | ✓    | ✓     | ✓            | ✓            | ✓         | ✓      | ✓      |
@@ -361,6 +361,7 @@ Spatial-level transforms will simultaneously change both an input image as well 
 | [VerticalFlip](https://albumentations.ai/explore/transform/VerticalFlip/)                         | ✓     | ✓      | ✓    | ✓     | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [WaterRefraction](https://albumentations.ai/explore/transform/WaterRefraction/)                   | ✓     | ✓      | ✓    | ✓     | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [XYMasking](https://albumentations.ai/explore/transform/XYMasking/)                               | ✓     | ✓      | ✓    | ✓     | ✓            |              | ✓         | ✓      | ✓      |
+
 ### 3D transforms
 
 3D transforms operate on volumetric data. Spatial transforms can also modify associated 3D masks and keypoints, while

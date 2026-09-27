@@ -116,6 +116,15 @@ def test_frame_indices_reject_negative_and_boolean_values() -> None:
         SampledParams(params={}, frame_indices=(True,))
 
 
+@pytest.mark.parametrize("frame_indices", [3, "123", {"0": 1}, (0, 1), True])
+def test_frame_indices_deserialization_requires_a_list(frame_indices: object) -> None:
+    payload = SampledParams(params={}).to_dict()
+    payload["frame_indices"] = frame_indices
+
+    with pytest.raises(SampledParamsError, match=r"frame_indices.*list"):
+        SampledParams.from_dict(payload)
+
+
 def test_structured_payload_with_retired_field_names_is_rejected() -> None:
     with pytest.raises(ValueError, match="unsupported or legacy"):
         SampledParams.from_dict(

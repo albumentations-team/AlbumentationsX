@@ -421,7 +421,7 @@ def test_frame_tensor_mask_uses_native_handler(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_frame_tensor_restoration_follows_selection_and_replay(monkeypatch: pytest.MonkeyPatch) -> None:
-    masks = [torch.arange(8 * 12, dtype=torch.float32).reshape(8, 12), torch.ones((3, 8, 12))]
+    masks = [torch.arange(8 * 12, dtype=torch.float32).reshape(8, 12), torch.ones((1, 8, 12))]
     annotations = [{"mask": mask, "mask_copy": mask.clone()} for mask in masks]
     transform = A.HorizontalFlip(p=1)
     monkeypatch.setattr(

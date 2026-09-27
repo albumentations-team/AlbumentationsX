@@ -232,7 +232,8 @@ A.Compose(
 ```
 
 Each entry is a per-frame mapping and may contain `mask`, `masks`, `bboxes`, `keypoints`, and their
-configured label fields. Empty mappings represent frames without annotations. To combine frame
+configured label fields. Video masks use the same number of channels across frames; the number
+of instance masks per frame may vary. Empty mappings represent frames without annotations. To combine frame
 binding with instance binding, place an `instances` list in each frame mapping; an empty frame may
 use `{}` or `{"instances": []}`. Each instance uses the schema described above.
 

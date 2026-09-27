@@ -1,8 +1,8 @@
-"""Module containing base interfaces for all transform implementations. of alb
+"""Module containing base interfaces for all transform implementations.
 
 This module defines the fundamental transform interfaces that form the base hierarchy for
-all transformation classes in Albumentations. It provides abstract classes and mixins that
-define common behavior for image, keypoint, bounding box, and volumetric transformations.
+all transformation classes in Albumentations. It provides abstract classes that define
+common behavior for image, keypoint, bounding box, and volumetric transformations.
 The interfaces handle parameter validation, random state management, target type checking,
 and serialization capabilities that are inherited by concrete transform implementations.
 """
@@ -10,7 +10,7 @@ and serialization capabilities that are inherited by concrete transform implemen
 import inspect
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cache
 from typing import Annotated, Any, ClassVar, cast, get_args, get_type_hints
 from warnings import warn
@@ -69,7 +69,6 @@ from .utils import format_args, get_volume_shape
 
 __all__ = [
     "BasicTransform",
-    "CustomTransformsApplyMixin",
     "DualTransform",
     "ImageOnlyTransform",
     "NoOp",
@@ -81,6 +80,20 @@ __all__ = [
     "Transform3D",
     "VolumeOnlyTransform",
 ]
+
+_TARGET_APPLY_METHODS = {
+    "image": "apply",
+    "images": "apply_to_images",
+    "mask": "apply_to_mask",
+    "masks": "apply_to_masks",
+    "bboxes": "apply_to_bboxes",
+    "keypoints": "apply_to_keypoints",
+    "volume": "apply_to_volume",
+    "mask3d": "apply_to_mask3d",
+    "user_data": "apply_to_user_data",
+}
+
+_TARGET_NAMES = {target: target.name.lower() for target in Targets}
 
 
 class Interpolation:
@@ -257,7 +270,8 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
     """
 
-    _targets: tuple[Targets, ...] | Targets  # targets that this transform can work on
+    _targets: tuple[Targets | str, ...] | Targets | str = ()
+    _target_apply_methods: ClassVar[Mapping[str, str]] = {}
     _available_keys: set[str]  # targets that this transform, as string, lower-cased
     _key2func: dict[
         str,
@@ -674,14 +688,23 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         """Samples parameters after probability succeeds and records policy only for replay, trace, or explicit
         observation that needs the durable artifact.
         """
-        targets = (
-            None if type(self).sample_parameters is BasicTransform.sample_parameters else self._build_target_set(kwargs)
+        sampling_data = (
+            self._frame_sampling_data(kwargs)
+            if type(self).sample_parameters is not BasicTransform.sample_parameters
+            and invocation is not None
+            and invocation.frame_binding == ("images", "frame_annotations")
+            else kwargs
         )
-        params = self.update_transform_params(params={}, data=kwargs, invocation=invocation, targets=targets)
+        targets = (
+            None
+            if type(self).sample_parameters is BasicTransform.sample_parameters
+            else self._build_target_set(sampling_data)
+        )
+        params = self.update_transform_params(params={}, data=sampling_data, invocation=invocation, targets=targets)
 
         if self.targets_as_params:
-            missing_keys = set(self.targets_as_params).difference(kwargs.keys())
-            if missing_keys and not (missing_keys == {"image"} and "images" in kwargs):
+            missing_keys = set(self.targets_as_params).difference(sampling_data.keys())
+            if missing_keys and not (missing_keys == {"image"} and "images" in sampling_data):
                 msg = f"{self.__class__.__name__} requires {self.targets_as_params} missing keys: {missing_keys}"
                 raise ValueError(msg)
 
@@ -695,7 +718,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
         applied_overrides, sampled_params = self._sample_parameters(
             params=params,
-            data=kwargs,
+            data=sampling_data,
             targets=targets,
             invocation=invocation,
             collect_applied=collect_applied,
@@ -705,8 +728,9 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             params={**params, **sampled_params.params},
             target_params=sampled_params.target_params,
             target_schema=targets.schema() if targets is not None and sampled_params.target_params else None,
+            frame_indices=sampled_params.frame_indices,
         )
-        self._validate_sampled_params(effective_params, targets, kwargs)
+        self._validate_sampled_params(effective_params, targets, sampling_data)
 
         if state is not None:
             state.params = effective_params.to_dict()
@@ -828,7 +852,13 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
     def _apply_replay_in_route(self, state: TransformInvocationState | None, **kwargs: Any) -> Any:
         sampled_params = SampledParams.from_dict(deepcopy(self._replay_params))
-        targets = self._build_target_set(kwargs)
+        invocation = get_current_invocation()
+        sampling_data = (
+            self._frame_sampling_data(kwargs)
+            if invocation is not None and invocation.frame_binding == ("images", "frame_annotations")
+            else kwargs
+        )
+        targets = self._build_target_set(sampling_data)
         self._validate_spatial_targets(targets)
         sampled_params.validate(
             targets,
@@ -946,6 +976,13 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         for key, arg in kwargs.items():
             if key in self._key2func and arg is not None:
                 res[key] = self._key2func[key](arg, **params)
+            elif (
+                key == "frame_annotations"
+                and arg is not None
+                and (invocation := get_current_invocation()) is not None
+                and invocation.frame_binding == ("images", "frame_annotations")
+            ):
+                res[key] = self.apply_to_frame_annotations(arg, **params)
             else:
                 res[key] = arg
         return res
@@ -959,14 +996,160 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         """Apply transforms with parameters. Dispatches each target (image, mask, bboxes, etc.) to
         the corresponding apply_* method.
         """
+        if sampled_params.frame_indices is not None:
+            kwargs = self._select_frame_targets(kwargs, sampled_params.frame_indices)
         res: dict[str, Any] = {}
         for key, arg in kwargs.items():
             if key in self._key2func and arg is not None:
                 target_function = self._key2func[key]
                 res[key] = target_function(arg, **sampled_params.params_for(key))
+            elif (
+                key == "frame_annotations"
+                and arg is not None
+                and (invocation := get_current_invocation()) is not None
+                and invocation.frame_binding == ("images", "frame_annotations")
+            ):
+                res[key] = self.apply_to_frame_annotations(arg, sampled_params=sampled_params)
             else:
                 res[key] = arg
         return res
+
+    def _select_frame_targets(
+        self,
+        data: dict[str, Any],
+        frame_indices: tuple[int, ...],
+    ) -> dict[str, Any]:
+        """Select the configured frame collections before applying a sampled temporal operation."""
+        images = data.get("images")
+        if images is None:
+            raise ValueError("frame selection requires `images`")
+        frame_count = len(images)
+        if any(index >= frame_count for index in frame_indices):
+            raise ValueError(f"frame_indices must be in [0, {frame_count})")
+
+        invocation = get_current_invocation()
+        frame_binding = None if invocation is None else invocation.frame_binding
+        selected_names = self._get_frame_target_names(data, frame_binding)
+        bound_names = selected_names
+        selected_names = (
+            *selected_names,
+            *(alias for alias, target in self._additional_targets.items() if target in bound_names and alias in data),
+        )
+        for name in selected_names:
+            value = data.get(name)
+            if value is None:
+                continue
+            data[name] = self._select_frame_collection(name, value, frame_indices)
+
+        if invocation is not None and "frame_annotations" in selected_names and "frame_annotations" in data:
+            invocation.frames = (
+                [
+                    replace(
+                        frame,
+                        filtered_processor_ids=None
+                        if frame.filtered_processor_ids is None
+                        else frame.filtered_processor_ids.copy(),
+                    )
+                    for frame in (invocation.frames[index] for index in frame_indices)
+                ]
+                if invocation.frames
+                else []
+            )
+        return data
+
+    def _get_frame_target_names(
+        self,
+        data: Mapping[str, Any],
+        frame_binding: tuple[str, str] | None,
+    ) -> tuple[str, ...]:
+        annotation_keys = {"mask", "masks", "bboxes", "keypoints", "instances", "frame_annotations"}
+        supplied_annotations = {
+            canonical for name in data if (canonical := self._additional_targets.get(name, name)) in annotation_keys
+        }
+        if frame_binding is None:
+            if supplied_annotations:
+                raise ValueError(
+                    "frame selection with annotations requires Compose(frame_binding=...) to identify their frames",
+                )
+            return ("images",)
+
+        image_name, annotation_name = frame_binding
+        unbound = supplied_annotations - {annotation_name}
+        if unbound:
+            raise ValueError(f"frame selection cannot align unbound targets: {sorted(unbound)}")
+        return image_name, annotation_name
+
+    @staticmethod
+    def _select_frame_collection(
+        name: str,
+        value: Any,
+        frame_indices: tuple[int, ...],
+    ) -> Any:
+        if isinstance(value, torch.Tensor):
+            indices = torch.tensor(frame_indices, dtype=torch.long, device=value.device)
+            return value.index_select(0, indices)
+        if name == "frame_annotations":
+            return [deepcopy(value[index]) for index in frame_indices]
+        return np.take(value, frame_indices, axis=0)
+
+    def apply_to_frame_annotations(
+        self,
+        annotations: Sequence[Mapping[str, Any]],
+        *,
+        sampled_params: SampledParams | None = None,
+        **params: Any,
+    ) -> list[dict[str, Any]]:
+        """Apply each declared nested target handler to its corresponding frame annotations."""
+        transformed_frames: list[dict[str, Any]] = []
+        invocation = get_current_invocation()
+        active_frame = None if invocation is None else invocation.active_frame
+        try:
+            for frame_index, frame in enumerate(annotations):
+                if invocation is not None and invocation.frames:
+                    invocation.active_frame = invocation.frames[frame_index]
+                transformed_frames.append(
+                    self._apply_frame_annotations(frame, invocation, sampled_params=sampled_params, **params),
+                )
+        finally:
+            if invocation is not None:
+                invocation.active_frame = active_frame
+        return transformed_frames
+
+    def _apply_frame_annotations(
+        self,
+        frame: Mapping[str, Any],
+        invocation: InvocationContext | None,
+        *,
+        sampled_params: SampledParams | None = None,
+        **params: Any,
+    ) -> dict[str, Any]:
+        route = None
+        if invocation is not None and invocation.active_frame is not None and invocation.active_frame.tensor_targets:
+            tensor_targets = invocation.active_frame.tensor_targets
+            if any(
+                name in self._key2func
+                and not _handler_has_tensor_path(self._key2func[name])
+                and isinstance(frame.get(name), torch.Tensor)
+                for name, _ in tensor_targets
+            ):
+                route = _TensorFallbackRoute(
+                    targets=tuple(
+                        (name, canonical)
+                        for name, canonical in tensor_targets
+                        if name in self._key2func and isinstance(frame.get(name), torch.Tensor)
+                    ),
+                    metadata=(),
+                )
+                frame = self._enter_tensor_fallback(frame, route)
+        transformed: dict[str, Any] = {}
+        for name, value in frame.items():
+            handler = self._key2func.get(name)
+            if handler is not None and value is not None:
+                target_params = params if sampled_params is None else sampled_params.params_for(name)
+                transformed[name] = handler(value, **target_params)
+            else:
+                transformed[name] = value
+        return transformed if route is None else self._restore_tensor_fallback(transformed, route)
 
     def set_deterministic(self, flag: bool, save_key: str = "replay") -> "BasicTransform":
         """Set transform to be deterministic. When True, params are saved under save_key for
@@ -1153,6 +1336,82 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         canonical_by_name = {name: self._additional_targets.get(name, name) for name in self._key2func}
         return TargetSet.from_data(data, canonical_by_name)
 
+    def _frame_sampling_data(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Expose nested annotation values to existing samplers and target descriptors."""
+        frames = data.get("frame_annotations")
+        if not frames:
+            return data
+
+        values_by_name: dict[str, list[tuple[int, str, Any]]] = {}
+        alias_values: dict[str, list[tuple[int, str, Any]]] = {}
+        for frame_index, frame in enumerate(frames):
+            for name, value in frame.items():
+                if name in self._key2func and value is not None:
+                    entry = (frame_index, name, value)
+                    values_by_name.setdefault(name, []).append(entry)
+                    canonical = self._additional_targets.get(name, name)
+                    if canonical != name:
+                        alias_values.setdefault(canonical, []).append(entry)
+
+        sampling_data = dict(data)
+        for target_name, values in values_by_name.items():
+            canonical = self._additional_targets.get(target_name, target_name)
+            if (
+                target_name not in sampling_data
+                and (combined := self._combine_frame_target(canonical, values)) is not None
+            ):
+                sampling_data[target_name] = combined
+        for canonical, values in alias_values.items():
+            if (
+                canonical not in sampling_data
+                and (combined := self._combine_frame_target(canonical, values)) is not None
+            ):
+                sampling_data[canonical] = combined
+        return sampling_data
+
+    def _combine_frame_target(self, target_name: str, values: list[tuple[int, str, Any]]) -> Any | None:
+        arrays = [
+            tensor_metadata_to_numpy(value, target_name) if isinstance(value, torch.Tensor) else value
+            for _, _, value in values
+        ]
+        if not all(isinstance(value, np.ndarray) for value in arrays):
+            return None
+        if target_name == "mask":
+            combined = arrays[0].copy()
+            for array in arrays[1:]:
+                combined = np.maximum(combined, array)
+            return combined
+        if target_name in {"masks", "bboxes", "keypoints"}:
+            nonempty = [array for array in arrays if len(array)]
+            combined = np.concatenate(nonempty, axis=0) if nonempty else arrays[0]
+            if target_name in {"bboxes", "keypoints"} and len(combined):
+                self._encode_frame_sampling_labels(target_name, values, combined)
+            return combined
+        return arrays[0]
+
+    def _encode_frame_sampling_labels(
+        self,
+        target_name: str,
+        values: list[tuple[int, str, Any]],
+        combined: np.ndarray,
+    ) -> None:
+        processor = self.get_processor(target_name)
+        if not isinstance(processor, (BboxProcessor, KeypointsProcessor)) or not processor.params.label_fields:
+            return
+        invocation = get_current_invocation()
+        if invocation is None:
+            raise RuntimeError("frame label sampling requires an active invocation")
+        label_fields = processor.params.label_fields
+        label_offset = combined.shape[1] - len(label_fields)
+        for field_index, label_field in enumerate(label_fields):
+            labels: list[Any] = []
+            column = label_offset + field_index
+            for frame_index, data_name, array in values:
+                if len(array):
+                    frame_processor = invocation.frames[frame_index].processors[target_name]
+                    labels.extend(frame_processor.label_manager.restore_field(data_name, label_field, array[:, column]))
+            combined[:, column] = processor.label_manager.process_field(target_name, label_field, labels).ravel()
+
     def _validate_spatial_targets(self, targets: TargetSet) -> None:
         if self._sampling_spatial_rank is not None:
             targets.aligned_spatial_shape(self._sampling_spatial_rank)
@@ -1218,25 +1477,28 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
     @property
     def targets(self) -> dict[str, Callable[..., Any]]:
-        """Get mapping of target keys to their corresponding processing functions (e.g. image ->
-        apply, mask -> apply_to_mask). Subclasses override.
-
-        Returns:
-            dict[str, Callable[..., Any]]: Dictionary mapping target keys to their processing functions.
-
-        """
-        # mapping for targets and methods for which they depend
-        # for example:
-        # >>  {"image": self.apply}
-        # >>  {"masks": self.apply_to_masks}
-        raise NotImplementedError
+        """Build the dispatch table from the transform's declared targets."""
+        raw_targets = (self._targets,) if isinstance(self._targets, Targets | str) else self._targets
+        handlers: dict[str, Callable[..., Any]] = {}
+        for target in raw_targets:
+            name = _TARGET_NAMES[target] if isinstance(target, Targets) else target
+            if name in handlers:
+                raise TypeError(f"{self.__class__.__name__} declares target {name!r} more than once")
+            method_name = self._target_apply_methods.get(name, _TARGET_APPLY_METHODS.get(name, f"apply_to_{name}"))
+            handler = getattr(self, method_name, None)
+            if handler is None:
+                raise TypeError(f"{self.__class__.__name__} declares {name!r} without {method_name}()")
+            implementation = getattr(handler, "__func__", handler)
+            if name == "user_data" and implementation is BasicTransform.apply_to_user_data:
+                raise TypeError("user_data must have a transform-specific apply_to_user_data() implementation")
+            handlers[name] = handler
+        return handlers
 
     def apply_to_user_data(self, data: Any, **params: Any) -> Any:
-        """Apply transform to user-defined data. By default returns data unchanged (passthrough).
-        Override to update custom keys (e.g. captions) from params.
+        """Handle `user_data` for a custom transform that explicitly declares it in `_targets`.
 
-        By default, returns the data unchanged (passthrough). Override in a subclass to
-        update arbitrary user data in response to geometric or photometric transforms.
+        Built-in transforms leave this key unchanged. A custom transform can add the string
+        `"user_data"` to its `_targets` and override this method to update annotations such as captions.
 
         Args:
             data (Any): Arbitrary user-defined data of any type.
@@ -1248,6 +1510,13 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         Examples:
             >>> import albumentations as A
             >>> class FlipAwareTransform(A.HorizontalFlip):
+            ...     '''Flip images and update captions.
+            ...
+            ...     Targets:
+            ...         image, images, mask, masks, bboxes, keypoints, volume, mask3d, user_data
+            ...     '''
+            ...     _targets = (*A.HorizontalFlip._targets, "user_data")
+            ...
             ...     def apply_to_user_data(self, data: dict, **params) -> dict:
             ...         return {"caption": data["caption"].replace("left", "right")}
 
@@ -1255,21 +1524,9 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         return data
 
     def _set_keys(self) -> None:
-        """Set _available_keys and _key2func from _targets and targets. Adds user_data as
-        passthrough. Called from __init__. Override targets in subclass.
-        """
-        if not hasattr(self, "_targets"):
-            self._available_keys = set()
-        else:
-            self._available_keys = {
-                target.value.lower()
-                for target in (self._targets if isinstance(self._targets, tuple) else [self._targets])
-            }
-        self._available_keys.update(self.targets.keys())
-        self._key2func = {key: self.targets[key] for key in self._available_keys if key in self.targets}
-        # user_data is always available regardless of _targets - passthrough by default
-        self._available_keys.add("user_data")
-        self._key2func["user_data"] = self.apply_to_user_data
+        """Build runtime dispatch exclusively from the effective `_targets` declaration."""
+        self._key2func = self.targets
+        self._available_keys = set(self._key2func)
 
     @property
     def available_keys(self) -> set[str]:
@@ -1293,8 +1550,8 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
                     f"Trying to overwrite existed additional targets. "
                     f"Key={k} Exists={self._additional_targets[k]} New value: {v}",
                 )
+            self._additional_targets[k] = v
             if v in self._available_keys:
-                self._additional_targets[k] = v
                 self._key2func[k] = self._key2func[v]
                 self._available_keys.add(k)
 
@@ -1376,12 +1633,12 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
 
 class DualTransform(BasicTransform):
-    """Base class for transforms that apply to both image and annotations (masks, bboxes, keypoints),
-    keeping them spatially consistent.
+    """Base class for spatial transforms that apply to images and masks.
 
-    When a transform is applied to an image, all associated entities (masks, bounding boxes, keypoints) are
-    such as masks, bounding boxes, and keypoints. This class ensures that when a transform is applied to an image,
-    all associated entities are transformed accordingly to maintain consistency between the image and its annotations.
+    Targets:
+        image, images, mask, masks, volume, mask3d
+
+    Concrete subclasses declare bbox and keypoint support when they implement those routes.
 
     Class Attributes:
         _supported_bbox_types (set[str]): Set of supported bounding box types.
@@ -1463,6 +1720,15 @@ class DualTransform(BasicTransform):
 
     """
 
+    _targets: tuple[Targets | str, ...] | Targets | str = (
+        Targets.IMAGE,
+        Targets.IMAGES,
+        Targets.MASK,
+        Targets.MASKS,
+        Targets.VOLUME,
+        Targets.MASK3D,
+    )
+    _target_apply_methods: ClassVar[Mapping[str, str]] = {"volume": "apply_to_images"}
     _sampling_spatial_rank = 2
 
     _supported_bbox_types: frozenset[str] = frozenset({"hbb"})  # Default: only axis-aligned boxes
@@ -1495,29 +1761,6 @@ class DualTransform(BasicTransform):
                 compiled_uint8_luts[transform_name] = lut
         self._semantic_mask_label_mappings = compiled_mappings
         self._semantic_mask_uint8_luts = compiled_uint8_luts
-
-    @property
-    def targets(self) -> dict[str, Callable[..., Any]]:
-        """Get mapping of target keys to their corresponding processing functions for DualTransform
-        (image, mask, bboxes, keypoints, etc.).
-
-        Returns:
-            dict[str, Callable[..., Any]]: Dictionary mapping target keys to their processing functions.
-
-        """
-        # Note: keypoint label swapping is handled within apply_to_keypoints
-        # No separate targets needed for label fields
-        return {
-            "image": self.apply,
-            "images": self.apply_to_images,
-            "mask": self.apply_to_mask,
-            "masks": self.apply_to_masks,
-            "mask3d": self.apply_to_mask3d,
-            "bboxes": self.apply_to_bboxes,
-            "keypoints": self.apply_to_keypoints,
-            "volume": self.apply_to_images,
-            "user_data": self.apply_to_user_data,
-        }
 
     def apply_to_keypoints(self, keypoints: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
         msg = f"Method apply_to_keypoints is not implemented in class {self.__class__.__name__}"
@@ -1800,29 +2043,35 @@ class DualTransform(BasicTransform):
             res = self._apply_label_mapping_to_semantic_masks(res, **params)
         return res
 
+    def _apply_frame_annotations(
+        self,
+        frame: Mapping[str, Any],
+        invocation: InvocationContext | None,
+        *,
+        sampled_params: SampledParams | None = None,
+        **params: Any,
+    ) -> dict[str, Any]:
+        transformed = super()._apply_frame_annotations(frame, invocation, sampled_params=sampled_params, **params)
+        keypoint_params = params if sampled_params is None else sampled_params.params_for("keypoints")
+        mask_params = params if sampled_params is None else sampled_params.params
+        if transformed.get("keypoints") is not None:
+            transformed["keypoints"] = self._apply_label_mapping_to_keypoints(
+                transformed["keypoints"], **keypoint_params
+            )
+        if self._semantic_mask_label_mappings:
+            self._apply_label_mapping_to_semantic_masks(transformed, **mask_params)
+        return transformed
+
 
 class ImageOnlyTransform(BasicTransform):
     """Transform applied to image (and volume) only. Does not transform masks, bboxes, or
     keypoints; use DualTransform for those.
+
+    Targets:
+        image, images, volume
     """
 
-    _targets = (Targets.IMAGE, Targets.VOLUME)
-
-    @property
-    def targets(self) -> dict[str, Callable[..., Any]]:
-        """Get mapping of target keys to their corresponding processing functions for
-        ImageOnlyTransform (image, images, volume, user_data).
-
-        Returns:
-            dict[str, Callable[..., Any]]: Dictionary mapping target keys to their processing functions.
-
-        """
-        return {
-            "image": self.apply,
-            "images": self.apply_to_images,
-            "volume": self.apply_to_volume,
-            "user_data": self.apply_to_user_data,
-        }
+    _targets = (Targets.IMAGE, Targets.IMAGES, Targets.VOLUME)
 
 
 class NoOp(DualTransform):
@@ -1830,7 +2079,7 @@ class NoOp(DualTransform):
     or in conditional pipelines.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -1884,24 +2133,8 @@ class NoOp(DualTransform):
     """
 
     _targets = ALL_TARGETS
+    _target_apply_methods: ClassVar[Mapping[str, str]] = {"volume": "apply_to_volume"}
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})  # NoOp passes all bbox types
-
-    @property
-    def targets(self) -> dict[str, Callable[..., Any]]:
-        """Return identity handlers that preserve spatial Tensor targets without the NumPy batch
-        dispatch inherited by `DualTransform` for the volume route.
-        """
-        return {
-            "image": self.apply,
-            "images": self.apply_to_images,
-            "mask": self.apply_to_mask,
-            "masks": self.apply_to_masks,
-            "mask3d": self.apply_to_mask3d,
-            "bboxes": self.apply_to_bboxes,
-            "keypoints": self.apply_to_keypoints,
-            "volume": self.apply_to_volume,
-            "user_data": self.apply_to_user_data,
-        }
 
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
         return keypoints
@@ -1929,18 +2162,20 @@ class NoOp(DualTransform):
 
 
 class Transform3D(DualTransform):
-    """Base class for all 3D transforms. Inherits from DualTransform; applies to volume data,
-    mask3d, keypoints. Override apply_to_volume and apply_to_mask3d.
+    """Base class for 3D transforms that apply to volume data and mask3d.
 
-    Transform3D inherits from DualTransform because 3D transforms can be applied to both
-    volume data and masks, similar to how 2D DualTransforms work with images and masks.
+    Concrete subclasses can declare keypoint support when they implement it.
 
     Targets:
+        volume, mask3d
+
+    Target layouts:
         volume: 3D numpy array of shape (D, H, W, C)
         mask3d: 3D numpy array of shape (D, H, W) or (D, H, W, C)
-        keypoints: 3D numpy array of shape (N, 3)
     """
 
+    _targets: tuple[Targets | str, ...] | Targets | str = (Targets.VOLUME, Targets.MASK3D)
+    _target_apply_methods: ClassVar[Mapping[str, str]] = {"volume": "apply_to_volume"}
     _sampling_spatial_rank = 3
 
     def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> VolumeType:
@@ -1984,15 +2219,6 @@ class Transform3D(DualTransform):
                 result[source_values == source_label, column_index] = target_label
         return result
 
-    @property
-    def targets(self) -> dict[str, Callable[..., Any]]:
-        return {
-            "volume": self.apply_to_volume,
-            "mask3d": self.apply_to_mask3d,
-            "keypoints": self.apply_to_keypoints,
-            "user_data": self.apply_to_user_data,
-        }
-
 
 class VolumeOnlyTransform(BasicTransform):
     """Provide a base for volume-intensity transforms that leave masks and keypoints untouched, keeping acquisition
@@ -2002,98 +2228,12 @@ class VolumeOnlyTransform(BasicTransform):
     `keypoints`. Compose therefore preserves those targets unchanged, which
     is appropriate for acquisition and photometric artifacts that do not alter
     label geometry.
+
+    Targets:
+        volume
     """
 
     _targets = (Targets.VOLUME,)
 
     def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> VolumeType:
         raise NotImplementedError
-
-    @property
-    def targets(self) -> dict[str, Callable[..., Any]]:
-        return {
-            "volume": self.apply_to_volume,
-            "user_data": self.apply_to_user_data,
-        }
-
-
-class CustomTransformsApplyMixin:
-    """Mixin that auto-registers custom apply_to_<X> methods as handlers for data key <X>.
-    Place before base in MRO so _set_keys discovers them.
-
-    Define methods named `apply_to_<key>` in your transform subclass; they are
-    discovered at init time and routed through the standard `apply_with_params`
-    pipeline. Custom targets receive the same parameters from `sample_parameters`, respect
-    the `p=` probability, and compose correctly with Compose and ReplayCompose.
-
-    Placement in inheritance list
-        Must come BEFORE the albumentations base class so MRO resolves
-        `_set_keys` first::
-
-            class MyTransform(CustomTransformsApplyMixin, A.DualTransform):
-                def apply_to_label(self, label, **params):
-                    return (label + params["factor']) % 4
-
-    Registration rules
-        Methods named `apply_to_<X>` are registered if they are:
-        - Defined in the concrete subclass or any class between it and this mixin in the MRO
-        - Not already covered by `self.targets` (built-ins take priority)
-        - Not `apply_to_user_data` (handled separately by the base)
-
-    Examples:
-        >>> import numpy as np
-        >>> import albumentations as A
-        >>> image = np.random.randint(0, 256, (64, 64, 3), dtype=np.uint8)
-        >>> mask = np.random.randint(0, 2, (64, 64), dtype=np.uint8)
-        >>>
-        >>> class Rotate90WithLabel(A.CustomTransformsApplyMixin, A.DualTransform):
-        ...     def sample_parameters(self, params, data, targets, sampling):
-        ...         return SampledParams(params={"k": 1})
-        ...     def apply(self, img, k=0, **p):
-        ...         return np.rot90(img, k)
-        ...     def apply_to_mask(self, mask, k=0, **p):
-        ...         return np.rot90(mask, k)
-        ...     def apply_to_label(self, label, k=0, **p):
-        ...         return (label + k) % 4
-        >>>
-        >>> transform = A.Compose([Rotate90WithLabel(p=1.0)])
-        >>> out = transform(image=image, mask=mask, label=0)
-        >>> out["label"]
-        1
-
-    """
-
-    _APPLY_PREFIX = "apply_to_"
-    _EXCLUDED_KEYS = frozenset({"user_data"})
-    _key2func: dict[str, Any]
-    _available_keys: set[str]
-
-    def _set_keys(self) -> None:
-        # Build _key2func from self.targets using base class
-        base_set_keys = cast("Callable[[Any], None]", BasicTransform.__dict__["_set_keys"])
-        base_set_keys(self)
-
-        # Search apply_to_<X> functions defined within the child class
-        for name, method in inspect.getmembers(self, predicate=inspect.ismethod):
-            if not name.startswith(self._APPLY_PREFIX):
-                continue
-            key = name[len(self._APPLY_PREFIX) :]
-            if key in self._EXCLUDED_KEYS:
-                continue
-            if key in self._key2func:  # built-in already registered
-                continue
-            if not self._is_user_defined(name):
-                continue
-            self._available_keys.add(key)
-            self._key2func[key] = method
-
-    def _is_user_defined(self, method_name: str) -> bool:
-        """True if method_name is defined on subclass or parents before mixin in MRO (not from albumentations base).
-        Used to register only user-defined apply_to_<X>.
-        """
-        for mro_class in type(self).__mro__:
-            if mro_class is CustomTransformsApplyMixin:
-                break
-            if method_name in mro_class.__dict__:
-                return True
-        return False

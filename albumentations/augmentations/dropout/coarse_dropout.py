@@ -54,7 +54,7 @@ class CoarseDropout(BaseDropout):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -227,7 +227,7 @@ class Erasing(BaseDropout):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -401,7 +401,7 @@ class ConstrainedCoarseDropout(BaseDropout):
             label field is used for filtering.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32

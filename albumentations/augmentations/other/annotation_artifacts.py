@@ -113,7 +113,7 @@ class AnnotationArtifacts(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32

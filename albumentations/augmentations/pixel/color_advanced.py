@@ -72,7 +72,7 @@ class ColorJitter(ImageOnlyTransform):
 
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -237,7 +237,7 @@ class ChromaticAberration(ImageOnlyTransform):
             Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -449,7 +449,7 @@ class PlanckianJitter(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -632,7 +632,7 @@ class RGBShift(AdditiveNoise):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -814,7 +814,7 @@ class HEStain(ImageOnlyTransform):
             Default: None.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Number of channels:
         3
@@ -1164,7 +1164,7 @@ class PhotoMetricDistort(ImageOnlyTransform):
         p (float): Probability of applying the overall transform. Default: `0.5`.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32

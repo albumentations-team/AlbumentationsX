@@ -60,6 +60,7 @@ def _non_default_witness(parameter_name: str) -> object:
         "save_key": lambda: "captured_replay",
         "seed": lambda: 137,
         "instance_binding": lambda: ("mask", "bboxes"),
+        "frame_binding": lambda: ("images", "frame_annotations"),
         "semantic_mask_label_mappings": lambda: {"HorizontalFlip": {0: 1, 1: 0}},
         "strict": lambda: True,
         "mask_interpolation": lambda: cv2.INTER_LINEAR,

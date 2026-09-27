@@ -91,7 +91,7 @@ class RandomSnow(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -242,7 +242,7 @@ class RandomGravel(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -392,7 +392,7 @@ class RandomRain(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -566,7 +566,7 @@ class RandomFog(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -733,7 +733,7 @@ class RandomSunFlare(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -975,7 +975,7 @@ class RandomShadow(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -1157,7 +1157,7 @@ class Spatter(ImageOnlyTransform):
         p (float): probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -1433,7 +1433,7 @@ class AtmosphericFog(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32

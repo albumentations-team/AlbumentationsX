@@ -106,7 +106,7 @@ class CopyAndPaste(DualTransform):
               the object has multiple keypoints.
 
     Targets:
-        image, mask, bboxes, keypoints
+        image, mask, masks, bboxes, keypoints
 
     Keypoints vs instance masks:
         When the pipeline supplies instance masks as `masks` (N, H, W) and
@@ -174,7 +174,7 @@ class CopyAndPaste(DualTransform):
 
     """
 
-    _targets = (Targets.IMAGE, Targets.MASK, Targets.BBOXES, Targets.KEYPOINTS)
+    _targets = (Targets.IMAGE, Targets.MASK, Targets.MASKS, Targets.BBOXES, Targets.KEYPOINTS)
 
     class InitSchema(BaseTransformInitSchema):
         min_visibility_after_paste: float
@@ -552,17 +552,15 @@ class CopyAndPaste(DualTransform):
             mask = np.ones((crop_h, crop_w), dtype=np.uint8)
         semantic_mask = item["semantic_mask"][y0:y1, x0:x1] if item.get("semantic_mask") is not None else None
 
-        local_bbox: np.ndarray | None = None
-        if bbox_px is not None:
-            local_bbox = bbox_px.copy()
+        local_bbox = None if bbox_px is None else bbox_px.copy()
+        if local_bbox is not None:
             local_bbox[0] -= x0
             local_bbox[1] -= y0
             local_bbox[2] -= x0
             local_bbox[3] -= y0
 
-        local_kp: np.ndarray | None = None
-        if kp_alb is not None and kp_alb.size > 0:
-            local_kp = kp_alb.copy()
+        local_kp = None if kp_alb is None or kp_alb.size == 0 else kp_alb.copy()
+        if local_kp is not None:
             local_kp[:, 0] -= x0
             local_kp[:, 1] -= y0
 

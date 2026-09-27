@@ -68,7 +68,7 @@ class Pad(DualTransform):
         p (float): probability of applying the transform. Default: 1.0.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -364,7 +364,7 @@ class PadIfNeeded(Pad):
         p (float): Probability of applying the transform. Default is 1.0.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32

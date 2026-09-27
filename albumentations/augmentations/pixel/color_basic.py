@@ -60,7 +60,7 @@ class RandomToneCurve(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -202,7 +202,7 @@ class HueSaturationValue(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -322,7 +322,7 @@ class Solarize(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -428,7 +428,7 @@ class Posterize(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -556,7 +556,7 @@ class Equalize(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -718,7 +718,7 @@ class RandomBrightnessContrast(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -891,7 +891,7 @@ class ExposureMatching(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -1047,7 +1047,7 @@ class CLAHE(ImageOnlyTransform):
           adaptiveness but can lead to an unnatural look if set too high.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -1126,7 +1126,7 @@ class RandomGamma(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -1244,7 +1244,7 @@ class AutoContrast(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32

@@ -91,7 +91,7 @@ class Normalize(ImageOnlyTransform):
         p (float): Probability of applying the transform. Defaults to 1.0.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -242,7 +242,7 @@ class InvertImg(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -312,7 +312,7 @@ class Sharpen(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -504,7 +504,7 @@ class Emboss(ImageOnlyTransform):
             Default: 0.5
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -618,7 +618,7 @@ class Enhance(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -752,7 +752,7 @@ class Superpixels(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -875,7 +875,7 @@ class RingingOvershoot(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -1019,7 +1019,7 @@ class UnsharpMask(ImageOnlyTransform):
         p (float): probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -1215,7 +1215,7 @@ class Dithering(ImageOnlyTransform):
         p(float): Probability of applying this transform. Default: 0.5
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -1421,7 +1421,7 @@ class Halftone(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -1521,7 +1521,7 @@ class LensFlare(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32

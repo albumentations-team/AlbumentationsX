@@ -93,7 +93,7 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -289,7 +289,7 @@ class PlasmaShadow(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -500,7 +500,7 @@ class Illumination(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -791,7 +791,7 @@ class Vignetting(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32

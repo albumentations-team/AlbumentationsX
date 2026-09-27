@@ -94,7 +94,7 @@ class Perspective(DualTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, mask, keypoints, bboxes, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -480,7 +480,7 @@ class Affine(DualTransform):
         p (float): probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, mask, keypoints, bboxes, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -872,7 +872,7 @@ class ShiftScaleRotate(Affine):
         p (float): probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, mask, keypoints, bboxes, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -1053,7 +1053,7 @@ class GridElasticDeform(DualTransform):
         p (float): Probability of applying the transform. Default: 1.0.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -1243,7 +1243,7 @@ class RandomGridShuffle(DualTransform):
             Default: 0.5
 
     Targets:
-        image, mask, keypoints, bboxes, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -1426,7 +1426,7 @@ class Morphological(DualTransform):
         p (float, optional): The probability of applying this transformation. Default is 0.5.
 
     Targets:
-        image, mask, keypoints, bboxes, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32

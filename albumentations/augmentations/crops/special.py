@@ -45,7 +45,7 @@ class CropNonEmptyMaskIfExists(BaseCrop):
         p (float): Probability of applying the transform. Default: 1.0.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -234,7 +234,7 @@ class RandomCropNearBBox(BaseCrop):
         p (float): probability of applying the transform. Default: 1.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -324,7 +324,7 @@ class RandomCropFromBorders(BaseCrop):
         p (float): Probability of applying the transform. Default: 1.0
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32

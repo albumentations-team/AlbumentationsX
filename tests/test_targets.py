@@ -1,109 +1,86 @@
-import re
-
+import numpy as np
 import pytest
 
 import albumentations as A
-from albumentations.core.type_definitions import ALL_TARGETS, Targets
-
-from .utils import get_primary_dual_transform_params, get_primary_image_only_transform_params
-
-
-def get_targets_from_methods(cls):
-    targets = {Targets.IMAGE, Targets.MASK, Targets.VOLUME, Targets.MASK3D}
-
-    has_bboxes_method = any(
-        hasattr(cls, attr) and getattr(cls, attr) is not getattr(A.DualTransform, attr, None)
-        for attr in ["apply_to_bbox", "apply_to_bboxes"]
-    )
-    if has_bboxes_method:
-        targets.add(Targets.BBOXES)
-
-    has_keypoints_method = any(
-        hasattr(cls, attr) and getattr(cls, attr) is not getattr(A.DualTransform, attr, None)
-        for attr in ["apply_to_keypoint", "apply_to_keypoints"]
-    )
-    if has_keypoints_method:
-        targets.add(Targets.KEYPOINTS)
-
-    return targets
-
-
-def extract_targets_from_docstring(cls):
-    # Access the class's docstring
-    if not (docstring := cls.__doc__):
-        return []  # Return an empty list if there's no docstring
-
-    # Regular expression to match the 'Targets:' section in the docstring
-    targets_pattern = r"Targets:\s*([^\n]+)"
-
-    # Search for the pattern in the docstring and extract targets if found
-    if matches := re.search(targets_pattern, docstring):
-        # Extract the targets string and split it by commas or spaces
-        targets = re.split(r"[,\s]+", matches[1])  # Using subscript notation instead of group()
-        return [target.strip() for target in targets if target.strip()]  # Remove any extra whitespace
-
-    return []  # Return an empty list if the 'Targets:' section isn't found
-
-
-DUAL_TARGETS = {
-    A.OverlayElements: (Targets.IMAGE, Targets.MASK),
-    A.Mosaic: (Targets.IMAGE, Targets.MASK, Targets.BBOXES, Targets.KEYPOINTS),
-    A.CopyAndPaste: (Targets.IMAGE, Targets.MASK, Targets.BBOXES, Targets.KEYPOINTS),
-    A.GuidedCoarseDropout: (Targets.IMAGE, Targets.MASK, Targets.BBOXES, Targets.KEYPOINTS),
-}
-
-
-str2target = {
-    "image": Targets.IMAGE,
-    "mask": Targets.MASK,
-    "bboxes": Targets.BBOXES,
-    "keypoints": Targets.KEYPOINTS,
-    "volume": Targets.VOLUME,
-    "mask3d": Targets.MASK3D,
-}
+from albumentations.core.type_definitions import Targets
+from tests.utils import get_primary_filtered_transform_params
 
 
 @pytest.mark.parametrize(
-    ["augmentation_cls", "params"],
-    get_primary_image_only_transform_params(),
-)
-def test_image_only(augmentation_cls, params):
-    aug = augmentation_cls(p=1, **params)
-    assert aug._targets == (Targets.IMAGE, Targets.VOLUME)
-
-
-@pytest.mark.parametrize(
-    ["augmentation_cls", "params"],
-    get_primary_dual_transform_params(
-        custom_arguments={
-            A.Crop: {"y_min": 0, "y_max": 10, "x_min": 0, "x_max": 10},
-            A.CenterCrop: {"height": 10, "width": 10},
-            A.CropNonEmptyMaskIfExists: {"height": 10, "width": 10},
-            A.RandomCrop: {"height": 10, "width": 10},
-            A.AtLeastOneBBoxRandomCrop: {"height": 10, "width": 10},
-            A.RandomResizedCrop: {"size": (10, 10)},
-            A.RandomSizedCrop: {"min_max_height": (4, 8), "size": (10, 10)},
-            A.RandomSizedBBoxSafeCrop: {"height": 10, "width": 10},
-            A.CropAndPad: {"px": 10},
-            A.Resize: {"height": 10, "width": 10},
-            A.XYMasking: {
-                "num_masks_x_range": (1, 3),
-                "num_masks_y_range": (1, 3),
-                "mask_x_length_range": (10, 10),
-                "mask_y_length_range": (10, 10),
-                "fill_mask": 1,
-                "fill": 0,
-            },
-            A.GridElasticDeform: {"num_grid_xy": (10, 10), "magnitude": 10},
-            A.Mosaic: {},
-        },
+    ["transform_cls", "params"],
+    get_primary_filtered_transform_params(
+        base_classes=(A.BasicTransform,),
+        except_augmentations={A.DualTransform, A.ImageOnlyTransform, A.Transform3D, A.VolumeOnlyTransform},
     ),
 )
-def test_dual(augmentation_cls, params):
-    aug = augmentation_cls(p=1, **params)
-    assert set(aug._targets) == set(DUAL_TARGETS.get(augmentation_cls, ALL_TARGETS))
-    assert set(aug._targets) <= get_targets_from_methods(augmentation_cls)
+def test_declared_targets_have_active_handlers(transform_cls: type[A.BasicTransform], params: dict) -> None:
+    transform = transform_cls(p=1, **params)
+    raw_targets = transform._targets
+    targets = raw_targets if isinstance(raw_targets, tuple) else (raw_targets,)
+    target_names = {target.name.lower() if isinstance(target, Targets) else target for target in targets}
+    stubs = {
+        A.BasicTransform.apply,
+        A.DualTransform.apply_to_bboxes,
+        A.DualTransform.apply_to_keypoints,
+        A.Transform3D.apply_to_volume,
+        A.VolumeOnlyTransform.apply_to_volume,
+    }
+    inherited_dependencies = {
+        A.BasicTransform.apply_to_images: "apply",
+        A.BasicTransform.apply_to_volume: "apply_to_images",
+        A.DualTransform.apply_to_mask: "apply",
+        A.DualTransform.apply_to_masks: "apply_to_mask",
+        A.DualTransform.apply_to_mask3d: "apply_to_mask",
+        A.Transform3D.apply_to_mask3d: "apply_to_volume",
+    }
 
-    targets_from_docstring = {str2target[target] for target in extract_targets_from_docstring(augmentation_cls)}
+    assert len(targets) == len(target_names)
+    assert "user_data" not in target_names
+    assert set(transform._key2func) == target_names
+    for target_name, handler in transform._key2func.items():
+        implementation = handler.__func__
+        while True:
+            assert implementation not in stubs, f"{transform_cls.__name__}.{target_name} resolves to a base-class stub"
+            dependency = inherited_dependencies.get(implementation)
+            if dependency is None:
+                break
+            implementation = getattr(transform, dependency).__func__
 
-    assert set(aug._targets) == targets_from_docstring
+
+@pytest.mark.parametrize(
+    ("base_cls", "target"),
+    [
+        (A.BasicTransform, Targets.IMAGES),
+        (A.BasicTransform, Targets.VOLUME),
+        (A.DualTransform, Targets.MASK),
+        (A.DualTransform, Targets.MASKS),
+        (A.DualTransform, Targets.MASK3D),
+        (A.Transform3D, Targets.MASK3D),
+    ],
+)
+def test_declaration_check_rejects_inherited_wrapper_around_stub(base_cls, target) -> None:
+    class BrokenTransform(base_cls):
+        _targets = (target,)
+
+    with pytest.raises(AssertionError, match="resolves to a base-class stub"):
+        test_declared_targets_have_active_handlers(BrokenTransform, {})
+
+
+@pytest.mark.parametrize("target", [Targets.IMAGE, Targets.IMAGES])
+def test_image_and_collection_targets_use_independent_inherited_routes(target: Targets) -> None:
+    class ImageRouteOnly(A.BasicTransform):
+        _targets = (target,)
+
+        def apply(self, image, **params):
+            return 255 - image
+
+    test_declared_targets_have_active_handlers(ImageRouteOnly, {})
+    transform = ImageRouteOnly(p=1)
+    images = np.arange(2 * 8 * 12 * 3, dtype=np.uint8).reshape(2, 8, 12, 3)
+    name = target.name.lower()
+    source = images[0] if target is Targets.IMAGE else images
+
+    result = A.Compose([transform], strict=True, telemetry=False)(**{name: source})
+
+    assert set(transform._key2func) == {name}
+    np.testing.assert_array_equal(result[name], 255 - source)

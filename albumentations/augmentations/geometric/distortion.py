@@ -282,7 +282,7 @@ class ElasticTransform(BaseRemapTransform):
         p (float): Probability of applying the transform.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -461,6 +461,7 @@ class ElasticTransform(BaseRemapTransform):
             params=runtime_params,
             target_params=sampled_params.target_params,
             target_schema=sampled_params.target_schema,
+            frame_indices=sampled_params.frame_indices,
         )
         return super().apply_with_params(runtime_sampled_params, *args, **kwargs)
 
@@ -516,7 +517,7 @@ class PiecewiseAffine(BaseDistortion):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, mask, keypoints, bboxes, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -667,7 +668,7 @@ class OpticalDistortion(BaseDistortion):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -797,7 +798,7 @@ class GridDistortion(BaseDistortion):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -972,7 +973,7 @@ class ThinPlateSpline(BaseDistortion):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image, mask, keypoints, bboxes, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -1148,7 +1149,7 @@ class WaterRefraction(BaseDistortion):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32
@@ -1295,7 +1296,7 @@ class PixelSpread(BaseDistortion):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32

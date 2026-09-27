@@ -90,7 +90,7 @@ class Blur(ImageOnlyTransform):
           reduce noise but also reduce image detail.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -216,7 +216,7 @@ class MotionBlur(Blur):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image, volume
+        image, images, volume
 
     Examples of angle vs direction:
         1. Horizontal motion (angle=0°):
@@ -474,7 +474,7 @@ class MedianBlur(Blur):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -618,7 +618,7 @@ class ModeFilter(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -730,7 +730,7 @@ class GaussianBlur(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -1034,7 +1034,7 @@ class GlassBlur(ImageOnlyTransform):
             Default: 0.5
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -1400,7 +1400,7 @@ class AdvancedBlur(ImageOnlyTransform):
         https://arxiv.org/abs/2107.10833
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -1555,7 +1555,7 @@ class Defocus(ImageOnlyTransform):
             Default: 0.5
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32
@@ -1705,7 +1705,7 @@ class ZoomBlur(ImageOnlyTransform):
         p (float): probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume
 
     Image types:
         uint8, float32

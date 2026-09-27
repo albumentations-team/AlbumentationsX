@@ -49,7 +49,7 @@ class MaskDropout(DualTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, mask3d
 
     Image types:
         uint8, float32

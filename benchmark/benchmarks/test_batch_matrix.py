@@ -93,6 +93,10 @@ IMAGE_BATCH_TRANSFORMS: Mapping[str, BatchSpec] = {
             p=1.0,
         ),
     ),
+    "uniform_temporal_subsample": BatchSpec(
+        lambda: albumentations.UniformTemporalSubsample(num_frames=8, p=1.0),
+        batch_sizes=(4, 8, 16),
+    ),
     "kspace_spike_noise": BatchSpec(
         lambda: albumentations.KSpaceSpikeNoise(
             num_spikes_range=(2, 2),

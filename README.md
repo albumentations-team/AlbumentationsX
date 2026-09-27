@@ -309,11 +309,11 @@ Spatial-level transforms will simultaneously change both an input image as well 
 | [BBoxSubsetSafeRandomCrop](https://albumentations.ai/explore/transform/BBoxSubsetSafeRandomCrop/) | ✓     | ✓      | ✓    | ✓     | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [CenterCrop](https://albumentations.ai/explore/transform/CenterCrop/)                             | ✓     | ✓      | ✓    | ✓     | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [CoarseDropout](https://albumentations.ai/explore/transform/CoarseDropout/)                       | ✓     | ✓      | ✓    | ✓     | ✓            |              | ✓         | ✓      | ✓      |
-| [ConstrainedCoarseDropout](https://albumentations.ai/explore/transform/ConstrainedCoarseDropout/) | ✓     | ✓      | ✓    | ✓     | ✓            |              | ✓         | ✓      | ✓      |
+| [ConstrainedCoarseDropout](https://albumentations.ai/explore/transform/ConstrainedCoarseDropout/) | ✓     |        | ✓    |       | ✓            |              | ✓         | ✓      | ✓      |
 | [CopyAndPaste](https://albumentations.ai/explore/transform/CopyAndPaste/)                         | ✓     |        | ✓    | ✓     | ✓            |              | ✓         |        |        |
 | [Crop](https://albumentations.ai/explore/transform/Crop/)                                         | ✓     | ✓      | ✓    | ✓     | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [CropAndPad](https://albumentations.ai/explore/transform/CropAndPad/)                             | ✓     | ✓      | ✓    | ✓     | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [CropNonEmptyMaskIfExists](https://albumentations.ai/explore/transform/CropNonEmptyMaskIfExists/) | ✓     | ✓      | ✓    | ✓     | ✓            | ✓            | ✓         | ✓      | ✓      |
+| [CropNonEmptyMaskIfExists](https://albumentations.ai/explore/transform/CropNonEmptyMaskIfExists/) | ✓     |        | ✓    |       | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [D4](https://albumentations.ai/explore/transform/D4/)                                             | ✓     | ✓      | ✓    | ✓     | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [ElasticTransform](https://albumentations.ai/explore/transform/ElasticTransform/)                 | ✓     | ✓      | ✓    | ✓     | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [Erasing](https://albumentations.ai/explore/transform/Erasing/)                                   | ✓     | ✓      | ✓    | ✓     | ✓            |              | ✓         | ✓      | ✓      |
@@ -327,7 +327,7 @@ Spatial-level transforms will simultaneously change both an input image as well 
 | [Lambda](https://albumentations.ai/explore/transform/Lambda/)                                     | ✓     | ✓      | ✓    | ✓     | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [LetterBox](https://albumentations.ai/explore/transform/LetterBox/)                               | ✓     | ✓      | ✓    | ✓     | ✓            | ✓            | ✓         | ✓      | ✓      |
 | [LongestMaxSize](https://albumentations.ai/explore/transform/LongestMaxSize/)                     | ✓     | ✓      | ✓    | ✓     | ✓            | ✓            | ✓         | ✓      | ✓      |
-| [MaskDropout](https://albumentations.ai/explore/transform/MaskDropout/)                           | ✓     | ✓      | ✓    | ✓     | ✓            |              | ✓         | ✓      | ✓      |
+| [MaskDropout](https://albumentations.ai/explore/transform/MaskDropout/)                           | ✓     |        | ✓    |       | ✓            |              | ✓         | ✓      | ✓      |
 | [Morphological](https://albumentations.ai/explore/transform/Morphological/)                       | ✓     | ✓      | ✓    | ✓     | ✓            |              | ✓         | ✓      | ✓      |
 | [Mosaic](https://albumentations.ai/explore/transform/Mosaic/)                                     | ✓     |        | ✓    | ✓     | ✓            | ✓            | ✓         |        |        |
 | [NoOp](https://albumentations.ai/explore/transform/NoOp/)                                         | ✓     | ✓      | ✓    | ✓     | ✓            | ✓            | ✓         | ✓      | ✓      |

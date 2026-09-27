@@ -237,21 +237,38 @@ of instance masks per frame may vary. Empty mappings represent frames without an
 binding with instance binding, place an `instances` list in each frame mapping; an empty frame may
 use `{}` or `{"instances": []}`. Each instance uses the schema described above.
 
-Each frame owns its processor sessions, label encoders, channel restoration, and instance count
-in one invocation-local record. This preserves each frame's label values and input container type.
-When a sampler needs annotations from several frames, their label columns are encoded into a
-shared sampling vocabulary. Target handlers and final decoding use the frame's own processors.
+Compose flattens frame dictionaries once at entry and restores them at exit. Bboxes and keypoints
+carry a numeric `frame_id` column before their encoded labels; bound `instance_id` remains the last
+column. One processor session per annotation type encodes labels across the video. Output dictionaries
+restore each source frame's label container, optional channel axis, and NumPy or CPU Tensor layout.
 
-Frame annotation targets accept the same NumPy and CPU Tensor layouts as top-level targets.
+Instance masks are stacked as `(N, H, W, C)`, with
+separate `frame_id` and `instance_id` arrays. The number of objects can vary by frame. Video instance
+binding uses this representation even when the constructor specifies packed `mask` binding.
+
+Temporal transforms sample `frame_indices` as ordinary `SampledParams.params`. Their
+`apply_to_images`, `apply_to_masks`, `apply_to_bboxes`, and `apply_to_keypoints` select the arrays or
+rows and update ownership explicitly. Selecting old frame `i` into output position `j` assigns
+`frame_id=j`; repeated frames create independent copies and distinct instance IDs. Annotation rows
+can omit empty frames, so their frame IDs need not cover every output position.
+
+Handlers receive arrays plus ownership parameters. When ownership changes, image and mask handlers
+return `TargetResult`; its type parameter preserves the array type, including the `StackedMasks4D`
+brand. Ordinary spatial handlers return arrays. Mask results carry `frame_ids` and
+optional `instance_ids`. Image results carry `source_frame_ids`, identifying the original input frames
+independently of their current output positions. Compose retains returned IDs after all handlers finish
+and uses selected image source IDs to restore
+empty frame dictionaries and their original public layouts. The generic dispatcher does not recognize
+`frame_indices` or select frame dictionaries.
+
+Transforms declare ownership parameters in `_runtime_generated_params` and take them as explicit
+handler arguments. An unbound call supplies `None`. These parameters belong to the current invocation
+and are never written into sampled parameters or replay payloads.
+
 Nested Tensors are validated before sampling. Bboxes and keypoints use the root annotation bridge;
-spatial targets use each leaf's existing native Tensor or NumPy fallback route. Frame selection carries
-their restoration state with each selected frame. Nested containers use the root's binding policy at each annotation
-boundary; filtering one frame never marks another frame's processor as filtered.
-
-The frame count must match `images`. A transform uses the same sampled spatial parameters for the
-images and annotations it processes. The generic sampled-parameter path can select frame indices
-and applies that selection to the configured image/annotation pair. This binding change adds no
-temporal transform; it supplies the infrastructure for one to be implemented separately.
+spatial collections use each leaf's native Tensor or NumPy fallback route. Nested containers use the
+root binding policy to filter flattened annotations. Keypoint label swaps stay within a frame or,
+when instance binding is active, within each instance.
 
 An `additional_targets` alias to `images` or frame-bound `masks` is checked against the canonical
 collection's frame count and follows its frame selection. `frame_annotations` has no alias route.

@@ -102,26 +102,18 @@ def test_legacy_flat_parameter_payload_is_rejected() -> None:
 
 def test_frame_indices_are_serialized_only_when_selected() -> None:
     ordinary = SampledParams(params={}).to_dict()
-    selected = SampledParams(params={}, frame_indices=(2, 0, 2)).to_dict()
+    selected = SampledParams(params={"frame_indices": (2, 0, 2)}).to_dict()
 
-    assert "frame_indices" not in ordinary
-    assert selected["frame_indices"] == [2, 0, 2]
-    assert SampledParams.from_dict(selected).frame_indices == (2, 0, 2)
-
-
-def test_frame_indices_reject_negative_and_boolean_values() -> None:
-    with pytest.raises(SampledParamsError, match="non-negative integers"):
-        SampledParams(params={}, frame_indices=(-1,))
-    with pytest.raises(SampledParamsError, match="non-negative integers"):
-        SampledParams(params={}, frame_indices=(True,))
+    assert "frame_indices" not in ordinary["params"]
+    assert selected["params"]["frame_indices"] == (2, 0, 2)
+    assert SampledParams.from_dict(selected).params_for("images")["frame_indices"] == (2, 0, 2)
 
 
-@pytest.mark.parametrize("frame_indices", [3, "123", {"0": 1}, (0, 1), True])
-def test_frame_indices_deserialization_requires_a_list(frame_indices: object) -> None:
+def test_retired_frame_indices_field_is_rejected() -> None:
     payload = SampledParams(params={}).to_dict()
-    payload["frame_indices"] = frame_indices
+    payload["frame_indices"] = [0, 1]
 
-    with pytest.raises(SampledParamsError, match=r"frame_indices.*list"):
+    with pytest.raises(SampledParamsError, match="unsupported or legacy"):
         SampledParams.from_dict(payload)
 
 

@@ -30,6 +30,7 @@ from tests.helpers.contract_data import (
     make_mosaic_context,
     make_overlay_context,
     make_reference_context,
+    make_target_image_batch_data,
     make_volume_data,
 )
 
@@ -90,6 +91,7 @@ class TransformContractCase:
 
 
 _BASE_CASE_SPECS: list[list[Any]] = [
+    [A.UniformTemporalSubsample, {"num_frames": 3}],
     [
         A.ImageCompression,
         {
@@ -1372,6 +1374,7 @@ _EXACT_TRANSFORMS = {
     A.Resize,
     A.Resize3D,
     A.Transpose,
+    A.UniformTemporalSubsample,
     A.VerticalFlip,
 }
 
@@ -1437,6 +1440,8 @@ def _case_data(
         case = (make_grayscale_image_data, make_empty_context)
     elif transform_cls is A.FromFloat:
         case = (make_float_image_data, make_empty_context)
+    elif transform_cls is A.UniformTemporalSubsample:
+        case = (make_target_image_batch_data, make_empty_context)
     elif transform_cls is A.Equalize and init_kwargs.get("mask_params"):
         case = (make_mask_data, make_empty_context)
     else:

@@ -442,6 +442,7 @@ class DataProcessor(ABC, Generic[ParamsT]):
         if not self.params.label_fields:
             return data
 
+        processed = False
         for data_name in set(self.data_fields) & set(data.keys()):
             # Skip empty sequences (will be converted to proper empty arrays in check_and_convert)
             if isinstance(data[data_name], Sequence) and len(data[data_name]) == 0:
@@ -449,7 +450,10 @@ class DataProcessor(ABC, Generic[ParamsT]):
             if isinstance(data[data_name], np.ndarray) and not data[data_name].size:
                 continue
             data[data_name] = self._process_label_fields(data, data_name)
-
+            processed = True
+        if processed:
+            for label_field in self.params.label_fields:
+                del data[label_field]
         return data
 
     def _process_label_fields(self, data: dict[str, Any], data_name: str) -> np.ndarray:
@@ -470,8 +474,6 @@ class DataProcessor(ABC, Generic[ParamsT]):
         result[:, : data_array.shape[1]] = data_array
         for index, encoded_column in enumerate(encoded_columns, start=data_array.shape[1]):
             result[:, index] = encoded_column[:, 0]
-        for label_field in label_fields:
-            del data[label_field]
         return result
 
     def _validate_label_field_length(self, data: dict[str, Any], data_name: str, label_field: str) -> None:

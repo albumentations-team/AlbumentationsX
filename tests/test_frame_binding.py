@@ -704,6 +704,32 @@ def test_frame_instances_require_instance_binding() -> None:
         compose(images=_clip(frame_count=1), frame_annotations=[{"instances": []}])
 
 
+@pytest.mark.parametrize("binding", [["bboxes", "keypoints"], ["mask", "bboxes"]])
+@pytest.mark.parametrize("target", ["mask", "masks", "bboxes", "keypoints"])
+@pytest.mark.parametrize("alias", [False, True])
+def test_frame_instance_binding_rejects_targets_outside_instances(binding, target, alias) -> None:
+    name = "annotation" if alias else target
+    compose = A.Compose(
+        [A.HorizontalFlip(p=1)],
+        bbox_params=A.BboxParams(coord_format="pascal_voc"),
+        keypoint_params=A.KeypointParams(coord_format="xy"),
+        instance_binding=binding,
+        additional_targets={name: target} if alias else None,
+        frame_binding=["images", "frame_annotations"],
+        telemetry=False,
+    )
+    values = {
+        "mask": np.zeros((8, 12), dtype=np.uint8),
+        "masks": np.zeros((1, 8, 12), dtype=np.uint8),
+        "bboxes": [[1, 2, 4, 5]],
+        "keypoints": [[1, 2]],
+    }
+    annotations = {"instances": [], name: values[target]}
+
+    with pytest.raises(ValueError, match="Put bound frame objects in an `instances` list"):
+        compose(images=_clip(frame_count=1), frame_annotations=[annotations])
+
+
 def test_frame_annotation_aliases_share_configured_labels() -> None:
     compose = A.Compose(
         [A.UniformTemporalSubsample(num_frames=3), A.HorizontalFlip(p=1)],

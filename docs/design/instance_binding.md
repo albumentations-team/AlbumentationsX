@@ -236,6 +236,8 @@ configured label fields. Video masks use the same number of channels across fram
 of instance masks per frame may vary. Empty mappings represent frames without annotations. To combine frame
 binding with instance binding, place an `instances` list in each frame mapping; an empty frame may
 use `{}` or `{"instances": []}`. Each instance uses the schema described above.
+With instance binding, frame-level spatial targets outside `instances` are rejected, including
+aliases; other frame-level metadata is retained.
 
 Compose flattens frame dictionaries once at entry and restores them at exit. Bboxes and keypoints
 carry a numeric `frame_id` column before their encoded labels; bound `instance_id` remains the last

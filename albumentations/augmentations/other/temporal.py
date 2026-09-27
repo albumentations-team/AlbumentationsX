@@ -33,7 +33,8 @@ class UniformTemporalSubsample(BasicTransform):
         uint8, float32
 
     Note:
-        - Supply NumPy videos as (T, H, W, C) or (T, H, W), and CPU Tensors as (T, C, H, W).
+        - The `images` target is the temporal sequence. Supply NumPy videos as (T, H, W, C)
+          or (T, H, W), and CPU Tensors as (T, C, H, W).
         - With at least two output frames, both endpoints are included. Intermediate evenly spaced
           positions are rounded down to frame indices.
         - Use Compose(frame_binding=["images", "masks"]) for one semantic mask per frame, or
@@ -52,6 +53,21 @@ class UniformTemporalSubsample(BasicTransform):
         >>> result = transform(images=video, masks=masks)
         >>> result["images"].shape, result["masks"].shape
         ((8, 64, 96, 3), (8, 64, 96))
+
+        Preprocess a video for classification with temporal selection, spatial augmentation,
+        and normalization:
+
+        >>> preprocess = A.Compose(
+        ...     [
+        ...         A.UniformTemporalSubsample(num_frames=8),
+        ...         A.RandomResizedCrop(size=(224, 224), scale=(0.8, 1.0)),
+        ...         A.HorizontalFlip(p=0.5),
+        ...         A.Normalize(mean=(0.45, 0.45, 0.45), std=(0.225, 0.225, 0.225)),
+        ...     ],
+        ...     seed=137,
+        ... )
+        >>> preprocess(images=video)["images"].shape
+        (8, 224, 224, 3)
 
     """
 

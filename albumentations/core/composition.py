@@ -2427,23 +2427,23 @@ class Compose(BaseCompose, HubMixin):
                 raise TypeError(f"frame_annotations[{index}] must be a mapping")
             if "image" in frame or "images" in frame:
                 raise ValueError(f"frame_annotations[{index}] cannot contain `image` or `images`")
-            self._validate_frame_instances(frame)
-            targets = []
-            for name, value in frame.items():
-                canonical = self._additional_targets.get(name, name)
-                if isinstance(value, torch.Tensor) and canonical in TENSOR_TARGETS:
-                    validate_tensor_input(value, f"frame_annotations[{index}].{name}", canonical)
-                    targets.append((name, canonical))
+            targets = self._validate_frame_targets(frame, index)
             if targets:
-                frame_targets.append((index, tuple(targets)))
+                frame_targets.append((index, targets))
         return tuple(frame_targets)
 
-    def _validate_frame_instances(self, frame: Mapping[str, Any]) -> None:
-        if self._instance_binding is None:
-            if "instances" in frame:
-                raise ValueError("frame `instances` requires Compose(instance_binding=...)")
-        elif "instances" not in frame and self._instance_binding.intersection(frame):
-            raise ValueError("Put bound frame objects in an `instances` list")
+    def _validate_frame_targets(self, frame: Mapping[str, Any], index: int) -> tuple[tuple[str, str], ...]:
+        if "instances" in frame and self._instance_binding is None:
+            raise ValueError("frame `instances` requires Compose(instance_binding=...)")
+        targets = []
+        for name, value in frame.items():
+            canonical = self._additional_targets.get(name, name)
+            if self._instance_binding and canonical in {"mask", "masks", "bboxes", "keypoints"}:
+                raise ValueError("Put bound frame objects in an `instances` list")
+            if isinstance(value, torch.Tensor) and canonical in TENSOR_TARGETS:
+                validate_tensor_input(value, f"frame_annotations[{index}].{name}", canonical)
+                targets.append((name, canonical))
+        return tuple(targets)
 
     def _apply_children(self, data: dict[str, Any], invocation: InvocationContext | None) -> dict[str, Any]:
         """Runs child nodes and root policy in order, reusing the active invocation and resynchronizing bound instances

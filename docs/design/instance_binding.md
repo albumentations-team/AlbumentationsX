@@ -243,6 +243,9 @@ Compose flattens frame dictionaries once at entry and restores them at exit. Bbo
 carry a numeric `frame_id` column before their encoded labels; bound `instance_id` remains the last
 column. One processor session per annotation type encodes labels across the video. Output dictionaries
 restore each source frame's label container, optional channel axis, and NumPy or CPU Tensor layout.
+Label buffers belong to individual coordinate target names, so aliases in different frames retain
+their own labels and row counts. Label counts are checked per frame at entry. If targets in one
+frame share a label field, their surviving labels must agree; conflicting outputs raise `ValueError`.
 
 Instance masks are stacked as `(N, H, W, C)`, with
 separate `frame_id` and `instance_id` arrays. The number of objects can vary by frame. Video instance

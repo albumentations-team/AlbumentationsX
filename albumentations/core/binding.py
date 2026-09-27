@@ -44,6 +44,7 @@ class FrameBinding:
     routes: dict[str, str] = field(default_factory=dict)
     rows: dict[str, RowIds] = field(default_factory=dict)
     frame_columns: dict[str, int] = field(default_factory=dict)
+    labels: dict[str, dict[str, Any]] | None = None
     instance_frames: np.ndarray | None = None
     handlers: dict[object, dict[str, Callable[..., Any]]] = field(default_factory=dict)
 

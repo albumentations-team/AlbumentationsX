@@ -2704,8 +2704,25 @@ class Compose(BaseCompose, HubMixin):
                 )
                 data[name] = self._attach_frame_ids(data[name], row_owners)
                 state.frame_columns[name] = -len(processor.params.label_fields or []) - 1
-                for label in processor.params.label_fields or []:
-                    data[label] = [item for index, _ in entries for item in frames[index].get(label, [])]
+                if processor.params.label_fields:
+                    self._flatten_frame_labels(state, processor, name, entries)
+
+    @staticmethod
+    def _flatten_frame_labels(
+        state: FrameBinding,
+        processor: BboxProcessor | KeypointsProcessor,
+        name: str,
+        entries: list[tuple[int, Any]],
+    ) -> None:
+        if state.labels is None:
+            state.labels = {}
+        labels = state.labels[name] = {}
+        for field in processor.params.label_fields or []:
+            values = labels[field] = []
+            for index, coordinates in entries:
+                frame_labels = state.frames[index].get(field, [])
+                processor.validate_label_field_length(len(coordinates), len(frame_labels), name, field)
+                values.extend(frame_labels)
 
     def _flatten_frame_masks(
         self,
@@ -2876,8 +2893,12 @@ class Compose(BaseCompose, HubMixin):
             if self._frame_binding == ("images", "frame_annotations")
             else processors.values()
         )
+        labels = None if invocation is None or invocation.frame_state is None else invocation.frame_state.labels
         for processor in active:
-            processor.ensure_data_valid(data)
+            if labels is None:
+                processor.ensure_data_valid(data)
+            else:
+                processor.label_data = labels
         for processor in active:
             processor.preprocess(data)
 
@@ -3089,7 +3110,7 @@ class Compose(BaseCompose, HubMixin):
                     instance for instance, owner in zip(instances, owners, strict=True) if owner == index
                 ]
         else:
-            self._restore_frame_coordinates(data, state, frames, label_names)
+            self._restore_frame_coordinates(data, state, frames)
             self._restore_frame_masks(data, state, frames)
         data["frame_annotations"] = frames
 
@@ -3098,31 +3119,52 @@ class Compose(BaseCompose, HubMixin):
         data: dict[str, Any],
         state: FrameBinding,
         frames: list[dict[str, Any]],
-        label_names: set[str],
     ) -> None:
-        labels = {field: data.pop(field) for field in label_names}
         for name in state.frame_columns:
             owners = state.rows[name].frame_ids
             values = data.pop(name)
             canonical = self._additional_targets.get(name, name)
+            labels = None if state.labels is None else state.labels.get(name)
             for index, source in enumerate(state.sources):
                 original = state.frames[source]
                 if name not in original:
                     continue
                 selected = owners == index
-                value = values[selected]
-                if isinstance(original[name], torch.Tensor):
-                    value = numpy_to_tensor_annotation(value, canonical)
-                frames[index][name] = value
-                for field in self.processors[canonical].params.label_fields or []:
-                    label_values = labels[field]
+                frames[index][name] = self._restore_frame_coordinate_layout(values[selected], original[name], canonical)
+                for field, label_values in () if labels is None else labels.items():
                     selected_labels = [value for value, keep in zip(label_values, selected, strict=True) if keep]
+                    if field in frames[index]:
+                        previous_labels = frames[index][field]
+                        if isinstance(previous_labels, np.ndarray):
+                            previous_labels = previous_labels.tolist()
+                        if previous_labels != selected_labels:
+                            raise ValueError(
+                                f"Frame {index} label field `{field}` has conflicting outputs across targets",
+                            )
+                        continue
                     original_labels = original.get(field)
                     frames[index][field] = (
                         np.asarray(selected_labels, dtype=original_labels.dtype)
                         if isinstance(original_labels, np.ndarray)
                         else selected_labels
                     )
+
+    @staticmethod
+    def _restore_frame_coordinate_layout(
+        value: np.ndarray,
+        original: Any,
+        canonical: str,
+    ) -> np.ndarray | torch.Tensor:
+        if not len(value):
+            if isinstance(original, (np.ndarray, torch.Tensor)) and original.ndim == 2:
+                width = original.shape[1]
+            elif len(original):
+                width = len(original[0])
+            else:
+                width = value.shape[1]
+            if value.shape[1] != width:
+                value = np.empty((0, width), dtype=value.dtype)
+        return numpy_to_tensor_annotation(value, canonical) if isinstance(original, torch.Tensor) else value
 
     def _restore_frame_masks(
         self,

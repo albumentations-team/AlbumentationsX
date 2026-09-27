@@ -14,7 +14,7 @@ import numpy as np
 import torch
 
 import albumentations as A
-from albumentations.core.utils import get_volume_shape
+from albumentations.core.utils import get_volume_shape, get_volumes_shape
 from tests.helpers.contract_data import (
     TARGET_VOLUME_SHAPE,
     ContractDataFactory,
@@ -32,6 +32,7 @@ from tests.helpers.contract_data import (
     make_target_obb_data,
     make_target_readonly_image_mask_data,
     make_target_volume_data,
+    make_target_volumes_masks3d_data,
 )
 
 if TYPE_CHECKING:
@@ -171,6 +172,31 @@ def _assert_volume_shape(case: TransformContractCase, source: dict[str, Any], re
     assert get_volume_shape(volume) == get_volume_shape(source["volume"])
 
 
+def _assert_volumes_shape(case: TransformContractCase, source: dict[str, Any], result: dict[str, Any]) -> None:
+    volumes = result["volumes"]
+    assert volumes.ndim == 5
+    assert volumes.shape[0] == source["volumes"].shape[0]
+    assert get_volumes_shape(volumes) == get_volumes_shape(source["volumes"])
+
+
+def _assert_volumes_masks3d(
+    case: TransformContractCase,
+    source: dict[str, Any],
+    result: dict[str, Any],
+) -> None:
+    volumes = result["volumes"]
+    masks3d = result["masks3d"]
+    assert volumes.ndim == 5
+    assert masks3d.ndim in {4, 5}
+    assert len(volumes) == len(source["volumes"])
+    assert len(masks3d) == len(source["masks3d"])
+    assert get_volumes_shape(volumes) == get_volumes_shape(masks3d)
+    if not issubclass(case.transform_cls, A.Transform3D):
+        assert get_volumes_shape(volumes)[0] == get_volumes_shape(source["volumes"])[0]
+    assert volumes.dtype == source["volumes"].dtype
+    assert masks3d.dtype == source["masks3d"].dtype
+
+
 def _primary_image(data_factory: ContractDataFactory, rng: np.random.Generator) -> np.ndarray:
     image = data_factory(rng)["image"]
     return image if image.ndim == 3 else image[..., None]
@@ -187,6 +213,12 @@ def _images_from_primary_data(data_factory: ContractDataFactory, rng: np.random.
 def _volume_from_primary_data(data_factory: ContractDataFactory, rng: np.random.Generator) -> dict[str, Any]:
     depth = TARGET_VOLUME_SHAPE[0]
     return {"volume": np.stack([_primary_image(data_factory, rng) for _ in range(depth)])}
+
+
+def _volumes_from_primary_data(data_factory: ContractDataFactory, rng: np.random.Generator) -> dict[str, Any]:
+    depth = TARGET_VOLUME_SHAPE[0]
+    volumes = [np.stack([_primary_image(data_factory, rng) for _ in range(depth)]) for _ in range(2)]
+    return {"volumes": np.stack(volumes)}
 
 
 def _assert_masks(case: TransformContractCase, source: dict[str, Any], result: dict[str, Any]) -> None:
@@ -271,6 +303,14 @@ TARGET_CONTRACT_PROFILES = (
         required_targets=frozenset({"volume", "mask3d"}),
         data_factory=make_target_volume_data,
         assert_result=_assert_volume_mask3d,
+        channel_count=3,
+    ),
+    TargetProfile(
+        profile_id="volumes-masks3d",
+        required_targets=frozenset({"volumes", "masks3d"}),
+        data_factory=make_target_volumes_masks3d_data,
+        assert_result=_assert_volumes_masks3d,
+        cost=ProfileCost.EXTENDED,
         channel_count=3,
     ),
     TargetProfile(
@@ -378,6 +418,13 @@ IMAGE_ONLY_TENSOR_TARGET_PROFILES = (
         data_factory=None,
         assert_result=_assert_volume_shape,
         primary_data_adapter=_volume_from_primary_data,
+    ),
+    TargetProfile(
+        profile_id="volumes-batch",
+        required_targets=frozenset({"volumes"}),
+        data_factory=None,
+        assert_result=_assert_volumes_shape,
+        primary_data_adapter=_volumes_from_primary_data,
     ),
 )
 

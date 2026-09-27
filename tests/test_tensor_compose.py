@@ -88,12 +88,15 @@ class _TensorSubclass(torch.Tensor):
         ("image", torch.zeros((3, 11, 13), dtype=torch.uint8)),
         ("images", torch.zeros((2, 3, 11, 13), dtype=torch.float32)),
         ("volume", torch.zeros((3, 5, 11, 13), dtype=torch.uint8)),
+        ("volumes", torch.zeros((2, 3, 5, 11, 13), dtype=torch.uint8)),
         ("mask", torch.zeros((11, 13), dtype=torch.int16)),
         ("mask", torch.zeros((2, 11, 13), dtype=torch.float32)),
         ("masks", torch.zeros((2, 11, 13), dtype=torch.uint8)),
         ("masks", torch.zeros((2, 3, 11, 13), dtype=torch.int16)),
         ("mask3d", torch.zeros((5, 11, 13), dtype=torch.uint8)),
         ("mask3d", torch.zeros((2, 5, 11, 13), dtype=torch.float32)),
+        ("masks3d", torch.zeros((2, 5, 11, 13), dtype=torch.uint8)),
+        ("masks3d", torch.zeros((2, 1, 5, 11, 13), dtype=torch.float32)),
     ],
 )
 def test_noop_preserves_supported_tensor_object(target: str, value: torch.Tensor) -> None:
@@ -108,6 +111,7 @@ def test_noop_preserves_supported_tensor_object(target: str, value: torch.Tensor
         ("mask", (11, 13)),
         ("masks", (2, 11, 13)),
         ("mask3d", (5, 11, 13)),
+        ("masks3d", (2, 5, 11, 13)),
     ],
 )
 @pytest.mark.parametrize("dtype", [torch.uint8, torch.int16, torch.float32])
@@ -158,6 +162,8 @@ def test_tensor_mask_crop_fallback_preserves_every_accepted_dtype_exactly(target
     [
         ("images", torch.zeros((3, 11, 13), dtype=torch.uint8), "must have shape"),
         ("volume", torch.zeros((5, 11, 13), dtype=torch.uint8), "must have shape"),
+        ("volumes", torch.zeros((2, 5, 11, 13), dtype=torch.uint8), "must have shape"),
+        ("masks3d", torch.zeros((2, 1, 5, 11, 13, 1), dtype=torch.uint8), "must have shape"),
         ("image", torch.zeros((3, 11, 13), dtype=torch.int64), "dtype one of"),
         ("mask", torch.zeros((11, 13), dtype=torch.bool), "dtype one of"),
         ("mask", torch.zeros((11, 13), dtype=torch.int8), "dtype one of"),

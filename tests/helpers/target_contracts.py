@@ -16,8 +16,11 @@ import torch
 import albumentations as A
 from albumentations.core.tensor import (
     TENSOR_ANNOTATION_TARGETS,
+    TENSOR_CANONICAL_RANKS,
     TENSOR_CHANNELLESS_RANKS,
+    TENSOR_SPATIAL_TARGETS,
     TENSOR_TARGETS,
+    numpy_to_tensor_spatial,
     tensor_to_numpy_spatial,
 )
 from tests.helpers.applied_config import ReplayProfile
@@ -101,6 +104,7 @@ _TENSOR_EXTENDED_PROFILE_IDS = frozenset(
         "multispectral-image-mask",
         "images-batch",
         "masks-batch",
+        "volumes-masks3d",
         "noncontiguous-image-mask",
     },
 )
@@ -116,13 +120,13 @@ def _numpy_target_to_tensor(value: Any, target: str | None) -> Any:
         return value
     if target is None or target in TENSOR_ANNOTATION_TARGETS:
         return torch.from_numpy(value)
-    if target in {"image", "mask"}:
-        return torch.from_numpy(value if value.ndim == 2 else np.moveaxis(value, -1, 0))
-    if target in {"images", "masks"}:
-        return torch.from_numpy(value if value.ndim == 3 else np.moveaxis(value, -1, 1))
-    if target in {"volume", "mask3d"}:
-        return torch.from_numpy(value if value.ndim == 3 else np.moveaxis(value, -1, 0))
-    return value
+    if target not in TENSOR_SPATIAL_TARGETS:
+        return value
+    if value.ndim < TENSOR_CANONICAL_RANKS[target]:
+        if target != "volumes":
+            return torch.from_numpy(value)
+        value = value[..., None]
+    return numpy_to_tensor_spatial(value, target)
 
 
 def _tensor_target_to_numpy(value: Any, target: str | None) -> Any:

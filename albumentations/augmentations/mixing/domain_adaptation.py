@@ -278,7 +278,7 @@ class HistogramMatching(BaseDomainAdaptation):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -417,7 +417,7 @@ class FDA(BaseDomainAdaptation):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -607,7 +607,7 @@ class PixelDistributionAdaptation(BaseDomainAdaptation):
         p (float): The probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32

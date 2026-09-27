@@ -61,7 +61,7 @@ from .tensor import (
 from .tracing import TraceOptions, TraceResult, _ExecutionTrace
 from .transforms_interface import BasicTransform, DualTransform
 from .type_definitions import StackedMasks4D, Targets
-from .utils import DataProcessor, format_args, get_shape, get_volume_shape
+from .utils import DataProcessor, format_args, get_shape, get_volume_shape, get_volumes_shape
 
 __all__ = [
     "BaseCompose",
@@ -256,7 +256,9 @@ AVAILABLE_KEYS = (
     "bboxes",
     "keypoints",
     "volume",
+    "volumes",
     "mask3d",
+    "masks3d",
     "user_data",
 )
 
@@ -266,13 +268,14 @@ MASK_KEYS = (
     "mask",  # 2D mask
     "masks",  # Multiple 2D masks
     "mask3d",  # 3D mask
+    "masks3d",  # Multiple 3D masks
 )
 
 # Keys related to image data
 IMAGE_KEYS = {"image", "images"}
 CHECK_BBOX_PARAM = {"bboxes"}
 CHECK_KEYPOINTS_PARAM = {"keypoints"}
-VOLUME_KEYS = {"volume"}
+VOLUME_KEYS = {"volume", "volumes"}
 _SPATIAL_ADDITIONAL_TARGETS = frozenset((*IMAGE_KEYS, *MASK_KEYS, *VOLUME_KEYS))
 
 _VALID_INSTANCE_BINDING_TARGETS = frozenset({"mask", "masks", "bboxes", "keypoints"})
@@ -1701,8 +1704,8 @@ class Compose(BaseCompose, HubMixin):
             `D4` and `SquareSymmetry` emit the corresponding base reflection event (`HorizontalFlip`, `VerticalFlip`,
             or `Transpose`) rather than their class name. Other transforms may emit their own events, such as
             `Flip3D`. The inner dictionary maps source class IDs to target class IDs. `Flip3D` emits its event for a
-            realized reflection across an odd number of axes and remaps `mask3d` and its aliases, not 2D `mask` or
-            `masks` targets. Default: None.
+            realized reflection across an odd number of axes and remaps `mask3d`, `masks3d`, and their aliases, not 2D
+            `mask` or `masks` targets. Default: None.
         p (float): Probability of applying all transforms. Should be in range [0, 1]. Default is 1.0.
         is_check_shapes (bool): If True, checks consistency of shapes for image/mask/masks on each call.
             Disable only if you are sure about your data consistency. Default is True.
@@ -2253,7 +2256,7 @@ class Compose(BaseCompose, HubMixin):
             if not self.is_check_shapes or canonical_key not in self._GRAYSCALE_KEYS or value.size == 0:
                 continue
 
-            if canonical_key in {"images", "masks", "volume", "mask3d"} and value.ndim not in {3, 4}:
+            if expected_ndim is not None and expected_ndim >= 3 and value.ndim != expected_ndim + 1:
                 return False
             shape_checked_inputs += 1
             if shape_checked_inputs > 1:
@@ -2785,7 +2788,7 @@ class Compose(BaseCompose, HubMixin):
         routes = {} if invocation is None or invocation.frame_state is None else invocation.frame_state.routes
 
         # List of targets to check shapes for
-        shape_check_targets = {"image", "mask", "images", "volume", "mask3d", "masks"}
+        shape_check_targets = {"image", "mask", "images", "volume", "volumes", "mask3d", "masks3d", "masks"}
 
         for data_name, data_value in data.items():
             # Resolve aliases via additional_targets so e.g. {'custom_image_key': 'image'}
@@ -2838,6 +2841,11 @@ class Compose(BaseCompose, HubMixin):
                 raise TypeError(f"{data_name} must be 3D or 4D array")
             shapes.append(data_value.shape[1:3])  # H,W
             volume_shapes.append(get_volume_shape(data_value))
+        elif data_name in {"volumes", "masks3d"}:
+            if data_value.ndim not in {4, 5}:  # (N,D,H,W) or (N,D,H,W,C)
+                raise TypeError(f"{data_name} must be 4D or 5D array")
+            shapes.append(data_value.shape[2:4])  # H,W from (N,D,H,W)
+            volume_shapes.append(get_volumes_shape(data_value))
 
     @staticmethod
     def _process_tensor_data_shape(
@@ -2849,10 +2857,12 @@ class Compose(BaseCompose, HubMixin):
         """Append shape metadata for a validated Tensor target without converting its public
         channel-first image or channel-free mask layout to a NumPy representation.
         """
-        if data_name in {"image", "images", "mask", "masks", "volume", "mask3d"}:
+        if data_name in {"image", "images", "mask", "masks", "volume", "volumes", "mask3d", "masks3d"}:
             shapes.append(tuple(data_value.shape[-2:]))
         if data_name in {"volume", "mask3d"}:
             volume_shapes.append(get_volume_shape(data_value))
+        elif data_name in {"volumes", "masks3d"}:
+            volume_shapes.append(get_volumes_shape(data_value))
 
     def _validate_data(self, data: dict[str, Any]) -> None:
         """Validate input data keys and arguments. When strict, checks every key is in
@@ -2924,6 +2934,8 @@ class Compose(BaseCompose, HubMixin):
         "masks": 3,  # (N, H, W) => (N, H, W, 1)
         "volume": 3,  # (D, H, W) => (D, H, W, 1)
         "mask3d": 3,  # (D, H, W) => (D, H, W, 1)
+        "volumes": 4,  # (N, D, H, W) => (N, D, H, W, 1)
+        "masks3d": 4,  # (N, D, H, W) => (N, D, H, W, 1)
     }
 
     def _add_grayscale_channels(
@@ -3850,7 +3862,7 @@ class Compose(BaseCompose, HubMixin):
         """Check and process a single argument from _check_args. Validates type and shape
         for image, mask, images, volume, etc.; appends to shapes/volume_shapes.
         """
-        shape_check_targets = {"image", "mask", "images", "volume", "mask3d", "masks"}
+        shape_check_targets = {"image", "mask", "images", "volume", "volumes", "mask3d", "masks3d", "masks"}
         if internal_name not in shape_check_targets:
             return
 

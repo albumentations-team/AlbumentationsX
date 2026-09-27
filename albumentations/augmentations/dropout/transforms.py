@@ -41,21 +41,26 @@ DropoutFillValue = tuple[float, ...] | float | FillValueLiteral
 
 def _pixel_dropout_reference(view: TargetView) -> np.ndarray:
     value = view.value
-    if view.canonical_type in {"images", "volume", "masks", "mask3d"}:
+    if view.canonical_type in {"images", "volume", "volumes", "masks", "mask3d", "masks3d"}:
         if value.shape[0] == 0:
             return np.empty(value.shape[1:], dtype=value.dtype)
+        if view.canonical_type in {"volumes", "masks3d"}:
+            return value[0, 0]
         return value[0]
     return value
 
 
 def _pixel_dropout_is_empty(view: TargetView) -> bool:
-    return view.canonical_type in {"images", "volume", "masks", "mask3d"} and view.value.shape[0] == 0
+    return (
+        view.canonical_type in {"images", "volume", "volumes", "masks", "mask3d", "masks3d"}
+        and view.value.shape[0] == 0
+    )
 
 
 def _pixel_dropout_group_key(view: TargetView) -> tuple[Any, ...]:
     descriptor = view.descriptor
     return (
-        "mask" if view.canonical_type in {"mask", "masks", "mask3d"} else "image",
+        "mask" if view.canonical_type in {"mask", "masks", "mask3d", "masks3d"} else "image",
         descriptor.shape,
         descriptor.value_scale,
         descriptor.sampling_topology,
@@ -300,7 +305,7 @@ class PixelDropout(DualTransform):
             Default: 0.5
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
         uint8, float32
@@ -455,7 +460,7 @@ class PixelDropout(DualTransform):
             annotations_attached = annotations_attached or bool(annotations)
 
         for views in targets.group_by(_pixel_dropout_group_key):
-            if not views or views[0].canonical_type not in {"mask", "masks", "mask3d"}:
+            if not views or views[0].canonical_type not in {"mask", "masks", "mask3d", "masks3d"}:
                 continue
             reference = _pixel_dropout_reference(views[0])
             groups.append(

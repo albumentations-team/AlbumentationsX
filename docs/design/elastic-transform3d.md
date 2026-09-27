@@ -4,7 +4,7 @@
 
 ## Overview
 
-`ElasticTransform3D` applies one smooth XYZ pull field to a volume, `mask3d`, and XYZ keypoints. It samples compact cubic B-spline coefficient planes, expands them into one normalized `(D, H, W, 3)` sampling grid, and calls Albucore `remap3d` once for each raster target.
+`ElasticTransform3D` applies one smooth XYZ pull field to `volume`, `volumes`, `mask3d`, `masks3d`, and XYZ keypoints. It samples compact cubic B-spline coefficient planes, expands them into one normalized `(D, H, W, 3)` sampling grid, and reuses that grid for every item in each collection.
 
 Use it when a label remains valid under small, smooth changes to volumetric anatomy or acquisition geometry. It changes voxel-index coordinates only. Voxel spacing, orientation metadata, and 3D bounding boxes are outside this transform's contract.
 
@@ -18,7 +18,7 @@ Generating dense 3D random noise and smoothing it pays for full-resolution rando
 
 ### One compact field defines all geometry
 
-Each invocation samples one magnitude and three coefficient planes: XY, XZ, and YZ. The transform averages their contributions, so identical sampled geometry drives every volume, mask, and keypoint target.
+Each invocation samples one magnitude and three coefficient planes: XY, XZ, and YZ. The transform averages their contributions, so identical sampled geometry drives every volume and mask in the supplied targets, including all collection items.
 
 ### The deformation remains bounded and invertible
 
@@ -36,7 +36,7 @@ The implementation samples `2 * rows * columns` values per control plane, expand
 
 ### Tensor execution follows the selected handler
 
-NumPy volumes use `(D, H, W, C)`. CPU Tensor volumes use `(C, D, H, W)`; `mask3d` accepts `(D, H, W)` or `(C, D, H, W)`. `ElasticTransform3D` declares Tensor input on its volume and mask handlers, so Albucore `remap3d` executes those targets directly for every accepted channel count. The target container and layout are unchanged at the public boundary.
+NumPy `volume` values use `(D, H, W, C)` and `volumes` use `(N, D, H, W, C)`. CPU Tensor layouts are `(C, D, H, W)` and `(N, C, D, H, W)` respectively. `mask3d` accepts `(D, H, W)` or `(C, D, H, W)`; `masks3d` accepts `(N, D, H, W)` or `(N, C, D, H, W)`. Inside `Compose`, all four layouts have an explicit channel axis. The inherited collection handlers reuse the native single-volume or mask3d route for each item and share one sampled grid.
 
 The routing rule belongs to the base transform layer: it inspects the handler receiving each Tensor target. A handler without a Tensor annotation uses its existing NumPy lifecycle through a leaf-local bridge. `Compose` validates Tensor inputs and normalizes optional channels; it does not select Elastic3D's backend route.
 
@@ -73,8 +73,8 @@ The sampler converts the compact planes to Albucore's normalized `(x, y, z)` gri
 
 ### Targets and persistence
 
-- `volume` uses `interpolation`, `border_mode`, and `fill`.
-- `mask3d` uses `mask_interpolation`, `border_mode`, and `fill_mask`; channel-less integer masks retain their dtype.
+- `volume` and each member of `volumes` use `interpolation`, `border_mode`, and `fill`.
+- `mask3d` and each member of `masks3d` use `mask_interpolation`, `border_mode`, and `fill_mask`; channel-less integer masks retain their dtype.
 - Keypoints use a bounded fixed-point inverse of `S`. Accepted rows have forward residual at most `1e-3` voxel units, and trailing keypoint columns remain unchanged.
 - `ReplayCompose` stores compact coefficient planes and the input spatial shape. It reproduces the geometry for the same shape and raises `ValueError` for another shape.
 - Applied configuration records the realized magnitude as `displacement_range=(m, m)` and samples fresh coefficient planes when reconstructed.

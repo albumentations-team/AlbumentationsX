@@ -102,7 +102,7 @@ class RandomRotate90(DualTransform):
             Mutually exclusive with `group_element`. Default: None (random choice).
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
         uint8, float32
@@ -299,7 +299,7 @@ class Rotate(DualTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
         uint8, float32
@@ -610,7 +610,7 @@ class SafeRotate(Affine):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
         uint8, float32

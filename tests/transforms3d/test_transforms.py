@@ -79,6 +79,32 @@ def test_resize_3d_identity_and_integer_nearest_scale_are_exact():
     np.testing.assert_array_equal(result["mask3d"], expected_mask3d)
 
 
+@pytest.mark.parametrize("mask_target", ["mask3d", "masks3d"])
+def test_coarse_dropout3d_respects_fill_mask_none_for_mask_targets(mask_target: str) -> None:
+    volumes = np.ones((2, 3, 5, 7, 1), dtype=np.uint8)
+    mask = np.ones((3, 5, 7), dtype=np.uint8) if mask_target == "mask3d" else np.ones((2, 3, 5, 7), dtype=np.uint8)
+    transform = A.Compose(
+        [
+            A.CoarseDropout3D(
+                num_holes_range=(1, 1),
+                hole_depth_range=(1.0, 1.0),
+                hole_height_range=(1.0, 1.0),
+                hole_width_range=(1.0, 1.0),
+                fill=0,
+                fill_mask=None,
+                p=1.0,
+            ),
+        ],
+        strict=True,
+        seed=137,
+    )
+
+    result = transform(volumes=volumes, **{mask_target: mask})
+
+    np.testing.assert_array_equal(result["volumes"], np.zeros_like(volumes))
+    np.testing.assert_array_equal(result[mask_target], mask)
+
+
 def test_resize_3d_matches_trilinear_reference():
     volume = np.random.default_rng(137).random((3, 4, 5, 3), dtype=np.float32)
     size = (5, 3, 7)
@@ -512,6 +538,7 @@ def test_pad3d_2d_equivalence(pad3d_padding, pad2d_padding):
         custom_arguments={
             A.Flip3D: {"flip_axes": (0,)},
             A.RandomRotate90_3D: {"axis_pair": (0, 2), "group_element": "r90"},
+            A.CoarseDropout3D: {"fill_mask": 137},
         },
         except_augmentations={},
     ),

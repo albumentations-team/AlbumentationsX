@@ -41,20 +41,21 @@ DropoutFillValue = tuple[float, ...] | float | FillValueLiteral
 
 def _pixel_dropout_reference(view: TargetView) -> np.ndarray:
     value = view.value
-    if view.canonical_type in {"images", "volume", "volumes", "masks", "mask3d", "masks3d"}:
+    if view.canonical_type in {"volumes", "masks3d"}:
+        if value.shape[0] == 0 or value.shape[1] == 0:
+            return np.empty(value.shape[2:], dtype=value.dtype)
+        return value[0, 0]
+    if view.canonical_type in {"images", "volume", "masks", "mask3d"}:
         if value.shape[0] == 0:
             return np.empty(value.shape[1:], dtype=value.dtype)
-        if view.canonical_type in {"volumes", "masks3d"}:
-            return value[0, 0]
         return value[0]
     return value
 
 
 def _pixel_dropout_is_empty(view: TargetView) -> bool:
-    return (
-        view.canonical_type in {"images", "volume", "volumes", "masks", "mask3d", "masks3d"}
-        and view.value.shape[0] == 0
-    )
+    if view.canonical_type in {"volumes", "masks3d"}:
+        return view.value.shape[0] == 0 or view.value.shape[1] == 0
+    return view.canonical_type in {"images", "volume", "masks", "mask3d"} and view.value.shape[0] == 0
 
 
 def _pixel_dropout_group_key(view: TargetView) -> tuple[Any, ...]:

@@ -2106,11 +2106,11 @@ class CoarseDropout3D(Transform3D):
 
         return f3d.cutout3d(volume, holes, self.fill)
 
-    def apply_to_mask(self, mask: VolumeType, holes: np.ndarray, **params: Any) -> VolumeType:
+    def apply_to_mask3d(self, mask3d: VolumeType, holes: np.ndarray, **params: Any) -> VolumeType:
         if self.fill_mask is None or holes.size == 0:
-            return mask
+            return mask3d
 
-        return f3d.cutout3d(mask, holes, self.fill_mask)
+        return f3d.cutout3d(mask3d, holes, self.fill_mask)
 
     def apply_to_keypoints(
         self,

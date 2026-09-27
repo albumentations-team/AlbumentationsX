@@ -38,12 +38,14 @@ def _equalize_mask_input(view: TargetView) -> ImageType:
     """Return the image unit Equalize will receive when it applies a target."""
     if view.canonical_type not in {"images", "volume", "volumes"}:
         return view.value
-    if view.value.shape[0] == 0:
-        if view.canonical_type == "volumes":
-            return np.empty(view.value.shape[2:], dtype=view.value.dtype)
-        return np.empty(view.value.shape[1:], dtype=view.value.dtype)
     if view.canonical_type == "volumes":
+        if view.value.shape[0] == 0:
+            return np.empty(view.value.shape[2:], dtype=view.value.dtype)
+        if view.value.shape[1] == 0:
+            raise ValueError("Equalize cannot sample a mask from a zero-depth volume collection")
         return view.value[0, 0]
+    if view.value.shape[0] == 0:
+        return np.empty(view.value.shape[1:], dtype=view.value.dtype)
     return view.value[0]
 
 

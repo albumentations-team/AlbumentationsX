@@ -36,7 +36,7 @@ The implementation samples `2 * rows * columns` values per control plane, expand
 
 ### Tensor execution follows the selected handler
 
-NumPy `volume` values use `(D, H, W, C)` and `volumes` use `(N, D, H, W, C)`. CPU Tensor layouts are `(C, D, H, W)` and `(N, C, D, H, W)` respectively. `mask3d` accepts `(D, H, W)` or `(C, D, H, W)`; `masks3d` accepts `(N, D, H, W)` or `(N, C, D, H, W)`. Inside `Compose`, all four layouts have an explicit channel axis. The inherited collection handlers reuse the native single-volume or mask3d route for each item and share one sampled grid.
+NumPy `volume` values use `(D, H, W, C)` and `volumes` use `(N, D, H, W, C)`. CPU Tensor layouts are `(C, D, H, W)` and `(N, C, D, H, W)` respectively. NumPy `mask3d` accepts `(D, H, W)` or `(D, H, W, C)`, and `masks3d` accepts `(N, D, H, W)` or `(N, D, H, W, C)`. Tensor `mask3d` accepts `(D, H, W)` or `(C, D, H, W)`, and `masks3d` accepts `(N, D, H, W)` or `(N, C, D, H, W)`. `Compose` adds the channel axis for channel-less inputs. The inherited collection handlers reuse the native single-volume or mask3d route for each item and share one sampled grid.
 
 The routing rule belongs to the base transform layer: it inspects the handler receiving each Tensor target. A handler without a Tensor annotation uses its existing NumPy lifecycle through a leaf-local bridge. `Compose` validates Tensor inputs and normalizes optional channels; it does not select Elastic3D's backend route.
 

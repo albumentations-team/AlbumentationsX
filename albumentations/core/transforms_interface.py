@@ -1247,7 +1247,10 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
                 if view.descriptor.shape is not None:
                     shape = view.descriptor.shape
                     shape_indices = _SHARED_SHAPE_INDICES.get(view.descriptor.layout)
-                    if shape_indices is not None:
+                    shared_shape: tuple[int, ...]
+                    if view.canonical_type in {"volumes", "masks3d"} and len(shape) == 4:
+                        shared_shape = (shape[-2], shape[-1], 1)
+                    elif shape_indices is not None:
                         shared_shape = tuple(shape[index] for index in shape_indices)
                     elif view.canonical_type in _BATCH_SHARED_SHAPE_TARGETS:
                         shared_shape = shape[1:]

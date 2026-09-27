@@ -80,7 +80,7 @@ def get_image_data(data: dict[str, Any]) -> dict[str, Any]:
                 num_channels = int(shape[0])
             else:
                 _, height, width = get_volumes_shape(array)
-                num_channels = int(shape[1])
+                num_channels = int(shape[1]) if len(shape) == 5 else 1
         elif target == "image":
             height, width = shape[0], shape[1]
             num_channels = shape[-1]
@@ -92,7 +92,7 @@ def get_image_data(data: dict[str, Any]) -> dict[str, Any]:
             num_channels = shape[-1]
         else:
             _, height, width = get_volumes_shape(array)
-            num_channels = shape[-1]
+            num_channels = shape[-1] if len(shape) == 5 else 1
         return {
             "dtype": array.dtype,
             "height": height,

@@ -212,6 +212,33 @@ def test_equalize_callable_mask_accepts_empty_volume_collection() -> None:
     assert result["volumes"].shape == volumes.shape
 
 
+def test_equalize_callable_mask_rejects_zero_depth_volume_collection() -> None:
+    volumes = np.empty((1, 0, 5, 7, 1), dtype=np.uint8)
+    transform = A.Compose([A.Equalize(mask=lambda image: np.ones(image.shape[:2], dtype=np.uint8), p=1.0)])
+
+    with pytest.raises(ValueError, match="zero-depth volume collection"):
+        transform(volumes=volumes)
+
+
+@pytest.mark.parametrize("target", ["volumes", "masks3d"])
+def test_pixel_dropout_treats_zero_depth_collection_as_empty(target: str) -> None:
+    shape = (1, 0, 5, 7, 1) if target == "volumes" else (1, 0, 5, 7)
+    values = np.empty(shape, dtype=np.uint8)
+
+    result = A.Compose([A.PixelDropout(dropout_prob=1.0, drop_value=0, p=1.0)])(**{target: values})
+
+    assert result[target].shape == values.shape
+
+
+@pytest.mark.parametrize("target", ["volumes", "masks3d"])
+def test_direct_flip3d_accepts_channel_free_collections(target: str) -> None:
+    values = np.arange(3 * 5 * 7, dtype=np.uint8).reshape(1, 3, 5, 7)
+
+    result = A.Flip3D(flip_axes=(0,), p=1.0)(**{target: values})
+
+    np.testing.assert_array_equal(result[target], values[:, ::-1])
+
+
 @pytest.mark.parametrize("target", ["volumes", "masks3d"])
 def test_tensor_volume_collection_alias_uses_numpy_fallback(target: str) -> None:
     volumes = np.arange(2 * 3 * 5 * 7, dtype=np.uint8).reshape(2, 3, 5, 7, 1)

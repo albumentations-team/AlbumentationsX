@@ -486,7 +486,7 @@ def _describe_target_cached(
             layout, topology = ("volume_cdhw", "volume_3d") if tensor else ("volume_dhwc", "volume_3d")
         elif canonical_type == "volumes":
             spatial_shape = volume_shape
-            channels = shape[1] if tensor else (shape[-1] if len(shape) > 4 else 1)
+            channels = shape[1] if tensor and len(shape) == 5 else (shape[-1] if len(shape) == 5 else 1)
             layout, topology = ("volumes_ncdhw", "batch_volume_3d") if tensor else ("volumes_ndhwc", "batch_volume_3d")
         elif canonical_type == "mask":
             spatial_shape = shape[1:3] if tensor else shape[:2]

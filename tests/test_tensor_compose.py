@@ -698,3 +698,13 @@ def test_shape_helpers_use_canonical_numpy_and_tensor_volume_contracts() -> None
         "width": 13,
         "num_channels": 3,
     }
+
+
+def test_get_image_data_reports_one_channel_for_channel_free_volume_collections() -> None:
+    for volumes in (np.zeros((2, 4, 11, 13), dtype=np.uint8), torch.zeros((2, 4, 11, 13), dtype=torch.uint8)):
+        assert get_image_data({"volumes": volumes}) == {
+            "dtype": volumes.dtype,
+            "height": 11,
+            "width": 13,
+            "num_channels": 1,
+        }

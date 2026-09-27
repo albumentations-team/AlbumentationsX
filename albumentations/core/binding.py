@@ -59,7 +59,8 @@ class FrameBinding:
 
     def functions(self, key: object, configured: Mapping[str, Callable[..., Any]]) -> dict[str, Callable[..., Any]]:
         """Resolve flattened collections without changing the reusable transform's aliases."""
-        if key not in self.handlers:
+        functions = self.handlers.get(key)
+        if functions is None:
             functions = dict(configured)
             for name, canonical in self.routes.items():
                 handler = configured.get(canonical)
@@ -68,7 +69,7 @@ class FrameBinding:
                 else:
                     functions[name] = handler
             self.handlers[key] = functions
-        return self.handlers[key]
+        return functions
 
     def parameters(self, name: str) -> dict[str, Any]:
         """Supply row IDs and annotation columns as ordinary handler parameters."""

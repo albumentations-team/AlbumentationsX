@@ -696,17 +696,14 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         """Samples parameters after probability succeeds and records policy only for replay, trace, or explicit
         observation that needs the durable artifact.
         """
-        sampling_data = kwargs
         targets = (
-            None
-            if type(self).sample_parameters is BasicTransform.sample_parameters
-            else self._build_target_set(sampling_data)
+            None if type(self).sample_parameters is BasicTransform.sample_parameters else self._build_target_set(kwargs)
         )
-        params = self.update_transform_params(params={}, data=sampling_data, invocation=invocation, targets=targets)
+        params = self.update_transform_params(params={}, data=kwargs, invocation=invocation, targets=targets)
 
         if self.targets_as_params:
-            missing_keys = set(self.targets_as_params).difference(sampling_data.keys())
-            if missing_keys and not (missing_keys == {"image"} and "images" in sampling_data):
+            missing_keys = set(self.targets_as_params).difference(kwargs.keys())
+            if missing_keys and not (missing_keys == {"image"} and "images" in kwargs):
                 msg = f"{self.__class__.__name__} requires {self.targets_as_params} missing keys: {missing_keys}"
                 raise ValueError(msg)
 
@@ -722,7 +719,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
         applied_overrides, sampled_params = self._sample_parameters(
             params=params,
-            data=sampling_data,
+            data=kwargs,
             targets=targets,
             invocation=invocation,
             collect_applied=collect_applied,
@@ -733,7 +730,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             target_params=sampled_params.target_params,
             target_schema=targets.schema() if targets is not None and sampled_params.target_params else None,
         )
-        self._validate_sampled_params(effective_params, targets, sampling_data)
+        self._validate_sampled_params(effective_params, targets, kwargs)
 
         if state is not None:
             state.params = effective_params.to_dict()
@@ -855,8 +852,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
     def _apply_replay_in_route(self, state: TransformInvocationState | None, **kwargs: Any) -> Any:
         sampled_params = SampledParams.from_dict(deepcopy(self._replay_params))
-        sampling_data = kwargs
-        targets = self._build_target_set(sampling_data)
+        targets = self._build_target_set(kwargs)
         self._validate_spatial_targets(targets)
         sampled_params.validate(
             targets,

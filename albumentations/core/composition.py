@@ -2325,12 +2325,12 @@ class Compose(BaseCompose, HubMixin):
         """
         if self._additional_targets:
             self._validate_additional_target_sources(data)
-        frame_targets = (
+        has_frame_tensors = (
             self._validate_frame_binding_data(data)
             if self._frame_binding is not None or "frame_annotations" in data
-            else ()
+            else False
         )
-        tensor_boundary_state = self._validate_tensor_inputs(data, frame_targets)
+        tensor_boundary_state = self._validate_tensor_inputs(data, has_frame_tensors)
         if self.save_applied_params and self.main_compose:
             data["applied_transforms"] = []
         return tensor_boundary_state
@@ -2338,20 +2338,20 @@ class Compose(BaseCompose, HubMixin):
     def _validate_frame_binding_data(
         self,
         data: Mapping[str, Any],
-    ) -> tuple[tuple[int, tuple[tuple[str, str], ...]], ...]:
+    ) -> bool:
         if self._frame_binding is None:
             if "frame_annotations" in data:
                 raise ValueError("`frame_annotations` requires Compose(frame_binding=['images', 'frame_annotations'])")
-            return ()
+            return False
 
         image_name, annotation_name = self._frame_binding
         self._validate_frame_binding_target_keys(data, annotation_name, (image_name, annotation_name))
         self._validate_frame_binding_alias_lengths(data, (image_name, annotation_name))
         annotations = data.get(annotation_name)
         if annotations is None:
-            return ()
+            return False
 
-        frame_targets = self._validate_frame_binding_annotation_type(annotation_name, annotations)
+        has_frame_tensors = self._validate_frame_binding_annotation_type(annotation_name, annotations)
         images = data.get(image_name)
         if images is None:
             raise ValueError(f"`{annotation_name}` requires `{image_name}`")
@@ -2362,7 +2362,7 @@ class Compose(BaseCompose, HubMixin):
                 f"frame binding requires `{image_name}` and `{annotation_name}` to have the same length; "
                 f"got {len(images)} and {len(annotations)}",
             )
-        return frame_targets
+        return has_frame_tensors
 
     def _validate_frame_binding_alias_lengths(
         self,
@@ -2414,12 +2414,12 @@ class Compose(BaseCompose, HubMixin):
         self,
         annotation_name: str,
         annotations: Any,
-    ) -> tuple[tuple[int, tuple[tuple[str, str], ...]], ...]:
+    ) -> bool:
         if annotation_name != "frame_annotations":
             if not isinstance(annotations, (np.ndarray, torch.Tensor)):
                 raise TypeError("`masks` must be a NumPy array or torch.Tensor")
-            return ()
-        frame_targets = []
+            return False
+        has_frame_tensors = False
         if not isinstance(annotations, Sequence) or isinstance(annotations, (str, bytes, np.ndarray)):
             raise TypeError("`frame_annotations` must be a sequence of per-frame mappings")
         for index, frame in enumerate(annotations):
@@ -2427,23 +2427,22 @@ class Compose(BaseCompose, HubMixin):
                 raise TypeError(f"frame_annotations[{index}] must be a mapping")
             if "image" in frame or "images" in frame:
                 raise ValueError(f"frame_annotations[{index}] cannot contain `image` or `images`")
-            targets = self._validate_frame_targets(frame, index)
-            if targets:
-                frame_targets.append((index, targets))
-        return tuple(frame_targets)
+            if self._validate_frame_targets(frame, index):
+                has_frame_tensors = True
+        return has_frame_tensors
 
-    def _validate_frame_targets(self, frame: Mapping[str, Any], index: int) -> tuple[tuple[str, str], ...]:
+    def _validate_frame_targets(self, frame: Mapping[str, Any], index: int) -> bool:
         if "instances" in frame and self._instance_binding is None:
             raise ValueError("frame `instances` requires Compose(instance_binding=...)")
-        targets = []
+        has_tensor_inputs = False
         for name, value in frame.items():
             canonical = self._additional_targets.get(name, name)
             if self._instance_binding and canonical in {"mask", "masks", "bboxes", "keypoints"}:
                 raise ValueError("Put bound frame objects in an `instances` list")
             if isinstance(value, torch.Tensor) and canonical in TENSOR_TARGETS:
                 validate_tensor_input(value, f"frame_annotations[{index}].{name}", canonical)
-                targets.append((name, canonical))
-        return tuple(targets)
+                has_tensor_inputs = True
+        return has_tensor_inputs
 
     def _apply_children(self, data: dict[str, Any], invocation: InvocationContext | None) -> dict[str, Any]:
         """Runs child nodes and root policy in order, reusing the active invocation and resynchronizing bound instances
@@ -2474,16 +2473,16 @@ class Compose(BaseCompose, HubMixin):
     def _validate_tensor_inputs(
         self,
         data: dict[str, Any],
-        frame_targets: tuple[tuple[int, tuple[tuple[str, str], ...]], ...],
+        has_frame_tensors: bool,
     ) -> _TensorBoundaryState:
         """Validate every supplied Tensor target before Compose samples probability or parameters."""
         has_direct_tensor = any(isinstance(value, torch.Tensor) for value in data.values())
         has_metadata = self._tensor_metadata_keys and any(key in data for key in self._tensor_metadata_keys)
-        if not frame_targets and not has_direct_tensor and not has_metadata:
+        if not has_frame_tensors and not has_direct_tensor and not has_metadata:
             return _EMPTY_TENSOR_BOUNDARY_STATE
 
         annotation_targets: list[tuple[str, str]] = []
-        has_tensor_target = bool(frame_targets)
+        has_tensor_target = has_frame_tensors
         has_top_level_tensor = False
         if has_direct_tensor:
             for data_name, value in data.items():

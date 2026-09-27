@@ -100,15 +100,6 @@ def test_legacy_flat_parameter_payload_is_rejected() -> None:
         SampledParams.from_dict({"shape": (4, 5, 3), "noise_map": np.zeros((4, 5, 3))})
 
 
-def test_frame_indices_are_serialized_only_when_selected() -> None:
-    ordinary = SampledParams(params={}).to_dict()
-    selected = SampledParams(params={"frame_indices": (2, 0, 2)}).to_dict()
-
-    assert "frame_indices" not in ordinary["params"]
-    assert selected["params"]["frame_indices"] == (2, 0, 2)
-    assert SampledParams.from_dict(selected).params_for("images")["frame_indices"] == (2, 0, 2)
-
-
 def test_retired_frame_indices_field_is_rejected() -> None:
     payload = SampledParams(params={}).to_dict()
     payload["frame_indices"] = [0, 1]

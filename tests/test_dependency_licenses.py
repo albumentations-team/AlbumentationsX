@@ -56,6 +56,29 @@ def test_requirements_reject_unsupported_lines(tmp_path: Path) -> None:
         check_requirements(registry, [requirements])
 
 
+def test_requirements_reject_registry_entries_outside_base_runtime(tmp_path: Path) -> None:
+    path = _registry(tmp_path)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["components"].append(
+        {
+            "name": "optional-package",
+            "reviewed_versions": ["2.0"],
+            "license_expression": "MIT",
+            "evidence_source": "test",
+            "decision": "accepted",
+            "notice": "none",
+        },
+    )
+    path.write_text(json.dumps(data), encoding="utf-8")
+    registry = load_registry(path)
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("example-package==1.0\n", encoding="utf-8")
+
+    assert check_requirements(registry, [requirements]) == [
+        "optional-package is absent from the base runtime requirements export",
+    ]
+
+
 def test_export_runtime_requirements_uses_repository_root(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[dict[str, object]] = []
 
@@ -65,12 +88,12 @@ def test_export_runtime_requirements_uses_repository_root(monkeypatch: pytest.Mo
     monkeypatch.setattr(verify_dependency_licenses.shutil, "which", lambda _: "/usr/local/bin/uv")
     monkeypatch.setattr(verify_dependency_licenses.subprocess, "run", fake_run)
 
-    with verify_dependency_licenses.export_runtime_requirements() as paths:
-        assert [path.name for path in paths] == ["runtime-requirements.txt", "all-runtime-requirements.txt"]
+    with verify_dependency_licenses.export_runtime_requirements() as path:
+        assert path.name == "runtime-requirements.txt"
 
-    assert len(calls) == 2
+    assert len(calls) == 1
     assert all(call["check"] is True and call["cwd"] == verify_dependency_licenses.REPO_ROOT for call in calls)
-    assert "--all-extras" in calls[1]["command"]
+    assert "--all-extras" not in calls[0]["command"]
 
 
 def test_main_reports_uv_export_failure(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

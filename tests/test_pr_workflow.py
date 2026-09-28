@@ -12,6 +12,7 @@ from tools.ci_matrix import SUPPORTED_PYTHONS, TIER_1_OSES
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "pr.yml"
+SECURITY_WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "security.yml"
 
 
 def _workflow() -> dict[str, Any]:
@@ -139,6 +140,25 @@ def test_release_preflight_retains_clean_install_and_strict_release_evidence() -
     assert "--fail-on-release-blockers" in run_text
     assert "asv --config asv.conf.json check" not in run_text
     assert "--allow-missing" not in run_text
+
+
+def test_dependency_audit_scopes_licenses_to_base_and_keeps_extra_vulnerability_audit() -> None:
+    pr_job = _workflow()["jobs"]["dependency_audit"]
+    pr_steps = {step["name"]: step for step in pr_job["steps"] if "name" in step}
+    security_workflow = yaml.safe_load(SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    security_steps = {
+        step["name"]: step for step in security_workflow["jobs"]["dependency_audit"]["steps"] if "name" in step
+    }
+
+    for steps in (pr_steps, security_steps):
+        license_check = steps["Check reviewed runtime dependency licenses"]
+        audit = steps.get("Audit locked runtime dependencies", steps.get("Run pip-audit"))
+
+        assert "runtime-requirements.txt" in license_check["run"]
+        assert "all-runtime-requirements.txt" not in license_check["run"]
+        assert "all-runtime-requirements.txt" in audit["run"]
+        assert "!cancelled()" in audit["if"]
+        assert "hashFiles('all-runtime-requirements.txt')" in audit["if"]
 
 
 def test_obsolete_unconditional_pr_workflows_are_removed() -> None:

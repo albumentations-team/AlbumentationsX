@@ -7,6 +7,7 @@ from operator import attrgetter, index
 from typing import Any, Literal, cast
 
 import torch
+from albucore import flip_volume, rot90_volume, transpose_volume
 
 from ._functional_shared import (
     NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS,
@@ -1163,6 +1164,37 @@ def d4_images(img: ImageType, group_member: Literal["e", "r90", "r180", "r270", 
     return D4_TRANSFORMATIONS_IMAGES[group_member](img)
 
 
+def d4_volume(
+    volume: np.ndarray | torch.Tensor,
+    group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
+    axes: tuple[int, int],
+) -> np.ndarray | torch.Tensor:
+    """Apply a D4 symmetry in a volume's spatial plane, including batched volumes.
+
+    Args:
+        volume (np.ndarray | torch.Tensor): Volume or volume collection in its native layout.
+        group_element (Literal['e', 'r90', 'r180', 'r270', 'v', 'hvt', 'h', 't']): D4 symmetry to apply.
+        axes (tuple[int, int]): Ordered height and width axes in the supplied layout.
+
+    Returns:
+        np.ndarray | torch.Tensor: Transformed data with the same container and dtype.
+
+    """
+    match group_element:
+        case "e":
+            return volume
+        case "r90" | "r180" | "r270":
+            return rot90_volume(volume, C4_GROUP_ELEMENT_TO_K[group_element], axes)
+        case "v":
+            return flip_volume(volume, axes[0])
+        case "hvt":
+            return transpose_volume(flip_volume(volume, axes), *axes)
+        case "h":
+            return flip_volume(volume, axes[1])
+        case "t":
+            return transpose_volume(volume, *axes)
+
+
 __all__ = [
     "C4_GROUP_ELEMENT_TO_K",
     "D4_GROUP_ELEMENTS",
@@ -1180,6 +1212,7 @@ __all__ = [
     "create_affine_transformation_matrix",
     "d4",
     "d4_images",
+    "d4_volume",
     "dilate",
     "distort_image",
     "erode",

@@ -27,7 +27,7 @@ from typing import Any, Literal, cast
 
 import numpy as np
 import torch
-from albucore import flip_volume, hflip, rot90_volume, transpose_volume, vflip
+from albucore import flip_volume, hflip, vflip
 
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet
@@ -53,30 +53,6 @@ __all__ = [
     "Transpose",
     "VerticalFlip",
 ]
-
-
-def _apply_d4_to_tensor_volume(
-    volume: torch.Tensor,
-    group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
-) -> torch.Tensor:
-    match group_element:
-        case "e":
-            result = volume
-        case "r90":
-            result = rot90_volume(volume, 1, (-2, -1))
-        case "r180":
-            result = rot90_volume(volume, 2, (-2, -1))
-        case "r270":
-            result = rot90_volume(volume, 3, (-2, -1))
-        case "v":
-            result = flip_volume(volume, -2)
-        case "hvt":
-            result = transpose_volume(flip_volume(volume, (-2, -1)), -2, -1)
-        case "h":
-            result = flip_volume(volume, -1)
-        case "t":
-            result = transpose_volume(volume, -2, -1)
-    return result
 
 
 class VerticalFlip(DualTransform):
@@ -175,6 +151,12 @@ class VerticalFlip(DualTransform):
         if isinstance(volume, torch.Tensor):
             return cast("VolumeType", fgeometric.flip_tensor(volume, dims=(-2,)))
         return fgeometric.vflip_images(volume)
+
+    def apply_to_volumes(self, volumes: np.ndarray | torch.Tensor, **params: Any) -> np.ndarray | torch.Tensor:
+        return flip_volume(volumes, -2 if isinstance(volumes, torch.Tensor) else 2)
+
+    def apply_to_masks3d(self, masks3d: np.ndarray | torch.Tensor, **params: Any) -> np.ndarray | torch.Tensor:
+        return self.apply_to_volumes(masks3d, **params)
 
     def apply_to_mask3d(self, mask3d: VolumeType | torch.Tensor, **params: Any) -> VolumeType:
         if mask3d.size == 0:
@@ -280,6 +262,12 @@ class HorizontalFlip(DualTransform):
         if isinstance(volume, torch.Tensor):
             return cast("VolumeType", fgeometric.flip_tensor(volume, dims=(-1,)))
         return fgeometric.hflip_images(volume)
+
+    def apply_to_volumes(self, volumes: np.ndarray | torch.Tensor, **params: Any) -> np.ndarray | torch.Tensor:
+        return flip_volume(volumes, -1 if isinstance(volumes, torch.Tensor) else 3)
+
+    def apply_to_masks3d(self, masks3d: np.ndarray | torch.Tensor, **params: Any) -> np.ndarray | torch.Tensor:
+        return self.apply_to_volumes(masks3d, **params)
 
     def apply_to_mask3d(self, mask3d: VolumeType | torch.Tensor, **params: Any) -> VolumeType:
         if mask3d.size == 0:
@@ -563,8 +551,25 @@ class D4(DualTransform):
         **params: Any,
     ) -> ImageType:
         if isinstance(images, torch.Tensor):
-            return cast("ImageType", _apply_d4_to_tensor_volume(images, group_element))
+            return cast("ImageType", fgeometric.d4_volume(images, group_element, (-2, -1)))
         return fgeometric.d4_images(images, group_element)
+
+    def apply_to_volumes(
+        self,
+        volumes: np.ndarray | torch.Tensor,
+        group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
+        **params: Any,
+    ) -> np.ndarray | torch.Tensor:
+        axes = (-2, -1) if isinstance(volumes, torch.Tensor) else (2, 3)
+        return fgeometric.d4_volume(volumes, group_element, axes)
+
+    def apply_to_masks3d(
+        self,
+        masks3d: np.ndarray | torch.Tensor,
+        group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
+        **params: Any,
+    ) -> np.ndarray | torch.Tensor:
+        return self.apply_to_volumes(masks3d, group_element, **params)
 
     def apply_to_mask3d(
         self,
@@ -575,7 +580,7 @@ class D4(DualTransform):
         if isinstance(mask3d, torch.Tensor):
             return cast(
                 "VolumeType",
-                _apply_d4_to_tensor_volume(mask3d.unsqueeze(0), group_element).squeeze(0),
+                fgeometric.d4_volume(mask3d.unsqueeze(0), group_element, (-2, -1)).squeeze(0),
             )
         if mask3d.size == 0:
             # Group elements that transpose dimensions: "r90", "r270", "t", "hvt"

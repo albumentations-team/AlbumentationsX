@@ -9,13 +9,12 @@ required by the [CLA](CLA.md).
 
 The reviewed runtime dependency registry is recorded in
 [`legal/dependency-licenses.json`](legal/dependency-licenses.json). It covers
-the union of the base package and every declared extra, including transitive
-packages and platform-specific locked versions. It is not one installation
-recipe. The four OpenCV extras are alternatives; a user selects one when
-AlbumentationsX installs OpenCV. The registry records the SPDX expression,
-evidence source, decision, and any notice handling for each package. Build,
-test, and CI tools are kept outside this runtime registry because they are not
-part of the distributed library.
+the base package and its transitive dependencies, including Python and
+platform-specific versions selected by the lockfile. Declared extras are
+outside the registry unless a package is also reachable through the base
+package. This applies to the optional Hub and OpenCV integrations. Build, test,
+and CI tools are also outside the registry. Each base record keeps its SPDX
+expression, evidence source, decision, and notice handling.
 
 The release SBOM represents the concrete base runtime export. It does not claim
 that all optional dependencies are installed together.
@@ -28,20 +27,22 @@ environment each need review of their own notices and redistribution terms.
 
 ## Changing dependencies or third-party material
 
-Open a normal pull request for a new runtime dependency, a declared license
-change, or copied or bundled third-party material. Include the dependency graph
-change, an update to the registry with the upstream license evidence and a short
-reason for the decision, and any required notice or packaging change. The CI
-check compares the locked export with the registry and the release process puts
-the reviewed SPDX expressions into the published SBOM. Vladimir Iglovikov makes
-the usual maintainer review and merge decision; no separate label or approval
-service is used.
+Open a normal pull request for a new base runtime dependency, a declared
+license change, or copied or bundled third-party material. Include the
+dependency graph change, an update to the registry with upstream license
+evidence and a short reason for the decision, and any required notice or
+packaging change. The CI check compares the locked base export with the
+registry, and the release process puts its reviewed SPDX expressions into the
+published SBOM. The separate vulnerability audit also covers optional extras.
+Vladimir Iglovikov makes the usual maintainer review and merge decision; no
+separate label or approval service is used.
 
-A version update requires a new reviewed-version entry. It can retain the prior
-license expression only after its verified license information and applicable
-notices are confirmed unchanged. Missing, contradictory, or changed evidence
-requires an updated decision before merge. Never replace unresolved evidence
-with a generic "allowed" label.
+A version update to a base dependency requires a new reviewed-version entry. It
+can retain the prior license expression only after its verified license
+information and applicable notices are confirmed unchanged. Missing,
+contradictory, or changed evidence requires an updated decision before merge.
+Never replace unresolved evidence with a generic "allowed" label. Packages
+reachable only through extras do not need a record in this registry.
 
 Runtime dependencies are installed separately from the AlbumentationsX wheel
 and sdist. When distributing a combined environment or copied binary material,

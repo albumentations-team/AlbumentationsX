@@ -57,12 +57,14 @@ are outside normal Linux CI unless a workflow has a real GUI reason.
 ## Optional Extras
 
 The `headless` extra is the default runtime path. The `contrib-headless` and
-`hub` extras get targeted import or small functional smoke tests. Torch is a
-soft-required runtime dependency: the base install does
-not select a CPU, CUDA, or MPS build, while importing `albumentations` requires
-an installed Torch runtime. CI jobs that import AlbumentationsX explicitly
-select the CPU-only profile; link-only static, packaging, audit, and
-static-documentation jobs do not select Torch.
+`hub` extras get targeted import or small functional smoke tests. Packages
+reachable only through extras are outside the mandatory dependency license
+registry unless they are also resolved by the base package. Torch is a
+soft-required runtime dependency: the base install does not select a CPU, CUDA,
+or MPS build, while importing `albumentations` requires an installed Torch
+runtime. CI jobs that import AlbumentationsX explicitly select the CPU-only
+profile; link-only static, packaging, audit, and static-documentation jobs do
+not select Torch.
 
 ## Retiring Support
 

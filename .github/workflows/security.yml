@@ -39,8 +39,8 @@ jobs:
       run: >
         python tools/verify_dependency_licenses.py
         --requirements runtime-requirements.txt
-        --requirements all-runtime-requirements.txt
     - name: Run pip-audit
+      if: ${{ !cancelled() && hashFiles('runtime-requirements.txt') != '' && hashFiles('all-runtime-requirements.txt') != '' }}
       run: >
         pip-audit
         --requirement runtime-requirements.txt

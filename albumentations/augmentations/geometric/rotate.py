@@ -10,7 +10,8 @@ from typing import Any, Literal
 
 import cv2
 import numpy as np
-from albucore import warp_affine
+import torch
+from albucore import rot90_volume, warp_affine
 from pydantic import model_validator
 from typing_extensions import Self
 
@@ -102,7 +103,7 @@ class RandomRotate90(DualTransform):
             Mutually exclusive with `group_element`. Default: None (random choice).
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
         uint8, float32
@@ -238,6 +239,25 @@ class RandomRotate90(DualTransform):
     ) -> ImageType:
         return fgeometric.rot90_images(images, group_element)
 
+    def apply_to_volumes(
+        self,
+        volumes: np.ndarray | torch.Tensor,
+        group_element: Literal["e", "r90", "r180", "r270"],
+        **params: Any,
+    ) -> np.ndarray | torch.Tensor:
+        if group_element == "e":
+            return volumes
+        axes = (-2, -1) if isinstance(volumes, torch.Tensor) else (2, 3)
+        return rot90_volume(volumes, fgeometric.C4_GROUP_ELEMENT_TO_K[group_element], axes)
+
+    def apply_to_masks3d(
+        self,
+        masks3d: np.ndarray | torch.Tensor,
+        group_element: Literal["e", "r90", "r180", "r270"],
+        **params: Any,
+    ) -> np.ndarray | torch.Tensor:
+        return self.apply_to_volumes(masks3d, group_element, **params)
+
     def apply_to_mask3d(
         self,
         mask3d: VolumeType,
@@ -299,7 +319,7 @@ class Rotate(DualTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
         uint8, float32
@@ -610,7 +630,7 @@ class SafeRotate(Affine):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
         uint8, float32

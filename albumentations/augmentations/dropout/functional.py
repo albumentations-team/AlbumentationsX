@@ -172,13 +172,16 @@ def fill_masked_pixels(
     dropout_mask: np.ndarray,
     fill: tuple[float, ...] | float,
 ) -> ImageType:
-    """Fill an arbitrary two-dimensional dropout mask with a numeric value."""
+    """Fill an arbitrary two-dimensional dropout mask across an image or image batch."""
     result = img.copy()
     fill_array = np.asarray(fill, dtype=img.dtype)
     num_channels = get_num_channels(img)
     if fill_array.size not in {1, num_channels}:
         raise ValueError(f"Fill value must have 1 or {num_channels} values, got {fill_array.size}")
-    result[dropout_mask] = fill_array
+    if img.ndim == 2:
+        result[dropout_mask] = fill_array
+    else:
+        result[..., dropout_mask, :] = fill_array
     return result
 
 

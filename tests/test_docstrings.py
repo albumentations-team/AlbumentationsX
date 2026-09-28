@@ -3,6 +3,7 @@
 import re
 
 import pytest
+from albu_spec import get_transform_metadata
 from google_docstring_parser import parse_google_docstring
 
 import albumentations as A
@@ -43,29 +44,11 @@ def test_public_transform_short_description_length(transform_cls):
     )
 
 
-def parse_targets_from_docstring(docstring_targets: str) -> set[str]:
-    """Parse targets from docstring format to set of lowercase strings."""
-    if not docstring_targets:
-        return set()
-
-    # Split by comma and clean up
-    targets = [t.strip().lower() for t in docstring_targets.split(",")]
-    return set(targets)
-
-
 def get_class_targets(cls) -> set[str]:
     """Get targets from class _targets property as lowercase strings."""
-    if not hasattr(cls, "_targets"):
-        return set()
-
-    targets = cls._targets
-    if isinstance(targets, tuple):
-        # Convert Targets enum to lowercase string names
-        return {t.name.lower() for t in targets}
-    if isinstance(targets, Targets):
-        return {targets.name.lower()}
-
-    return set()
+    raw_targets = cls._targets
+    targets = raw_targets if isinstance(raw_targets, tuple) else (raw_targets,)
+    return {target.name.lower() if isinstance(target, Targets) else target for target in targets}
 
 
 def parse_bbox_types_from_docstring(docstring_bbox_types: str | None) -> set[str]:
@@ -94,25 +77,22 @@ def get_class_bbox_types(cls) -> set[str]:
 
 @pytest.mark.parametrize("transform_cls", PUBLIC_TRANSFORM_CLASSES)
 def test_docstring_targets_match_class_property(transform_cls):
-    """Test that 'Targets:' in docstring matches _targets class property."""
+    """Require albu-spec to parse the documented targets exactly as declared."""
     transform_name = transform_cls.__name__
     docstring = transform_cls.__doc__
 
     assert docstring, f"{transform_name} has no docstring"
 
-    parsed = parse_google_docstring(docstring)
-    docstring_targets_str = parsed.get("Targets")
-
-    # Parse targets from docstring
-    docstring_targets = parse_targets_from_docstring(docstring_targets_str)
-
-    # Get targets from class property
+    target_headers = re.findall(r"^[ \t]*Targets:[ \t]*$", docstring, flags=re.MULTILINE)
+    assert len(target_headers) == 1, f"{transform_name}: require exactly one 'Targets:' section header on its own line"
+    parsed_docstring = get_transform_metadata(transform_cls).docstring_parsed
+    assert parsed_docstring is not None, f"{transform_name} has no parsed docstring"
+    parsed_targets = parsed_docstring.extra_sections.get("Targets")
+    assert parsed_targets, f"{transform_name} has no parsed 'Targets:' section"
+    docstring_targets = {name.strip().lower() for name in parsed_targets.split(",")}
     class_targets = get_class_targets(transform_cls)
 
-    assert docstring_targets, f"{transform_name} has no 'Targets:' section in docstring"
     assert class_targets, f"{transform_name} has no _targets property"
-
-    # Check they match
     assert docstring_targets == class_targets, (
         f"{transform_name}: Docstring targets {docstring_targets} don't match class _targets {class_targets}"
     )

@@ -110,6 +110,24 @@ class _BlockingDeterministicFlip(A.HorizontalFlip):
         return super().apply(image, **params)
 
 
+class _BlockingFrameBatchProbe(A.NoOp):
+    def __init__(self) -> None:
+        super().__init__(p=1.0)
+        self.first_entered = Event()
+        self.release_first = Event()
+        self.second_entered = Event()
+
+    def apply_to_images(self, images: np.ndarray, **params: Any) -> np.ndarray:
+        del params
+        marker = int(images[0, 0, 0, 0])
+        if marker == 1:
+            self.first_entered.set()
+            assert self.release_first.wait(timeout=5)
+        else:
+            self.second_entered.set()
+        return images
+
+
 class _ExplicitExternalSampler(ImageOnlyTransform):
     """Use the supported sampling contract from outside the built-in augmentation package."""
 
@@ -609,6 +627,57 @@ def test_compose_overlaps_grayscale_and_instance_binding_bookkeeping() -> None:
         np.testing.assert_array_equal(actual["bbox"], expected["bbox"])
     np.testing.assert_array_equal(second_result["instances"][0]["mask"], second_instances[0]["mask"])
     np.testing.assert_array_equal(second_result["instances"][0]["bbox"], second_instances[0]["bbox"])
+
+
+def test_compose_overlaps_frame_instance_binding_calls_without_sharing_state() -> None:
+    probe = _BlockingFrameBatchProbe()
+    compose = A.Compose(
+        [probe],
+        bbox_params=A.BboxParams(coord_format="pascal_voc"),
+        instance_binding=("masks", "bboxes"),
+        frame_binding=("images", "frame_annotations"),
+        strict=True,
+    )
+
+    def make_instances(counts: tuple[int, int], marker: int) -> list[dict[str, Any]]:
+        return [
+            {
+                "instances": [
+                    {
+                        "mask": np.full((5, 7), marker + index, dtype=np.uint8),
+                        "bbox": np.array([0, 0, 7, 5], dtype=np.float32),
+                    }
+                    for index in range(count)
+                ],
+            }
+            for count in counts
+        ]
+
+    first_images = np.full((2, 5, 7, 3), 1, dtype=np.uint8)
+    second_images = np.full((2, 5, 7, 3), 2, dtype=np.uint8)
+    first_annotations = make_instances((1, 2), 10)
+    second_annotations = make_instances((3, 1), 20)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first_future = _submit(
+            executor,
+            lambda: compose(images=first_images, frame_annotations=first_annotations),
+        )
+        _wait(probe.first_entered)
+        second_future = _submit(
+            executor,
+            lambda: compose(images=second_images, frame_annotations=second_annotations),
+        )
+        _wait(probe.second_entered)
+
+        probe.release_first.set()
+        first_result = first_future.result(timeout=5)
+        second_result = second_future.result(timeout=5)
+
+    assert [len(frame["instances"]) for frame in first_result["frame_annotations"]] == [1, 2]
+    assert [len(frame["instances"]) for frame in second_result["frame_annotations"]] == [3, 1]
+    assert first_result["frame_annotations"][0]["instances"][0]["mask"][0, 0] == 10
+    assert second_result["frame_annotations"][0]["instances"][0]["mask"][0, 0] == 20
 
 
 def test_compose_uses_a_fresh_label_processor_session_per_call() -> None:

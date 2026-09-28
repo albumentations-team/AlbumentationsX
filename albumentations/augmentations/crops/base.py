@@ -3,6 +3,7 @@
 from typing import Annotated, Any, ClassVar, Literal, cast
 
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.type_definitions import Targets
 
 from ._transforms_shared import (
     ALL_TARGETS,
@@ -119,7 +120,7 @@ class BaseCrop(DualTransform):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets: tuple[Targets | str, ...] | Targets | str = ALL_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     def apply(

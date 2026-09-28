@@ -91,13 +91,21 @@ def test_sampled_params_are_deterministically_ordered_and_schema_versioned() -> 
     )
     serialized = sampled_params.to_dict()
     assert set(serialized) == {"parameter_schema", "target_schema", "params", "target_params"}
-    assert serialized["parameter_schema"] == 2
+    assert serialized["parameter_schema"] == 3
     assert sampled_params.params_for("image") == {"value": 1, "specific": 2}
 
 
 def test_legacy_flat_parameter_payload_is_rejected() -> None:
     with pytest.raises(ValueError, match="unsupported or legacy"):
         SampledParams.from_dict({"shape": (4, 5, 3), "noise_map": np.zeros((4, 5, 3))})
+
+
+def test_retired_frame_indices_field_is_rejected() -> None:
+    payload = SampledParams(params={}).to_dict()
+    payload["frame_indices"] = [0, 1]
+
+    with pytest.raises(SampledParamsError, match="unsupported or legacy"):
+        SampledParams.from_dict(payload)
 
 
 def test_structured_payload_with_retired_field_names_is_rejected() -> None:
@@ -119,14 +127,14 @@ def test_replay_preserves_mixed_target_materialization() -> None:
 
     np.testing.assert_array_equal(first["image"], replayed["image"])
     np.testing.assert_array_equal(first["volume"], replayed["volume"])
-    assert first["replay"]["transforms"][0]["params"]["parameter_schema"] == 2
+    assert first["replay"]["transforms"][0]["params"]["parameter_schema"] == 3
 
 
 def test_structured_payload_with_retired_requirement_fields_is_rejected() -> None:
     with pytest.raises(SampledParamsError, match="unsupported target parameter requirement"):
         SampledParams.from_dict(
             {
-                "parameter_schema": 2,
+                "parameter_schema": 3,
                 "target_schema": {"image": "image"},
                 "params": {},
                 "target_params": [

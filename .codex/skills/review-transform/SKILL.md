@@ -11,6 +11,12 @@ Then review the behavior the hook cannot prove.
 
 ## Correctness and API
 
+- Check the public `Targets:` docstring, effective `_targets`, and active dispatch as one contract. Inherited working
+  handlers count; stubs do not. `images` and `masks` require their own declarations, and `user_data` is active only for
+  a custom transform that explicitly declares and implements it. See [Generated Transform Target Contracts](../../../docs/design/transform-target-contracts.md).
+- When frame-aligned annotations are involved, review the binding configuration and supported data shape in
+  [Instance and Frame Binding](../../../docs/design/instance_binding.md); do not infer frame ownership from collection
+  lengths alone.
 - Check the mathematical operation, coordinate boundaries, dtype range, and annotation semantics.
 - Verify that constructor fields, validators, and defaults express a coherent public policy.
 - Check empty inputs, ownership, aliasing, and unsupported input handling through the public route.

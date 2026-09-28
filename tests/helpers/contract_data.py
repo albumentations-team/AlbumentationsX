@@ -127,6 +127,19 @@ def make_target_volume_data(rng: np.random.Generator) -> dict[str, Any]:
     return data
 
 
+def make_target_volumes_masks3d_data(rng: np.random.Generator) -> dict[str, Any]:
+    """Return aligned, coordinate-coded volume and mask collections with distinct items."""
+    volumes = []
+    masks3d = []
+    for item_index in range(2):
+        data = make_target_volume_data(rng)
+        volume = data["volume"]
+        mask3d = data["mask3d"]
+        volumes.append(np.roll(volume, shift=item_index, axis=2))
+        masks3d.append(np.roll(mask3d, shift=item_index, axis=2))
+    return {"volumes": np.stack(volumes), "masks3d": np.stack(masks3d)}
+
+
 def make_target_volume_only_data(rng: np.random.Generator) -> dict[str, Any]:
     """Return a coordinate-coded volume without an annotation target."""
     depth, _, _, channels = TARGET_VOLUME_SHAPE
@@ -251,22 +264,18 @@ def make_binary_region_context(metadata_key: str) -> ContractContextFactory:
 
 
 def _first_image(data: dict[str, Any]) -> np.ndarray:
-    if "image" in data:
-        return data["image"]
-    if "images" in data:
-        return data["images"][0]
-    if "volume" in data:
-        return data["volume"][0]
-    if "mask" in data:
-        mask = data["mask"]
-        return np.repeat(mask[..., None], 3, axis=-1) if mask.ndim == 2 else mask
-    if "masks" in data:
-        mask = data["masks"][0]
-        return np.repeat(mask[..., None], 3, axis=-1) if mask.ndim == 2 else mask
-    if "mask3d" in data:
-        mask = data["mask3d"][0]
-        return np.repeat(mask[..., None], 3, axis=-1) if mask.ndim == 2 else mask
-    raise ValueError(f"Cannot derive an image from data keys: {sorted(data)}")
+    target_names = ("image", "images", "volume", "volumes", "mask", "masks", "mask3d", "masks3d")
+    target = next((name for name in target_names if name in data), None)
+    if target is None:
+        raise ValueError(f"Cannot derive an image from data keys: {sorted(data)}")
+    image = data[target]
+    if target in {"images", "volume", "masks", "mask3d"}:
+        image = image[0]
+    elif target in {"volumes", "masks3d"}:
+        image = image[0, 0]
+    if target in {"mask", "masks", "mask3d", "masks3d"} and image.ndim == 2:
+        image = np.repeat(image[..., None], 3, axis=-1)
+    return image
 
 
 def _first_mask(data: dict[str, Any]) -> np.ndarray | None:
@@ -276,6 +285,8 @@ def _first_mask(data: dict[str, Any]) -> np.ndarray | None:
         return data["masks"][0]
     if "mask3d" in data:
         return data["mask3d"][0]
+    if "masks3d" in data:
+        return data["masks3d"][0, 0]
     return None
 
 

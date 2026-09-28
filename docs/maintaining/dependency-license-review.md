@@ -1,14 +1,18 @@
 # Dependency license review
 
-AlbumentationsX records its reviewed runtime dependency set in
-[`legal/dependency-licenses.json`](../../legal/dependency-licenses.json). The
-record covers the union of the base package and each declared extra resolved
-from `uv.lock`. It is not a dependency set installed together. `headless`,
-`gui`, `contrib`, and `contrib-headless` are alternative OpenCV profiles; a user
-selects one when installing OpenCV through an AlbumentationsX extra. The record
-includes transitive dependencies and the NumPy and SciPy versions selected by
-different Python and platform markers. Development, build, and CI tooling are
-out of scope because they do not ship in the library wheel or sdist.
+AlbumentationsX records its reviewed base runtime dependency set in
+[`legal/dependency-licenses.json`](../../legal/dependency-licenses.json).
+The verifier exports the base package and its transitive dependencies from
+
+```bash
+uv export --frozen --no-dev --no-emit-project
+```
+
+The lockfile preserves NumPy, SciPy, and other versions selected by Python and
+platform markers. Declared extras are excluded unless a package is also
+reachable through the base package. This includes `hub` and all OpenCV extras.
+Torch is selected separately as a CI runtime profile and is outside this
+registry. The vulnerability audit has its own scope and includes all extras.
 
 The initial review was completed on 2026-09-16 from the locked distribution
 metadata and license files, with the named PyPI release as the source record.
@@ -18,13 +22,13 @@ their wheels can include additional binary components. Those
 components remain separately installed dependencies; a distributor of a
 combined environment must keep the notices supplied with the relevant wheel.
 
-`tools/verify_dependency_licenses.py` rejects a dependency name or version
-absent from the registry and writes the reviewed SPDX expressions into the
-CycloneDX SBOM. The release workflow generates that SBOM from the concrete base
-runtime export, then compares each installed distribution's declared license
-metadata with the identifiers accepted in the registry. The security workflow
-checks the exported dependency graphs. A future dependency or license change is
-reviewed through the procedure in
+`tools/verify_dependency_licenses.py` checks the base export against reviewed
+names and versions, then writes the reviewed SPDX expressions into the
+CycloneDX SBOM. The release workflow compares each installed base distribution's
+declared license metadata with the identifiers accepted in the registry. PR
+and scheduled security workflows use the same base-only license check;
+`pip-audit` separately checks both the base and optional dependency exports.
+Review future base dependency or license changes through
 [`LICENSE_POLICY.md`](../../LICENSE_POLICY.md).
 
 The current package does not copy these runtime dependencies into its wheel or

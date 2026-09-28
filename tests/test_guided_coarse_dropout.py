@@ -35,6 +35,77 @@ def test_dropout_uses_top_level_binary_region_and_preserves_metadata() -> None:
 
 
 @pytest.mark.parametrize(
+    "fill", [0, (137, 0, 13), "random", "random_uniform", "grayscale", "inpaint_telea", "inpaint_ns"]
+)
+def test_batch_dropout_matches_single_images_with_clipped_holes(fill: float | tuple[float, ...] | str) -> None:
+    image = np.arange(16 * 16 * 3, dtype=np.uint8).reshape(16, 16, 3)
+    region = np.zeros((16, 16), dtype=np.uint8)
+    region[6:10, 6:10] = 1
+    transform = A.Compose(
+        [
+            A.GuidedCoarseDropout(
+                num_holes_range=(2, 2),
+                hole_height_range=(0.5, 0.5),
+                hole_width_range=(0.5, 0.5),
+                fill=fill,
+                p=1,
+            )
+        ],
+        telemetry=False,
+    )
+
+    single = transform(image=image, dropout_region=region, invocation_seed=137)["image"]
+    batch = transform(images=np.stack([image, image]), dropout_region=region, invocation_seed=137)["images"]
+
+    assert np.any(single != image)
+    np.testing.assert_array_equal(batch, np.stack([single, single]))
+    np.testing.assert_array_equal(batch[:, region == 0], np.stack([image, image])[:, region == 0])
+
+
+def test_direct_grayscale_batch_preserves_optional_channel_layout() -> None:
+    images = np.full((2, 16, 16), 255, dtype=np.uint8)
+    region = np.zeros((16, 16), dtype=np.uint8)
+    region[6:10, 6:10] = 1
+    transform = A.GuidedCoarseDropout(
+        hole_height_range=(0.5, 0.5),
+        hole_width_range=(0.5, 0.5),
+        fill=0,
+        p=1,
+    )
+
+    result = transform(images=images, dropout_region=region)
+
+    assert result["images"].shape == images.shape
+    assert np.any(result["images"] != images)
+    np.testing.assert_array_equal(result["images"][:, region == 0], images[:, region == 0])
+
+
+def test_mask_collection_respects_the_eligible_region() -> None:
+    image = np.full((16, 16, 3), 255, dtype=np.uint8)
+    masks = np.ones((2, 16, 16), dtype=np.uint8)
+    region = np.zeros((16, 16), dtype=np.uint8)
+    region[6:10, 6:10] = 1
+    transform = A.Compose(
+        [
+            A.GuidedCoarseDropout(
+                num_holes_range=(2, 2),
+                hole_height_range=(0.5, 0.5),
+                hole_width_range=(0.5, 0.5),
+                fill_mask=0,
+                p=1,
+            )
+        ],
+        telemetry=False,
+    )
+
+    result = transform(image=image, masks=masks, dropout_region=region, invocation_seed=137)
+
+    assert np.any(result["masks"] != masks)
+    np.testing.assert_array_equal(result["masks"][:, region == 0], masks[:, region == 0])
+    np.testing.assert_array_equal(result["masks"][0], result["masks"][1])
+
+
+@pytest.mark.parametrize(
     "region",
     [
         np.ones((8, 8, 1), dtype=np.uint8),

@@ -72,7 +72,7 @@ class ToGray(ImageOnlyTransform):
         - "pca" might be used in advanced image analysis tasks or when dealing with hyperspectral images.
 
     Targets:
-        image, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -230,7 +230,7 @@ class ToRGB(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 1.0.
 
     Targets:
-        image, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -332,7 +332,7 @@ class Colorize(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -473,7 +473,7 @@ class ToSepia(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -567,7 +567,7 @@ class FancyPCA(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32

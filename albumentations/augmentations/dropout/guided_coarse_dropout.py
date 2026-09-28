@@ -47,7 +47,7 @@ class GuidedCoarseDropout(BaseDropout):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, mask, bboxes, keypoints
+        image, images, mask, masks, bboxes, keypoints
 
     Image types:
         uint8, float32
@@ -81,7 +81,7 @@ class GuidedCoarseDropout(BaseDropout):
 
     """
 
-    _targets = (Targets.IMAGE, Targets.MASK, Targets.BBOXES, Targets.KEYPOINTS)
+    _targets = (Targets.IMAGE, Targets.IMAGES, Targets.MASK, Targets.MASKS, Targets.BBOXES, Targets.KEYPOINTS)
     _supported_bbox_types: frozenset[str] = frozenset({"hbb"})
 
     class InitSchema(BaseDropoutInitSchema):
@@ -268,6 +268,26 @@ class GuidedCoarseDropout(BaseDropout):
             return img
         self._validate_fill_channel_count(img, {2, 3})
         return fdropout.fill_masked_holes(img, holes, dropout_mask, self.fill, np.random.default_rng(seed))
+
+    def apply_to_images(  # type: ignore[override]  # pyrefly: ignore[bad-override]
+        self,
+        images: ImageType,
+        holes: np.ndarray,
+        seed: int,
+        dropout_mask: np.ndarray | None,
+        **params: Any,
+    ) -> ImageType:
+        if dropout_mask is None:
+            return images
+        if not isinstance(self.fill, str):
+            channel_less = images.ndim == 3
+            batch = images[..., None] if channel_less else images
+            result = fdropout.fill_masked_pixels(batch, dropout_mask, self.fill)
+            return result[..., 0] if channel_less else result
+        return self._apply_to_batch_same_shape(
+            images,
+            lambda image: self.apply(image, holes, seed, dropout_mask, **params),
+        )
 
     def apply_to_mask(  # type: ignore[override]  # pyrefly: ignore[bad-override]
         self,

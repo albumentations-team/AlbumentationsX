@@ -21,6 +21,8 @@ are channel-first.
 | `images` | Tensor | `N,C,H,W` | `N,C,H,W` | Tensor |
 | `volume` | NumPy | `D,H,W` or `D,H,W,C` | `D,H,W,C` | NumPy |
 | `volume` | Tensor | `C,D,H,W` | `C,D,H,W` | Tensor |
+| `volumes` | NumPy | `N,D,H,W` or `N,D,H,W,C` | `N,D,H,W,C` | NumPy |
+| `volumes` | Tensor | `N,C,D,H,W` | `N,C,D,H,W` | Tensor |
 
 For video passed as `images`, `N=T`; the Tensor layout is `T,C,H,W`. Normal `DataLoader` collation produces
 `B,T,C,H,W`. A model that consumes `B,C,T,H,W` performs that model-specific permutation after augmentation.
@@ -35,9 +37,16 @@ For video passed as `images`, `N=T`; the Tensor layout is `T,C,H,W`. Normal `Dat
 | `masks` | Tensor | `N,H,W` or `N,C,H,W` | `N,C,H,W` |
 | `mask3d` | NumPy | `D,H,W` or `D,H,W,C` | `D,H,W,C` |
 | `mask3d` | Tensor | `D,H,W` or `C,D,H,W` | `C,D,H,W` |
+| `masks3d` | NumPy | `N,D,H,W` or `N,D,H,W,C` | `N,D,H,W,C` |
+| `masks3d` | Tensor | `N,D,H,W` or `N,C,D,H,W` | `N,C,D,H,W` |
 
 Mask channels may hold categorical labels, independent binary planes, depth values, or another target-specific value.
 Transforms apply masks only through their declared target methods.
+
+For `volumes` and `masks3d`, one transform invocation samples its parameters once and reuses them for every item in
+the collection by calling the existing single-volume or single-mask3d handler. The number of items in the two
+collections may differ; `Compose` checks their shared `(D,H,W)` shape. The caller owns item-to-item alignment. These
+targets do not add binding or temporal-sampling behavior.
 
 ### Optional-channel restoration
 
@@ -90,8 +99,8 @@ may materialize contiguous or writable storage when its kernel requires it.
 
 | Target family | Accepted Tensor dtypes |
 | --- | --- |
-| `image`, `images`, `volume` | `torch.uint8`, `torch.float32` |
-| `mask`, `masks`, `mask3d` | `torch.uint8`, `torch.int16`, `torch.float32` |
+| `image`, `images`, `volume`, `volumes` | `torch.uint8`, `torch.float32` |
+| `mask`, `masks`, `mask3d`, `masks3d` | `torch.uint8`, `torch.int16`, `torch.float32` |
 | `bboxes`, `keypoints` | `torch.float32` |
 
 This table describes validation at the `Compose` boundary. An applied fallback uses the transform's existing NumPy
@@ -164,6 +173,10 @@ def apply(self, image: ImageType | torch.Tensor, **params: Any) -> ImageType: ..
 Handlers without a Tensor input annotation use the leaf-local NumPy fallback. This keeps the declaration with the code
 that receives the value: no transform-level Tensor flags, target lists, channel lists, or adapters are needed. Tensor
 contract tests execute the selected paths.
+
+The inherited `volumes` and `masks3d` handlers check the single-item handler they invoke. That handler determines
+whether the collection uses native Tensor execution or NumPy fallback, including calls through aliases and transforms
+that declare only the collection target.
 
 ### Declared metadata
 

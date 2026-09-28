@@ -45,7 +45,7 @@ repos:
         entry: python tools/verify_dependency_licenses.py --export-runtime
         language: system
         pass_filenames: false
-        files: ^(LICENSE_POLICY\.md$|legal/dependency-licenses\.json$|pyproject\.toml$|uv\.lock$|tools/verify_dependency_licenses\.py$|tests/test_dependency_licenses\.py$|docs/maintaining/dependency-license-review\.md$|\.github/workflows/(pr|security)\.yml$)
+        files: ^(LICENSE_POLICY\.md$|legal/dependency-licenses\.json$|pyproject\.toml$|uv\.lock$|tools/verify_dependency_licenses\.py$|tests/test_dependency_licenses\.py$|docs/maintaining/(dependency-license-review|support-policy|external-services)\.md$|\.codex/skills/license-integrity/SKILL\.md$|\.github/workflows/(pr|security)\.yml$)
       - id: check-internal-workspace
         name: Reject staged local-only workspace files
         entry: python tools/check_internal_workspace.py
@@ -104,7 +104,7 @@ repos:
         language: system
         files: ^(pyproject\.toml|conda\.recipe/meta\.yaml|tools/check_conda_dependencies\.py)$
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.8
+    rev: v0.16.9
     hooks:
       - id: ruff
         exclude: '__pycache__/'
@@ -144,7 +144,7 @@ repos:
         args:
           [ --config-file=pyproject.toml ]
   - repo: https://github.com/facebook/pyrefly-pre-commit
-    rev: 1.3.1
+    rev: 1.4.0.dev1
     hooks:
       - id: pyrefly-check
         name: Pyrefly type check
@@ -168,7 +168,7 @@ repos:
         exclude: ^build/
         additional_dependencies: ["tomli>=2.4.1"]
   - repo: https://github.com/frnmst/md-toc
-    rev: 9.0.0
+    rev: 9.0.0  # 9.0.1 requires Python >=3.11; keep hooks compatible with Python 3.10.
     hooks:
       - id: md-toc
         args: ["-p", "github", "-l", "6"]  # GitHub style, up to 6 levels deep

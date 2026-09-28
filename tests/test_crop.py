@@ -100,12 +100,15 @@ def test_crop_near_bbox(image, bboxes, keypoints):
         "masks",
         "keypoints",
         "volume",
+        "volumes",
         "mask3d",
+        "masks3d",
         "user_data",
         bbox_key,
     }
 
     assert aug._available_keys == target_keys
+    assert "user_data" not in aug.transforms[0]._key2func
 
     aug2 = A.Compose(
         [A.Sequential([A.RandomCropNearBBox(max_part_shift=(0.1, 0.5), cropping_bbox_key=bbox_key, p=1)])],

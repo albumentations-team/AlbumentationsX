@@ -147,7 +147,7 @@ class LabelEncoder:
         if self.is_numerical:
             return np.array(y)
 
-        return np.array([self.inverse_classes_[label] for label in y])
+        return np.array([self.inverse_classes_[label] for label in y], dtype=object)
 
     def update(self, y: Sequence[Any] | np.ndarray) -> "LabelEncoder":
         """Update the encoder with new labels not seen during fit. Adds new mappings only; does

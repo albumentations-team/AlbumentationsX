@@ -207,6 +207,77 @@ Valid binding targets: `"mask"`, `"masks"`, `"bboxes"`, `"keypoints"`. Minimum 2
 
 `_resync_instance_ids` raises `RuntimeError` on contract violations.
 
+## Frame Binding
+
+`frame_binding` associates an image collection with one annotation collection. It is independent of
+`instance_binding`, so the two can be combined for per-frame instance annotations.
+
+Use `frame_binding=["images", "masks"]` when each image has one semantic mask. Both arrays have
+the same leading frame count; frame `i` in `masks` belongs to frame `i` in `images`.
+
+Use `frame_binding=["images", "frame_annotations"]` when annotations vary by frame:
+
+```python
+A.Compose(
+    transforms,
+    bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["class_id"]),
+    frame_binding=["images", "frame_annotations"],
+)(
+    images=video,
+    frame_annotations=[
+        {"bboxes": [[2, 3, 10, 12]], "class_id": ["cat"]},
+        {},
+    ],
+)
+```
+
+Each entry is a per-frame mapping and may contain `mask`, `masks`, `bboxes`, `keypoints`, and their
+configured label fields. Video masks use the same number of channels across frames; the number
+of instance masks per frame may vary. Empty mappings represent frames without annotations. To combine frame
+binding with instance binding, place an `instances` list in each frame mapping; an empty frame may
+use `{}` or `{"instances": []}`. Each instance uses the schema described above.
+With instance binding, frame-level spatial targets outside `instances` are rejected, including
+aliases; other frame-level metadata is retained.
+
+Compose flattens frame dictionaries once at entry and restores them at exit. Bboxes and keypoints
+carry a numeric `frame_id` column before their encoded labels; bound `instance_id` remains the last
+column. One processor session per annotation type encodes labels across the video. Output dictionaries
+restore each source frame's label container, optional channel axis, and NumPy or CPU Tensor layout.
+Label buffers belong to individual coordinate target names, so aliases in different frames retain
+their own labels and row counts. Label counts are checked per frame at entry. If targets in one
+frame share a label field, their surviving labels must agree; conflicting outputs raise `ValueError`.
+
+Instance masks are stacked as `(N, H, W, C)`, with
+separate `frame_id` and `instance_id` arrays. The number of objects can vary by frame. Video instance
+binding uses this representation even when the constructor specifies packed `mask` binding.
+
+Temporal transforms sample `frame_indices` as ordinary `SampledParams.params`. Their
+`apply_to_images`, `apply_to_masks`, `apply_to_bboxes`, and `apply_to_keypoints` select the arrays or
+rows and update ownership explicitly. Selecting old frame `i` into output position `j` assigns
+`frame_id=j`; repeated frames create independent copies and distinct instance IDs. Annotation rows
+can omit empty frames, so their frame IDs need not cover every output position.
+
+Handlers receive arrays plus ownership parameters. When ownership changes, image and mask handlers
+return `TargetResult`; its type parameter preserves the array type, including the `StackedMasks4D`
+brand. Ordinary spatial handlers return arrays. Mask results carry `frame_ids` and
+optional `instance_ids`. Image results carry `source_frame_ids`, identifying the original input frames
+independently of their current output positions. Compose retains returned IDs after all handlers finish
+and uses selected image source IDs to restore
+empty frame dictionaries and their original public layouts. The generic dispatcher does not recognize
+`frame_indices` or select frame dictionaries.
+
+Transforms declare ownership parameters in `_runtime_generated_params` and take them as explicit
+handler arguments. An unbound call supplies `None`. These parameters belong to the current invocation
+and are never written into sampled parameters or replay payloads.
+
+Nested Tensors are validated before sampling. Bboxes and keypoints use the root annotation bridge;
+spatial collections use each leaf's native Tensor or NumPy fallback route. Nested containers use the
+root binding policy to filter flattened annotations. Keypoint label swaps stay within a frame or,
+when instance binding is active, within each instance.
+
+An `additional_targets` alias to `images` or frame-bound `masks` is checked against the canonical
+collection's frame count and follows its frame selection. `frame_annotations` has no alias route.
+
 ## Preprocessing (Unpack)
 
 1. Pop `data["instances"]` list.

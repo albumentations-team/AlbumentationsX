@@ -10,7 +10,7 @@ from collections.abc import Callable
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from types import TracebackType
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
 
@@ -23,6 +23,10 @@ from albumentations.core.random_utils import (
     _RuntimeRngContext,
     _should_sync_runtime_rng,
 )
+
+if TYPE_CHECKING:
+    from albumentations.core.binding import FrameBinding
+    from albumentations.core.utils import DataProcessor
 
 
 class InvocationOwner(Protocol):
@@ -471,6 +475,7 @@ class InvocationContext:
     collect_applied: bool = False
     root_key: object | None = None
     has_tensor_inputs: bool | None = None
+    frame_state: FrameBinding | None = None
     _py_random: random.Random | None = None
     _random_generator: np.random.Generator | None = None
     _reserved_random_streams: _ReservedRandomStreams | None = None
@@ -481,7 +486,7 @@ class InvocationContext:
     _first_compose_state: ComposeInvocationState | None = None
     _compose_states: dict[object, ComposeInvocationState] | None = None
     _processor_sessions: dict[int, dict[str, Any]] | None = None
-    _active_processors: dict[str, Any] | None = None
+    active_processors: dict[str, Any] | None = None
     _active_processors_by_id: dict[int, Any] | None = None
     _filtered_processor_ids: set[int] | None = None
     _sampling_context: SamplingContext | None = None
@@ -616,7 +621,7 @@ class InvocationContext:
         annotation state into every transform node.
         """
         sessions = self.processors(configured_processors)
-        self._active_processors = sessions
+        self.active_processors = sessions
         self._active_processors_by_id = {
             id(configured_processor): sessions[name] for name, configured_processor in configured_processors.items()
         }
@@ -626,9 +631,10 @@ class InvocationContext:
         """Return the active annotation processor for this invocation, keeping each leaf detached
         from root configuration and sessions owned by other callers.
         """
-        return None if self._active_processors is None else self._active_processors.get(name)
+        processors = self.active_processors
+        return None if processors is None else processors.get(name)
 
-    def get_processor_session(self, configured_processor: object) -> Any | None:
+    def get_processor_session(self, configured_processor: DataProcessor[Any]) -> Any | None:
         """Return a call-local session for this policy identity, letting nested containers filter
         annotations without mutating persistent root configuration.
         """

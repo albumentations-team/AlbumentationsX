@@ -12,6 +12,7 @@ import albumentations as A
 from albumentations.augmentations.transforms3d import functional as f3d
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet
+from albumentations.core.type_definitions import Targets
 from tests.conftest import RECTANGULAR_UINT8_IMAGE
 from tests.utils import (
     get_primary_2d_transform_params,
@@ -76,6 +77,32 @@ def test_resize_3d_identity_and_integer_nearest_scale_are_exact():
     expected_mask3d = np.repeat(np.repeat(np.repeat(mask3d, 2, axis=0), 2, axis=1), 2, axis=2)
     np.testing.assert_array_equal(result["volume"], expected_volume)
     np.testing.assert_array_equal(result["mask3d"], expected_mask3d)
+
+
+@pytest.mark.parametrize("mask_target", ["mask3d", "masks3d"])
+def test_coarse_dropout3d_respects_fill_mask_none_for_mask_targets(mask_target: str) -> None:
+    volumes = np.ones((2, 3, 5, 7, 1), dtype=np.uint8)
+    mask = np.ones((3, 5, 7), dtype=np.uint8) if mask_target == "mask3d" else np.ones((2, 3, 5, 7), dtype=np.uint8)
+    transform = A.Compose(
+        [
+            A.CoarseDropout3D(
+                num_holes_range=(1, 1),
+                hole_depth_range=(1.0, 1.0),
+                hole_height_range=(1.0, 1.0),
+                hole_width_range=(1.0, 1.0),
+                fill=0,
+                fill_mask=None,
+                p=1.0,
+            ),
+        ],
+        strict=True,
+        seed=137,
+    )
+
+    result = transform(volumes=volumes, **{mask_target: mask})
+
+    np.testing.assert_array_equal(result["volumes"], np.zeros_like(volumes))
+    np.testing.assert_array_equal(result[mask_target], mask)
 
 
 def test_resize_3d_matches_trilinear_reference():
@@ -511,6 +538,7 @@ def test_pad3d_2d_equivalence(pad3d_padding, pad2d_padding):
         custom_arguments={
             A.Flip3D: {"flip_axes": (0,)},
             A.RandomRotate90_3D: {"axis_pair": (0, 2), "group_element": "r90"},
+            A.CoarseDropout3D: {"fill_mask": 137},
         },
         except_augmentations={},
     ),
@@ -762,7 +790,8 @@ def _get_slice_wise_2d_transform_params():
                 A.BBoxSubsetSafeRandomCrop,
             },
         )
-        if getattr(augmentation_cls(**params, p=1), "_volume_sampling_is_slice_wise", True)
+        if {Targets.IMAGE, Targets.IMAGES, Targets.VOLUME}.issubset(augmentation_cls._targets)
+        and getattr(augmentation_cls(**params, p=1), "_volume_sampling_is_slice_wise", True)
     ]
 
 
@@ -781,8 +810,6 @@ def test_image_volume_matching(image, augmentation_cls, params):
         "volume": volume,
         "images": images,
     }
-    if augmentation_cls == A.CopyAndPaste:
-        call_kw["copy_paste_metadata"] = []
     transformed = aug(**call_kw)
 
     (
@@ -799,7 +826,7 @@ def test_image_volume_matching(image, augmentation_cls, params):
     ["augmentation_cls", "params"],
     _get_slice_wise_2d_transform_params(),
 )
-def test_image_transforms_matching(image, augmentation_cls, params):
+def test_image_transforms_matching(augmentation_cls, params):
     # Use the same data for both to ensure transforms that depend on image content produce identical results
     test_data = np.random.RandomState(42).randint(0, 256, (5, 100, 100, 3), dtype=np.uint8)
 
@@ -808,10 +835,6 @@ def test_image_transforms_matching(image, augmentation_cls, params):
 
     kw_images: dict[str, Any] = {"images": test_data.copy()}
     kw_volume: dict[str, Any] = {"volume": test_data.copy()}
-    if augmentation_cls == A.CopyAndPaste:
-        kw_images["copy_paste_metadata"] = []
-        kw_volume["copy_paste_metadata"] = []
-
     transformed_1 = aug_1(**kw_images)
     transformed_2 = aug_2(**kw_volume)
 

@@ -50,7 +50,9 @@ def test_every_dual_transform_case_has_core_target_coverage() -> None:
 def test_every_primary_image_only_transform_case_has_tensor_target_coverage() -> None:
     image_only_case_ids = {case.case_id for case in PRIMARY_IMAGE_ONLY_TRANSFORM_CONTRACT_CASES}
     expected_pairs = {
-        (case_id, profile_id) for case_id in image_only_case_ids for profile_id in ("image", "images-batch", "volume")
+        (case_id, profile_id)
+        for case_id in image_only_case_ids
+        for profile_id in ("image", "images-batch", "volume", "volumes-batch")
     }
     covered_pairs = {(pair.case.case_id, pair.profile.profile_id) for pair in TENSOR_TARGET_CONTRACT_PAIRS}
     missing = expected_pairs - covered_pairs
@@ -64,7 +66,7 @@ def test_image_only_tensor_profiles_preserve_primary_image_data(pair: TargetCont
     source = make_target_contract_data(pair.case, pair.profile, np.random.default_rng(137))
     target_name = next(iter(pair.profile.required_targets))
     target = source[target_name]
-    image = target if target_name == "image" else target[0]
+    image = target if target_name == "image" else target[0, 0] if target_name == "volumes" else target[0]
     expected_image = primary_image if primary_image.ndim == 3 else primary_image[..., None]
 
     assert image.dtype == expected_image.dtype

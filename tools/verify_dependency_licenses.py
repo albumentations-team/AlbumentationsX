@@ -137,49 +137,48 @@ def active_requirement_components(paths: Iterable[Path]) -> set[tuple[str, str]]
 
 
 def check_requirements(registry: Mapping[str, Any], paths: Iterable[Path]) -> list[str]:
-    """Report exported packages that have no reviewed registry entry."""
+    """Require the registry to match the exported base dependency names and versions."""
     entries = registry_by_name(registry)
+    requirements = requirement_components(paths)
     errors = []
-    for name, version in sorted(requirement_components(paths)):
+    for name, version in sorted(requirements):
         if error := review_error(entries.get(name), name, version):
             errors.append(error)
+    exported_names = {name for name, _ in requirements}
+    errors.extend(
+        f"{name} is absent from the base runtime requirements export"
+        for name in sorted(entries.keys() - exported_names)
+    )
     return errors
 
 
 @contextmanager
-def export_runtime_requirements() -> Iterator[tuple[Path, ...]]:
-    """Export the locked base and optional runtime requirements for local checks."""
+def export_runtime_requirements() -> Iterator[Path]:
+    """Export the locked base runtime requirements for local checks."""
     uv_executable = shutil.which("uv")
     if uv_executable is None:
         raise FileNotFoundError("uv executable is required to export locked runtime requirements")
 
     with tempfile.TemporaryDirectory(prefix="albumentationsx-runtime-requirements-") as directory:
         directory_path = Path(directory)
-        paths: list[Path] = []
-        for filename, export_args in (
-            ("runtime-requirements.txt", ()),
-            ("all-runtime-requirements.txt", ("--all-extras",)),
-        ):
-            path = directory_path / filename
-            subprocess.run(  # noqa: S603 - uv and its arguments are fixed by this checker.
-                [
-                    uv_executable,
-                    "-q",
-                    "export",
-                    "--frozen",
-                    "--no-dev",
-                    "--no-emit-project",
-                    "--format",
-                    "requirements-txt",
-                    *export_args,
-                    "--output-file",
-                    str(path),
-                ],
-                check=True,
-                cwd=REPO_ROOT,
-            )
-            paths.append(path)
-        yield tuple(paths)
+        path = directory_path / "runtime-requirements.txt"
+        subprocess.run(  # noqa: S603 - uv and its arguments are fixed by this checker.
+            [
+                uv_executable,
+                "-q",
+                "export",
+                "--frozen",
+                "--no-dev",
+                "--no-emit-project",
+                "--format",
+                "requirements-txt",
+                "--output-file",
+                str(path),
+            ],
+            check=True,
+            cwd=REPO_ROOT,
+        )
+        yield path
 
 
 def _component_key(component: Mapping[str, Any]) -> tuple[str, str] | None:
@@ -304,7 +303,7 @@ def check(args: argparse.Namespace) -> tuple[dict[str, Any], list[str]]:
     registry = load_registry(args.registry)
     if args.export_runtime:
         with export_runtime_requirements() as requirements:
-            errors = _check_requirements_and_evidence(registry, requirements, args.license_sbom)
+            errors = _check_requirements_and_evidence(registry, (requirements,), args.license_sbom)
     else:
         errors = _check_requirements_and_evidence(registry, args.requirements, args.license_sbom)
     if args.write_sbom:
@@ -325,7 +324,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--export-runtime",
         action="store_true",
-        help="export locked base and optional runtime requirements with uv before checking them",
+        help="export locked base runtime requirements with uv before checking them",
     )
     parser.add_argument("--sbom", type=Path)
     parser.add_argument("--license-sbom", type=Path)

@@ -138,6 +138,7 @@
   "ToRGB": ["num_output_channels", "p"],
   "ToSepia": ["p"],
   "Transpose": ["p"],
+  "UniformTemporalSubsample": ["num_frames", "p"],
   "UnsharpMask": ["blur_range", "sigma_range", "alpha_range", "threshold", "p"],
   "VerticalFlip": ["p"],
   "Vignetting": ["intensity_range", "center_range", "p"],

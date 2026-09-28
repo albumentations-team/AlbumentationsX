@@ -282,7 +282,7 @@ class ElasticTransform(BaseRemapTransform):
         p (float): Probability of applying the transform.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
         uint8, float32
@@ -516,7 +516,7 @@ class PiecewiseAffine(BaseDistortion):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, mask, keypoints, bboxes, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
         uint8, float32
@@ -667,7 +667,7 @@ class OpticalDistortion(BaseDistortion):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
         uint8, float32
@@ -797,7 +797,7 @@ class GridDistortion(BaseDistortion):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
         uint8, float32
@@ -972,7 +972,7 @@ class ThinPlateSpline(BaseDistortion):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image, mask, keypoints, bboxes, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
         uint8, float32
@@ -1148,7 +1148,7 @@ class WaterRefraction(BaseDistortion):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
         uint8, float32
@@ -1295,7 +1295,7 @@ class PixelSpread(BaseDistortion):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, mask3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
         uint8, float32

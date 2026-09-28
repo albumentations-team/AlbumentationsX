@@ -4,6 +4,21 @@
 **Scope:** public `DualTransform` execution plus Tensor routing for `ImageOnlyTransform` targets
 **Primary readers:** maintainers adding transform modes, targets, metadata requirements, or target-specific behavior
 
+## Declaration and execution are one contract
+
+For every concrete public transform, its `Targets:` docstring, effective `_targets`, and active dispatch keys must
+name the same targets. `BasicTransform` builds the dispatch table from `_targets` alone and resolves the selected
+`apply*` handler through the class hierarchy, so a working inherited handler counts. A missing handler or inherited
+stub does not implement a target. `images`, `masks`, `volumes`, and `masks3d` are explicit collection targets; they do
+not follow from `image`, `mask`, `volume`, or `mask3d`. Their base handlers reuse the existing single-item route with
+the same sampled parameters for every collection item. The built-in `user_data` passthrough is not an active target;
+a transform may opt in with an explicit declaration and its own handler. `Compose` accepts this passthrough field with `strict=True`.
+
+`Targets:` must be a section header on its own line, with the target list indented below it.
+`tests/test_docstrings.py` reads this section from `albu-spec`'s parsed docstring and compares it with `_targets`;
+`tests/test_targets.py` checks that dispatch keys match the declaration and do not resolve to base-class stubs.
+The generated target cluster then executes each selected target through the public `Compose` route.
+
 ## What adding a registry case now covers
 
 Every registered `DualTransform` mode automatically runs against each applicable core target profile. A new constructor
@@ -12,9 +27,9 @@ volume/`mask3d` coverage without another transform list.
 One primary mode per class also runs against the more expensive dtype, channel, batch, empty-target, memory-layout, and
 read-only profiles.
 
-Every primary `ImageOnlyTransform` mode automatically runs through the Tensor bridge for `image`, batched `images`, and
-`volume`. These profiles check `CHW`, `NCHW`, and `CDHW` Tensor layouts without adding annotation targets that an
-image-only transform does not declare.
+Every primary `ImageOnlyTransform` mode automatically runs through the Tensor bridge for `image`, batched `images`,
+`volume`, and batched `volumes`. These profiles check `CHW`, `NCHW`, `CDHW`, and `NCDHW` Tensor layouts without adding
+annotation targets that an image-only transform does not declare.
 
 The generated matrix answers three questions:
 
@@ -81,6 +96,7 @@ Extended profiles run one primary mode per class:
 
 - float32, one-channel, and five-channel image/mask data;
 - `images` and `masks` batches;
+- `volumes` and `masks3d` collections, checking lengths, spatial synchronization, channel layout, and dtype;
 - empty HBB and keypoint collections;
 - non-contiguous image/mask views; and
 - read-only image/mask arrays.
@@ -88,9 +104,9 @@ Extended profiles run one primary mode per class:
 The channel profiles use the optional `_supported_channel_counts` capability. Transforms with a real channel-count
 restriction declare it on the transform class, so the resolver remains free of transform-name branches.
 
-The Tensor matrix also runs the float32, one-channel, five-channel, `images`, `masks`, and non-contiguous extended
-profiles. The read-only profile remains NumPy-only because `torch.from_numpy()` cannot provide a writable Tensor backed
-by a read-only array.
+The Tensor matrix also runs the float32, one-channel, five-channel, `images`, `masks`, `volumes`/`masks3d`, and
+non-contiguous extended profiles. The read-only profile remains NumPy-only because `torch.from_numpy()` cannot provide
+a writable Tensor backed by a read-only array.
 
 ## Applicability comes from public behavior
 
@@ -99,8 +115,8 @@ by a read-only array.
 1. the case class is a `DualTransform`, or an `ImageOnlyTransform` for the dedicated Tensor profiles;
 2. the profile contains every target required by the case;
 3. a required target is non-empty when the mode needs data from it;
-4. the transform's declared `_targets` contain every profile target, including batch forms derived from their singular
-   target;
+4. the transform's declared `_targets` contain every profile target exactly as supplied, including `images`, `masks`,
+   `volumes`, and `masks3d` when those collection routes are supported;
 5. the requested bbox type is declared; and
 6. the profile channel count is supported when the transform declares a restriction.
 
@@ -108,7 +124,8 @@ The resolver selects pairs from capabilities. A missing declared capability prev
 cannot execute fails with its case ID and profile ID.
 
 Meta-tests enforce that pair IDs are unique, every registered `DualTransform` case has core coverage, every primary
-`ImageOnlyTransform` case has all three Tensor target routes, and every general target profile collects at least once.
+`ImageOnlyTransform` case has Tensor coverage for image, image batch, volume, and volume batch, and every general target
+profile collects at least once.
 Performance pressure is handled by the core/extended tier boundary; applicable core pairs are never sampled or skipped.
 
 ## Every pair crosses the same public boundaries
@@ -177,8 +194,8 @@ pre-commit run --all-files --show-diff-on-failure
 The architecture remains complete while:
 
 - adding one registered mode automatically creates all applicable core pairs;
-- adding one registered `ImageOnlyTransform` mode automatically creates Tensor pairs for image, image batches, and
-  volumes;
+- adding one registered `ImageOnlyTransform` mode automatically creates Tensor pairs for image, image batches, volume,
+  and volume batches;
 - target profiles contain no transform class lists or constructor kwargs;
 - core selection uses declared capabilities and has no class-name skip branches;
 - all-mode and primary-mode views are explicit at each consumer;

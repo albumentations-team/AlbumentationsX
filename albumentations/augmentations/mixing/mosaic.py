@@ -142,11 +142,10 @@ class Mosaic(DualTransform):
         will be replicated to fill the remaining cells. For example, with a 2x2 grid, if only
         one additional image is provided, the mosaic will contain the primary image in two cells
         and the additional image in one cell, with one visible cell selected from these three.
-        Stacked instance masks on the `masks` key (N, H, W) are transformed via `apply_to_masks` like
-        other DualTransforms; `_targets` only lists `Targets` enum values (no `Targets.MASKS`).
+        Stacked instance masks on the `masks` key (N, H, W) are transformed via `apply_to_masks`.
 
     Targets:
-        image, mask, bboxes, keypoints
+        image, mask, masks, bboxes, keypoints
 
     Image types:
         uint8, float32
@@ -257,7 +256,7 @@ class Mosaic(DualTransform):
 
     """
 
-    _targets = (Targets.IMAGE, Targets.MASK, Targets.BBOXES, Targets.KEYPOINTS)
+    _targets = (Targets.IMAGE, Targets.MASK, Targets.MASKS, Targets.BBOXES, Targets.KEYPOINTS)
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):

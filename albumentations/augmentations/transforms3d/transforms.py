@@ -114,7 +114,7 @@ class Affine3D(Transform3D):
         p (float): Probability of applying the transform. Default: `0.5`.
 
     Targets:
-        volume, mask3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
         uint8, float32
@@ -158,7 +158,7 @@ class Affine3D(Transform3D):
 
     """
 
-    _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
+    _targets = (Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D, Targets.KEYPOINTS)
 
     class InitSchema(BaseTransformInitSchema):
         rotate_range: AxisRanges3D
@@ -296,7 +296,7 @@ class ElasticTransform3D(Transform3D):
         p (float): Probability of applying the transform. Default: `0.5`.
 
     Targets:
-        volume, mask3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
         uint8, float32
@@ -342,7 +342,7 @@ class ElasticTransform3D(Transform3D):
 
     """
 
-    _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
+    _targets = (Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D, Targets.KEYPOINTS)
 
     class InitSchema(BaseTransformInitSchema):
         displacement_range: Annotated[
@@ -405,7 +405,11 @@ class ElasticTransform3D(Transform3D):
     ) -> SampledParams:
         del params, data
         volume_shape = _sampling_volume_shape(targets)
-        raster_target_count = len(targets.by_canonical_type("volume")) + len(targets.by_canonical_type("mask3d"))
+        raster_target_count = sum(
+            len(view.value) if view.canonical_type in {"volumes", "masks3d"} else 1
+            for view in targets.ordered
+            if view.canonical_type in {"volume", "volumes", "mask3d", "masks3d"}
+        )
         low, high = self.displacement_range
         magnitude = low if low == high else sampling.py_random.uniform(low, high)
         sampling.applied_overrides["displacement_range"] = (magnitude, magnitude)
@@ -506,7 +510,7 @@ class Anisotropy3D(VolumeOnlyTransform):
         p (float): Probability of applying the transform. Default: `0.5`.
 
     Targets:
-        volume
+        volume, volumes
 
     Image types:
         uint8, float32
@@ -619,7 +623,7 @@ class Resize3D(Transform3D):
         p (float): Probability of applying the transform. Default: `1.0`.
 
     Targets:
-        volume, mask3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
         uint8, float32
@@ -656,7 +660,7 @@ class Resize3D(Transform3D):
 
     """
 
-    _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
+    _targets = (Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D, Targets.KEYPOINTS)
 
     class InitSchema(BaseTransformInitSchema):
         size: Annotated[tuple[int, int, int], AfterValidator(check_range_bounds(1, None))]
@@ -725,7 +729,7 @@ class RandomResizedCrop3D(Transform3D):
             Default: `"standard"`.
 
     Targets:
-        volume, mask3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
         uint8, float32
@@ -748,7 +752,7 @@ class RandomResizedCrop3D(Transform3D):
 
     """
 
-    _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
+    _targets = (Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D, Targets.KEYPOINTS)
 
     class InitSchema(BaseTransformInitSchema):
         size: Annotated[tuple[int, int, int], AfterValidator(check_range_bounds(1, None))]
@@ -950,7 +954,7 @@ class BasePad3D(Transform3D):
 
     """
 
-    _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
+    _targets = (Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D, Targets.KEYPOINTS)
 
     class InitSchema(BaseTransformInitSchema):
         fill: tuple[float, ...] | float
@@ -1010,8 +1014,6 @@ class Pad3D(BasePad3D):
     """Add voxels around a 3D volume. Padding: int or per-side (depth, height, width); fill,
     fill_mask. For fixed-size batches or avoiding crop boundaries.
 
-    Targets: volume, mask3d, keypoints
-
     Args:
         padding (int, tuple[int, int, int] or tuple[int, int, int, int, int, int]): Padding values. Can be:
             * int - pad all sides by this value
@@ -1025,7 +1027,7 @@ class Pad3D(BasePad3D):
         p (float): probability of applying the transform. Default: 1.0.
 
     Targets:
-        volume, mask3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
         uint8, float32
@@ -1165,7 +1167,7 @@ class PadIfNeeded3D(BasePad3D):
         p (float): Probability of applying the transform. Default: 1.0
 
     Targets:
-        volume, mask3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
         uint8, float32
@@ -1387,7 +1389,7 @@ class BaseCropAndPad3D(Transform3D):
 
     """
 
-    _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
+    _targets = (Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D, Targets.KEYPOINTS)
 
     InitSchema: ClassVar[type[BaseTransformInitSchema]] = _BaseCropAndPad3DInitSchema
 
@@ -1586,8 +1588,6 @@ class CenterCrop3D(BaseCropAndPad3D):
     """Take the center sub-volume to fixed (depth, height, width). pad_if_needed fills when smaller;
     fill, fill_mask. For fixed-size 3D inputs (e.g. CT, MRI).
 
-    Targets: volume, mask3d, keypoints
-
     Args:
         size (tuple[int, int, int]): Desired output size of the crop in format (depth, height, width)
         pad_if_needed (bool): Whether to pad if the volume is smaller than desired crop size. Default: False
@@ -1596,7 +1596,7 @@ class CenterCrop3D(BaseCropAndPad3D):
         p (float): probability of applying the transform. Default: 1.0
 
     Targets:
-        volume, mask3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
         uint8, float32
@@ -1748,8 +1748,6 @@ class RandomCrop3D(BaseCropAndPad3D):
     """Extract a random 3D sub-volume of given (depth, height, width). pad_if_needed when smaller;
     fill, fill_mask. For spatial augmentation of volumetric data.
 
-    Targets: volume, mask3d, keypoints
-
     Args:
         size (tuple[int, int, int]): Desired output size of the crop in format (depth, height, width)
         pad_if_needed (bool): Whether to pad if the volume is smaller than desired crop size. Default: False
@@ -1758,7 +1756,7 @@ class RandomCrop3D(BaseCropAndPad3D):
         p (float): probability of applying the transform. Default: 1.0
 
     Targets:
-        volume, mask3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
         uint8, float32
@@ -1906,7 +1904,7 @@ class CoarseDropout3D(Transform3D):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        volume, mask3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
         uint8, float32
@@ -1937,7 +1935,7 @@ class CoarseDropout3D(Transform3D):
 
     """
 
-    _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
+    _targets = (Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D, Targets.KEYPOINTS)
 
     class InitSchema(BaseTransformInitSchema):
         num_holes_range: Annotated[
@@ -2108,11 +2106,11 @@ class CoarseDropout3D(Transform3D):
 
         return f3d.cutout3d(volume, holes, self.fill)
 
-    def apply_to_mask(self, mask: VolumeType, holes: np.ndarray, **params: Any) -> VolumeType:
+    def apply_to_mask3d(self, mask3d: VolumeType, holes: np.ndarray, **params: Any) -> VolumeType:
         if self.fill_mask is None or holes.size == 0:
-            return mask
+            return mask3d
 
-        return f3d.cutout3d(mask, holes, self.fill_mask)
+        return f3d.cutout3d(mask3d, holes, self.fill_mask)
 
     def apply_to_keypoints(
         self,
@@ -2146,15 +2144,15 @@ class Flip3D(Transform3D):
         p (float): Probability of applying the transform. Default: 1.0.
 
     Targets:
-        volume, mask3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
         uint8, float32
 
     Note:
         - A realized reflection across an odd number of axes emits the `Flip3D` label-mapping event. Its semantic-mask
-          mapping applies only to `mask3d`; keypoint label mappings rename label values without changing coordinate-row
-          order.
+          mapping applies only to `mask3d` and `masks3d`; keypoint label mappings rename label values without changing
+          coordinate-row order.
         - A reflection across an even number of axes, including identity, preserves orientation and does not emit this
           event. Without an explicit mapping, labels stay unchanged.
 
@@ -2172,7 +2170,7 @@ class Flip3D(Transform3D):
 
     """
 
-    _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
+    _targets = (Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D, Targets.KEYPOINTS)
 
     class InitSchema(BaseTransformInitSchema):
         axes: tuple[AxisIndex3D, ...]
@@ -2309,7 +2307,7 @@ class CubicSymmetry(Transform3D):
         p (float): Probability of applying the transform. Default: 1.0
 
     Targets:
-        volume, mask3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
         uint8, float32
@@ -2340,7 +2338,7 @@ class CubicSymmetry(Transform3D):
 
     """
 
-    _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
+    _targets = (Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D, Targets.KEYPOINTS)
 
     def __init__(
         self,
@@ -2418,7 +2416,7 @@ class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified 
         p (float): Probability of applying the transform. Default: 1.0.
 
     Targets:
-        volume, mask3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
         uint8, float32
@@ -2437,7 +2435,7 @@ class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified 
 
     """
 
-    _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
+    _targets = (Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D, Targets.KEYPOINTS)
 
     class InitSchema(BaseTransformInitSchema):
         axis_pairs: tuple[AxisPair3D, ...]
@@ -2558,7 +2556,7 @@ class GridShuffle3D(Transform3D):
             Default: 0.5
 
     Targets:
-        volume, mask3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints
 
     Note:
         - This transform maintains consistency across all targets. If applied to a volume and its corresponding
@@ -2607,7 +2605,7 @@ class GridShuffle3D(Transform3D):
     class InitSchema(BaseTransformInitSchema):
         grid_zyx: Annotated[tuple[int, int, int], AfterValidator(check_range_bounds(1, None))]
 
-    _targets = (Targets.VOLUME, Targets.MASK3D, Targets.KEYPOINTS)
+    _targets = (Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D, Targets.KEYPOINTS)
 
     def __init__(
         self,

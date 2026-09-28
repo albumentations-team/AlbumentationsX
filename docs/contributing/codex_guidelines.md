@@ -22,6 +22,7 @@ Read a design document only when the change enters its boundary:
 - `docs/design/bounding_boxes.md` for HBB/OBB behavior;
 - `docs/design/applied-config-replay-contracts.md` for constructor state, sampling, or replay;
 - `docs/design/transform-target-contracts.md` for transform cases and generated target coverage;
+- `docs/design/instance_binding.md` for instance binding, frame binding, or collection target semantics;
 - `docs/design/mosaic.md` for Mosaic metadata and annotation handling;
 - `docs/design/numpy-tensor-routing.md` for Tensor execution; and
 - `docs/design/torch-dependency-and-ci-greenfield.md` for Torch packaging or CI.

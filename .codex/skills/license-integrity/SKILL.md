@@ -23,6 +23,13 @@ before editing:
 6. `legal/cla/archive/MANIFEST.md`
 7. the relevant packaging, contribution, release, and public-copy files
 
+For dependency registry changes, also read `LICENSE_POLICY.md` and
+`docs/maintaining/dependency-license-review.md`. The required registry covers
+the locked base runtime graph, including transitive and marker-selected
+packages. Extras are out of scope unless a package is also in that graph.
+Keep vulnerability-audit coverage separate; its dependency set may include
+extras that the license registry excludes.
+
 ## Invariants
 
 - Default repository SPDX expression is `AGPL-3.0-only`.

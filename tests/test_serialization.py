@@ -588,6 +588,7 @@ def test_serialization_v2_to_dict() -> None:
         "save_applied_params": False,
         "telemetry": True,
         "instance_binding": None,
+        "frame_binding": None,
     }
 
 

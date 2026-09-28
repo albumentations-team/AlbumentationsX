@@ -99,7 +99,7 @@ class ReferenceImage(TypedDict):
 
 
 class Targets(Enum):
-    """Enum of supported target types: image, mask, bboxes, keypoints, volume, mask3d, user_data.
+    """Enum of supported transform target types, including image collections.
     Compose and transform targets use this to dispatch apply_* methods.
 
     This enum defines the different types of data that can be augmented
@@ -111,21 +111,38 @@ class Targets(Enum):
         BBOXES (str): Bounding box target.
         KEYPOINTS (str): Keypoint coordinates target.
         VOLUME (str): 3D volume target.
+        VOLUMES (str): Collection of 3D volumes.
         MASK3D (str): 3D mask target.
+        MASKS3D (str): Collection of 3D masks.
         USER_DATA (str): Arbitrary user-defined data target.
 
     """
 
     IMAGE = "Image"
+    IMAGES = "Images"
     MASK = "Mask"
+    MASKS = "Masks"
     BBOXES = "BBoxes"
     KEYPOINTS = "Keypoints"
     VOLUME = "Volume"
+    VOLUMES = "Volumes"
     MASK3D = "Mask3D"
-    USER_DATA = "UserData"
+    MASKS3D = "Masks3D"
+    USER_DATA = "user_data"
 
 
-ALL_TARGETS = (Targets.IMAGE, Targets.MASK, Targets.BBOXES, Targets.KEYPOINTS, Targets.VOLUME, Targets.MASK3D)
+ALL_TARGETS = (
+    Targets.IMAGE,
+    Targets.IMAGES,
+    Targets.MASK,
+    Targets.MASKS,
+    Targets.BBOXES,
+    Targets.KEYPOINTS,
+    Targets.VOLUME,
+    Targets.VOLUMES,
+    Targets.MASK3D,
+    Targets.MASKS3D,
+)
 
 
 NUM_VOLUME_DIMENSIONS = 4

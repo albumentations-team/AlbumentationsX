@@ -70,7 +70,6 @@
     "tests/test_type_consistency.py": 0.534,
     "tests/transforms3d/test_functions.py": 0.314,
     "tests/transforms3d/test_pytorch.py": 0.038,
-    "tests/transforms3d/test_targets.py": 0.051,
     "tests/transforms3d/test_transforms.py": 9.165
   }
 }

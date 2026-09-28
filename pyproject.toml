@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "albumentationsx"
 
-version = "2.4.10"
+version = "2.4.11"
 
 description = "Fast, flexible, and advanced augmentation library for deep learning, computer vision, and medical imaging. Albumentations offers a wide range of transformations for both 2D (images, masks, bboxes, keypoints) and 3D (volume data, volumetric masks, keypoints) data, with optimized performance and seamless integration into ML workflows. Available under AGPL-3.0-only or a commercial license with agreed coverage for your team, products, and deployments."
 readme = "README.md"
@@ -141,7 +141,6 @@ ci-test = [
   "deepdiff>=9.1.0",
   "defusedxml>=0.7.1",
   "eval-type-backport>=0.4.0",
-  "huggingface-hub>=1.27.0",
   "hypothesis>=6.165.5",
   "opencv-python-headless>=5.0.0.93",
   "pillow>=12.3.0",

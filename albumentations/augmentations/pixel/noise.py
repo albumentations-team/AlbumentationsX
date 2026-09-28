@@ -63,18 +63,22 @@ def _target_noise_map_shape(view: Any) -> tuple[int, ...]:
         if descriptor.shape is None:
             raise ValueError(f"Volume target {view.name!r} has no shape")
         return descriptor.shape
+    if descriptor.canonical_type == "volumes":
+        if descriptor.spatial_shape is None:
+            raise ValueError(f"Volume collection {view.name!r} has no spatial shape")
+        return (*descriptor.spatial_shape, descriptor.channels or 1)
     raise ValueError(f"Noise transforms do not support target {view.name!r}")
 
 
 def _target_additive_shape(transform: Any, view: Any) -> tuple[int, ...]:
     shape = _target_noise_map_shape(view)
-    if view.canonical_type == "volume" and transform._volume_sampling_is_slice_wise:  # noqa: SLF001
-        return (shape[1], shape[2], shape[3])
+    if view.canonical_type in {"volume", "volumes"} and transform._volume_sampling_is_slice_wise:  # noqa: SLF001
+        return shape[1:]
     return shape
 
 
 def _sampling_family(view: Any, *, volume_is_3d: bool = True) -> str:
-    if view.canonical_type == "volume" and volume_is_3d:
+    if view.canonical_type in {"volume", "volumes"} and volume_is_3d:
         return "volume_3d"
     return "image_2d"
 
@@ -137,7 +141,7 @@ class StochasticConvolution(_FullVolumeNoiseTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -278,7 +282,7 @@ class GaussNoise(_FullVolumeNoiseTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -414,7 +418,7 @@ class ISONoise(_FullVolumeNoiseTransform):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -557,7 +561,7 @@ class MultiplicativeNoise(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -709,7 +713,7 @@ class ShotNoise(_FullVolumeNoiseTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -996,16 +1000,13 @@ class AdditiveNoise(ImageOnlyTransform):
             If False, the same noise is shared across channels. Default: False.
 
     Targets:
-        image, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
 
     Number of channels:
         Any
-
-    Targets:
-        image, volume
 
     Examples:
         >>> import numpy as np
@@ -1219,7 +1220,7 @@ class SaltAndPepper(_FullVolumeNoiseTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -1304,18 +1305,12 @@ class SaltAndPepper(_FullVolumeNoiseTransform):
         groups: list[TargetParams] = []
         for views in targets.group_image_like_by(
             lambda view: (
-                tuple((view.descriptor.shape or ())[:3])
-                if view.canonical_type == "volume"
-                else tuple(view.descriptor.spatial_shape or ()),
+                tuple(view.descriptor.spatial_shape or ()),
                 _sampling_family(view),
             ),
         ):
             view = views[0]
-            spatial_shape = (
-                tuple(view.descriptor.shape[:-1])
-                if view.canonical_type == "volume" and view.descriptor.shape is not None
-                else tuple(view.descriptor.spatial_shape or ())
-            )
+            spatial_shape = tuple(view.descriptor.spatial_shape or ())
             salt_mask, pepper_mask = self._sample_masks(spatial_shape, total_amount, salt_ratio, sampling)
             groups.append(
                 TargetParams(
@@ -1382,7 +1377,7 @@ class FilmGrain(_FullVolumeNoiseTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -1517,7 +1512,7 @@ class RicianNoise(_FullVolumeNoiseTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -1666,7 +1661,7 @@ class KSpaceSpikeNoise(_FullVolumeNoiseTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -1779,7 +1774,7 @@ class KSpaceSpikeNoise(_FullVolumeNoiseTransform):
         spatial_shape = view.descriptor.spatial_shape
         if spatial_shape is not None:
             return len(spatial_shape)
-        return 3 if view.canonical_type in {"volume", "mask3d"} else 2
+        return 3 if view.canonical_type in {"volume", "volumes", "mask3d", "masks3d"} else 2
 
     @staticmethod
     def _sample_spikes(

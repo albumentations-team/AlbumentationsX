@@ -91,7 +91,7 @@ class RandomSnow(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -242,7 +242,7 @@ class RandomGravel(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -392,7 +392,7 @@ class RandomRain(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -566,7 +566,7 @@ class RandomFog(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -733,7 +733,7 @@ class RandomSunFlare(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -975,7 +975,7 @@ class RandomShadow(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -1157,7 +1157,7 @@ class Spatter(ImageOnlyTransform):
         p (float): probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32
@@ -1336,7 +1336,9 @@ class Spatter(ImageOnlyTransform):
         fallback_threshold = _SPATTER_BATCH_FALLBACK_WORKING_SET_BYTES.get((mode, images.dtype.name))
         working_set = images.size * np.dtype(np.float32).itemsize
         if fallback_threshold is not None and working_set >= fallback_threshold:
-            return super().apply_to_images(images, mode=mode, drops=drops, non_mud=non_mud, mud=mud, **params)
+            return cast(
+                "ImageType", super().apply_to_images(images, mode=mode, drops=drops, non_mud=non_mud, mud=mud, **params)
+            )
 
         if mode == "rain":
             if drops is None:
@@ -1433,7 +1435,7 @@ class AtmosphericFog(ImageOnlyTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, volume
+        image, images, volume, volumes
 
     Image types:
         uint8, float32

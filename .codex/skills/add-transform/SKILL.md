@@ -33,6 +33,15 @@ Implement the operation in the corresponding functional module, without transfor
 
 ## 3. Write the transform class
 
+- Read [Generated Transform Target Contracts](../../../docs/design/transform-target-contracts.md) before declaring
+  transform support. For every concrete public transform, its `Targets:` docstring, effective `_targets`, and active
+  dispatch keys describe the same behavior. A working inherited handler counts; a stub does not. Declare `images` and
+  `masks` independently because batch support does not follow from `image` or `mask`.
+- `_targets` is the only source for active dispatch. Do not infer targets from method names or add an automatic route
+  for `user_data`; it is passthrough unless a custom transform explicitly declares and implements that target.
+- Read [Instance and Frame Binding](../../../docs/design/instance_binding.md) when a transform supports batches or
+  structured per-frame annotations. `Compose(frame_binding=...)` owns those relationships; a leaf transform should use
+  the shared dispatch path instead of unpacking frame dictionaries itself.
 - Define sampling and replay behavior at the `sample_parameters` boundary. Implement the greenfield
   `sample_parameters(params, data, targets, sampling) -> SampledParams` contract;
   return `SampledParams(params={...})` for values used by every target and use actual-key `TargetParams` entries

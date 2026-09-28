@@ -79,3 +79,13 @@ def test_to_tensor_3d_errors(volume_shape, expected_error, expected_message):
 
     with pytest.raises(expected_error, match=expected_message):
         transform(volume=volume)
+
+
+def test_to_tensor_3d_converts_volume_and_mask_collections() -> None:
+    volumes = np.arange(2 * 3 * 4 * 5 * 2, dtype=np.uint8).reshape(2, 3, 4, 5, 2)
+    masks3d = np.arange(3 * 3 * 4 * 5, dtype=np.uint8).reshape(3, 3, 4, 5)
+
+    result = A.Compose([A.ToTensor3D(p=1)])(volumes=volumes, masks3d=masks3d)
+
+    torch.testing.assert_close(result["volumes"], torch.from_numpy(volumes.transpose(0, 4, 1, 2, 3)))
+    torch.testing.assert_close(result["masks3d"], torch.from_numpy(masks3d[:, None, ...]))

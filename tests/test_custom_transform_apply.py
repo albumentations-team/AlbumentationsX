@@ -1,8 +1,4 @@
-"""Tests for A.CustomTransformsApplyMixin combined with Base transform classes
-- ImageOnlyTransform
-- DualTransform
-- Transform3D
-"""
+"""Tests for explicitly declared custom targets on image, spatial, and volume transforms."""
 
 from typing import Any
 
@@ -12,10 +8,6 @@ import pytest
 import albumentations as A
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Fixtures
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 @pytest.fixture
@@ -42,13 +34,10 @@ def mask3d():
     return rng.integers(0, 2, (8, 64, 64), dtype=np.uint8)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Transformations combined with custom apply mixin class logic
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-class BrightnessWithLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
+class BrightnessWithLabel(A.ImageOnlyTransform):
     """ImageOnlyTransform + one custom target: float label."""
+
+    _targets = (*A.ImageOnlyTransform._targets, "label")
 
     def sample_parameters(
         self,
@@ -66,8 +55,10 @@ class BrightnessWithLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
         return float(min(1.0, max(0.0, label * factor)))
 
 
-class FlipWithMetadata(A.CustomTransformsApplyMixin, A.DualTransform):
+class FlipWithMetadata(A.DualTransform):
     """DualTransform + one custom target: metadata dict."""
+
+    _targets = (*A.DualTransform._targets, "metadata")
 
     def apply(self, img: np.ndarray, **p) -> np.ndarray:
         return np.fliplr(img)
@@ -79,8 +70,10 @@ class FlipWithMetadata(A.CustomTransformsApplyMixin, A.DualTransform):
         return {**metadata, "flipped": not metadata.get("flipped", False)}
 
 
-class RotateWithLabel(A.CustomTransformsApplyMixin, A.DualTransform):
+class RotateWithLabel(A.DualTransform):
     """DualTransform + integer rotation label."""
+
+    _targets = (*A.DualTransform._targets, "label")
 
     def sample_parameters(
         self,
@@ -101,8 +94,10 @@ class RotateWithLabel(A.CustomTransformsApplyMixin, A.DualTransform):
         return (label + factor) % 4
 
 
-class MultiTargetDual(A.CustomTransformsApplyMixin, A.DualTransform):
+class MultiTargetDual(A.DualTransform):
     """DualTransform + two custom targets."""
+
+    _targets = (*A.DualTransform._targets, "label", "weight")
 
     def sample_parameters(
         self,
@@ -126,8 +121,10 @@ class MultiTargetDual(A.CustomTransformsApplyMixin, A.DualTransform):
         return weight / factor
 
 
-class VolumeWithLabel(A.CustomTransformsApplyMixin, A.Transform3D):
+class VolumeWithLabel(A.Transform3D):
     """Transform3D + integer label."""
+
+    _targets = (*A.Transform3D._targets, "label", "mask")
 
     def sample_parameters(
         self,
@@ -154,12 +151,7 @@ class VolumeWithLabel(A.CustomTransformsApplyMixin, A.Transform3D):
         return label + factor
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ImageOnlyTransform + CustomTransformsApplyMixin
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-class TestImageOnlyTransformWithMixin:
+class TestImageOnlyTransformWithCustomTarget:
     def test_custom_key_registered_in_key2func(self):
         t = BrightnessWithLabel(p=1.0)
         assert "label" in t._key2func
@@ -167,6 +159,17 @@ class TestImageOnlyTransformWithMixin:
     def test_builtin_image_key_still_registered(self):
         t = BrightnessWithLabel(p=1.0)
         assert "image" in t._key2func
+
+    def test_undeclared_handler_is_not_dispatched(self, uint8_image):
+        class UndeclaredLabelTransform(A.HorizontalFlip):
+            def apply_to_label(self, label: int, **params: Any) -> int:
+                return label + 1
+
+        transform = UndeclaredLabelTransform(p=1.0)
+        result = transform(image=uint8_image, label=5)
+
+        assert "label" not in transform._key2func
+        assert result["label"] == 5
 
     def test_apply_to_label_called_with_correct_params(self, uint8_image):
         """factor=0.5 is fixed during parameter generation; label must be halved."""
@@ -231,11 +234,6 @@ class TestImageOnlyTransformWithMixin:
         assert 0.0 <= out["label"] <= 1.0
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# DualTransform + CustomTransformsApplyMixin
-# ─────────────────────────────────────────────────────────────────────────────
-
-
 class TestDualTransformWithMetadataParameter:
     def test_custom_key_registered_in_key2func(self):
         t = FlipWithMetadata(p=1.0)
@@ -285,11 +283,6 @@ class TestDualTransformWithMetadataParameter:
         pipeline = A.Compose([FlipWithMetadata(p=1.0)])
         out = pipeline(image=uint8_image, mask=uint8_mask, metadata={"id": 5})
         assert out["metadata"]["flipped"] is True
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# DualTransform + CustomTransformsApplyMixin (integer label)
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestDualTransformWithIntegerLabelParameter:
@@ -347,11 +340,6 @@ class TestDualTransformWithIntegerLabelParameter:
         assert out["label"] == 0  # (3+1)%4
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# DualTransform + CustomTransformsApplyMixin (multiple parameters)
-# ─────────────────────────────────────────────────────────────────────────────
-
-
 class TestMultipleCustomParameters:
     def test_all_custom_keys_registered(self):
         t = MultiTargetDual(p=1.0)
@@ -405,12 +393,7 @@ class TestMultipleCustomParameters:
         assert abs(out["weight"] - 0.5) < 1e-6
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Transform3D + CustomTransformsApplyMixin
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-class TestTransform3DWithMixin:
+class TestTransform3DWithCustomTarget:
     def test_custom_key_registered_in_key2func(self):
         t = VolumeWithLabel(p=1.0)
         assert "label" in t._key2func
@@ -445,11 +428,6 @@ class TestTransform3DWithMixin:
         assert "label" not in out
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# params passthrough (shared params dict across all apply_* methods)
-# ─────────────────────────────────────────────────────────────────────────────
-
-
 class TestParamsPassthrough:
     """All apply_* methods — built-in and custom — must receive the same params."""
 
@@ -457,7 +435,9 @@ class TestParamsPassthrough:
         """Factor from parameter generation must reach apply_to_label unchanged."""
         received = {}
 
-        class _Capture(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
+        class _Capture(A.ImageOnlyTransform):
+            _targets = (*A.ImageOnlyTransform._targets, "label")
+
             def sample_parameters(
                 self,
                 params: dict[str, Any],
@@ -483,7 +463,9 @@ class TestParamsPassthrough:
     def test_multiple_custom_targets_receive_same_params(self, uint8_image):
         received = {}
 
-        class _CaptureMulti(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
+        class _CaptureMulti(A.ImageOnlyTransform):
+            _targets = (*A.ImageOnlyTransform._targets, "label", "score")
+
             def sample_parameters(
                 self,
                 params: dict[str, Any],
@@ -510,21 +492,17 @@ class TestParamsPassthrough:
         assert received["score"] == (3, 9)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Check MRO safety: built-in targets are never overwritten
-# ─────────────────────────────────────────────────────────────────────────────
+class TestExplicitTargetDeclarations:
+    def test_explicit_custom_target_preserves_builtin_handlers(self, uint8_image, uint8_mask):
+        """Declaring a custom target keeps inherited built-in handlers active."""
 
+        class _MaskTransform(A.DualTransform):
+            _targets = (*A.DualTransform._targets, "label")
 
-class TestBuiltinPriority:
-    def test_apply_to_mask_not_overwritten_by_mixin(self, uint8_image, uint8_mask):
-        """apply_to_mask is a built-in on DualTransform; mixin must not shadow it."""
-
-        class _MaskTransform(A.CustomTransformsApplyMixin, A.DualTransform):
             def apply(self, img, **p):
                 return np.zeros_like(img)
 
             def apply_to_mask(self, mask, **p):
-                # This is override, but main function from base class should still be called
                 return np.ones_like(mask) * 255
 
             def apply_to_label(self, label, **p):
@@ -535,10 +513,11 @@ class TestBuiltinPriority:
         np.testing.assert_array_equal(out["mask"], np.ones_like(uint8_mask) * 255)
         assert out["label"] == 1
 
-    def test_user_data_key_not_duplicated(self):
-        """user_data must appear exactly once in _key2func."""
+    def test_explicit_user_data_resolves_to_custom_handler(self):
 
-        class _WithUserData(A.CustomTransformsApplyMixin, A.DualTransform):
+        class _WithUserData(A.DualTransform):
+            _targets = (*A.DualTransform._targets, "user_data")
+
             def apply(self, img, **p):
                 return img
 
@@ -549,20 +528,16 @@ class TestBuiltinPriority:
                 return data
 
         t = _WithUserData(p=1.0)
-        # Routing must point to apply_to_user_data.
         assert t._key2func["user_data"] == t.apply_to_user_data
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# ReplayCompose integration
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestReplayComposeIntegration:
     """Custom apply targets survive ReplayCompose record and replay."""
 
     def test_replay_compose_custom_target_record_and_replay(self, uint8_image):
-        class FlipWithLabel(A.CustomTransformsApplyMixin, A.HorizontalFlip):
+        class FlipWithLabel(A.HorizontalFlip):
+            _targets = (*A.HorizontalFlip._targets, "label")
+
             def apply_to_label(self, label: int, **params: Any) -> int:
                 return (label + 1) % 4
 
@@ -577,7 +552,9 @@ class TestReplayComposeIntegration:
     def test_replay_compose_skips_custom_target_when_not_applied(self, uint8_image):
         """If transform was not applied when recording, replay also skips custom target."""
 
-        class FlipWithLabel(A.CustomTransformsApplyMixin, A.HorizontalFlip):
+        class FlipWithLabel(A.HorizontalFlip):
+            _targets = (*A.HorizontalFlip._targets, "label")
+
             def apply_to_label(self, label: int, **params: Any) -> int:
                 return label + 100  # obvious change
 
@@ -589,16 +566,13 @@ class TestReplayComposeIntegration:
         assert replayed["label"] == 5
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# sample_parameters with custom targets
-# ─────────────────────────────────────────────────────────────────────────────
-
-
 class TestGetParamsDependentOnData:
     """Custom targets can be used in targets_as_params and sample_parameters."""
 
     def test_custom_target_in_targets_as_params(self, uint8_image):
-        class DataAwareLabelTransform(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
+        class DataAwareLabelTransform(A.ImageOnlyTransform):
+            _targets = (*A.ImageOnlyTransform._targets, "label")
+
             targets_as_params = ("label",)
 
             def sample_parameters(
@@ -623,7 +597,7 @@ class TestGetParamsDependentOnData:
         assert out["label"] == 19
 
     def test_missing_custom_target_in_targets_as_params_raises(self, uint8_image):
-        class RequiresLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
+        class RequiresLabel(A.ImageOnlyTransform):
             targets_as_params = ("label",)
 
             def sample_parameters(
@@ -643,16 +617,13 @@ class TestGetParamsDependentOnData:
             t(image=uint8_image)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# add_targets with custom keys
-# ─────────────────────────────────────────────────────────────────────────────
-
-
 class TestAddTargetsWithCustomKeys:
     """additional_targets can alias custom apply keys."""
 
     def test_add_targets_aliases_custom_key(self, uint8_image):
-        class TransformWithLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
+        class TransformWithLabel(A.ImageOnlyTransform):
+            _targets = (*A.ImageOnlyTransform._targets, "label")
+
             def sample_parameters(
                 self,
                 params: dict[str, Any],
@@ -678,7 +649,9 @@ class TestAddTargetsWithCustomKeys:
         assert out["rotation_label"] == 6
 
     def test_compose_with_additional_targets_custom_key(self, uint8_image):
-        class TransformWithLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
+        class TransformWithLabel(A.ImageOnlyTransform):
+            _targets = (*A.ImageOnlyTransform._targets, "label")
+
             def sample_parameters(
                 self,
                 params: dict[str, Any],
@@ -700,11 +673,6 @@ class TestAddTargetsWithCustomKeys:
         )
         out = pipeline(image=uint8_image, rotation_label=2)
         assert out["rotation_label"] == 3
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Serialization (to_dict / from_dict)
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestSerialization:
@@ -729,11 +697,6 @@ class TestSerialization:
         out2 = restored(image=uint8_image, label=0.6, metadata={"x": 1})
         assert out["label"] == out2["label"]
         assert out["metadata"] == out2["metadata"]
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# available_keys and multiple transforms
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestAvailableKeysAndComposition:
@@ -767,7 +730,9 @@ class TestAvailableKeysAndComposition:
         """Two transforms both with apply_to_label; label flows through both in sequence."""
 
         # First: label += 1. Second: label *= 2. Input 5 -> 6 -> 12.
-        class AddOne(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
+        class AddOne(A.ImageOnlyTransform):
+            _targets = (*A.ImageOnlyTransform._targets, "label")
+
             def sample_parameters(
                 self,
                 params: dict[str, Any],
@@ -783,7 +748,9 @@ class TestAvailableKeysAndComposition:
             def apply_to_label(self, label: int, **p) -> int:
                 return label + 1
 
-        class MulTwo(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
+        class MulTwo(A.ImageOnlyTransform):
+            _targets = (*A.ImageOnlyTransform._targets, "label")
+
             def sample_parameters(
                 self,
                 params: dict[str, Any],
@@ -803,10 +770,12 @@ class TestAvailableKeysAndComposition:
         out = pipeline(image=uint8_image, label=5)
         assert out["label"] == 12  # 5+1=6, 6*2=12
 
-    def test_inheritance_adds_custom_apply(self, uint8_image):
-        """Subclass can add another apply_to_ method."""
+    def test_inheritance_declares_another_custom_target(self, uint8_image):
+        """A subclass explicitly extends its inherited target declaration."""
 
-        class BaseWithLabel(A.CustomTransformsApplyMixin, A.ImageOnlyTransform):
+        class BaseWithLabel(A.ImageOnlyTransform):
+            _targets = (*A.ImageOnlyTransform._targets, "label")
+
             def sample_parameters(
                 self,
                 params: dict[str, Any],
@@ -823,6 +792,8 @@ class TestAvailableKeysAndComposition:
                 return label + 1
 
         class ExtendedWithScore(BaseWithLabel):
+            _targets = (*BaseWithLabel._targets, "score")
+
             def apply_to_score(self, score: float, **p) -> float:
                 return score * 2
 

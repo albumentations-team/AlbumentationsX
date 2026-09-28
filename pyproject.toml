@@ -141,7 +141,6 @@ ci-test = [
   "deepdiff>=9.1.0",
   "defusedxml>=0.7.1",
   "eval-type-backport>=0.4.0",
-  "huggingface-hub>=1.27.0",
   "hypothesis>=6.165.5",
   "opencv-python-headless>=5.0.0.93",
   "pillow>=12.3.0",

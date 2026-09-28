@@ -45,7 +45,7 @@ repos:
         entry: python tools/verify_dependency_licenses.py --export-runtime
         language: system
         pass_filenames: false
-        files: ^(LICENSE_POLICY\.md$|legal/dependency-licenses\.json$|pyproject\.toml$|uv\.lock$|tools/verify_dependency_licenses\.py$|tests/test_dependency_licenses\.py$|docs/maintaining/dependency-license-review\.md$|\.github/workflows/(pr|security)\.yml$)
+        files: ^(LICENSE_POLICY\.md$|legal/dependency-licenses\.json$|pyproject\.toml$|uv\.lock$|tools/verify_dependency_licenses\.py$|tests/test_dependency_licenses\.py$|docs/maintaining/(dependency-license-review|support-policy|external-services)\.md$|\.codex/skills/license-integrity/SKILL\.md$|\.github/workflows/(pr|security)\.yml$)
       - id: check-internal-workspace
         name: Reject staged local-only workspace files
         entry: python tools/check_internal_workspace.py

@@ -155,6 +155,9 @@ class VerticalFlip(DualTransform):
     def apply_to_volumes(self, volumes: np.ndarray | torch.Tensor, **params: Any) -> np.ndarray | torch.Tensor:
         return flip_volume(volumes, -2 if isinstance(volumes, torch.Tensor) else 2)
 
+    def apply_to_masks3d(self, masks3d: np.ndarray | torch.Tensor, **params: Any) -> np.ndarray | torch.Tensor:
+        return self.apply_to_volumes(masks3d, **params)
+
     def apply_to_mask3d(self, mask3d: VolumeType | torch.Tensor, **params: Any) -> VolumeType:
         if mask3d.size == 0:
             # Assume mask3d shape is (D, H, W, C) - return empty array with same shape
@@ -262,6 +265,9 @@ class HorizontalFlip(DualTransform):
 
     def apply_to_volumes(self, volumes: np.ndarray | torch.Tensor, **params: Any) -> np.ndarray | torch.Tensor:
         return flip_volume(volumes, -1 if isinstance(volumes, torch.Tensor) else 3)
+
+    def apply_to_masks3d(self, masks3d: np.ndarray | torch.Tensor, **params: Any) -> np.ndarray | torch.Tensor:
+        return self.apply_to_volumes(masks3d, **params)
 
     def apply_to_mask3d(self, mask3d: VolumeType | torch.Tensor, **params: Any) -> VolumeType:
         if mask3d.size == 0:
@@ -556,6 +562,14 @@ class D4(DualTransform):
     ) -> np.ndarray | torch.Tensor:
         axes = (-2, -1) if isinstance(volumes, torch.Tensor) else (2, 3)
         return fgeometric.d4_volume(volumes, group_element, axes)
+
+    def apply_to_masks3d(
+        self,
+        masks3d: np.ndarray | torch.Tensor,
+        group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
+        **params: Any,
+    ) -> np.ndarray | torch.Tensor:
+        return self.apply_to_volumes(masks3d, group_element, **params)
 
     def apply_to_mask3d(
         self,

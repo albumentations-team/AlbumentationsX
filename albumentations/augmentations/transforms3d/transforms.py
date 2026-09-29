@@ -281,6 +281,9 @@ class ElasticTransform3D(Transform3D):
     `mask3d`, and XYZ keypoint geometry. `displacement_range` scales coefficients by the shortest active voxel-center
     span, so the policy transfers across volume sizes without a dense noise or smoothing pass.
 
+    Volumes with spatial shape `(1, 1, 1)` are returned unchanged for every valid displacement range, without
+    coefficient generation or resampling.
+
     Args:
         displacement_range (tuple[float, float]): Inclusive relative coefficient-radius range. Default: `(0.02, 0.05)`.
         control_grid_shape (tuple[int, int]): Cubic coefficient rows and columns for each plane. Default:

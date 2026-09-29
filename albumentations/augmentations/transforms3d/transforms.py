@@ -413,7 +413,7 @@ class ElasticTransform3D(Transform3D):
         low, high = self.displacement_range
         magnitude = low if low == high else sampling.py_random.uniform(low, high)
         sampling.applied_overrides["displacement_range"] = (magnitude, magnitude)
-        if magnitude == 0:
+        if magnitude == 0 or volume_shape == (1, 1, 1):
             return SampledParams(
                 params={
                     "sampler": f3d.ElasticTransform3DSampler({}, volume_shape, raster_target_count),

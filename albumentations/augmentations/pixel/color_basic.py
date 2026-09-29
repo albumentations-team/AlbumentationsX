@@ -594,6 +594,8 @@ class Equalize(ImageOnlyTransform):
         - The 'by_channels' parameter determines whether equalization is applied to each color channel
           independently (True) or to the luminance channel only (False).
         - If a mask is provided as a numpy array, it should have the same height and width as the input image.
+        - Nonzero mask pixels select the histogram sample. The resulting mapping is applied to the whole
+          image, including pixels outside the mask. An all-zero mask gives an identity mapping.
         - If a mask is provided as a function, it allows for dynamic mask generation based on the input image
           and additional parameters. This is useful for scenarios where the mask depends on the image content
           or external data (e.g., bounding boxes, segmentation masks).
@@ -606,7 +608,7 @@ class Equalize(ImageOnlyTransform):
         - *args: Additional arguments as specified in mask_params
 
         The function should return a numpy array of the same height and width as the input image,
-        where non-zero pixels indicate areas to be equalized.
+        where non-zero pixels select the histogram sample.
 
     Examples:
         >>> import numpy as np

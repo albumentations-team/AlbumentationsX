@@ -51,6 +51,11 @@ this form as the additional electronic acceptance method permitted by
 The [archive manifest](legal/cla/archive/MANIFEST.md#hosted-version-20)
 identifies its exact agreement text and acceptance-record requirements.
 
+Use the individual form only if you have reached the age of legal majority
+and have legal capacity to accept the agreement. Otherwise, contact
+`vladimir@albumentations.ai` for a separate capacity and parent-or-guardian
+process appropriate to your circumstances.
+
 1. Open the signing link in the CLA Assistant comment on your pull request or
    in the `license/cla` check.
 2. Sign in with the GitHub account associated with your commits.

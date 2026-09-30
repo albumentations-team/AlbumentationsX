@@ -169,3 +169,87 @@ def test_affine3d_accepts_cpu_tensor_volume_and_int16_mask3d() -> None:
     torch.testing.assert_close(result["volume"], torch.rot90(tensor_volume, dims=(2, 3)), rtol=0, atol=0)
     expected_mask = torch.from_numpy(np.rot90(tensor_mask.numpy(), axes=(1, 2)).copy())
     torch.testing.assert_close(result["mask3d"], expected_mask, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("tensor", [False, True])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_affine3d_batch_matches_individual_volumes_and_channel_less_masks(tensor: bool, dtype: np.dtype) -> None:
+    volumes = (np.arange(3 * 4 * 5 * 7 * 3).reshape(3, 4, 5, 7, 3) % 251).astype(dtype)
+    if dtype == np.float32:
+        volumes /= 251
+    masks3d = (np.arange(2 * 4 * 5 * 7).reshape(2, 4, 5, 7) % 17).astype(np.int16)
+    if tensor:
+        volumes = torch.from_numpy(volumes).permute(0, 4, 1, 2, 3)
+        masks3d = torch.from_numpy(masks3d)
+    transform = A.Compose(
+        [
+            A.Affine3D(
+                rotate_range={"x": (7.0, 7.0), "y": (-5.0, -5.0), "z": (11.0, 11.0)},
+                translate_percent_range={"x": (0.2, 0.2), "y": (0.0, 0.0), "z": (0.0, 0.0)},
+                fill=(17, 23, 31),
+                fill_mask=19,
+                p=1.0,
+            ),
+        ],
+        strict=True,
+        telemetry=False,
+    )
+
+    batch = transform(volumes=volumes, masks3d=masks3d)
+    expected_volumes = [transform(volume=volume)["volume"] for volume in volumes]
+    expected_masks = [transform(mask3d=mask3d)["mask3d"] for mask3d in masks3d]
+
+    if tensor:
+        torch.testing.assert_close(batch["volumes"], torch.stack(expected_volumes), rtol=0, atol=0)
+        torch.testing.assert_close(batch["masks3d"], torch.stack(expected_masks), rtol=0, atol=0)
+    else:
+        np.testing.assert_array_equal(batch["volumes"], np.stack(expected_volumes))
+        np.testing.assert_array_equal(batch["masks3d"], np.stack(expected_masks))
+    assert batch["masks3d"].dtype == masks3d.dtype
+
+
+@pytest.mark.parametrize("tensor", [False, True])
+def test_affine3d_batch_uses_one_kernel_call_per_target(monkeypatch: pytest.MonkeyPatch, tensor: bool) -> None:
+    from albumentations.augmentations.transforms3d import functional as f3d
+
+    volumes = np.arange(2 * 3 * 4 * 5 * 2, dtype=np.uint8).reshape(2, 3, 4, 5, 2)
+    masks3d = (volumes % 7).astype(np.int16)
+    if tensor:
+        volumes = torch.from_numpy(volumes).permute(0, 4, 1, 2, 3)
+        masks3d = torch.from_numpy(masks3d).permute(0, 4, 1, 2, 3)
+    calls = []
+    original_warp = f3d.warp_affine3d
+
+    def record_warp(data, *args, **kwargs):
+        calls.append(data.shape)
+        return original_warp(data, *args, **kwargs)
+
+    monkeypatch.setattr(f3d, "warp_affine3d", record_warp)
+    transform = A.Compose(
+        [A.Affine3D(translate_percent_range={"x": (0.2, 0.2), "y": (0.0, 0.0), "z": (0.0, 0.0)}, p=1)],
+        strict=True,
+        telemetry=False,
+    )
+
+    result = transform(volumes=volumes, masks3d=masks3d)
+
+    assert calls == [(2, 2, 3, 4, 5) if tensor else (2, 3, 4, 5, 2)] * 2
+    assert result["volumes"].shape == volumes.shape
+    assert result["masks3d"].dtype == masks3d.dtype
+
+
+@pytest.mark.parametrize("tensor", [False, True])
+def test_affine3d_empty_batches_keep_layout_and_dtype(tensor: bool) -> None:
+    volumes = np.empty((0, 3, 4, 5, 2), dtype=np.float32)
+    masks3d = np.empty((0, 3, 4, 5), dtype=np.int16)
+    if tensor:
+        volumes = torch.from_numpy(volumes).permute(0, 4, 1, 2, 3)
+        masks3d = torch.from_numpy(masks3d)
+    transform = A.Compose([A.Affine3D(p=1)], strict=True, telemetry=False)
+
+    result = transform(volumes=volumes, masks3d=masks3d)
+
+    assert result["volumes"].shape == volumes.shape
+    assert result["masks3d"].shape == masks3d.shape
+    assert result["volumes"].dtype == volumes.dtype
+    assert result["masks3d"].dtype == masks3d.dtype

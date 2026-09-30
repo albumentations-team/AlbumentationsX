@@ -469,6 +469,113 @@ def apply_random_brightness_contrast(
     return clip(result, img.dtype, inplace=True) if img.dtype == np.float32 else result
 
 
+def _batch_brightness_contrast_coefficients(
+    image_means: np.ndarray,
+    brightness_factor: float,
+    contrast_factor: float,
+    max_value: float,
+    ensure_safe_output: bool,
+) -> tuple[np.ndarray, np.ndarray]:
+    if ensure_safe_output:
+        offsets = brightness_factor * (1.0 - contrast_factor) * image_means
+        gains = np.full_like(image_means, brightness_factor * contrast_factor)
+        if gains[0] > 0:
+            offsets = np.clip(offsets, 0, max_value)
+            gains = np.minimum(gains, (max_value - offsets) / max_value)
+        else:
+            offsets = np.minimum(offsets, max_value)
+            gains = np.maximum(gains, -offsets / max_value)
+    else:
+        offsets = image_means * (1.0 - contrast_factor)
+        gains = np.full_like(image_means, contrast_factor)
+    return gains, offsets
+
+
+def _apply_brightness_contrast_batch_uint8(
+    images: ImageUInt8,
+    image_means: np.ndarray,
+    brightness_factor: float,
+    contrast_factor: float,
+    ensure_safe_output: bool,
+) -> ImageType:
+    gains, offsets = _batch_brightness_contrast_coefficients(
+        image_means,
+        brightness_factor,
+        contrast_factor,
+        255.0,
+        ensure_safe_output,
+    )
+    domain = np.arange(256, dtype=np.float32)
+    if not ensure_safe_output:
+        if brightness_factor != 1:
+            # Match the single-image route's normalize-then-rescale order before rounding the LUT.
+            offsets = image_means / 255.0 * 255.0 * (1.0 - contrast_factor)
+        elif contrast_factor == 0:
+            offsets = np.floor(image_means + 0.5)
+    tables = np.clip(
+        domain[None, :] * gains.astype(np.float32)[:, None] + offsets.astype(np.float32)[:, None],
+        0,
+        255,
+    )
+    if not ensure_safe_output and brightness_factor != 1:
+        np.floor(tables, out=tables)
+        np.multiply(tables, brightness_factor, out=tables)
+        np.clip(tables, 0, 255, out=tables)
+    flat_images = images.reshape(len(images), -1)
+    return cast("ImageType", np.take_along_axis(tables.astype(np.uint8), flat_images, axis=1).reshape(images.shape))
+
+
+def apply_brightness_contrast_torchvision_batch(
+    images: ImageType,
+    brightness_factor: float,
+    contrast_factor: float,
+    *,
+    ensure_safe_output: bool = False,
+) -> ImageType:
+    """Apply one brightness/contrast pair to a batch, using an independent mean per image."""
+    if images.shape[0] == 0:
+        return images
+    if contrast_factor == 1 and not ensure_safe_output:
+        return _apply_brightness_only_torchvision(images, brightness_factor)
+
+    if contrast_factor == 1:
+        image_means = np.zeros(len(images), dtype=np.float64)
+    elif is_rgb_image(images):
+        image_means = cast("np.ndarray", mean(to_gray_weighted_average(images), axis=(1, 2, 3)))
+    else:
+        image_means = cast("np.ndarray", mean(images, axis=(1, 2, 3)))
+    if images.dtype == np.uint8:
+        return _apply_brightness_contrast_batch_uint8(
+            cast("ImageUInt8", images),
+            image_means,
+            brightness_factor,
+            contrast_factor,
+            ensure_safe_output,
+        )
+
+    gains, offsets = _batch_brightness_contrast_coefficients(
+        image_means,
+        brightness_factor,
+        contrast_factor,
+        MAX_VALUES_BY_DTYPE[images.dtype],
+        ensure_safe_output,
+    )
+
+    broadcast_shape = (len(images), 1, 1, 1)
+    if ensure_safe_output:
+        result = np.multiply(images, gains.reshape(broadcast_shape), dtype=np.float32)
+        np.add(result, offsets.reshape(broadcast_shape), out=result)
+        np.clip(result, 0.0, 1.0, out=result)
+        return cast("ImageType", result)
+
+    result = np.multiply(images, contrast_factor, dtype=np.float32)
+    np.add(result, offsets.reshape(broadcast_shape), out=result)
+    np.clip(result, 0.0, 1.0, out=result)
+    np.multiply(result, brightness_factor, out=result)
+    np.clip(result, 0.0, 1.0, out=result)
+    return cast("ImageType", result)
+
+
 @uint8_io
 @preserve_channel_dim
 def superpixels(
@@ -630,6 +737,7 @@ __all__ = [
     "adjust_hue_torchvision",
     "adjust_saturation_torchvision",
     "apply_brightness_contrast_torchvision",
+    "apply_brightness_contrast_torchvision_batch",
     "apply_color_jitter",
     "apply_photometric_distort",
     "apply_random_brightness_contrast",

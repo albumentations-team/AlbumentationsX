@@ -1,7 +1,7 @@
 """Basic color, tone, histogram, brightness, and contrast transforms."""
 
 from collections.abc import Callable, Sequence
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import (
@@ -874,6 +874,34 @@ class RandomBrightnessContrast(ImageOnlyTransform):
             return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, *args, **params))
         return self.apply(images, *args, **params)
 
+    def apply_to_volumes(
+        self,
+        volumes: np.ndarray,
+        alpha: float,
+        beta: float,
+        **params: Any,
+    ) -> np.ndarray:
+        if volumes.size == 0:
+            return np.require(volumes, requirements=["W"])
+        if self.brightness_by_max:
+            result = cast("np.ndarray", self.apply(volumes, alpha=alpha, beta=beta, **params))
+            return np.require(result, requirements=["W"])
+
+        has_channels = volumes.ndim == 5
+        working_volumes = volumes if has_channels else volumes[..., None]
+        item_count, depth, height, width, channels = working_volumes.shape
+        if volumes.dtype == np.uint8 and channels != 1:
+            return cast("np.ndarray", super().apply_to_volumes(volumes, alpha=alpha, beta=beta, **params))
+        images = working_volumes.reshape(item_count * depth, height, width, channels)
+        result = fpixel.apply_brightness_contrast_torchvision_batch(
+            images,
+            brightness_factor=1.0 + beta,
+            contrast_factor=alpha,
+            ensure_safe_output=self.ensure_safe_output,
+        ).reshape(working_volumes.shape)
+        result = result if has_channels else result[..., 0]
+        return np.require(result, requirements=["W"])
+
     def sample_parameters(
         self,
         params: dict[str, Any],
@@ -1234,6 +1262,12 @@ class RandomGamma(ImageOnlyTransform):
 
     def apply_to_images(self, images: ImageType, gamma: float, **params: Any) -> ImageType:
         return self.apply(images, gamma=gamma)
+
+    def apply_to_volumes(self, volumes: np.ndarray, gamma: float, **params: Any) -> np.ndarray:
+        if volumes.size == 0:
+            return np.require(volumes, requirements=["W"])
+        result = self.apply(volumes, gamma=gamma, **params)
+        return np.require(result, requirements=["W"])
 
     def sample_parameters(
         self,

@@ -268,6 +268,39 @@ class Affine3D(Transform3D):
             ),
         )
 
+    def apply_to_volumes(
+        self,
+        volumes: Annotated[np.ndarray, torch.Tensor],
+        matrix: np.ndarray,
+        output_shape: tuple[int, int, int],
+        **params: Any,
+    ) -> np.ndarray | torch.Tensor:
+        return f3d.affine_3d_batch(
+            volumes,
+            matrix,
+            output_shape,
+            self.interpolation,
+            self.border_mode,
+            self.fill,
+        )
+
+    def apply_to_masks3d(
+        self,
+        masks3d: Annotated[np.ndarray, torch.Tensor],
+        matrix: np.ndarray,
+        output_shape: tuple[int, int, int],
+        **params: Any,
+    ) -> np.ndarray | torch.Tensor:
+        return f3d.affine_3d_batch(
+            masks3d,
+            matrix,
+            output_shape,
+            self.mask_interpolation,
+            self.border_mode,
+            self.fill_mask,
+            is_mask=True,
+        )
+
     def apply_to_keypoints(self, keypoints: np.ndarray, matrix: np.ndarray, **params: Any) -> np.ndarray:
         return f3d.keypoints_affine_3d(keypoints, matrix)
 
@@ -280,6 +313,9 @@ class ElasticTransform3D(Transform3D):
     fields, and resamples each raster target once through Albucore `remap3d`. The same compact field drives volume,
     `mask3d`, and XYZ keypoint geometry. `displacement_range` scales coefficients by the shortest active voxel-center
     span, so the policy transfers across volume sizes without a dense noise or smoothing pass.
+
+    Volumes with spatial shape `(1, 1, 1)` are returned unchanged for every valid displacement range, without
+    coefficient generation or resampling.
 
     Args:
         displacement_range (tuple[float, float]): Inclusive relative coefficient-radius range. Default: `(0.02, 0.05)`.
@@ -413,7 +449,7 @@ class ElasticTransform3D(Transform3D):
         low, high = self.displacement_range
         magnitude = low if low == high else sampling.py_random.uniform(low, high)
         sampling.applied_overrides["displacement_range"] = (magnitude, magnitude)
-        if magnitude == 0:
+        if magnitude == 0 or volume_shape == (1, 1, 1):
             return SampledParams(
                 params={
                     "sampler": f3d.ElasticTransform3DSampler({}, volume_shape, raster_target_count),

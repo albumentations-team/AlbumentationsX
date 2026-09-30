@@ -296,3 +296,217 @@ def test_elastic_transform3d_tensor_raster_targets_use_native_route(
         atol=1e-6,
     )
     torch.testing.assert_close(tensor_result["mask3d"], torch.from_numpy(numpy_result["mask3d"]), rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("route", ("direct", "compose"))
+@pytest.mark.parametrize("dtype", (np.uint8, np.float32))
+@pytest.mark.parametrize("magnitude", (0.0, 0.03))
+def test_elastic_transform3d_singleton_identity(
+    route: str,
+    dtype: type[np.uint8] | type[np.float32],
+    magnitude: float,
+) -> None:
+    volume = np.full((1, 1, 1, 1), 137 if dtype == np.uint8 else 0.375, dtype=dtype)
+    mask3d = np.full((1, 1, 1), 137, dtype=np.uint8)
+    inputs = {"volume": volume, "mask3d": mask3d}
+    originals = {name: value.copy() for name, value in inputs.items()}
+    transform = A.ElasticTransform3D(displacement_range=(magnitude, magnitude), p=1)
+    pipeline = A.Compose([transform], strict=True, seed=137) if route == "compose" else transform
+    pipeline.set_random_seed(137)
+
+    result = pipeline(**inputs)
+
+    for name, original in originals.items():
+        np.testing.assert_array_equal(result[name], original, strict=True)
+        np.testing.assert_array_equal(inputs[name], original, strict=True)
+    assert result["volume"] is volume
+    if route == "direct":
+        assert result["mask3d"] is mask3d
+
+
+@pytest.mark.parametrize(
+    ("strict", "kwargs"),
+    [(True, {}), (False, {}), (True, {"interpolation": cv2.INTER_NEAREST, "fill": 0.75, "fill_mask": 31})],
+)
+def test_elastic_transform3d_singleton_default_policy_and_fills(strict: bool, kwargs: dict[str, object]) -> None:
+    inputs = {
+        "volume": np.array([0.125, 0.5, 0.875], dtype=np.float32).reshape(1, 1, 1, 3),
+        "mask3d": np.full((1, 1, 1), 137, dtype=np.uint8),
+    }
+    originals = {name: value.copy() for name, value in inputs.items()}
+    pipeline = A.Compose([A.ElasticTransform3D(**kwargs, p=1)], strict=strict, seed=137)
+
+    result = pipeline(**inputs)
+
+    for name, original in originals.items():
+        np.testing.assert_array_equal(result[name], original, strict=True)
+        np.testing.assert_array_equal(inputs[name], original, strict=True)
+
+
+def test_elastic_transform3d_singleton_channel_less_volume() -> None:
+    volume = np.full((1, 1, 1), 137, dtype=np.uint8)
+    original = volume.copy()
+    pipeline = A.Compose([A.ElasticTransform3D(p=1)], strict=True, seed=137)
+
+    result = pipeline(volume=volume)
+
+    np.testing.assert_array_equal(result["volume"], original, strict=True)
+    np.testing.assert_array_equal(volume, original, strict=True)
+
+
+def test_elastic_transform3d_singleton_tensor_identity_uses_native_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    volume = torch.tensor([0.125, 0.5, 0.875], dtype=torch.float32).reshape(3, 1, 1, 1)
+    mask3d = torch.full((1, 1, 1), 137, dtype=torch.int16)
+    inputs = {"volume": volume, "mask3d": mask3d}
+    originals = {name: value.clone() for name, value in inputs.items()}
+    pipeline = A.Compose([A.ElasticTransform3D(p=1)], strict=True, seed=137)
+    monkeypatch.setattr(
+        transforms_interface,
+        "tensor_to_numpy_spatial",
+        lambda *_args, **_kwargs: pytest.fail("Singleton identity must retain the native Tensor route"),
+    )
+
+    result = pipeline(**inputs)
+
+    for name, original in originals.items():
+        torch.testing.assert_close(result[name], original, rtol=0, atol=0)
+        torch.testing.assert_close(inputs[name], original, rtol=0, atol=0)
+    assert result["volume"] is volume
+
+
+@pytest.mark.parametrize("tensor", (False, True))
+def test_elastic_transform3d_singleton_stacked_collections(tensor: bool) -> None:
+    volumes = np.array([0.25, 0.75], dtype=np.float32).reshape(2, 1, 1, 1, 1)
+    masks3d = np.array([137, 31, 17], dtype=np.int16).reshape(3, 1, 1, 1)
+    originals = {"volumes": volumes.copy(), "masks3d": masks3d.copy()}
+    inputs = {name: torch.from_numpy(value) if tensor else value for name, value in originals.items()}
+    pipeline = A.Compose([A.ElasticTransform3D(p=1)], strict=True, seed=137)
+
+    result = pipeline(**inputs)
+
+    for name, expected in (("volumes", volumes), ("masks3d", masks3d)):
+        if tensor:
+            torch.testing.assert_close(result[name], torch.from_numpy(expected), rtol=0, atol=0)
+            torch.testing.assert_close(inputs[name], torch.from_numpy(expected), rtol=0, atol=0)
+        else:
+            np.testing.assert_array_equal(result[name], expected, strict=True)
+            np.testing.assert_array_equal(inputs[name], expected, strict=True)
+
+
+def test_elastic_transform3d_singleton_additional_targets() -> None:
+    inputs = {
+        "volume": np.full((1, 1, 1, 1), 0.25, dtype=np.float32),
+        "other_volume": np.full((1, 1, 1, 1), 0.75, dtype=np.float32),
+        "mask3d": np.full((1, 1, 1), 137, dtype=np.uint8),
+        "other_mask": np.full((1, 1, 1), 31, dtype=np.uint8),
+    }
+    originals = {name: value.copy() for name, value in inputs.items()}
+    pipeline = A.Compose(
+        [A.ElasticTransform3D(p=1)],
+        additional_targets={"other_volume": "volume", "other_mask": "mask3d"},
+        strict=True,
+        seed=137,
+    )
+
+    result = pipeline(**inputs)
+
+    for name, original in originals.items():
+        np.testing.assert_array_equal(result[name], original, strict=True)
+        np.testing.assert_array_equal(inputs[name], original, strict=True)
+
+
+@pytest.mark.parametrize("displacement_range", ((0.03, 0.03), (0.02, 0.05)))
+def test_elastic_transform3d_singleton_applied_config_preserves_realized_magnitude(
+    displacement_range: tuple[float, float],
+) -> None:
+    volume = np.full((1, 1, 1, 1), 137, dtype=np.uint8)
+    transform = A.ElasticTransform3D(displacement_range=displacement_range, p=1)
+    constructor_config = A.to_dict(transform)
+    pipeline = A.Compose([transform], save_applied_params=True, strict=True, seed=137)
+
+    result = pipeline(volume=volume)
+    transported = json.loads(json.dumps(result["applied_transforms"], allow_nan=False))
+    _, config = transported[0]
+    magnitude, upper = config["displacement_range"]
+
+    assert 0 < displacement_range[0] <= magnitude <= displacement_range[1]
+    assert upper == magnitude
+    assert "control_coefficients" not in config
+    assert A.to_dict(transform) == constructor_config
+    reconstructed = A.Compose.from_applied_transforms(transported, strict=True, seed=137)
+    fresh_volume = volume.copy()
+    np.testing.assert_array_equal(reconstructed(volume=fresh_volume)["volume"], volume, strict=True)
+    np.testing.assert_array_equal(fresh_volume, volume, strict=True)
+
+
+def test_elastic_transform3d_singleton_json_replay_keeps_shape_guard_and_labels() -> None:
+    inputs = {
+        "volume": np.full((1, 1, 1, 1), 137, dtype=np.uint8),
+        "mask3d": np.full((1, 1, 1), 31, dtype=np.uint8),
+        "keypoints": np.array([[0, 0, 0, 137]], dtype=np.float32),
+        "labels": np.array(["origin"]),
+    }
+    originals = {name: value.copy() for name, value in inputs.items()}
+    pipeline = A.ReplayCompose(
+        [A.ElasticTransform3D(displacement_range=(0.02, 0.05), p=1)],
+        keypoint_params=A.KeypointParams(coord_format="xyz", label_fields=["labels"]),
+        seed=137,
+    )
+
+    result = pipeline(**inputs)
+    transported = json.loads(json.dumps(result["replay"], allow_nan=False))
+    sampler = transported["transforms"][0]["params"]["params"]["sampler"]
+    assert sampler["control_coefficients"] == {}
+    assert sampler["volume_shape"] == [1, 1, 1]
+    with pytest.raises(ValueError, match="same spatial shape"):
+        A.ReplayCompose.replay(
+            transported,
+            volume=np.full((1, 1, 2, 1), 137, dtype=np.uint8),
+            mask3d=np.full((1, 1, 2), 31, dtype=np.uint8),
+            keypoints=inputs["keypoints"].copy(),
+            labels=inputs["labels"].copy(),
+        )
+    fresh_inputs = {name: value.copy() for name, value in originals.items()}
+    replayed = A.ReplayCompose.replay(transported, **fresh_inputs)
+
+    for name, original in originals.items():
+        np.testing.assert_array_equal(result[name], original)
+        np.testing.assert_array_equal(replayed[name], original)
+        np.testing.assert_array_equal(inputs[name], original, strict=True)
+        np.testing.assert_array_equal(fresh_inputs[name], original, strict=True)
+
+
+@pytest.mark.parametrize("volume_shape", ((2, 1, 1), (1, 2, 1), (1, 1, 2), (1, 3, 5), (2, 3, 5)))
+def test_elastic_transform3d_partial_singleton_keeps_all_coefficient_planes(
+    volume_shape: tuple[int, int, int],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = []
+    original_sampler = fgeometric.sample_elastic_control_coefficients
+
+    def capture_coefficients(*args: object, **kwargs: object) -> np.ndarray:
+        coefficients = original_sampler(*args, **kwargs)
+        captured.append(coefficients.copy())
+        return coefficients
+
+    monkeypatch.setattr(fgeometric, "sample_elastic_control_coefficients", capture_coefficients)
+    pipeline = A.Compose([A.ElasticTransform3D(displacement_range=(0.03, 0.03), p=1)], strict=True, seed=137)
+    pipeline(volume=np.ones((*volume_shape, 1), dtype=np.float32))
+
+    assert len(captured) == 3
+    for coefficients in captured:
+        assert coefficients.shape == (7, 7, 2)
+        assert np.any(coefficients != 0)
+
+
+def test_elastic_transform3d_singleton_skips_coefficients_grid_and_resampling(monkeypatch: pytest.MonkeyPatch) -> None:
+    for module, name in (
+        (fgeometric, "sample_elastic_control_coefficients"),
+        (f3d, "create_elastic_grid_3d"),
+        (f3d, "remap_3d"),
+    ):
+        monkeypatch.setattr(module, name, lambda *_args, **_kwargs: pytest.fail("Singleton must skip deformation work"))
+    volume = np.full((1, 1, 1, 1), 0.375, dtype=np.float32)
+    pipeline = A.Compose([A.ElasticTransform3D(p=1)], strict=True, seed=137)
+
+    assert pipeline(volume=volume)["volume"] is volume

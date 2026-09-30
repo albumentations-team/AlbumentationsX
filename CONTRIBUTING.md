@@ -45,7 +45,11 @@ acceptance grants rights in qualifying contributions submitted before, on, and
 after the Version 2.0 acceptance date; it does not pretend that Version 2.0 was
 accepted earlier.
 
-For an individual contribution, complete the CLA Assistant form:
+For an individual contribution, complete the CLA Assistant form. We offer
+this form as the additional electronic acceptance method permitted by
+[Section 11 of Version 2.0](CLA.md#11-agreement-versions-and-acceptance-records).
+The [archive manifest](legal/cla/archive/MANIFEST.md#hosted-version-20)
+identifies its exact agreement text and acceptance-record requirements.
 
 1. Open the signing link in the CLA Assistant comment on your pull request or
    in the `license/cla` check.
@@ -56,9 +60,9 @@ For an individual contribution, complete the CLA Assistant form:
    acceptance and updates the `license/cla` status.
 
 Each committer listed by the bot must complete the applicable signing process
-before `license/cla` can pass. A pull-request comment does not register a
-signature with CLA Assistant. If you have submitted the form but the check is
-still pending, use the **recheck** link in the bot's comment.
+before `license/cla` can pass. The form registers the signature used by this
+check. If you have submitted the form but the check is still pending, use the
+**recheck** link in the bot's comment.
 
 If an employer or another legal entity owns or controls the contribution, use
 the Entity Acceptance process in

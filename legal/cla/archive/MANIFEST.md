@@ -14,7 +14,9 @@ The two Version 1 files differ only in Markdown fence formatting and the final
 newline. The initial version identifies the hosted offer described below; the
 formatted version preserves the repository's public document history.
 
-CLA Assistant used the public Gist
+## Hosted Version 1
+
+CLA Assistant initially used the public Gist
 `https://gist.github.com/ternaus/df31e11d8a3180ba5520f72b72d57198`, immutable
 revision `3115a7364f5ab8a58a7e7ffa51dfdf1ec8a5b006`, created
 `2025-06-19T21:58:29Z`. The hosted raw file was 7,360 bytes with SHA-256
@@ -31,10 +33,38 @@ base64 -D -i legal/cla/archive/CLA-v1-c1720fb.md.base64 | shasum -a 256
 
 On systems using GNU coreutils, use `base64 --decode` instead of `base64 -D`.
 
+## Hosted Version 2.0
+
+The same Gist was updated to Version 2.0 in immutable revision
+[`20f256b7daeb606d8fee2a948435b0e4089340bf`](https://gist.github.com/ternaus/df31e11d8a3180ba5520f72b72d57198/20f256b7daeb606d8fee2a948435b0e4089340bf),
+created `2026-07-14T11:14:51Z`. Its `CLA.md` has SHA-256
+`cf25a9fedf2fbc0d6f796f9e3bfebf0f5ce133177c8e7865522f614fa682d878`,
+byte-identical to `CLA-v2.0-2026-07-14.md`.
+
+This revision's `metadata` requires `fullLegalName` and the
+`individualAcceptance` checkbox, whose statement explicitly names Version 2.0
+and July 14, 2026. The form is offered as the additional electronic Individual
+Acceptance method permitted by Section 11 of Version 2.0; the signing steps
+are in [CONTRIBUTING.md](../../../CONTRIBUTING.md#contributor-license-agreement).
+
+CLA Assistant stores the GitHub identity in `user` and `userId`, the acceptance
+timestamp in `created_at`, the Gist URL and immutable revision in `gist_url`
+and `gist_version`, the submitted form values as JSON in `custom_fields`, and
+the signing method in `origin` (`sign|<GitHub login>` for this form).
+A complete form record must include a non-empty `fullLegalName` and
+`individualAcceptance: true`. Records for the
+revision above identify Version 2.0 and map to its SHA-256 in this manifest;
+records for the Version 1 revision continue to identify Version 1.
+
+## Acceptance Record Retention
+
 Acceptance records are not committed here because they may contain personal or
 company information. The record system must retain, at minimum, the accepting
 identity, timestamp, individual-versus-entity path, covered identities for an
 Entity Acceptance, CLA version, and the SHA-256 identifier from this manifest.
+For form acceptance, retain the service record fields listed above together
+with the mapped CLA version and SHA-256 identifier. A passing `license/cla`
+status alone does not replace this Acceptance Record.
 
 Changing `CLA.md` requires a new version, a new immutable archive file, a new
 manifest row, and explicit acceptance of that new version. Never overwrite an

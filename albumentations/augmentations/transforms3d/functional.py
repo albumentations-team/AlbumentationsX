@@ -190,6 +190,55 @@ def affine_3d(
     return result
 
 
+def affine_3d_batch(
+    volumes: np.ndarray | torch.Tensor,
+    matrix: np.ndarray,
+    output_shape: tuple[int, int, int],
+    interpolation: int,
+    border_mode: int,
+    fill: float | tuple[float, ...] | None,
+    *,
+    is_mask: bool = False,
+) -> np.ndarray | torch.Tensor:
+    """Resample a collection with one shared affine matrix."""
+    if isinstance(volumes, torch.Tensor):
+        is_channel_less = volumes.ndim == 4
+        working_tensor = volumes.unsqueeze(1) if is_channel_less else volumes
+        original_tensor_dtype = volumes.dtype
+        needs_mask_promotion = is_mask and original_tensor_dtype not in {torch.uint8, torch.float32}
+        if needs_mask_promotion:
+            working_tensor = working_tensor.to(torch.float32)
+        tensor_result = warp_affine3d(
+            working_tensor,
+            matrix,
+            output_shape,
+            interpolation=interpolation,
+            border_mode=border_mode,
+            border_value=fill,
+        )
+        if needs_mask_promotion:
+            tensor_result = torch.round(tensor_result).to(original_tensor_dtype)
+        return tensor_result[:, 0] if is_channel_less else tensor_result
+
+    is_channel_less = volumes.ndim == 4
+    working_numpy = volumes[..., np.newaxis] if is_channel_less else volumes
+    original_numpy_dtype = volumes.dtype
+    needs_mask_promotion = is_mask and original_numpy_dtype not in {np.dtype(np.uint8), np.dtype(np.float32)}
+    if needs_mask_promotion:
+        working_numpy = working_numpy.astype(np.float32)
+    numpy_result = warp_affine3d(
+        working_numpy,
+        matrix,
+        output_shape,
+        interpolation=interpolation,
+        border_mode=border_mode,
+        border_value=fill,
+    )
+    if needs_mask_promotion:
+        numpy_result = np.rint(numpy_result).astype(original_numpy_dtype, copy=False)
+    return numpy_result[..., 0] if is_channel_less else numpy_result
+
+
 def _normalized_axis(length: int) -> np.ndarray:
     axis = np.arange(length, dtype=np.float32)
     axis *= np.float32(2.0 / length)

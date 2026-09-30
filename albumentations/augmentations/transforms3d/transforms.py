@@ -268,6 +268,39 @@ class Affine3D(Transform3D):
             ),
         )
 
+    def apply_to_volumes(
+        self,
+        volumes: Annotated[np.ndarray, torch.Tensor],
+        matrix: np.ndarray,
+        output_shape: tuple[int, int, int],
+        **params: Any,
+    ) -> np.ndarray | torch.Tensor:
+        return f3d.affine_3d_batch(
+            volumes,
+            matrix,
+            output_shape,
+            self.interpolation,
+            self.border_mode,
+            self.fill,
+        )
+
+    def apply_to_masks3d(
+        self,
+        masks3d: Annotated[np.ndarray, torch.Tensor],
+        matrix: np.ndarray,
+        output_shape: tuple[int, int, int],
+        **params: Any,
+    ) -> np.ndarray | torch.Tensor:
+        return f3d.affine_3d_batch(
+            masks3d,
+            matrix,
+            output_shape,
+            self.mask_interpolation,
+            self.border_mode,
+            self.fill_mask,
+            is_mask=True,
+        )
+
     def apply_to_keypoints(self, keypoints: np.ndarray, matrix: np.ndarray, **params: Any) -> np.ndarray:
         return f3d.keypoints_affine_3d(keypoints, matrix)
 

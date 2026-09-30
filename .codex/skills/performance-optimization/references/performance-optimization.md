@@ -214,7 +214,7 @@ After removing work and comparing straight implementations, consider routing by:
 - uint8 versus float32;
 - scalar versus per-channel parameters;
 - 1, 3, 4, and high-channel inputs;
-- image, image-batch, and single-volume rank;
+- image and image-batch ranks; single-volume and volume-batch ranks where the router supports them;
 - contiguous versus strided input;
 - small versus large arrays;
 - dense versus sparse labels;

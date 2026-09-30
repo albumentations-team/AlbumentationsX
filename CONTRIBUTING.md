@@ -45,12 +45,20 @@ acceptance grants rights in qualifying contributions submitted before, on, and
 after the Version 2.0 acceptance date; it does not pretend that Version 2.0 was
 accepted earlier.
 
-For an individual contribution, comment on the pull request with this exact
-Version 2.0 statement:
+For an individual contribution, complete the CLA Assistant form:
 
-```text
-I have read and agree to the AlbumentationsX CLA Version 2.0 (July 14, 2026) as an individual.
-```
+1. Open the signing link in the CLA Assistant comment on your pull request or
+   in the `license/cla` check.
+2. Sign in with the GitHub account associated with your commits.
+3. Read Version 2.0, enter your full legal name, and select the required
+   individual acceptance checkbox.
+4. Submit the form and return to the pull request. CLA Assistant records your
+   acceptance and updates the `license/cla` status.
+
+Each committer listed by the bot must complete the applicable signing process
+before `license/cla` can pass. A pull-request comment does not register a
+signature with CLA Assistant. If you have submitted the form but the check is
+still pending, use the **recheck** link in the bot's comment.
 
 If an employer or another legal entity owns or controls the contribution, use
 the Entity Acceptance process in

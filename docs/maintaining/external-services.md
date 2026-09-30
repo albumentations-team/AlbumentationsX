@@ -10,7 +10,7 @@ cover the separate `albumentations.ai` website repository.
 | Hugging Face Hub | Optional `hub` extra; a caller who uses its integration may download Hub-hosted resources. | Request and repository details chosen by that caller. | Packages reachable only through extras are outside the mandatory dependency license registry; remote content follows the terms and license of its Hub repository. |
 | GitHub Actions and GitHub | Source hosting, pull requests, release automation, badges, and release assets. | Repository and workflow data. | Workflow actions are pinned by commit. |
 | PyPI and the PyTorch wheel index | Resolve dependencies and publish package artifacts. | Package names, versions, hashes, and publishing metadata. | The PyTorch index is used only for the documented platform-specific Torch installation. |
-| CLA Assistant | Individual CLA status for pull requests. | The contributor identity and acceptance statement described by the CLA procedure. | Acceptance records remain private. |
+| CLA Assistant | Individual CLA signing form and `license/cla` status for pull requests. | GitHub identity, full legal name, and confirmation of individual acceptance of CLA Version 2.0. | See the [signing procedure](../../CONTRIBUTING.md#contributor-license-agreement). Acceptance records remain private. |
 | README badges and images | Rendered only by a Markdown viewer: shields.io, badge.fury.io, GitHub badges, contrib.rocks, and Habr Storage images. | Browser requests from a documentation reader; no library runtime call. | The source URL appears in `README.md`; these are not vendored assets. |
 
 The repository scan covered `albumentations/`, `docs/`, `README.md`,

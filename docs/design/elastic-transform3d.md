@@ -32,6 +32,11 @@ The bound is strict. It keeps the continuous pull map in the supported no-fold r
 
 ### The hot path avoids redundant dense work
 
+The fully singleton spatial domain (`D=H=W=1`) is exact identity for every valid displacement range. Magnitude is
+still sampled and recorded, but the sampler keeps empty coefficients and the input spatial shape. It skips coefficient
+generation, grid construction, and resampling, returning canonical raster inputs without copying them. A partially
+singleton volume retains the usual three-plane deformation.
+
 The implementation samples `2 * rows * columns` values per control plane, expands only 2D planes, and adds each result directly into the final sampling grid. It does not create dense 3D random noise, run 3D smoothing, allocate a separate dense displacement volume, create a meshgrid, or resample once per plane.
 
 ### Tensor execution follows the selected handler
@@ -78,6 +83,10 @@ The sampler converts the compact planes to Albucore's normalized `(x, y, z)` gri
 - Keypoints use a bounded fixed-point inverse of `S`. Accepted rows have forward residual at most `1e-3` voxel units, and trailing keypoint columns remain unchanged.
 - `ReplayCompose` stores compact coefficient planes and the input spatial shape. It reproduces the geometry for the same shape and raises `ValueError` for another shape.
 - Applied configuration records the realized magnitude as `displacement_range=(m, m)` and samples fresh coefficient planes when reconstructed.
+
+For fully singleton inputs, the applied record retains the realized magnitude, including positive values. Reconstructing
+that configuration on a singleton volume returns identity; applied configuration does not store a spatial-shape guard.
+Parameter replay stores empty coefficients and `(1, 1, 1)`, and still rejects another spatial shape after JSON transport.
 
 ## Testing Strategy
 

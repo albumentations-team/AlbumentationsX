@@ -43,8 +43,11 @@ For video passed as `images`, `N=T`; the Tensor layout is `T,C,H,W`. Normal `Dat
 Mask channels may hold categorical labels, independent binary planes, depth values, or another target-specific value.
 Transforms apply masks only through their declared target methods.
 
-For `volumes` and `masks3d`, one transform invocation samples its parameters once and reuses them for every item in
-the collection by calling the existing single-volume or single-mask3d handler. The number of items in the two
+For `volumes` and `masks3d`, one transform invocation samples its parameters once and reuses them across the
+collection. `Affine3D` sends the collection to Albucore's batch resampling route with one shared grid.
+`RandomGamma` applies its pointwise operation to the complete `volumes` array. `RandomBrightnessContrast` batches the
+`N × D` slices while computing contrast means independently for each slice. Uint8 volumes with multiple channels retain
+the faster per-slice LUT route. Other transforms can use the inherited per-item handler. The number of items in the two
 collections may differ; `Compose` checks their shared `(D,H,W)` shape. The caller owns item-to-item alignment. These
 targets do not add binding or temporal-sampling behavior.
 

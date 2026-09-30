@@ -233,9 +233,13 @@ def _equalize_pil(img: ImageType, mask: np.ndarray | None = None) -> ImageType:
     if not step:
         return img.copy()
 
-    lut = np.minimum((np.cumsum(histogram) + step // 2) // step, 255).astype(np.uint8)
+    # Pillow emits each LUT entry before adding the current histogram bin.
+    cumulative = np.empty(256, dtype=np.int64)
+    cumulative[0] = 0
+    np.cumsum(histogram[:-1], dtype=np.int64, out=cumulative[1:])
+    lut = np.minimum((cumulative + step // 2) // step, 255).astype(np.uint8)
 
-    return sz_lut(cast("ImageUInt8", img), lut, inplace=True)
+    return sz_lut(cast("ImageUInt8", img.copy()), lut, inplace=True)
 
 
 def _equalize_cv(img: ImageType, mask: np.ndarray | None = None) -> ImageType:
@@ -247,7 +251,7 @@ def _equalize_cv(img: ImageType, mask: np.ndarray | None = None) -> ImageType:
     if lut is None:
         return img
 
-    return sz_lut(cast("ImageUInt8", img), lut, inplace=True)
+    return sz_lut(cast("ImageUInt8", img.copy()), lut, inplace=True)
 
 
 def _create_equalize_cv_lut(histogram: np.ndarray) -> np.ndarray | None:
@@ -330,8 +334,10 @@ def equalize(
 
     Args:
         img (ImageType): Input image. Can be grayscale (2D array) or RGB (3D array).
-        mask (np.ndarray | None): Optional mask to apply the equalization selectively.
-            If provided, must have the same shape as the input image. Default: None.
+        mask (np.ndarray | None): Optional histogram-selection mask. Nonzero pixels select
+            the histogram sample; the resulting mapping is applied to the whole image.
+            Must match the image's spatial shape, with one shared channel or a mask channel
+            per image channel when by_channels=True. Default: None.
         mode (Literal['cv', 'pil']): The backend to use for equalization. Can be either "cv" for
             OpenCV or "pil" for Pillow-style equalization. Default: "cv".
         by_channels (bool): If True, applies equalization to each channel independently.

@@ -13,9 +13,18 @@ updates:
     open-pull-requests-limit: 5
     allow:
       - dependency-type: "development"
+      - dependency-name: "cryptography"
+        dependency-type: "indirect"
+      - dependency-name: "pip"
+        dependency-type: "indirect"
+      - dependency-name: "urllib3"
+        dependency-type: "indirect"
+      - dependency-name: "virtualenv"
+        dependency-type: "indirect"
     groups:
       python-development-dependencies:
-        dependency-type: "development"
+        patterns:
+          - "*"
 
   - package-ecosystem: "github-actions"
     directory: "/"

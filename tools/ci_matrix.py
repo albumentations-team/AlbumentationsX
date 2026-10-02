@@ -51,6 +51,7 @@ PYTORCH_PERFORMANCE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "pytorch-pe
 RELEASE_CANDIDATE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release-candidate.yml"
 SECURITY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "security.yml"
 RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "upload_to_pypi.yml"
+RELEASE_TAG_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release-tag.yml"
 SETUP_CI_ACTION = REPO_ROOT / ".github" / "actions" / "setup-ci" / "action.yml"
 CI_FOUNDATION_SHA = "6b9045dbea58026a1e8f96b0392c411934a27199"
 RETIRED_ASV_RUN_PATTERN = re.compile(r"asv --config asv\.conf\.json\s+run\b")
@@ -69,6 +70,7 @@ WORKFLOWS = (
     RELEASE_CANDIDATE_WORKFLOW,
     SECURITY_WORKFLOW,
     RELEASE_WORKFLOW,
+    RELEASE_TAG_WORKFLOW,
     CODEQL_ACTIONS_WORKFLOW,
     CODEQL_PYTHON_WORKFLOW,
 )

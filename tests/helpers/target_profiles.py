@@ -73,8 +73,10 @@ def _assert_bbox_fields(source: dict[str, Any], result: dict[str, Any], geometry
     bboxes = _as_numpy(result["bboxes"])
     assert len(bboxes) == len(result["bbox_labels"])
     assert len(bboxes) == len(result["bbox_scores"])
-    assert set(result["bbox_labels"]) <= _collect_field_values(source, "bbox_labels")
-    assert set(result["bbox_scores"]) <= _collect_field_values(source, "bbox_scores")
+    assert set(zip(result["bbox_labels"], result["bbox_scores"], strict=True)) <= _collect_label_rows(
+        source,
+        ("bbox_labels", "bbox_scores"),
+    )
     if len(bboxes) == 0:
         return
     assert bboxes.ndim == 2
@@ -82,22 +84,17 @@ def _assert_bbox_fields(source: dict[str, Any], result: dict[str, Any], geometry
     assert np.isfinite(bboxes).all()
 
 
-def _collect_field_values(value: Any, field_name: str) -> set[Any]:
-    values: set[Any] = set()
+def _collect_label_rows(value: Any, field_names: tuple[str, ...]) -> set[tuple[Any, ...]]:
+    rows: set[tuple[Any, ...]] = set()
     if isinstance(value, dict):
-        for key, item in value.items():
-            if key == field_name:
-                if isinstance(item, dict):
-                    pass
-                elif isinstance(item, (list, tuple, np.ndarray)):
-                    values.update(item)
-                else:
-                    values.add(item)
-            values.update(_collect_field_values(item, field_name))
+        if all(name in value and not isinstance(value[name], dict) for name in field_names):
+            rows.update(zip(*(np.atleast_1d(value[name]) for name in field_names), strict=True))
+        for item in value.values():
+            rows.update(_collect_label_rows(item, field_names))
     elif isinstance(value, (list, tuple)):
         for item in value:
-            values.update(_collect_field_values(item, field_name))
-    return values
+            rows.update(_collect_label_rows(item, field_names))
+    return rows
 
 
 def _assert_hbb(case: TransformContractCase, source: dict[str, Any], result: dict[str, Any]) -> None:
@@ -122,7 +119,7 @@ def _assert_keypoints(case: TransformContractCase, source: dict[str, Any], resul
     assert keypoints.ndim == 2
     assert keypoints.shape[1] == 2
     assert len(keypoints) == len(result["keypoint_labels"])
-    assert set(result["keypoint_labels"]) <= set(source["keypoint_labels"])
+    assert set(zip(result["keypoint_labels"])) <= _collect_label_rows(source, ("keypoint_labels",))
     assert np.isfinite(keypoints).all()
 
 

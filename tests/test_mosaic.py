@@ -3,8 +3,9 @@ import pytest
 
 from albumentations.augmentations.mixing.transforms import Mosaic
 from albumentations.core.bbox_utils import BboxParams
-from albumentations.core.composition import Compose
+from albumentations.core.composition import Compose, ReplayCompose
 from albumentations.core.keypoints_utils import KeypointParams
+from tests.helpers.contract_assertions import assert_contract_values_equal
 
 
 @pytest.mark.parametrize(
@@ -230,6 +231,92 @@ def test_mosaic_empty_donors_preserve_labels(empty_as_array: bool, empty_donor_i
             assert sorted(result[field]) == sorted(labels)
             if isinstance(labels, np.ndarray):
                 assert result[field].dtype == labels.dtype
+
+
+@pytest.mark.parametrize("replay", [False, True], ids=["compose", "replay"])
+def test_mosaic_donor_labels_preserve_object_identity(donor_label_data, replay: bool) -> None:
+    primary_labels, donor_label = donor_label_data
+    image = np.full((96, 128, 3), 17, dtype=np.uint8)
+    bboxes = [[16, 12, 64, 48]]
+    keypoints = [[32, 24]]
+    donors = [
+        {
+            "image": np.full_like(image, 34),
+            "bboxes": bboxes,
+            "bbox_labels": {"classes": [donor_label]},
+            "keypoints": keypoints,
+            "keypoint_labels": {"landmarks": [donor_label]},
+        },
+    ]
+    donors.extend(
+        {
+            "image": np.full_like(image, color),
+            "bboxes": [],
+            "bbox_labels": {"classes": []},
+            "keypoints": [],
+            "keypoint_labels": {"landmarks": []},
+        }
+        for color in (51, 68)
+    )
+    pipeline_class = ReplayCompose if replay else Compose
+    pipeline = pipeline_class(
+        [Mosaic(target_size=(192, 256), cell_shape=(96, 128), center_range=(0.5, 0.5), p=1)],
+        bbox_params=BboxParams(coord_format="pascal_voc", label_fields=["classes"]),
+        keypoint_params=KeypointParams(coord_format="xy", label_fields=["landmarks"], label_mapping={}),
+        seed=137,
+        telemetry=False,
+    )
+    data = {
+        "image": image,
+        "bboxes": bboxes,
+        "classes": primary_labels,
+        "keypoints": keypoints,
+        "landmarks": primary_labels,
+        "mosaic_metadata": donors,
+    }
+    result = pipeline(**data)
+
+    expected_labels = {17: primary_labels[0], 34: donor_label}
+    for target, field in (("bboxes", "classes"), ("keypoints", "landmarks")):
+        assert len(result[target]) == len(result[field]) == 2
+        for coordinates, label in zip(result[target], result[field], strict=True):
+            if target == "bboxes":
+                center_x = (coordinates[0] + coordinates[2]) / 2
+                center_y = (coordinates[1] + coordinates[3]) / 2
+            else:
+                center_x, center_y = coordinates
+            source_color = int(result["image"][int(center_y), int(center_x), 0])
+            assert label == expected_labels[source_color]
+
+    if replay:
+        replayed = ReplayCompose.replay(result["replay"], **data)
+        for field in ("image", "bboxes", "classes", "keypoints", "landmarks"):
+            assert_contract_values_equal(replayed[field], result[field], field)
+
+
+@pytest.mark.parametrize("empty_as_array", [False, True], ids=["list", "array"])
+def test_mosaic_empty_primary_annotation_representations(empty_as_array: bool) -> None:
+    image = np.zeros((96, 128, 3), dtype=np.uint8)
+    pipeline = Compose(
+        [Mosaic(target_size=(192, 256), cell_shape=(96, 128), center_range=(0.5, 0.5), p=1)],
+        bbox_params=BboxParams(coord_format="pascal_voc", label_fields=["classes"]),
+        keypoint_params=KeypointParams(coord_format="xy", label_fields=["landmarks"], label_mapping={}),
+        seed=137,
+        telemetry=False,
+    )
+    result = pipeline(
+        image=image,
+        bboxes=np.empty((0, 4), dtype=np.float32) if empty_as_array else [],
+        classes=[],
+        keypoints=np.empty((0, 2), dtype=np.float32) if empty_as_array else [],
+        landmarks=[],
+        mosaic_metadata=[],
+    )
+
+    assert result["bboxes"].shape == (0, 4)
+    assert result["keypoints"].shape == (0, 2)
+    assert result["classes"] == []
+    assert result["landmarks"] == []
 
 
 def test_mosaic_primary_mask_metadata_no_mask() -> None:

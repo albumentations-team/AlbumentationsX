@@ -46,6 +46,21 @@ def bboxes():
     return np.array([[15, 12, 75, 30, 1], [55, 25, 90, 90, 2]])
 
 
+@pytest.fixture(
+    params=[
+        pytest.param(("cat", None, 137), id="categorical-then-numeric"),
+        pytest.param(("cat", "U3", "aardvark"), id="longer-unicode"),
+        pytest.param((b"cat", "S3", b"aardvark"), id="longer-bytes"),
+        pytest.param((137, object, "cat"), id="object-numeric-then-categorical"),
+        pytest.param(("cat", "U3", 137), id="unicode-then-numeric"),
+    ],
+)
+def donor_label_data(request):
+    primary_label, dtype, donor_label = request.param
+    primary_labels = [primary_label] if dtype is None else np.array([primary_label], dtype=dtype)
+    return primary_labels, donor_label
+
+
 @pytest.fixture
 def volume():
     return np.random.randint(0, 256, (10, 100, 100), dtype=np.uint8)

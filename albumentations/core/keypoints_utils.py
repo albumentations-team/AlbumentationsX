@@ -245,6 +245,9 @@ class KeypointsProcessor(DataProcessor[KeypointParams]):
     def _create_empty_keypoints_array(self) -> np.ndarray:
         return self.params.make_empty_keypoints_array()
 
+    def _create_empty_array(self) -> np.ndarray:
+        return self.params.make_empty_keypoints_array()
+
     def ensure_data_valid(self, data: dict[str, Any]) -> None:
         """Validate that data has all params.label_fields; raises ValueError if any are
         missing. Call at pipeline apply time before running transforms.

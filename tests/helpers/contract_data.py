@@ -311,16 +311,30 @@ def make_crop_near_bbox_context(metadata_key: str) -> ContractContextFactory:
 
 
 def make_mosaic_context(metadata_key: str) -> ContractContextFactory:
-    """Build context containing a primary image and compatible mosaic sources."""
+    """Build compatible donors with absent, populated, and empty annotation fields."""
 
     def factory(rng: np.random.Generator, data: dict[str, Any]) -> dict[str, Any]:
         image = _first_image(data)
         mask = _first_mask(data)
         sources = []
-        for _ in range(3):
+        for source_index in range(3):
             source = {"image": rng.integers(0, 256, image.shape, dtype=np.uint8)}
             if mask is not None:
                 source["mask"] = rng.integers(0, 4, mask.shape, dtype=np.uint8)
+            for target, wrapper, label_fields in (
+                ("bboxes", "bbox_labels", ("bbox_labels", "bbox_scores")),
+                ("keypoints", "keypoint_labels", ("keypoint_labels",)),
+            ):
+                if source_index == 0 or target not in data:
+                    continue
+                annotations = np.asarray(data[target])
+                source[target] = annotations.copy() if source_index == 1 else annotations[:0].copy()
+                source[wrapper] = {
+                    field: list(data[field]) if source_index == 1 else [] for field in label_fields if field in data
+                }
+                label_field = label_fields[0]
+                if source_index == 1 and label_field in data:
+                    source[wrapper][label_field] = list(range(101, 101 + len(annotations)))
             sources.append(source)
         return {metadata_key: sources}
 

@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
 
-from albumentations.core.label_manager import LabelManager
+from albumentations.core.label_manager import LabelManager, LabelReplayState
 from albumentations.core.random_utils import (
     _derive_effective_seed,
     _derive_invocation_seed,
@@ -440,6 +440,7 @@ class ComposeInvocationState:
     channel_restorations: dict[str, ChannelRestorationState] = field(default_factory=dict)
     instance_count: int | None = None
     repack_after_processors: bool = False
+    replay_label_metadata: dict[str, LabelReplayState] | None = None
 
 
 @dataclass(slots=True)

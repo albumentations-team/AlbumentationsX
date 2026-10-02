@@ -11,7 +11,7 @@ from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from numbers import Real
-from typing import Any
+from typing import Any, TypedDict
 
 import numpy as np
 
@@ -213,6 +213,25 @@ class LabelMetadata:
     encoder: LabelEncoder | None = None
 
 
+class LabelReplayMetadata(TypedDict):
+    """Recorded interpretation of one encoded annotation field."""
+
+    is_numerical: bool
+    is_array: bool
+    dtype: str | None
+    labels: list[Any] | None
+
+
+LabelReplayState = dict[str, dict[str, LabelReplayMetadata]]
+
+
+class LabelReplayRecord(TypedDict):
+    """Label state before and after transforms add donor annotations."""
+
+    initial: LabelReplayState
+    final: LabelReplayState
+
+
 class LabelManager:
     """Manages encoding, decoding, and type handling for label fields across data types.
     Maintains per-field metadata and encoders.
@@ -293,7 +312,9 @@ class LabelManager:
         )
 
         if not is_numerical:
-            metadata.encoder = LabelEncoder()
+            # A categorical field keeps one index space even when another source contains only numbers.
+            metadata.encoder = LabelEncoder().fit([])
+            metadata.encoder.update(field_data)
 
         return metadata
 
@@ -310,7 +331,7 @@ class LabelManager:
         # For non-numerical values, use LabelEncoder
         if metadata.encoder is None:
             raise ValueError("Encoder not initialized for non-numerical data")
-        return metadata.encoder.fit_transform(field_data).reshape(-1, 1)
+        return metadata.encoder.transform(field_data).reshape(-1, 1)
 
     def _decode_data(self, encoded_data: np.ndarray, metadata: LabelMetadata) -> np.ndarray:
         """Decode encoded array back to labels using metadata (dtype or encoder inverse_transform).
@@ -328,20 +349,21 @@ class LabelManager:
         return decoded.reshape(-1)  # Ensure 1D array
 
     def _restore_type(self, decoded_data: np.ndarray, metadata: LabelMetadata) -> Any:
-        """Restore decoded array to original type (list, ndarray with dtype, or list by default).
-        Used after decode when restoring fields.
-        """
-        # If original input was a list or sequence, convert back to list
+        """Restore the label container without truncating categorical values."""
         if isinstance(metadata.input_type, type) and issubclass(metadata.input_type, (list, Sequence)):
             return decoded_data.tolist()
 
-        # If original input was a numpy array, restore original dtype
         if isinstance(metadata.input_type, type) and issubclass(metadata.input_type, np.ndarray):
             if metadata.dtype is not None:
+                if metadata.dtype.kind in {"U", "S"} and decoded_data.size:
+                    scalar_type = str if metadata.dtype.kind == "U" else bytes
+                    if not all(isinstance(label, scalar_type) for label in decoded_data):
+                        return decoded_data
+                    restored = np.asarray(decoded_data.tolist())
+                    return restored.astype(np.result_type(metadata.dtype, restored.dtype), copy=False)
                 return decoded_data.astype(metadata.dtype)
             return decoded_data
 
-        # For any other type, convert to list by default
         return decoded_data.tolist()
 
     def handle_empty_data(self) -> list[Any]:
@@ -349,6 +371,63 @@ class LabelManager:
         list. Gives callers a consistent return type. For process_field.
         """
         return []
+
+    def get_replay_state(self) -> LabelReplayState:
+        """Snapshot label interpretation without retaining live processors or encoders."""
+        return {
+            data_name: {
+                label_field: {
+                    "is_numerical": metadata.is_numerical,
+                    "is_array": issubclass(metadata.input_type, np.ndarray),
+                    "dtype": None if metadata.dtype is None else metadata.dtype.str,
+                    "labels": None if metadata.encoder is None else list(metadata.encoder.inverse_classes_.values()),
+                }
+                for label_field, metadata in fields.items()
+            }
+            for data_name, fields in self.metadata.items()
+        }
+
+    def get_replay_changes(self, initial: LabelReplayState) -> LabelReplayState:
+        """Return fields whose interpretation changed after preprocessing."""
+        changed: LabelReplayState = {}
+        for data_name, fields in self.get_replay_state().items():
+            for label_field, metadata in fields.items():
+                if metadata != initial.get(data_name, {}).get(label_field):
+                    changed.setdefault(data_name, {})[label_field] = metadata
+        return changed
+
+    def restore_replay_state(self, record: LabelReplayRecord) -> None:
+        """Restore donor label interpretation into the current invocation's processors."""
+        current = self.get_replay_state()
+        for data_name, fields in record["final"].items():
+            for label_field, saved in fields.items():
+                initial = record["initial"].get(data_name, {}).get(label_field)
+                actual = current.get(data_name, {}).get(label_field)
+                if not self._compatible_replay_labels(actual, initial):
+                    raise ValueError(
+                        f"Replayed donor annotations require the recorded primary label encoding "
+                        f"for '{data_name}.{label_field}'.",
+                    )
+                metadata = self.metadata[data_name].get(label_field)
+                if metadata is None:
+                    metadata = LabelMetadata(
+                        input_type=np.ndarray if saved["is_array"] else list,
+                        is_numerical=saved["is_numerical"],
+                        dtype=None if saved["dtype"] is None else np.dtype(saved["dtype"]),
+                    )
+                    self.metadata[data_name][label_field] = metadata
+                if (labels := saved["labels"]) is not None:
+                    encoder = LabelEncoder().fit([])
+                    encoder.classes_ = {label: index for index, label in enumerate(labels)}
+                    encoder.inverse_classes_ = dict(enumerate(labels))
+                    encoder.num_classes = len(labels)
+                    metadata.encoder = encoder
+
+    @staticmethod
+    def _compatible_replay_labels(actual: LabelReplayMetadata | None, initial: LabelReplayMetadata | None) -> bool:
+        if actual is None or initial is None:
+            return actual is initial
+        return actual["is_numerical"] == initial["is_numerical"] and actual["labels"] == initial["labels"]
 
     def get_encoder(self, data_name: str, label_field: str) -> LabelEncoder | None:
         """Return the fitted LabelEncoder for the given data name and label field, or None if not

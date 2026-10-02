@@ -109,3 +109,14 @@ def test_volume_profile_rejects_mismatched_transformed_depth() -> None:
 
     with pytest.raises(AssertionError):
         profile.assert_result(case, source, result)
+
+
+@pytest.mark.parametrize("profile_id", ["hbb-labels", "obb-labels"])
+def test_bbox_profile_rejects_misaligned_label_fields(profile_id: str) -> None:
+    case = next(case for case in ALL_DUAL_TRANSFORM_CONTRACT_CASES if case.transform_cls is A.HorizontalFlip)
+    profile = TARGET_PROFILES_BY_ID[profile_id]
+    source = make_target_contract_data(case, profile, np.random.default_rng(137))
+    result = {**source, "bbox_scores": list(reversed(source["bbox_scores"]))}
+
+    with pytest.raises(AssertionError):
+        profile.assert_result(case, source, result)

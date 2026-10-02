@@ -40,6 +40,7 @@ from .invocation import (
     get_current_invocation,
 )
 from .keypoints_utils import KeypointParams, KeypointsProcessor
+from .label_manager import LabelReplayRecord
 from .serialization import (
     SERIALIZABLE_REGISTRY,
     Serializable,
@@ -4478,6 +4479,45 @@ class ReplayCompose(Compose):
         self.set_deterministic(True, save_key=save_key)
         self.save_key = save_key
         self._available_keys.add(save_key)
+        self._replay_label_state: dict[str, LabelReplayRecord] | None = None
+
+    def _preprocess_processors(self, data: dict[str, Any]) -> None:
+        if self.main_compose and self._replay_label_state is not None:
+            missing = self._replay_label_state.keys() - self._configured_processors.keys()
+            if missing:
+                raise ValueError(
+                    f"Replay label metadata requires missing annotation processors: {', '.join(sorted(missing))}"
+                )
+        super()._preprocess_processors(data)
+        if not self.main_compose or not self._configured_processors:
+            return
+        invocation = get_current_invocation()
+        if invocation is None:
+            return
+        processors = self.processors
+        invocation.compose_state(self).replay_label_metadata = {
+            name: processor.label_manager.get_replay_state() for name, processor in processors.items()
+        }
+        if self._replay_label_state is not None:
+            for name, record in self._replay_label_state.items():
+                processor = processors[name]
+                processor.label_manager.restore_replay_state(record)
+                if isinstance(processor, KeypointsProcessor):
+                    processor.convert_label_mappings_to_encoded()
+
+    def postprocess(self, data: dict[str, Any]) -> dict[str, Any]:
+        invocation = get_current_invocation()
+        state = None if invocation is None else invocation.get_compose_state(self)
+        if self.main_compose and state is not None and state.replay_label_metadata is not None:
+            recorded: dict[str, LabelReplayRecord] = {}
+            for name, processor in self.processors.items():
+                initial = state.replay_label_metadata[name]
+                changed = processor.label_manager.get_replay_changes(initial)
+                if changed:
+                    recorded[name] = {"initial": initial, "final": changed}
+            if recorded:
+                data[self.save_key][id(self)] = {"label_metadata": recorded}
+        return super().postprocess(data)
 
     def _new_invocation_context(
         self,
@@ -4634,6 +4674,8 @@ class ReplayCompose(Compose):
                 ]
             transform = cls(**args)
 
+        if isinstance(transform, ReplayCompose) and params is not None:
+            transform._replay_label_state = params.get("label_metadata")
         transform = cast("BasicTransform", transform)
         if isinstance(transform, BasicTransform):
             transform.params = params

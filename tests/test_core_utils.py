@@ -177,6 +177,7 @@ def test_label_encoder_update_numeric_noop():
     "data_name, label_field, initial_data, update_data, expected_final_labels",
     [
         ("bboxes", "class_labels", ["cat", "dog"], ["bird", "cat"], ["cat", "dog", "bird", "cat"]),
+        ("bboxes", "class_labels", ["cat"], [137], ["cat", 137]),
         ("keypoints", "kp_labels", ["head", 1], [2, "tail", "head"], ["head", 1, 2, "tail", "head"]),
         ("bboxes", "instance_ids", [], ["obj1", "obj2"], ["obj1", "obj2"]),
         ("bboxes", "class_labels", ["cat", "dog"], ["dog", "cat"], ["cat", "dog", "dog", "cat"]),
@@ -231,6 +232,8 @@ def test_label_manager_process_field_numeric_no_update():
     assert metadata_initial.encoder is None
 
     encoded_update = manager.process_field("bboxes", "scores", update_data)
+    assert encoded_initial.dtype == np.float32
+    assert encoded_update.dtype == np.float32
     metadata_updated = manager.metadata["bboxes"]["scores"]
     assert metadata_updated.is_numerical is True
     assert metadata_updated.encoder is None

@@ -8,6 +8,7 @@ from deepdiff import DeepDiff
 
 import albumentations as A
 from albumentations.augmentations.mixing import functional as fmixing
+from tests.helpers.contract_assertions import assert_contract_values_equal
 
 
 def image_generator():
@@ -383,6 +384,40 @@ class TestCopyAndPasteMasks:
         with warnings.catch_warnings():
             warnings.simplefilter("error", UserWarning)
             transform(image=image, copy_paste_metadata=[obj])
+
+
+@pytest.mark.parametrize("replay", [False, True], ids=["compose", "replay"])
+def test_copy_and_paste_donor_labels_preserve_object_identity(donor_label_data, replay: bool) -> None:
+    primary_labels, donor_label = donor_label_data
+    image = np.full((96, 128, 3), 17, dtype=np.uint8)
+    mask = np.zeros(image.shape[:2], dtype=np.uint8)
+    mask[40:80, 60:100] = 1
+    pipeline_class = A.ReplayCompose if replay else A.Compose
+    pipeline = pipeline_class(
+        [A.CopyAndPaste(min_visibility_after_paste=0, p=1)],
+        bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["classes"]),
+        seed=137,
+        telemetry=False,
+    )
+    data = {
+        "image": image,
+        "bboxes": [[0, 0, 128, 96]],
+        "classes": primary_labels,
+        "copy_paste_metadata": [
+            {"image": np.full_like(image, 34), "mask": mask, "bbox_labels": {"classes": donor_label}},
+        ],
+    }
+    result = pipeline(**data)
+
+    assert len(result["bboxes"]) == len(result["classes"]) == 2
+    np.testing.assert_allclose(result["bboxes"][0], [0, 0, 128, 96])
+    assert result["classes"][0] == primary_labels[0]
+    assert result["classes"][1] == donor_label
+
+    if replay:
+        replayed = A.ReplayCompose.replay(result["replay"], **data)
+        for field in ("image", "bboxes", "classes"):
+            assert_contract_values_equal(replayed[field], result[field], field)
 
 
 class TestCopyAndPasteBboxes:

@@ -472,10 +472,8 @@ class DataProcessor(ABC, Generic[ParamsT]):
         for data_name in set(self.data_fields) & set(data.keys()):
             # Skip empty sequences (will be converted to proper empty arrays in check_and_convert)
             if isinstance(data[data_name], Sequence) and len(data[data_name]) == 0:
-                self.label_manager.metadata.pop(data_name, None)
                 continue
             if isinstance(data[data_name], np.ndarray) and not data[data_name].size:
-                self.label_manager.metadata.pop(data_name, None)
                 continue
             data[data_name] = self._process_label_fields(data, data_name)
             processed = True

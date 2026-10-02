@@ -174,6 +174,64 @@ def test_mosaic_identity_with_targets() -> None:
     np.testing.assert_allclose(result_bboxes_with_labels, expected_bboxes_with_labels, atol=1e-6)
 
 
+@pytest.mark.parametrize("empty_as_array", [False, True], ids=["list", "array"])
+@pytest.mark.parametrize("empty_donor_index", [0, 1, 2])
+def test_mosaic_empty_donors_preserve_labels(empty_as_array: bool, empty_donor_index: int) -> None:
+    image = np.zeros((32, 32, 3), dtype=np.uint8)
+    empty_bboxes = np.empty((0, 4), dtype=np.float32) if empty_as_array else []
+    empty_keypoints = np.empty((0, 2), dtype=np.float32) if empty_as_array else []
+    empty_donor = {
+        "image": image,
+        "bboxes": empty_bboxes,
+        "bbox_labels": {"bbox_classes": []},
+        "keypoints": empty_keypoints,
+        "keypoint_labels": {"kp_classes": []},
+    }
+    pipeline = Compose(
+        [
+            Mosaic(
+                target_size=(64, 64),
+                cell_shape=(32, 32),
+                center_range=(0.5, 0.5),
+                p=1,
+            ),
+        ],
+        bbox_params=BboxParams(coord_format="albumentations", label_fields=["bbox_classes"]),
+        keypoint_params=KeypointParams(coord_format="xy", label_fields=["kp_classes"]),
+        seed=137,
+        telemetry=False,
+    )
+
+    for labels in (["primary", "first", "last"], np.array([101, 203, 307], dtype=np.int16), ["new", "donor", "labels"]):
+        donors = [
+            {
+                "image": image,
+                "bboxes": [(0.2, 0.2, 0.8, 0.8)],
+                "bbox_labels": {"bbox_classes": labels[index : index + 1]},
+                "keypoints": [(16, 16)],
+                "keypoint_labels": {"kp_classes": labels[index : index + 1]},
+            }
+            for index in (1, 2)
+        ]
+        donors.insert(empty_donor_index, empty_donor)
+        result = pipeline(
+            image=image,
+            bboxes=[(0.2, 0.2, 0.8, 0.8)],
+            bbox_classes=labels[:1],
+            keypoints=[(16, 16)],
+            kp_classes=labels[:1],
+            mosaic_metadata=donors,
+        )
+
+        assert result["bboxes"].shape == (3, 4)
+        assert result["keypoints"].shape == (3, 2)
+        for field in ("bbox_classes", "kp_classes"):
+            assert type(result[field]) is type(labels)
+            assert sorted(result[field]) == sorted(labels)
+            if isinstance(labels, np.ndarray):
+                assert result[field].dtype == labels.dtype
+
+
 def test_mosaic_primary_mask_metadata_no_mask() -> None:
     """Test Mosaic behavior when primary has mask but metadata item doesn't.
 

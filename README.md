@@ -184,6 +184,9 @@ The full documentation is available at **[https://albumentations.ai/docs/](https
 For security, release verification, and contributor guides, see the
 [repository documentation](https://github.com/albumentations-team/AlbumentationsX/blob/main/docs/README.md).
 
+The repository also includes an axis-aware guide for
+[time-frequency and spectrogram augmentation](docs/integrations/time-frequency-augmentation.md).
+
 For AI-assisted augmentation review, AlbumentationsX can also be used through MCP-capable hosts such as Claude Desktop,
 Cursor, Claude Code, and Codex. The community
 [AlbumentationsX MCP integration](https://github.com/albumentations-team/AlbumentationsX/blob/main/docs/integrations/mcp.md) lets assistants inspect transforms, validate pipelines,

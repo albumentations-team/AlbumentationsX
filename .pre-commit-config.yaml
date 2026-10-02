@@ -167,9 +167,3 @@ repos:
         files: ^albumentations/
         exclude: ^build/
         additional_dependencies: ["tomli>=2.4.1"]
-  - repo: https://github.com/frnmst/md-toc
-    rev: 9.0.0  # 9.0.1 requires Python >=3.11; keep hooks compatible with Python 3.10.
-    hooks:
-      - id: md-toc
-        args: ["-p", "github", "-l", "6"]  # GitHub style, up to 6 levels deep
-        files: ^README\.md$

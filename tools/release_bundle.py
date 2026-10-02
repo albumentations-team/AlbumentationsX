@@ -64,6 +64,10 @@ class BundleError(ValueError):
     """Raised when release-bundle identity or integrity validation fails."""
 
 
+class BundleNotFoundError(BundleError):
+    """No successful merged PR has uploaded the requested release bundle yet."""
+
+
 @dataclass(frozen=True)
 class ReleaseMetadata:
     """Source identity used to name and validate one release bundle."""
@@ -102,11 +106,20 @@ class GitHubClient:
 
     def get_json(self, path: str) -> GitHubResponse:
         """Fetch a GitHub REST endpoint without exposing the token in arguments or logs."""
+        return self._request_json(path)
+
+    def post_json(self, path: str, payload: dict[str, str]) -> GitHubResponse:
+        """Create a GitHub resource with an authenticated JSON request."""
+        return self._request_json(path, payload)
+
+    def _request_json(self, path: str, payload: dict[str, str] | None = None) -> GitHubResponse:
         request = urllib.request.Request(
             f"{self.api_url}{path}",
+            data=json.dumps(payload).encode("utf-8") if payload is not None else None,
             headers={
                 "Accept": "application/vnd.github+json",
                 "Authorization": f"Bearer {self.token}",
+                "Content-Type": "application/json",
                 "User-Agent": "albumentationsx-release-bundle",
                 "X-GitHub-Api-Version": "2022-11-28",
             },
@@ -607,7 +620,7 @@ def resolve_artifact(
         ):
             return ResolvedArtifact(artifact_id=artifact_id, run_id=run_id, artifact_name=artifact_name)
     msg = f"No unexpired release bundle {artifact_name!r} comes from a successful merged PR run"
-    raise BundleError(msg)
+    raise BundleNotFoundError(msg)
 
 
 def _write_github_outputs(path: Path | None, values: Mapping[str, str | int]) -> None:

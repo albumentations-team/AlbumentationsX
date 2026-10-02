@@ -10,12 +10,15 @@ The maintainer performs three actions:
 
 1. Increase `project.version` in `pyproject.toml`, refresh `uv.lock` with
    `uv lock`, and open a pull request.
-2. Merge the pull request after the stable required checks pass.
-3. Prepare the GitHub Release notes and select **Publish release** for the same
-   version.
+2. Merge the pull request after the stable required checks and release preflight
+   pass. The **Pin release tag** workflow creates the version tag on that PR's
+   merge commit once its PR workflow has completed successfully.
+3. Select that existing tag, prepare the GitHub Release notes, and select
+   **Publish release**.
 
-GitHub creates the tag as part of the release flow. No draft release, Release
-Candidate run, artifact ID, or manual promotion approval is required.
+Later merges into `main` do not change the release tag or its verified bundle.
+No draft release, Release Candidate run, artifact ID, or manual promotion
+approval is required.
 
 ## The Version-Bump PR Is the Release Gate
 
@@ -83,9 +86,16 @@ payload file. The artifact is uploaded only after the preflight succeeds.
 Failed preflights upload a separate diagnostic artifact that cannot be selected
 for publication.
 
-The version-bump PR should be the final source-changing PR before the release.
-If the tagged tree differs from the checked tree, the source digest changes and
-publication stops before any external upload.
+The **Pin release tag** workflow handles both PR merge and PR workflow
+completion, so it works whether CI finishes before or after the merge. It reads
+the version and source digest from the merged PR commit and resolves the exact
+successful bundle before creating the tag. Automation runs from the default
+branch; the separate source checkout is read only for version and digest
+calculation. It does not build or execute that checkout.
+
+An existing tag on the same commit is preserved. A tag on a different commit
+blocks tagging and is never moved automatically. If a manually selected tag
+differs from the checked tree, publication stops before any external upload.
 
 ## Publish Only Delivers Verified Bytes
 
@@ -174,6 +184,7 @@ and trust-root details.
 | Failure | Recovery |
 | --- | --- |
 | Version-bump PR preflight fails | Fix the PR. Do not publish the GitHub Release. |
+| Version tag has not appeared after merge | Check **Pin release tag** and the originating PR workflow. Re-run the tagging job once the PR workflow succeeds. |
 | No matching bundle exists | Re-run the original merged PR workflow while GitHub still allows it. Otherwise increase to a new patch version and use a new version-bump PR. |
 | Bundle expired | Increase to a new patch version and create a fresh bundle through the version-bump PR gate. |
 | Tag and version differ | Correct the release/tag before external upload. |

@@ -1,0 +1,60 @@
+name: Pin release tag
+
+# Privileged events execute only default-branch automation; merged source is read as data.
+on: # zizmor: ignore[dangerous-triggers]
+  pull_request_target:
+    types: [closed]
+    branches: [main]
+    paths: [pyproject.toml]
+  workflow_run:
+    workflows: [PR]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-tag-${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    if: >-
+      (github.event_name == 'pull_request_target' && github.event.pull_request.merged == true) ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Checkout trusted automation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Checkout merged source history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: released-source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up release identity runtime
+        uses: albumentations-team/ci-foundation/actions/setup-python-uv@6b9045dbea58026a1e8f96b0392c411934a27199
+        with:
+          activate-environment: "true"
+          cache-enabled: "false"
+          python-version: "3.12"
+          uv-version: "0.12.0"
+      - name: Pin version to its verified merge commit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: >-
+          python -m tools.release_tag
+          --repository "${GITHUB_REPOSITORY}"
+          --default-branch "${DEFAULT_BRANCH}"
+          --source-root "${GITHUB_WORKSPACE}/released-source"
+          --event-path "${GITHUB_EVENT_PATH}"

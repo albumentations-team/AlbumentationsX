@@ -839,6 +839,46 @@ def test_replay_donor_labels_reject_incompatible_primary_encoding() -> None:
         A.ReplayCompose.replay(recorded["replay"], **{**data, "labels": ["dog"]})
 
 
+@pytest.mark.parametrize("missing_processors", [("bboxes",), ("keypoints",), ("bboxes", "keypoints")])
+def test_replay_donor_labels_reject_missing_processors(missing_processors: tuple[str, ...]) -> None:
+    image = np.zeros((96, 128, 3), dtype=np.uint8)
+    data = {
+        "image": image,
+        "bboxes": [[16, 12, 64, 48]],
+        "classes": ["cat"],
+        "keypoints": [[32, 24]],
+        "landmarks": ["head"],
+        "mosaic_metadata": [
+            {
+                "image": image.copy(),
+                "bboxes": [[16, 12, 64, 48]],
+                "bbox_labels": {"classes": ["elephant"]},
+                "keypoints": [[32, 24]],
+                "keypoint_labels": {"landmarks": ["paw"]},
+            },
+        ],
+    }
+    pipeline = A.ReplayCompose(
+        [A.Mosaic(target_size=(192, 256), cell_shape=(96, 128), center_range=(0.5, 0.5), p=1)],
+        bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["classes"]),
+        keypoint_params=A.KeypointParams(coord_format="xy", label_fields=["landmarks"], label_mapping={}),
+        seed=137,
+        telemetry=False,
+    )
+    recorded = pipeline(**data)
+    modified = copy.deepcopy(recorded["replay"])
+    for name in missing_processors:
+        modified["bbox_params" if name == "bboxes" else "keypoint_params"] = None
+
+    names = ", ".join(missing_processors)
+    with pytest.raises(ValueError, match=f"missing annotation processors: {names}"):
+        A.ReplayCompose.replay(modified, **data)
+
+    replayed = A.ReplayCompose.replay(recorded["replay"], **data)
+    for field in ("image", "bboxes", "classes", "keypoints", "landmarks"):
+        assert_contract_values_equal(replayed[field], recorded[field], field)
+
+
 @pytest.mark.parametrize(
     ["class_fullname", "expected_short_class_name"],
     [

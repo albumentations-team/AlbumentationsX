@@ -4482,6 +4482,12 @@ class ReplayCompose(Compose):
         self._replay_label_state: dict[str, LabelReplayRecord] | None = None
 
     def _preprocess_processors(self, data: dict[str, Any]) -> None:
+        if self.main_compose and self._replay_label_state is not None:
+            missing = self._replay_label_state.keys() - self._configured_processors.keys()
+            if missing:
+                raise ValueError(
+                    f"Replay label metadata requires missing annotation processors: {', '.join(sorted(missing))}"
+                )
         super()._preprocess_processors(data)
         if not self.main_compose or not self._configured_processors:
             return

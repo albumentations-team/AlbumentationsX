@@ -44,6 +44,7 @@ __all__ = [
     "ElasticTransform3D",
     "Flip3D",
     "GridShuffle3D",
+    "MotionArtifact",
     "Pad3D",
     "PadIfNeeded3D",
     "RandomCrop3D",
@@ -68,6 +69,141 @@ PositiveAxisRanges3D = dict[AxisName3D, PositiveAxisRange3D]
 DEFAULT_ROTATION_AXIS_PAIRS: tuple[AxisPair3D, ...] = ((0, 1), (0, 2), (1, 2))
 DEFAULT_FLIP_AXES: tuple[AxisIndex3D, ...] = (0, 1, 2)
 AXIS_NAMES_3D: tuple[AxisName3D, ...] = ("x", "y", "z")
+
+
+class MotionArtifact(VolumeOnlyTransform):
+    """Simulate motion artifacts in 3D MRI volumes by combining k-space from successive rigid movement states
+    during image acquisition.
+
+    The transform acquires consecutive planes of centred k-space along one selected axis. The initial segment uses
+    the original volume; each subsequent segment uses an independently sampled absolute rotation and translation
+    of that volume. A magnitude inverse FFT reconstructs the corrupted image. Anatomy annotations stay unchanged.
+
+    Args:
+        num_events_range (tuple[int, int]): Inclusive number of motion events. Zero events give exact identity.
+            The upper bound must be smaller than the acquisition-axis length. Default: `(2, 2)`.
+        rotate_range (tuple[float, float]): Degree range sampled independently around each voxel-coordinate
+            axis `(x, y, z)`, rotating about the volume centre. Default: `(-5.0, 5.0)`.
+        translate_percent_range (tuple[float, float]): Translation range sampled independently along `(x, y, z)`.
+            A value of `0.01` shifts by one percent of that axis length. Default: `(-0.02, 0.02)`.
+        axis (Literal[0, 1, 2]): Acquisition axis in array order `(D, H, W)`. Default: `2`.
+        interpolation (Literal[0, 1]): Resampling interpolation: `cv2.INTER_NEAREST` or `cv2.INTER_LINEAR`.
+            Default: `cv2.INTER_LINEAR`.
+        p (float): Probability of applying the transform. Default: `0.5`.
+
+    Targets:
+        volume, volumes
+
+    Image types:
+        uint8, float32
+
+    Notes:
+        - Inputs are real magnitude volumes `(D, H, W)` or `(D, H, W, C)`. Every spatial axis must have at least
+          two voxels. Complex-valued input is unsupported.
+        - Event boundaries are sampled uniformly without replacement from the interior acquisition-plane boundaries.
+          The event time is the boundary index divided by the selected axis length.
+        - Channels, collection items, and additional volumes share the same event times and motion states.
+          FFTs operate over `(D, H, W)` only, independently for each channel and collection item.
+        - Resampling uses zero padding. FFT/IFFT use backward normalization; the magnitude of the complex
+          reconstruction is clipped to `[0, 1]` for float32 or converted back to `[0, 255]` for uint8.
+        - Rotations and translations use voxel coordinates. Physical spacing and scanner acquisition trajectories
+          are not modelled. Parameter strength must be chosen for the anatomy and task.
+        - Runtime grows with the number of events. Moved volumes and spectra are processed one at a time.
+
+    Examples:
+        >>> import albumentations as A
+        >>> import numpy as np
+        >>> volume = np.random.default_rng(137).random((16, 64, 96, 1), dtype=np.float32)
+        >>> transform = A.Compose([A.MotionArtifact(num_events_range=(1, 2), p=1)], seed=137, strict=True)
+        >>> result = transform(volume=volume)
+        >>> result["volume"].shape
+        (16, 64, 96, 1)
+
+    References:
+        - TorchIO Motion: https://docs.torchio.org/2.0/reference/transforms/motion/
+        - Shaw et al., 2019: https://proceedings.mlr.press/v102/shaw19a.html
+
+    """
+
+    class InitSchema(BaseTransformInitSchema):
+        num_events_range: Annotated[
+            tuple[int, int],
+            AfterValidator(check_range_bounds(0, None)),
+            AfterValidator(nondecreasing),
+        ]
+        rotate_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(-180, 180)),
+            AfterValidator(nondecreasing),
+        ]
+        translate_percent_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(-1, 1)),
+            AfterValidator(nondecreasing),
+        ]
+        axis: AxisIndex3D
+        interpolation: Literal[0, 1]
+
+    def __init__(
+        self,
+        *,
+        num_events_range: tuple[int, int] = (2, 2),
+        rotate_range: tuple[float, float] = (-5.0, 5.0),
+        translate_percent_range: tuple[float, float] = (-0.02, 0.02),
+        axis: AxisIndex3D = 2,
+        interpolation: Literal[0, 1] = CV2_INTER_LINEAR,
+        p: float = 0.5,
+    ):
+        super().__init__(p=p)
+        self.num_events_range = num_events_range
+        self.rotate_range = rotate_range
+        self.translate_percent_range = translate_percent_range
+        self.axis = axis
+        self.interpolation = interpolation
+
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
+        sampling: SamplingContext,
+    ) -> SampledParams:
+        source_shape = _sampling_volume_shape(targets)
+        if min(source_shape) < 2:
+            raise ValueError("MotionArtifact requires at least two voxels along every spatial axis, including D")
+        if self.num_events_range[1] >= source_shape[self.axis]:
+            raise ValueError("num_events_range must be smaller than the acquisition-axis length")
+
+        num_events = sampling.py_random.randint(*self.num_events_range)
+        boundaries = tuple(sorted(sampling.py_random.sample(range(1, source_shape[self.axis]), num_events)))
+        matrices = []
+        for _ in range(num_events):
+            rotate = {axis: sampling.py_random.uniform(*self.rotate_range) for axis in AXIS_NAMES_3D}
+            translate = {
+                axis: sampling.py_random.uniform(*self.translate_percent_range) * length
+                for axis, length in zip(AXIS_NAMES_3D, reversed(source_shape), strict=True)
+            }
+            matrices.append(
+                f3d.create_affine_transformation_matrix_3d(
+                    translate,
+                    dict.fromkeys(AXIS_NAMES_3D, 1.0),
+                    rotate,
+                    source_shape,
+                ),
+            )
+        sampling.applied_overrides["num_events_range"] = (num_events, num_events)
+        return SampledParams(params={"matrices": np.asarray(matrices, dtype=np.float32), "boundaries": boundaries})
+
+    def apply_to_volume(
+        self,
+        volume: VolumeType,
+        matrices: np.ndarray,
+        boundaries: tuple[int, ...],
+        **params: Any,
+    ) -> VolumeType:
+        if volume.dtype not in (np.uint8, np.float32):
+            raise ValueError("MotionArtifact supports uint8 or float32 real magnitude volumes")
+        return f3d.motion_artifact(volume, matrices, boundaries, self.axis, self.interpolation)
 
 
 def _sampling_volume_shape(targets: TargetSet) -> tuple[int, int, int]:

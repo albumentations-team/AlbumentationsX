@@ -324,6 +324,7 @@ VOLUME_TRANSFORMS: Mapping[str, Factory] = {
     "random_rotate90_3d": lambda: albumentations.RandomRotate90_3D(axis_pair=(0, 2), group_element="r90", p=1.0),
     "resize3d": lambda: albumentations.Resize3D(size=(12, 96, 96), p=1.0),
     "rician_noise": lambda: albumentations.RicianNoise(std_range=(0.1, 0.1), p=1.0),
+    "motion_artifact": lambda: albumentations.MotionArtifact(p=1.0),
     "kspace_spike_noise": lambda: albumentations.KSpaceSpikeNoise(
         num_spikes_range=(2, 2),
         intensity_range=(0.1, 0.1),

@@ -237,6 +237,7 @@ SPECIAL_TARGET_ALIAS_TO_TRANSFORM = {
 }
 
 VOLUME_ALIAS_TO_TRANSFORM = {
+    "motion_artifact": "MotionArtifact",
     "affine3d": "Affine3D",
     "anisotropy3d": "Anisotropy3D",
     "elastic3d": "ElasticTransform3D",

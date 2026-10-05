@@ -73,6 +73,7 @@
   "Morphological": ["scale", "operation", "p"],
   "Mosaic": ["grid_yx", "target_size", "cell_shape", "center_range", "fit_mode", "interpolation", "mask_interpolation", "fill", "fill_mask", "metadata_key", "p"],
   "MotionBlur": ["blur_range", "allow_shifted", "angle_range", "direction_range", "p"],
+  "MotionArtifact": [],
   "MultiplicativeNoise": ["multiplier", "per_channel", "elementwise", "p"],
   "NoOp": ["p"],
   "Normalize": ["mean", "std", "max_pixel_value", "normalization", "p"],

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "reviewed_on": "2026-09-29",
+  "reviewed_on": "2026-10-05",
   "scope": "Runtime components resolved by uv for the base package, including transitive dependencies and Python or platform-specific lock variants. Declared extras are outside this registry unless a component is also resolved by the base package. Build, test, and CI tools are outside this registry.",
   "evidence_sources": {
     "pypi": "Locked distribution METADATA and license files, cross-checked at https://pypi.org/project/<name>/<version>/."

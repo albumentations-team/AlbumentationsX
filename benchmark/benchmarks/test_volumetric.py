@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import albumentations
+from albumentations.augmentations.transforms3d import functional as f3d
 from benchmarks.common import DTYPES, VOLUME_SIZES, make_volume
 
 
@@ -79,3 +80,32 @@ class TimeAffine3D:
 
     def peakmem_affine3d(self, size: str, channels: int, dtype: str) -> None:
         self.affine(volume=self.volume)
+
+
+class TimeMotionArtifact:
+    """Measure MRI motion reconstruction across channels, dtype, volume size, and event count."""
+
+    params = (tuple(VOLUME_SIZES), (1, 3, 5), tuple(DTYPES), (1, 4))
+    param_names = ("size", "channels", "dtype", "events")
+
+    def setup(self, size: str, channels: int, dtype: str, events: int) -> None:
+        self.volume = make_volume(size, channels, DTYPES[dtype])
+        self.motion = albumentations.Compose(
+            [albumentations.MotionArtifact(num_events_range=(events, events), p=1)],
+            seed=137,
+            strict=True,
+        )
+        capture = albumentations.ReplayCompose(
+            [albumentations.MotionArtifact(num_events_range=(events, events), p=1)],
+        )
+        capture.set_random_seed(137)
+        self.motion_params = capture(volume=self.volume)["replay"]["transforms"][0]["params"]["params"]
+
+    def time_motion_artifact(self, size: str, channels: int, dtype: str, events: int) -> None:
+        self.motion(volume=self.volume)
+
+    def time_motion_kernel(self, size: str, channels: int, dtype: str, events: int) -> None:
+        f3d.motion_artifact(self.volume, self.motion_params["matrices"], self.motion_params["boundaries"], 2, 1)
+
+    def peakmem_motion_artifact(self, size: str, channels: int, dtype: str, events: int) -> None:
+        self.motion(volume=self.volume)

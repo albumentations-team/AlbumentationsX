@@ -15,7 +15,8 @@ from typing import Any, Literal, cast
 import cv2
 import numpy as np
 import torch
-from albucore import clip, pad3d, remap3d, resize3d, warp_affine3d
+from albucore import clip, clipped, float32_io, pad3d, remap3d, resize3d, warp_affine3d
+from scipy import fft
 
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.utils import handle_empty_array
@@ -23,6 +24,63 @@ from albumentations.core.type_definitions import NUM_VOLUME_DIMENSIONS, ImageTyp
 from albumentations.core.utils import get_volume_shape
 
 AxisValues3D = Mapping[Literal["x", "y", "z"], float] | Mapping[str, float]
+
+
+@float32_io
+@clipped
+def motion_artifact(
+    volume: VolumeType,
+    matrices: np.ndarray,
+    boundaries: tuple[int, ...],
+    axis: int,
+    interpolation: int,
+) -> VolumeType:
+    """Combine sequential centred k-space segments from absolute rigid motion states.
+
+    The first segment is stationary. Each subsequent segment uses one forward `(x, y, z)` matrix.
+    Full complex FFTs preserve asymmetric acquisition segments; magnitude reconstruction handles
+    their non-Hermitian spectrum. Only one moved volume and its spectrum are retained at a time.
+    """
+    identity = np.eye(4, dtype=np.float32)
+    if matrices.size == 0 or np.all(matrices == identity):
+        return volume
+
+    spatial_shape = volume.shape[:3]
+    spectrum = fft.fftn(volume, axes=(0, 1, 2), workers=1)
+    for matrix, begin, end in zip(matrices, boundaries, (*boundaries[1:], volume.shape[axis]), strict=True):
+        if np.array_equal(matrix, identity):
+            continue
+        moved = warp_affine3d(
+            volume,
+            matrix,
+            spatial_shape,
+            interpolation=interpolation,
+            border_mode=cv2.BORDER_CONSTANT,
+            border_value=0,
+        )
+        moved_spectrum = fft.fftn(moved, axes=(0, 1, 2), workers=1)
+        _replace_motion_segment(spectrum, moved_spectrum, axis, begin, end)
+        del moved, moved_spectrum
+
+    reconstructed = fft.ifftn(spectrum, axes=(0, 1, 2), workers=1, overwrite_x=True)
+    return np.abs(reconstructed)
+
+
+def _replace_motion_segment(
+    spectrum: np.ndarray,
+    moved_spectrum: np.ndarray,
+    axis: int,
+    begin: int,
+    end: int,
+) -> None:
+    """Write a centred acquisition interval without allocating a shifted spectrum."""
+    length = spectrum.shape[axis]
+    start = (begin + (length + 1) // 2) % length
+    stop = start + end - begin
+    index = [slice(None)] * spectrum.ndim
+    for lower, upper in ((start, min(stop, length)), (0, max(0, stop - length))):
+        index[axis] = slice(lower, upper)
+        spectrum[tuple(index)] = moved_spectrum[tuple(index)]
 
 
 def create_affine_transformation_matrix_3d(

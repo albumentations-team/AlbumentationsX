@@ -624,6 +624,16 @@ _BASE_CASE_SPECS: list[list[Any]] = [
         },
     ],
     [A.CenterCrop3D, {"size": (2, 30, 30)}],
+    [
+        A.MotionArtifact,
+        {
+            "num_events_range": (1, 1),
+            "rotate_range": (-10.0, 10.0),
+            "translate_percent_range": (-0.05, 0.05),
+            "axis": 1,
+            "interpolation": cv2.INTER_NEAREST,
+        },
+    ],
     [A.RandomCrop3D, {"size": (2, 30, 30)}],
     [
         A.RandomResizedCrop3D,
@@ -1172,6 +1182,7 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
     ("fixed-axes", A.Flip3D, {"flip_axes": (0, 2)}),
     ("fixed-identity", A.Flip3D, {"flip_axes": ()}),
     ("constant-fill", A.Affine3D, {"border_mode": cv2.BORDER_CONSTANT}),
+    ("linear-multiple-events", A.MotionArtifact, {"num_events_range": (2, 3)}),
     ("anisotropic-range", A.RandomScale, {"scale_range": {"x": (-0.2, 0.3), "y": (-0.1, 0.15)}}),
     ("downscale-aware", A.RandomScale, {"mask_interpolation": cv2.INTER_LINEAR, "area_for_downscale": "image_mask"}),
     ("variable-intensity", A.RandomShadow, {"shadow_intensity_range": (0.2, 0.7)}),

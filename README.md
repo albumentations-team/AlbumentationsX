@@ -367,6 +367,7 @@ See [data collection and opt-out](https://github.com/albumentations-team/Albumen
 | [ElasticTransform3D](https://albumentations.ai/explore/transform/ElasticTransform3D/)   | ✓      | ✓       | ✓      | ✓       | ✓         |
 | [Flip3D](https://albumentations.ai/explore/transform/Flip3D/)                           | ✓      | ✓       | ✓      | ✓       | ✓         |
 | [GridShuffle3D](https://albumentations.ai/explore/transform/GridShuffle3D/)             | ✓      | ✓       | ✓      | ✓       | ✓         |
+| [MotionArtifact](https://albumentations.ai/explore/transform/MotionArtifact/)           | ✓      | ✓       |        |         |           |
 | [Pad3D](https://albumentations.ai/explore/transform/Pad3D/)                             | ✓      | ✓       | ✓      | ✓       | ✓         |
 | [PadIfNeeded3D](https://albumentations.ai/explore/transform/PadIfNeeded3D/)             | ✓      | ✓       | ✓      | ✓       | ✓         |
 | [RandomCrop3D](https://albumentations.ai/explore/transform/RandomCrop3D/)               | ✓      | ✓       | ✓      | ✓       | ✓         |

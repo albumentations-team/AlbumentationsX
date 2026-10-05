@@ -98,6 +98,7 @@ class PixelSpec:
 
 
 PIXEL_TRANSFORMS: Mapping[str, PixelSpec] = {
+    "bias_field": PixelSpec(lambda: albumentations.BiasField(std_range=(0.25, 0.25), p=1.0)),
     "advanced_blur": PixelSpec(lambda: albumentations.AdvancedBlur(p=1.0)),
     "annotation_artifacts": PixelSpec(lambda: albumentations.AnnotationArtifacts(p=1.0)),
     "atmospheric_fog": PixelSpec(lambda: albumentations.AtmosphericFog(p=1.0)),
@@ -324,6 +325,7 @@ VOLUME_TRANSFORMS: Mapping[str, Factory] = {
     "random_rotate90_3d": lambda: albumentations.RandomRotate90_3D(axis_pair=(0, 2), group_element="r90", p=1.0),
     "resize3d": lambda: albumentations.Resize3D(size=(12, 96, 96), p=1.0),
     "rician_noise": lambda: albumentations.RicianNoise(std_range=(0.1, 0.1), p=1.0),
+    "bias_field": lambda: albumentations.BiasField(std_range=(0.25, 0.25), p=1.0),
     "motion_artifact": lambda: albumentations.MotionArtifact(p=1.0),
     "kspace_spike_noise": lambda: albumentations.KSpaceSpikeNoise(
         num_spikes_range=(2, 2),

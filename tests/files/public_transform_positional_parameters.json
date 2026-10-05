@@ -12,6 +12,7 @@
   "BBoxSafeRandomCrop": ["erosion_rate", "p"],
   "BBoxSubsetSafeRandomCrop": ["subset_fraction_range", "erosion_rate", "aspect_ratio_range", "p"],
   "Blur": ["blur_range", "p"],
+  "BiasField": [],
   "CLAHE": ["clip_range", "tile_grid_size", "p"],
   "CenterCrop": ["height", "width", "pad_if_needed", "pad_position", "border_mode", "fill", "fill_mask", "p"],
   "CenterCrop3D": ["size", "pad_if_needed", "fill", "fill_mask", "p"],

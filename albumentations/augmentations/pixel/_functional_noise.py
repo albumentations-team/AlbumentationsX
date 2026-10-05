@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Literal, cast
 
+from albucore import exp as albucore_exp
+from albucore import multiply, resize3d
 from scipy import fft
 
 from ._functional_shared import (
@@ -15,6 +17,7 @@ from ._functional_shared import (
     add_weighted,
     clipped,
     cv2,
+    fgeometric,
     float32_io,
     math,
     multiply_by_constant,
@@ -23,6 +26,48 @@ from ._functional_shared import (
     preserve_channel_dim,
     random,
 )
+
+
+def bias_field(img: ImageType, coarse_field: np.ndarray, *, is_batch: bool = False) -> ImageType:
+    """Upsample a Gaussian log-gain grid, exponentiate it, and multiply image or volume intensities.
+
+    The coarse grid has spatial axes followed by channels. A leading image/volume batch axis in `img`
+    shares one generated field; no interpolation occurs across batch or channel axes.
+    """
+    spatial_rank = coarse_field.ndim - 1
+    channel_free = img.ndim == spatial_rank + int(is_batch)
+    working_shape = (*img.shape, 1) if channel_free else img.shape
+    spatial_shape = working_shape[-(spatial_rank + 1) : -1]
+    field = generate_bias_field(coarse_field, spatial_shape)
+    if is_batch and img.dtype == np.uint8:
+        result = np.empty_like(img)
+        for index, item in enumerate(img):
+            result[index] = _apply_bias_gain(item, field, channel_free=channel_free)
+        return result
+    return _apply_bias_gain(img, field, channel_free=channel_free)
+
+
+@float32_io
+@clipped
+def _apply_bias_gain(img: ImageType, field: np.ndarray, *, channel_free: bool) -> ImageType:
+    """Apply a sampled gain with image-range and channel-free layout handling."""
+    working_img = img[..., None] if channel_free else img
+    result = multiply(working_img, field, inplace=False)
+    return result[..., 0] if channel_free else result
+
+
+def generate_bias_field(coarse_field: np.ndarray, spatial_shape: tuple[int, ...]) -> np.ndarray:
+    """Interpolate a float32 channel-last 2D or 3D log-gain grid and exponentiate it.
+
+    Bilinear/trilinear interpolation preserves the channel count. The input coefficients remain unchanged.
+    """
+    if coarse_field.shape[:-1] == spatial_shape:
+        field = coarse_field.copy()
+    elif len(spatial_shape) == 3:
+        field = resize3d(coarse_field, (spatial_shape[0], spatial_shape[1], spatial_shape[2]), cv2.INTER_LINEAR)
+    else:
+        field = fgeometric.resize(coarse_field, (spatial_shape[0], spatial_shape[1]), interpolation=cv2.INTER_LINEAR)
+    return albucore_exp(field, inplace=True)
 
 
 @clipped
@@ -766,6 +811,8 @@ __all__ = [
     "add_noise",
     "add_noise_by_patches",
     "apply_salt_and_pepper",
+    "bias_field",
+    "generate_bias_field",
     "generate_constant_noise_with_py_random",
     "generate_enhance_matrix",
     "generate_patch_noise",

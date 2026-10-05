@@ -219,6 +219,7 @@ See [data collection and opt-out](https://github.com/albumentations-team/Albumen
 
 - [AdditiveNoise](https://albumentations.ai/explore/transform/AdditiveNoise/)
 - [AdvancedBlur](https://albumentations.ai/explore/transform/AdvancedBlur/)
+- [BiasField](https://albumentations.ai/explore/transform/BiasField/)
 - [AnnotationArtifacts](https://albumentations.ai/explore/transform/AnnotationArtifacts/)
 - [AtmosphericFog](https://albumentations.ai/explore/transform/AtmosphericFog/)
 - [AutoContrast](https://albumentations.ai/explore/transform/AutoContrast/)

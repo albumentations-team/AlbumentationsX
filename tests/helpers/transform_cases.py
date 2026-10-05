@@ -542,6 +542,7 @@ _BASE_CASE_SPECS: list[list[Any]] = [
     [A.GridElasticDeform, {"num_grid_xy": (10, 10), "magnitude": 10}],
     [A.ShotNoise, {"scale_range": (0.1, 0.3)}],
     [A.RicianNoise, {"std_range": (0.05, 0.15)}],
+    [A.BiasField, {"std_range": (0.1, 0.3), "scale_range": (0.03, 0.06)}],
     [
         A.KSpaceSpikeNoise,
         {
@@ -1244,6 +1245,8 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
     ("stronger", A.ShotNoise, {"scale_range": (0.2, 0.4)}),
     ("stronger", A.RicianNoise, {"std_range": (0.1, 0.3)}),
     ("per-channel", A.RicianNoise, {"std_range": (0.05, 0.15), "per_channel": True}),
+    ("per-channel", A.BiasField, {"per_channel": True}),
+    ("full-resolution", A.BiasField, {"scale_range": (1.0, 1.0)}),
     (
         "shared-spikes",
         A.KSpaceSpikeNoise,

@@ -69,7 +69,7 @@ def test_compatibility_is_exactly_one_job_for_each_os_python_contract() -> None:
         "operating-system": list(TIER_1_OSES),
         "python-version": list(SUPPORTED_PYTHONS),
     }
-    assert len(set(product(matrix["operating-system"], matrix["python-version"]))) == 15
+    assert len(set(product(matrix["operating-system"], matrix["python-version"]))) == 12
 
 
 def test_test_handoffs_are_portable() -> None:

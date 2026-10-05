@@ -455,7 +455,7 @@ class TestComposeInitEvent:
         event = ComposeInitEvent(
             session_id="test_session",
             albumentationsx_version="2.0.0",
-            python_version="3.10",
+            python_version="3.11",
             os="Ubuntu 22.04",
             cpu="Intel Core i7-9700K",
             environment="local",
@@ -473,7 +473,7 @@ class TestComposeInitEvent:
         event = ComposeInitEvent(
             session_id="test_session",
             albumentationsx_version="2.0.0",
-            python_version="3.10",
+            python_version="3.11",
             os="Ubuntu 22.04",
             cpu="Intel Core i7-9700K",
             environment="jupyter",
@@ -517,7 +517,7 @@ class TestComposeInitEvent:
             user_id="test-user-123",
             session_id="test_session",
             albumentationsx_version="2.0.0",
-            python_version="3.10",
+            python_version="3.11",
             os="Ubuntu 22.04",
             cpu="Intel Core i7-9700K",
             environment="jupyter",
@@ -539,7 +539,7 @@ class TestComposeInitEvent:
         # Check environment data
         env = data["environment"]
         assert env["albumentationsx_version"] == "2.0.0"
-        assert env["python_version"] == "3.10"
+        assert env["python_version"] == "3.11"
         assert env["os"] == "Ubuntu 22.04"
         assert env["cpu"] == "Intel Core i7-9700K"
         assert env["gpu"] == "NVIDIA RTX 3080"
@@ -553,7 +553,7 @@ class TestComposeInitEvent:
         """Test event with minimal data."""
         event = ComposeInitEvent(
             albumentationsx_version="2.0.0",
-            python_version="3.10",
+            python_version="3.11",
             os="macOS 14.2",
             cpu="Apple M1",
             environment="local",
@@ -577,7 +577,7 @@ class TestComposeInitEvent:
         event = ComposeInitEvent(
             transforms=transforms,
             albumentationsx_version="2.0.0",
-            python_version="3.10",
+            python_version="3.11",
             os="Ubuntu 22.04",
             cpu="AMD Ryzen 9 5900X",
             environment="colab",
@@ -885,7 +885,7 @@ class TestTelemetryIntegration:
         event = ComposeInitEvent(
             transforms=["RandomCrop", "Normalize", "HorizontalFlip", "ToTensorV2", "Blur"],
             albumentationsx_version="2.0.0",
-            python_version="3.10",
+            python_version="3.11",
             os="Linux",
             cpu="Intel",
             environment="local",

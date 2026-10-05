@@ -9,7 +9,7 @@ and simplify common operations across different augmentation transforms.
 import functools
 from collections.abc import Callable
 from functools import wraps
-from typing import Any, Concatenate, TypeVar, cast
+from typing import Any, Concatenate, ParamSpec, TypeVar, cast
 
 import cv2
 import numpy as np
@@ -19,7 +19,6 @@ from albucore.utils import (
     is_multispectral_image,
     is_rgb_image,
 )
-from typing_extensions import ParamSpec
 
 from albumentations.core.keypoints_utils import angle_to_2pi_range
 

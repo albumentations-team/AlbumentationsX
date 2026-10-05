@@ -114,7 +114,7 @@ repos:
     rev: v3.21.2
     hooks:
       - id: pyupgrade
-        args: [--py310-plus]
+        args: [--py311-plus]
   - repo: https://github.com/pre-commit/pygrep-hooks
     rev: v1.10.0
     hooks:
@@ -131,7 +131,6 @@ repos:
     rev: v2.4.3
     hooks:
       - id: codespell
-        additional_dependencies: ["tomli>=2.4.1"]
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v2.3.1
     hooks:
@@ -166,4 +165,3 @@ repos:
       - id: check-google-docstrings
         files: ^albumentations/
         exclude: ^build/
-        additional_dependencies: ["tomli>=2.4.1"]

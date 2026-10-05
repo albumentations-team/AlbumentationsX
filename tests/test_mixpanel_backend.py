@@ -46,7 +46,7 @@ class TestMixpanelBackend:
             user_id="test-user-123",
             pipeline_hash="test_hash",
             albumentationsx_version="2.0.0",
-            python_version="3.10",
+            python_version="3.11",
             os="Ubuntu 22.04",
             cpu="Intel i7",
             gpu="NVIDIA RTX 3080",
@@ -78,7 +78,7 @@ class TestMixpanelBackend:
             session_id="session-456",
             pipeline_hash="test_hash",
             albumentationsx_version="2.0.0",
-            python_version="3.10",
+            python_version="3.11",
             os="Ubuntu 22.04",
             cpu="Intel i7",
             gpu="NVIDIA RTX 3080",
@@ -119,7 +119,7 @@ class TestMixpanelBackend:
 
         assert props["pipeline_hash"] == "test_hash"
         assert props["version"] == "2.0.0"
-        assert props["python_version"] == "3.10"
+        assert props["python_version"] == "3.11"
         assert props["cpu"] == "Intel i7"
         assert props["gpu"] == "NVIDIA RTX 3080"
         assert props["ram_gb"] == 16.0
@@ -145,7 +145,7 @@ class TestMixpanelBackend:
         event = ComposeInitEvent(
             transforms=["RandomCrop"],
             albumentationsx_version="2.0.0",
-            python_version="3.10",
+            python_version="3.11",
             os="Linux",
             cpu="Intel",
             environment="local",
@@ -159,7 +159,7 @@ class TestMixpanelBackend:
         backend = MixpanelBackend()
         event = ComposeInitEvent(
             albumentationsx_version="2.0.0",
-            python_version="3.10",
+            python_version="3.11",
             os="Linux",
             cpu="Intel",
             environment="local",

@@ -9,13 +9,12 @@ interface and implements specific 3D augmentation logic.
 
 import math
 from collections.abc import Mapping
-from typing import Annotated, Any, ClassVar, Final, Literal, cast
+from typing import Annotated, Any, ClassVar, Final, Literal, Self, cast
 
 import numpy as np
 import torch
 from albucore import resize3d
 from pydantic import AfterValidator, field_validator, model_validator
-from typing_extensions import Self
 
 from albumentations.augmentations.crops._sampling import SamplingMethod, sample_3d_crop_shape
 from albumentations.augmentations.geometric import functional as fgeometric

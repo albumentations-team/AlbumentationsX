@@ -1466,7 +1466,7 @@ def apply_lens_flare(
 
     flare_3d = flare_layer[:, :, np.newaxis] * max_val
 
-    return clip(result.astype(np.float32) + flare_3d, result.dtype)
+    return clip(cast("ImageFloat32", result.astype(np.float32) + flare_3d), result.dtype)
 
 
 def generate_water_displacement_maps(

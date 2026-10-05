@@ -4,7 +4,7 @@ import hashlib
 import json
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -16,7 +16,7 @@ class ComposeInitEvent:
 
     # Core event data
     event_type: str = "compose_init"
-    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     session_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     user_id: str = ""  # Persistent random UUID, shared across events
     pipeline_hash: str = ""

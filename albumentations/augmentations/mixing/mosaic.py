@@ -1,8 +1,6 @@
 """Mosaic mixing transform."""
 
-from typing import Annotated, Any, Literal, cast
-
-from typing_extensions import Self
+from typing import Annotated, Any, Literal, Self, cast
 
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetParams, TargetSet, requirements_for_views

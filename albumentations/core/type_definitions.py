@@ -8,13 +8,13 @@ and provide a centralized location for commonly used values.
 """
 
 from enum import Enum
-from typing import Literal, NewType, TypeAlias, TypeVar
+from typing import Literal, NewType, NotRequired, TypeAlias, TypeVar
 
 import cv2
 import numpy as np
 from numpy import float32, uint8
 from numpy.typing import NDArray
-from typing_extensions import NotRequired, TypedDict
+from typing_extensions import TypedDict
 
 Number = TypeVar("Number", float, int)
 

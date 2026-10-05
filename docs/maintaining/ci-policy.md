@@ -51,14 +51,14 @@ Markdown links, generated documentation, syntax checks, and secret detection.
 
 | Changed area | Selected jobs |
 | --- | --- |
-| Runtime source, shared test infrastructure, dependency metadata, CI router, or unknown path | Complete 3 × 5 compatibility matrix |
+| Runtime source, shared test infrastructure, dependency metadata, CI router, or unknown path | Complete 3 × 4 compatibility matrix |
 | Core runtime or PyTorch source; dedicated PyTorch tests; dependency metadata | Dedicated CPU-only PyTorch tests |
 | Isolated non-PyTorch test module | Targeted tests on the boundary platforms |
 | Workflow-only change | GitHub Actions hardening audit |
 | Legal, package, or dependency metadata | Source legal check, package build/metadata check, and relevant dependency audit |
 | Version-only release bump | Release preflight only, outside always-run pre-commit jobs |
 
-The matrix is fifteen distinct jobs: Ubuntu, Windows, and macOS on Python 3.10,
+The matrix is twelve distinct jobs: Ubuntu, Windows, and macOS on Python
 3.11, 3.12, 3.13, and 3.14. Each job runs the complete non-PyTorch suite with
 two xdist workers and `--hypothesis-profile=ci-fast`. There are no Windows shard
 aliases and no duplicate primary suite.

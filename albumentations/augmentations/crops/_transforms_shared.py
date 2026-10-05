@@ -2,14 +2,13 @@
 
 import math
 from collections.abc import Sequence
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal, Self, cast
 
 import cv2
 import numpy as np
 from albucore import reduce_sum
 from pydantic import Field, model_validator
 from pydantic.functional_validators import AfterValidator
-from typing_extensions import Self
 
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.core.bbox_utils import denormalize_bboxes, normalize_bboxes, union_of_bboxes

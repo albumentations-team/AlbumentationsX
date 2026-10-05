@@ -3,9 +3,7 @@
 import contextlib
 import time
 from threading import Thread
-from typing import Any
-
-from typing_extensions import Self
+from typing import Any, Self
 
 from albumentations.core.analytics.backends.mixpanel import MixpanelBackend
 from albumentations.core.analytics.collectors import is_ci_environment, is_pytest_running

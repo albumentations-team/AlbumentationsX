@@ -7,7 +7,7 @@ dithering, halftone, and lens flare effects.
 
 import math
 from collections.abc import Sequence
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Self
 
 import numpy as np
 from albucore import (
@@ -18,7 +18,6 @@ from albucore import (
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 from pydantic.functional_validators import AfterValidator
 from scipy import special
-from typing_extensions import Self
 
 from albumentations.augmentations.blur import functional as fblur
 from albumentations.augmentations.blur.transforms import BlurInitSchema

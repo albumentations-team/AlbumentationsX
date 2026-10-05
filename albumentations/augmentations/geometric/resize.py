@@ -5,12 +5,11 @@ scaling with aspect ratio preservation, and size-constrained transformations.
 """
 
 from collections.abc import Sequence
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 import cv2
 import numpy as np
 from pydantic import Field, model_validator
-from typing_extensions import Self
 
 from albumentations.core.bbox_utils import denormalize_bboxes, normalize_bboxes
 from albumentations.core.invocation import SamplingContext

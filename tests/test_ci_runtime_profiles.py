@@ -88,12 +88,12 @@ def test_lower_bound_job_resolves_runtime_versions_from_project_metadata() -> No
 
 
 def test_runtime_dependencies_must_declare_lower_bounds() -> None:
-    assert _check_project_runtime_lower_bounds({"dependencies": ["pyyaml; python_version > '3.10'"]}) == [
-        "pyproject.toml runtime dependency \"pyyaml; python_version > '3.10'\" must declare a lower bound",
+    assert _check_project_runtime_lower_bounds({"dependencies": ["pyyaml; python_version > '3.11'"]}) == [
+        "pyproject.toml runtime dependency \"pyyaml; python_version > '3.11'\" must declare a lower bound",
     ]
     assert (
         _check_project_runtime_lower_bounds(
-            {"dependencies": ["pyyaml>=6.0.3; python_version > '3.10'"]},
+            {"dependencies": ["pyyaml>=6.0.3; python_version > '3.11'"]},
         )
         == []
     )

@@ -7,7 +7,7 @@ and pixel distribution matching with various normalization techniques.
 
 import abc
 from copy import deepcopy
-from typing import Any, Literal, cast
+from typing import Any, Literal, Protocol, cast
 
 import cv2
 import numpy as np
@@ -22,7 +22,6 @@ from albucore import (
     to_float,
     uint8_io,
 )
-from typing_extensions import Protocol
 
 import albumentations.augmentations.geometric.functional as fgeometric
 from albumentations.augmentations.utils import PCA

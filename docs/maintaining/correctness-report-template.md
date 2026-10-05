@@ -7,14 +7,14 @@ Commit: `<sha>`
 
 ## Compatibility
 
-Supported Python versions: 3.10, 3.11, 3.12, 3.13, 3.14
+Supported Python versions: 3.11, 3.12, 3.13, 3.14
 
 | OS | Python | Dependency Set | Result |
 | --- | --- | --- | --- |
-| `ubuntu-latest` | 3.10, 3.11, 3.12, 3.13, 3.14 | `locked-latest` | `<result>` |
-| `windows-latest` | 3.10, 3.11, 3.12, 3.13, 3.14 | `locked-latest` | `<result>` |
-| `macos-latest` | 3.10, 3.11, 3.12, 3.13, 3.14 | `locked-latest` | `<result>` |
-| `ubuntu-latest` | 3.10 | `declared-minimum` | `<result>` |
+| `ubuntu-latest` | 3.11, 3.12, 3.13, 3.14 | `locked-latest` | `<result>` |
+| `windows-latest` | 3.11, 3.12, 3.13, 3.14 | `locked-latest` | `<result>` |
+| `macos-latest` | 3.11, 3.12, 3.13, 3.14 | `locked-latest` | `<result>` |
+| `ubuntu-latest` | 3.11 | `declared-minimum` | `<result>` |
 | `ubuntu-latest` | 3.14 | `optional-extras` | `<result>` |
 | `ubuntu-latest` | `3.15-dev` | `pre-release-probe` | `<result>` |
 

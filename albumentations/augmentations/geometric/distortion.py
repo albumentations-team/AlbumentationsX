@@ -27,7 +27,7 @@ type, and characteristics of the distortion, as well as interpolation methods fo
 target types.
 """
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Self
 
 import numpy as np
 from albucore import remap
@@ -38,7 +38,6 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from typing_extensions import Self
 
 import albumentations.augmentations.pixel.functional as fpixel
 from albumentations.augmentations.utils import check_range

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import tomllib
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,12 +12,6 @@ from typing import Any, TypeAlias
 
 from tools import check_docstring_format, check_naming_conflicts
 from tools.ax_coding_guidance.runner import InfrastructureError, run_repo
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # Python 3.10
-    import tomli as tomllib
-
 
 RuleCheck: TypeAlias = Callable[[Path, tuple[Path, ...]], int]
 RuleSelector: TypeAlias = Callable[[Path, tuple[Path, ...]], bool]

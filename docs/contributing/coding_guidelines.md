@@ -64,7 +64,7 @@ to this document and the hook instead of restating the AXG catalog.
 
 ### Python Version and Type Hints
 
-- Use Python 3.10+ features and syntax
+- Use Python 3.11+ features and syntax
 - Always include type hints for all functions
 
 ## Naming Conventions

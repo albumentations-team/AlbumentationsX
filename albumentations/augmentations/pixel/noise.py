@@ -5,14 +5,13 @@ ISO, multiplicative, Rician, shot, salt-and-pepper, additive, and film grain noi
 """
 
 from collections.abc import Sequence
-from typing import Annotated, Any, ClassVar, Literal, TypeAlias, cast
+from typing import Annotated, Any, ClassVar, Literal, Self, TypeAlias, cast
 
 import cv2
 import numpy as np
 from albucore import clip, multiply, resize3d
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.functional_validators import AfterValidator
-from typing_extensions import Self
 
 import albumentations.augmentations.geometric.functional as fgeometric
 from albumentations.augmentations.pixel import functional as fpixel

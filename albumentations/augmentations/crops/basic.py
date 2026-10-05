@@ -1,9 +1,7 @@
 """Basic crop and crop-pad transforms."""
 
 from collections.abc import Sequence
-from typing import Annotated, Any, Literal, cast
-
-from typing_extensions import Self
+from typing import Annotated, Any, Literal, Self, cast
 
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet

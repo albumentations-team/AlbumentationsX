@@ -39,7 +39,7 @@ class MixpanelBackend:
 
         if isinstance(timestamp, str):
             try:
-                dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                dt = datetime.fromisoformat(timestamp)
                 return int(dt.timestamp())
             except (ValueError, AttributeError):
                 return None

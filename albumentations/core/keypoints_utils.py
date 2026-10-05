@@ -8,11 +8,10 @@ xy, yx, and those with additional angle or size information.
 
 import math
 from collections.abc import Sequence
-from typing import Any, Literal, cast
+from typing import Any, Literal, Self, cast
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, model_validator
-from typing_extensions import Self
 
 from albumentations.core.label_manager import LabelMetadata
 from albumentations.core.type_definitions import NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS

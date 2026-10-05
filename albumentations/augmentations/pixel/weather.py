@@ -6,14 +6,13 @@ shadows, and atmospheric effects.
 
 import math
 from collections.abc import Sequence
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal, Self, cast
 
 import albucore
 import cv2
 import numpy as np
 from pydantic import Field, model_validator
 from pydantic.functional_validators import AfterValidator
-from typing_extensions import Self
 
 import albumentations.augmentations.geometric.functional as fgeometric
 from albumentations.augmentations.pixel import functional as fpixel

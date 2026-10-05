@@ -1,8 +1,6 @@
 """Advanced color jitter, channel shift, aberration, stain, and photometric transforms."""
 
-from typing import Annotated, Any, Literal, TypedDict, cast
-
-from typing_extensions import Self
+from typing import Annotated, Any, Literal, Self, TypedDict, cast
 
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import (

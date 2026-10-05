@@ -1,11 +1,7 @@
 """Contracts for the thin local Antigravity reusable-workflow caller."""
 
+import tomllib
 from pathlib import Path
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover - Python 3.10 uses the locked backport.
-    import tomli as tomllib
 
 WORKFLOW = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "antigravity-pr-checks.yml"
 POLICY = Path(__file__).resolve().parents[1] / ".github" / "ci-foundation" / "antigravity.toml"

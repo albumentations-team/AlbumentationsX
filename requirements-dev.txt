@@ -1,4 +1,4 @@
-albu-spec>=0.0.6
+albu-spec>=0.0.8
 asv
 cyclonedx-bom>=7.3.1
 deepdiff>=9.1.0
@@ -24,7 +24,6 @@ requests>=2.34.2
 ruff>=0.16.2
 scikit-image>=0.25.2
 scikit-learn>=1.7.2
-tomli>=2.4.1
 twine>=7.0.0
 types-PyYAML>=6.0.12.20260724
 types-setuptools>=84.0.0.20260812

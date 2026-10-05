@@ -2,7 +2,7 @@
 
 import warnings
 from collections.abc import Callable, Sequence
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal, Self, cast
 
 import albucore
 import cv2
@@ -16,7 +16,6 @@ from albucore import (
 )
 from pydantic import Field, field_validator, model_validator
 from pydantic.functional_validators import AfterValidator
-from typing_extensions import Self
 
 from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.augmentations.pixel.noise import AdditiveNoise

@@ -6,7 +6,7 @@ are useful for preprocessing before neural network input (ToFloat) and for conve
 network outputs back to standard image formats (FromFloat).
 """
 
-from typing import Any, Literal, cast
+from typing import Any, Literal, Self, cast
 
 import numpy as np
 from albucore import (
@@ -17,7 +17,6 @@ from albucore import (
 from pydantic import (
     model_validator,
 )
-from typing_extensions import Self
 
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,

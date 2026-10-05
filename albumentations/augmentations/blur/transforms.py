@@ -2,7 +2,7 @@
 defocus, zoom). Each transform documents its parameters and behavior in Args and Examples.
 """
 
-from typing import Annotated, Any, ClassVar, Literal, cast
+from typing import Annotated, Any, ClassVar, Literal, Self, cast
 
 import numpy as np
 from albucore import median_blur, reduce_sum
@@ -14,7 +14,6 @@ from pydantic import (
     model_validator,
 )
 from pydantic.functional_validators import AfterValidator
-from typing_extensions import Self
 
 from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.core.invocation import SamplingContext
@@ -1529,7 +1528,7 @@ class AdvancedBlur(ImageOnlyTransform):
         kernel *= noise_matrix
 
         # Normalize kernel
-        kernel = kernel.astype(np.float32) / reduce_sum(kernel)
+        kernel = kernel.astype(np.float32) / cast("np.float64", reduce_sum(kernel))
         return SampledParams(params={"kernel": kernel})
 
 

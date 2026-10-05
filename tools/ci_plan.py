@@ -6,16 +6,12 @@ import argparse
 import copy
 import json
 import sys
+import tomllib
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 from packaging.version import InvalidVersion, Version
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover - exercised on Python 3.10
-    import tomli as tomllib
 
 SCHEMA_VERSION = 3
 

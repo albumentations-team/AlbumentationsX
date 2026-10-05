@@ -6,14 +6,13 @@ border handling options.
 """
 
 import math
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 import cv2
 import numpy as np
 import torch
 from albucore import rot90_volume, warp_affine
 from pydantic import model_validator
-from typing_extensions import Self
 
 from albumentations.augmentations.crops import functional as fcrops
 from albumentations.augmentations.geometric.transforms import Affine

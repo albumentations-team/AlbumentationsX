@@ -126,7 +126,7 @@ Here is an example of how you can apply some [pixel-level](#pixel-level-transfor
 
 ## Installation
 
-AlbumentationsX requires Python 3.10 or higher. To install the latest version from PyPI:
+AlbumentationsX requires Python 3.11 or higher. To install the latest version from PyPI:
 
 ### Basic Installation
 

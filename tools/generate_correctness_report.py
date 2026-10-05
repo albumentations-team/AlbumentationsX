@@ -5,7 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+import tomllib
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -17,11 +18,6 @@ try:
     from tools.ci_matrix import DEPENDENCY_SETS, SUPPORTED_PYTHONS, TIER_1_OSES
 except ModuleNotFoundError:  # pragma: no cover - direct script execution fallback
     from ci_matrix import DEPENDENCY_SETS, SUPPORTED_PYTHONS, TIER_1_OSES
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover - exercised on Python 3.10
-    import tomli as tomllib
 
 
 def _load_pyproject() -> dict[str, Any]:
@@ -344,7 +340,7 @@ def generate_report(evidence_dir: Path | None = None, allow_missing_evidence: bo
     )
 
     version = _project_version()
-    generated_at = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    generated_at = datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
     python_versions = ", ".join(SUPPORTED_PYTHONS)
     operating_systems = ", ".join(TIER_1_OSES)
     dependency_sets = ", ".join(DEPENDENCY_SETS)
@@ -370,10 +366,10 @@ Dependency sets tracked by the support policy: {dependency_sets}
 
 | OS | Python | Dependency Set | Result |
 | --- | --- | --- | --- |
-| ubuntu-latest | 3.10, 3.11, 3.12, 3.13, 3.14 | locked-latest | see CI evidence |
-| windows-latest | 3.10, 3.11, 3.12, 3.13, 3.14 | locked-latest | see CI evidence |
-| macos-latest | 3.10, 3.11, 3.12, 3.13, 3.14 | locked-latest | see CI evidence |
-| ubuntu-latest | 3.10 | declared-minimum | see lower-bound CI evidence |
+| ubuntu-latest | {python_versions} | locked-latest | see CI evidence |
+| windows-latest | {python_versions} | locked-latest | see CI evidence |
+| macos-latest | {python_versions} | locked-latest | see CI evidence |
+| ubuntu-latest | {SUPPORTED_PYTHONS[0]} | declared-minimum | see lower-bound CI evidence |
 
 ## Correctness Coverage
 

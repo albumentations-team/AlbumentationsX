@@ -7,6 +7,7 @@ import json
 import os
 import re
 import sys
+import tomllib
 import urllib.error
 import urllib.parse
 from pathlib import Path
@@ -26,11 +27,6 @@ from tools.release_bundle import (
     release_metadata,
     resolve_artifact,
 )
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover - exercised on Python 3.10
-    import tomli as tomllib
 
 
 class TagAPI(GitHubAPI, Protocol):

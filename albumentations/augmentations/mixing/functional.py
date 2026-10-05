@@ -6,12 +6,11 @@ such as copy-and-paste operations with masking.
 
 import random
 from collections.abc import Sequence
-from typing import Any, Literal, TypedDict, cast
+from typing import Any, Literal, NotRequired, TypedDict, cast
 from warnings import warn
 
 import cv2
 import numpy as np
-from typing_extensions import NotRequired
 
 import albumentations.augmentations.geometric.functional as fgeometric
 from albumentations.augmentations.crops.transforms import Crop

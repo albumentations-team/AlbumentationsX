@@ -13,7 +13,7 @@ rules, while deleting repeated work that did not add a distinct signal.
   Ruff format, mypy, and Pyrefly run through their pre-commit hook IDs; the
   fifth partition owns the remaining hooks.
 - Runtime, shared-test, dependency, CI-router, and unknown changes run the full
-  3 × 5 compatibility matrix: Ubuntu, Windows, and macOS on Python 3.10–3.14.
+  3 × 4 compatibility matrix: Ubuntu, Windows, and macOS on Python 3.11–3.14.
   Each pair is one visible job.
 - The dedicated CPU-only PyTorch job owns PyTorch-marked tests once. Base matrix
   jobs exclude those files.
@@ -38,7 +38,7 @@ it verifies the routing contract, so a path-dependent job cannot be silently
 omitted while the ruleset remains stable.
 
 The compatibility matrix remains intact because an operating system and Python
-version pair is an execution contract, not a duplicate. It has 15 independent
+version pair is an execution contract, not a duplicate. It has 12 independent
 jobs and no sharded aliases.
 
 ## Pre-commit partition

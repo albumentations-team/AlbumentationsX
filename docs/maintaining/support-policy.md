@@ -6,26 +6,25 @@ optional extras, and how support is retired.
 
 ## Python Versions
 
-AlbumentationsX currently supports Python 3.10, 3.11, 3.12, 3.13, and 3.14.
+AlbumentationsX currently supports Python 3.11, 3.12, 3.13, and 3.14.
 
 The package metadata must keep `requires-python`, Python classifiers, CI
 workflows, the release process, and the correctness report template in sync.
 When one of those files changes support, the others must move in the same pull
 request.
 
-AlbumentationsX intentionally keeps Python 3.10 support for production computer
-vision users that deploy on conservative stacks. The window is reviewed
-quarterly. After Python 3.15 is stable and the NumPy, OpenCV, and PyTorch wheel
-ecosystem supports it, maintainers should keep at least four actively tested
-Python minor versions unless maintenance cost becomes unreasonable.
+The support window is reviewed quarterly. After Python 3.15 is stable and the
+NumPy, OpenCV, and PyTorch wheel ecosystem supports it, maintainers should
+keep at least four actively tested Python minor versions unless maintenance
+cost becomes unreasonable.
 
 ## Operating Systems
 
 | Combination | Policy | CI Coverage |
 | --- | --- | --- |
-| `ubuntu-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Runtime-change PR gate and nightly |
-| `windows-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Runtime-change PR gate and nightly |
-| `macos-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Runtime-change PR gate and nightly |
+| `ubuntu-latest` on Python 3.11, 3.12, 3.13, 3.14 | Guaranteed | Runtime-change PR gate and nightly |
+| `windows-latest` on Python 3.11, 3.12, 3.13, 3.14 | Guaranteed | Runtime-change PR gate and nightly |
+| `macos-latest` on Python 3.11, 3.12, 3.13, 3.14 | Guaranteed | Runtime-change PR gate and nightly |
 | Non-x86 architectures | Best effort | Manual or future dedicated runners |
 
 Runtime source and shared-test-infrastructure changes keep the full
@@ -39,7 +38,7 @@ requires an update to this document and the matrix validator.
 | Dependency Set | Purpose | Initial Gate |
 | --- | --- | --- |
 | `locked-latest` | Tests the repository lockfile and normal contributor environment. | Selected PR gates and full nightly/release |
-| `declared-minimum` | Tests the declared lower runtime bounds on Ubuntu and Python 3.10. | Nightly and release gate |
+| `declared-minimum` | Tests the declared lower runtime bounds on Ubuntu and Python 3.11. | Nightly and release gate |
 | `optional-extras` | Smoke-tests extras such as `hub` and OpenCV variants. | Advisory until stable |
 | `pre-release-probe` | Probes future Python or dependency releases when wheels are available. | Scheduled advisory |
 

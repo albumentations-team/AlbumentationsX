@@ -6,7 +6,7 @@ transformations like grid shuffling and thin plate splines.
 """
 
 import random
-from typing import Annotated, Any, ClassVar, Literal, TypeVar, cast
+from typing import Annotated, Any, ClassVar, Literal, Self, TypeVar, cast
 from warnings import warn
 
 import cv2
@@ -19,7 +19,6 @@ from pydantic import (
     model_validator,
 )
 from pydantic.functional_validators import AfterValidator
-from typing_extensions import Self
 
 from albumentations.augmentations.utils import check_range
 from albumentations.core.bbox_utils import (

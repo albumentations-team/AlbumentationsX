@@ -5,12 +5,11 @@ and other grid-like data representations where masking in specific directions (t
 can improve model robustness and generalization.
 """
 
-from typing import Annotated, Any, ClassVar, Literal, cast
+from typing import Annotated, Any, ClassVar, Literal, Self, cast
 
 import numpy as np
 from pydantic import model_validator
 from pydantic.functional_validators import AfterValidator, BeforeValidator
-from typing_extensions import Self
 
 from albumentations.augmentations.dropout.transforms import BaseDropout, DropoutFillValue
 from albumentations.core.invocation import SamplingContext

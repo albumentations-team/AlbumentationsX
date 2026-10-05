@@ -132,7 +132,7 @@ jobs:
       - name: Set up typing environment
         uses: ./.github/actions/setup-ci
         with:
-          python-version: "3.10"
+          python-version: "3.11"
           dependency-group: ci-types
       - name: Run Pyrefly hook
         run: pre-commit run pyrefly-check --all-files --show-diff-on-failure
@@ -165,7 +165,7 @@ jobs:
       fail-fast: false
       matrix:
         operating-system: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -225,11 +225,11 @@ jobs:
           - operating-system: ubuntu-latest
             python-version: "3.12"
           - operating-system: windows-latest
-            python-version: "3.10"
+            python-version: "3.11"
           - operating-system: windows-latest
             python-version: "3.14"
           - operating-system: macos-latest
-            python-version: "3.10"
+            python-version: "3.11"
           - operating-system: macos-latest
             python-version: "3.14"
     steps:

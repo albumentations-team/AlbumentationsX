@@ -4,12 +4,11 @@ import random
 import warnings
 from collections.abc import Sequence
 from copy import deepcopy
-from typing import Annotated, Any, ClassVar, Literal, cast
+from typing import Annotated, Any, ClassVar, Literal, Self, cast
 
 import cv2
 import numpy as np
 from pydantic import AfterValidator, Field, model_validator
-from typing_extensions import Self
 
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.mixing import functional as fmixing

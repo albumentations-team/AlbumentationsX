@@ -1,8 +1,6 @@
 """Specialized crop transforms."""
 
-from typing import Annotated, Any
-
-from typing_extensions import Self
+from typing import Annotated, Any, Self
 
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet

@@ -13,7 +13,7 @@ and properly handle all target types including images, masks, bounding boxes, an
 """
 
 from numbers import Real
-from typing import Any, ClassVar, Literal
+from typing import Any, ClassVar, Literal, Self
 
 import cv2
 import numpy as np
@@ -21,7 +21,6 @@ from pydantic import (
     Field,
     model_validator,
 )
-from typing_extensions import Self
 
 from albumentations.core.bbox_utils import (
     denormalize_bboxes,

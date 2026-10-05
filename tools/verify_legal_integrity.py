@@ -7,15 +7,11 @@ import base64
 import hashlib
 import sys
 import tarfile
+import tomllib
 import zipfile
 from collections.abc import Mapping
 from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover - Python 3.10 uses the project dependency
-    import tomli as tomllib
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 

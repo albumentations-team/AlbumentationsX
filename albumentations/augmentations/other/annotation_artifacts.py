@@ -1,13 +1,12 @@
 """Transform for synthetic annotation and callout artifacts."""
 
 import string
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Self
 
 import cv2
 import numpy as np
 from pydantic import Field, model_validator
 from pydantic.functional_validators import AfterValidator
-from typing_extensions import Self
 
 from albumentations.augmentations.other import annotation_artifacts_functional as fannotation
 from albumentations.core.invocation import SamplingContext

@@ -10,18 +10,14 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
 import urllib.parse
 import urllib.request
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover - exercised on Python 3.10
-    import tomli as tomllib
 
 SCHEMA_VERSION = 1
 MANIFEST_NAME = "release-manifest.json"
@@ -308,11 +304,11 @@ def _payload_files(bundle_dir: Path) -> dict[str, Path]:
 
 
 def _utc_now(value: datetime | None) -> datetime:
-    resolved = value or datetime.now(tz=timezone.utc)
+    resolved = value or datetime.now(tz=UTC)
     if resolved.tzinfo is None:
         msg = "Release bundle timestamps must be timezone-aware"
         raise BundleError(msg)
-    return resolved.astimezone(timezone.utc)
+    return resolved.astimezone(UTC)
 
 
 def _format_timestamp(value: datetime) -> str:
@@ -375,14 +371,14 @@ def _parse_timestamp(value: Any, label: str) -> datetime:
         msg = f"Release manifest {label} must be an ISO-8601 string"
         raise BundleError(msg)
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value)
     except ValueError as error:
         msg = f"Release manifest {label} is not a valid ISO-8601 timestamp"
         raise BundleError(msg) from error
     if parsed.tzinfo is None:
         msg = f"Release manifest {label} must be timezone-aware"
         raise BundleError(msg)
-    return parsed.astimezone(timezone.utc)
+    return parsed.astimezone(UTC)
 
 
 def _validated_artifacts(bundle_dir: Path, artifacts: Any, version: str) -> tuple[dict[str, str], set[str]]:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import urllib.error
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -105,7 +105,7 @@ def test_release_metadata_rejects_tag_version_mismatch(tmp_path: Path) -> None:
 def test_finalize_and_verify_bundle(tmp_path: Path) -> None:
     repository = _repository(tmp_path)
     bundle = _bundle(repository)
-    now = datetime(2026, 7, 15, 12, tzinfo=timezone.utc)
+    now = datetime(2026, 7, 15, 12, tzinfo=UTC)
 
     manifest = finalize_bundle(
         bundle,
@@ -200,7 +200,7 @@ def test_verify_bundle_rejects_legacy_omission_for_another_version(tmp_path: Pat
 def test_verify_bundle_rejects_expired_manifest(tmp_path: Path) -> None:
     repository = _repository(tmp_path)
     bundle = _bundle(repository)
-    now = datetime(2026, 7, 15, 12, tzinfo=timezone.utc)
+    now = datetime(2026, 7, 15, 12, tzinfo=UTC)
     finalize_bundle(bundle, repository, checks=REQUIRED_CHECKS, now=now, retention_days=1)
 
     with pytest.raises(BundleError, match="expired"):

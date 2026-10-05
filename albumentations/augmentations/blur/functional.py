@@ -125,7 +125,7 @@ def _create_defocus_kernel_cached(radius: int, alias_blur: float) -> np.ndarray:
 
     x, y = np.meshgrid(length, length)
     aliased_disk = (x**2 + y**2 <= radius**2).astype(np.float32)
-    aliased_disk /= reduce_sum(aliased_disk)
+    aliased_disk /= cast("np.float64", reduce_sum(aliased_disk))
 
     return cv2.GaussianBlur(aliased_disk, (ksize, ksize), sigmaX=alias_blur)
 

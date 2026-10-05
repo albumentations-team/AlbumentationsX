@@ -30,7 +30,7 @@ blocks the PR plan with an explicit error.
 
 The normal stable PR gates still cover the supported matrix:
 
-- Python 3.10, 3.11, 3.12, 3.13, and 3.14;
+- Python 3.11, 3.12, 3.13, and 3.14;
 - Ubuntu, Windows, and macOS;
 - the base test suite across the release compatibility matrix;
 - CPU-only PyTorch tests;

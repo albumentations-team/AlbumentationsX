@@ -1,11 +1,10 @@
 """Negative controls that prove each harness stage is active."""
 
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 import numpy as np
 import pytest
 from pydantic import model_validator
-from typing_extensions import Self
 
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet

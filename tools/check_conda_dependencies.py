@@ -1,11 +1,7 @@
 import re
 import sys
+import tomllib
 from pathlib import Path
-
-try:
-    import tomllib
-except ModuleNotFoundError:
-    import tomli as tomllib
 
 
 def parse_requirement(req: str) -> tuple[str, str]:

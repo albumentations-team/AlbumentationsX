@@ -17,7 +17,7 @@ jobs:
       fail-fast: false
       matrix:
         operating-system: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
     - name: Checkout
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -81,7 +81,7 @@ jobs:
         activate-environment: true
         cache-dependency-glob: pyproject.toml
         cache-suffix: nightly-lower-bound
-        python-version: "3.10"
+        python-version: "3.11"
         uv-version: "0.12.0"
     - name: Install declared minimum runtime dependencies
       run: uv pip install --resolution lowest-direct --strict -e ".[headless]"

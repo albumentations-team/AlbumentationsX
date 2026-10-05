@@ -1,6 +1,6 @@
 # Set up a development environment
 
-Use Python 3.10 or higher, Git, and [uv](https://docs.astral.sh/uv/). Fork the
+Use Python 3.11 or higher, Git, and [uv](https://docs.astral.sh/uv/). Fork the
 [repository](https://github.com/albumentations-team/AlbumentationsX), then clone your fork:
 
 ```bash

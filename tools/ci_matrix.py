@@ -5,22 +5,18 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+import tomllib
 from pathlib import Path
 from typing import Any
 
 import yaml
 from packaging.requirements import InvalidRequirement, Requirement
 
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover - exercised on Python 3.10
-    import tomli as tomllib
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-SUPPORTED_PYTHONS = ("3.10", "3.11", "3.12", "3.13", "3.14")
-OLDEST_PYTHON = "3.10"
-LATEST_PYTHON = "3.14"
+SUPPORTED_PYTHONS = ("3.11", "3.12", "3.13", "3.14")
+OLDEST_PYTHON = SUPPORTED_PYTHONS[0]
+LATEST_PYTHON = SUPPORTED_PYTHONS[-1]
 PYTHON_PROBE = "3.15-dev"
 
 TIER_1_OSES = ("ubuntu-latest", "windows-latest", "macos-latest")
@@ -139,15 +135,15 @@ TORCH_RUNTIME_JOBS = {
 }
 
 SUPPORT_POLICY_TABLE_ROWS = (
-    ("| `ubuntu-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Runtime-change PR gate and nightly |"),
-    ("| `windows-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Runtime-change PR gate and nightly |"),
-    ("| `macos-latest` on Python 3.10, 3.11, 3.12, 3.13, 3.14 | Guaranteed | Runtime-change PR gate and nightly |"),
+    ("| `ubuntu-latest` on Python 3.11, 3.12, 3.13, 3.14 | Guaranteed | Runtime-change PR gate and nightly |"),
+    ("| `windows-latest` on Python 3.11, 3.12, 3.13, 3.14 | Guaranteed | Runtime-change PR gate and nightly |"),
+    ("| `macos-latest` on Python 3.11, 3.12, 3.13, 3.14 | Guaranteed | Runtime-change PR gate and nightly |"),
     (
         "| `locked-latest` | Tests the repository lockfile and normal contributor environment. | "
         "Selected PR gates and full nightly/release |"
     ),
     (
-        "| `declared-minimum` | Tests the declared lower runtime bounds on Ubuntu and Python 3.10. | "
+        "| `declared-minimum` | Tests the declared lower runtime bounds on Ubuntu and Python 3.11. | "
         "Nightly and release gate |"
     ),
     ("| `optional-extras` | Smoke-tests extras such as `hub` and OpenCV variants. | Advisory until stable |"),
@@ -158,10 +154,10 @@ SUPPORT_POLICY_TABLE_ROWS = (
 )
 
 REPORT_TEMPLATE_ROWS = (
-    "| `ubuntu-latest` | 3.10, 3.11, 3.12, 3.13, 3.14 | `locked-latest` | `<result>` |",
-    "| `windows-latest` | 3.10, 3.11, 3.12, 3.13, 3.14 | `locked-latest` | `<result>` |",
-    "| `macos-latest` | 3.10, 3.11, 3.12, 3.13, 3.14 | `locked-latest` | `<result>` |",
-    "| `ubuntu-latest` | 3.10 | `declared-minimum` | `<result>` |",
+    "| `ubuntu-latest` | 3.11, 3.12, 3.13, 3.14 | `locked-latest` | `<result>` |",
+    "| `windows-latest` | 3.11, 3.12, 3.13, 3.14 | `locked-latest` | `<result>` |",
+    "| `macos-latest` | 3.11, 3.12, 3.13, 3.14 | `locked-latest` | `<result>` |",
+    "| `ubuntu-latest` | 3.11 | `declared-minimum` | `<result>` |",
     "| `ubuntu-latest` | 3.14 | `optional-extras` | `<result>` |",
     "| `ubuntu-latest` | `3.15-dev` | `pre-release-probe` | `<result>` |",
 )
@@ -698,7 +694,10 @@ def _check_pr_workflow() -> list[str]:
     matrix = compatibility.get("strategy", {}).get("matrix") if isinstance(compatibility, dict) else None
     expected_matrix = {"operating-system": list(TIER_1_OSES), "python-version": list(SUPPORTED_PYTHONS)}
     if matrix != expected_matrix:
-        issues.append(f"{PR_WORKFLOW} compatibility must be one unsplit 3 by 5 OS/Python matrix")
+        issues.append(
+            f"{PR_WORKFLOW} compatibility must be one unsplit "
+            f"{len(TIER_1_OSES)} by {len(SUPPORTED_PYTHONS)} OS/Python matrix",
+        )
 
     release_job = jobs.get("release_preflight")
     if isinstance(release_job, dict):
@@ -825,7 +824,7 @@ def _check_nightly_workflow() -> list[str]:
         _check_text_mentions(
             NIGHTLY_WORKFLOW,
             (
-                'python-version: "3.10"',
+                f'python-version: "{OLDEST_PYTHON}"',
                 "--hypothesis-profile=ci-nightly",
                 "tools/verify_regression_vectors.py --all",
                 "tools/pytest_summary.py",

@@ -4,8 +4,6 @@ from typing import TYPE_CHECKING
 
 from ._functional_color import *
 from ._functional_color import __all__ as __functional_color_all
-from ._functional_histology import *
-from ._functional_histology import __all__ as __functional_histology_all
 from ._functional_illumination import *
 from ._functional_illumination import __all__ as __functional_illumination_all
 from ._functional_noise import *
@@ -30,5 +28,4 @@ else:
         + __functional_sharpness_all
         + __functional_noise_all
         + __functional_illumination_all
-        + __functional_histology_all,
     )

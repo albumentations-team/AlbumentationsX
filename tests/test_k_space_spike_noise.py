@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 
 import albumentations as A
-from albumentations.augmentations.pixel import functional as fpixel
+from albumentations.augmentations.medical import functional as fmedical
 
 
 def _flat(h: int, w: int, value: float, channels: int = 1) -> np.ndarray:
@@ -35,7 +35,7 @@ def test_k_space_spike_injects_known_frequency_peak() -> None:
     img = _flat(8, 8, 0.5)
     a = 0.25 * np.abs(np.fft.rfftn(img, axes=(0, 1))).max()  # 0.25 * 32 = 8.0
 
-    out = fpixel.k_space_spike(img, np.array([[1, 0]]), 0.25)
+    out = fmedical.k_space_spike(img, np.array([[1, 0]]), 0.25)
 
     diff = np.fft.rfftn(out, axes=(0, 1)) - np.fft.rfftn(img, axes=(0, 1))
     # The injected energy lands exactly at the sampled bin and its conjugate mirror.
@@ -59,7 +59,7 @@ def test_k_space_spike_interior_frequency_uses_one_rfft_bin(spike: np.ndarray, s
     img = _flat(8, 8, 0.5)
     a = 0.25 * np.abs(np.fft.rfftn(img, axes=(0, 1))).max()
 
-    out = fpixel.k_space_spike(img, spike, 0.25)
+    out = fmedical.k_space_spike(img, spike, 0.25)
 
     diff = np.fft.rfftn(out, axes=(0, 1)) - np.fft.rfftn(img, axes=(0, 1))
     index = (*stored_bin, 0)
@@ -72,7 +72,7 @@ def test_k_space_spike_odd_boundary_frequency_stores_conjugate_pair() -> None:
     img = _flat(9, 7, 0.5)
     a = 0.25 * np.abs(np.fft.rfftn(img, axes=(0, 1))).max()
 
-    out = fpixel.k_space_spike(img, np.array([[1, 0]]), 0.25)
+    out = fmedical.k_space_spike(img, np.array([[1, 0]]), 0.25)
 
     diff = np.fft.rfftn(out, axes=(0, 1)) - np.fft.rfftn(img, axes=(0, 1))
     np.testing.assert_allclose(diff[1, 0, 0], a, atol=1e-4)
@@ -85,7 +85,7 @@ def test_k_space_spike_odd_boundary_frequency_stores_conjugate_pair() -> None:
 def test_k_space_spike_dc_self_conjugate_single_injection() -> None:
     img = _flat(8, 8, 0.5)
     # max|F| of a flat 0.5 field is 8 * 8 * 0.5 = 32; a = 0.25 * 32 = 8.
-    out = fpixel.k_space_spike(img, np.array([[0, 0]]), 0.25)
+    out = fmedical.k_space_spike(img, np.array([[0, 0]]), 0.25)
 
     np.testing.assert_allclose(out, 0.5 + 8 / 64, atol=1e-6)
 
@@ -95,7 +95,7 @@ def test_k_space_spike_nyquist_self_conjugate_single_injection() -> None:
     rows = np.cos(np.pi * np.arange(8))
     expected = 0.5 + (8 / 64) * rows[:, None] * rows[None, :]
 
-    out = fpixel.k_space_spike(img, np.array([[4, 4]]), 0.25)
+    out = fmedical.k_space_spike(img, np.array([[4, 4]]), 0.25)
 
     np.testing.assert_allclose(out[:, :, 0], expected, atol=1e-6)
 
@@ -106,7 +106,7 @@ def test_k_space_spike_boundary_fold_collision() -> None:
     img = _flat(8, 8, 0.5)
     expected = np.broadcast_to(0.5 + (2 * 8 / 64) * _cos_cols(8, 1), (8, 8))
 
-    out = fpixel.k_space_spike(img, np.array([[0, 7]]), 0.25)
+    out = fmedical.k_space_spike(img, np.array([[0, 7]]), 0.25)
 
     np.testing.assert_allclose(out[:, :, 0], expected, atol=1e-6)
 
@@ -114,7 +114,7 @@ def test_k_space_spike_boundary_fold_collision() -> None:
 def test_k_space_spike_preserves_odd_shape_and_is_finite() -> None:
     img = _flat(9, 7, 0.5, channels=2)
 
-    out = fpixel.k_space_spike(img, np.array([[4, 3], [1, 6]]), 0.25)
+    out = fmedical.k_space_spike(img, np.array([[4, 3], [1, 6]]), 0.25)
 
     assert out.shape == img.shape
     assert out.dtype == np.float32
@@ -127,7 +127,7 @@ def test_k_space_spike_d1_volume_is_finite() -> None:
     # D=1: the depth axis has size 1, so the depth coordinate must be 0.
     volume = np.full((1, 9, 7, 1), np.float32(0.5), dtype=np.float32)
 
-    out = fpixel.k_space_spike(volume, np.array([[0, 4, 3]]), 0.25)
+    out = fmedical.k_space_spike(volume, np.array([[0, 4, 3]]), 0.25)
 
     assert out.shape == (1, 9, 7, 1)
     assert np.isfinite(out).all()
@@ -136,7 +136,7 @@ def test_k_space_spike_d1_volume_is_finite() -> None:
 def test_k_space_spike_zero_intensity_is_exact_identity_float32() -> None:
     img = _flat(17, 13, 0.5, channels=3)
 
-    out = fpixel.k_space_spike(img, np.array([[1, 0]]), 0.0)
+    out = fmedical.k_space_spike(img, np.array([[1, 0]]), 0.0)
 
     np.testing.assert_array_equal(out, img)
 
@@ -147,7 +147,7 @@ def test_k_space_spike_per_channel_amplitude_scales_per_channel_max() -> None:
     spikes = np.array([[[1, 0]], [[0, 1]], [[4, 4]]])
     intensity = 0.25
 
-    out = fpixel.k_space_spike(img, spikes, intensity)
+    out = fmedical.k_space_spike(img, spikes, intensity)
 
     rows = np.cos(2 * np.pi * np.arange(8) / 8)[:, None]
     nyq = np.cos(np.pi * np.arange(8))
@@ -164,7 +164,7 @@ def test_k_space_spike_per_channel_amplitude_scales_per_channel_max() -> None:
 def test_k_space_spike_batch_scales_amplitudes_per_image(spikes: np.ndarray) -> None:
     images = np.stack([_flat(8, 8, 0.0), _flat(8, 8, 0.5)])
 
-    out = fpixel.k_space_spike(images, spikes, 0.25)
+    out = fmedical.k_space_spike(images, spikes, 0.25)
 
     np.testing.assert_array_equal(out[0], images[0])
     expected = np.broadcast_to(0.5 + 0.25 * _cos_rows(8, 1), (8, 8))
@@ -173,7 +173,7 @@ def test_k_space_spike_batch_scales_amplitudes_per_image(spikes: np.ndarray) -> 
 
 def test_k_space_spike_reconstruction_is_real_and_hermitian() -> None:
     img = _flat(8, 8, 0.5, channels=3)
-    out = fpixel.k_space_spike(img, np.array([[1, 0]]), 0.25)
+    out = fmedical.k_space_spike(img, np.array([[1, 0]]), 0.25)
 
     assert np.isrealobj(out)
     spectrum = np.fft.rfftn(out, axes=(0, 1))
@@ -184,7 +184,7 @@ def test_k_space_spike_reconstruction_is_real_and_hermitian() -> None:
 def test_k_space_spike_shared_spikes_give_identical_channels() -> None:
     img = _flat(8, 8, 0.5, channels=3)
 
-    out = fpixel.k_space_spike(img, np.array([[1, 0]]), 0.25)
+    out = fmedical.k_space_spike(img, np.array([[1, 0]]), 0.25)
 
     np.testing.assert_array_equal(out[..., 0], out[..., 1])
     np.testing.assert_array_equal(out[..., 1], out[..., 2])
@@ -197,7 +197,7 @@ def test_k_space_spike_3d_volume_plane_wave_along_depth() -> None:
     max_amplitude = np.abs(np.fft.rfftn(exact, axes=(0, 1, 2))).max()  # 0.5 * 4*8*8 = 128
     a = 0.25 * max_amplitude
 
-    out = fpixel.k_space_spike(exact, np.array([[1, 0, 0]]), 0.25)
+    out = fmedical.k_space_spike(exact, np.array([[1, 0, 0]]), 0.25)
 
     expected = 0.5 + (2 * a / (depth * h * w)) * np.cos(2 * np.pi * np.arange(depth) / depth)
     np.testing.assert_allclose(out[:, 0, 0, 0], expected, atol=1e-5)

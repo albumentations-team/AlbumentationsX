@@ -7,7 +7,7 @@ import torch
 from scipy import ndimage
 
 import albumentations as A
-from albumentations.augmentations.transforms3d import functional as f3d
+from albumentations.augmentations.medical import functional as fmedical
 
 
 def _reference_motion(
@@ -70,7 +70,7 @@ def test_motion_matches_independent_resampling_and_fft(
     matrices = np.stack([first, second])[:num_events]
     boundaries = (1, shape[axis] // 2 + 1)[:num_events]
 
-    result = f3d.motion_artifact(volume, matrices, boundaries, axis, interpolation)
+    result = fmedical.motion_artifact(volume, matrices, boundaries, axis, interpolation)
 
     expected = _reference_motion(volume, matrices, boundaries, axis, interpolation)
     np.testing.assert_allclose(result, expected, atol=2e-6, rtol=2e-5)
@@ -207,7 +207,7 @@ def test_stationary_event_after_motion_retains_its_original_spectrum_segment() -
     moved[0, 3] = 1
     matrices = np.stack([moved, np.eye(4, dtype=np.float32)])
 
-    result = f3d.motion_artifact(volume, matrices, (2, 5), 2, cv2.INTER_LINEAR)
+    result = fmedical.motion_artifact(volume, matrices, (2, 5), 2, cv2.INTER_LINEAR)
 
     expected = _reference_motion(volume, matrices, (2, 5), 2, cv2.INTER_LINEAR)
     np.testing.assert_allclose(result, expected, atol=1e-6)

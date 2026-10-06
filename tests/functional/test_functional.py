@@ -16,6 +16,7 @@ import albumentations.augmentations.geometric.functional as fgeometric
 import albumentations.augmentations.pixel._functional_illumination as fillumination
 import albumentations.augmentations.pixel._functional_torchvision as ftorchvision
 import albumentations.augmentations.pixel.functional as fpixel
+from albumentations.augmentations.medical import functional as fmedical
 from albumentations.core.type_definitions import d4_group_elements
 from tests.conftest import (
     IMAGES,
@@ -3252,7 +3253,7 @@ def test_simple_nmf_shape(height, width, n_iter, random_state):
     od = -np.log((img.reshape((-1, 3)).astype(np.float32) + 1) / 256)
 
     # Our implementation
-    nmf = fpixel.SimpleNMF(n_iter=n_iter)
+    nmf = fmedical.SimpleNMF(n_iter=n_iter)
     concentrations, colors = nmf.fit_transform(od)
 
     assert concentrations.shape == (height * width, 2)
@@ -3282,7 +3283,7 @@ def test_simple_nmf_against_sklearn(height, width, random_state):
     od = -np.log((img.reshape((-1, 3)).astype(np.float32) + 1) / 256)
 
     # Our implementation
-    our_nmf = fpixel.SimpleNMF(n_iter=100)
+    our_nmf = fmedical.SimpleNMF(n_iter=100)
     our_concentrations, our_colors = our_nmf.fit_transform(od)
 
     # Sklearn implementation
@@ -3340,8 +3341,8 @@ def synthetic_he_image():
 @pytest.mark.parametrize(
     ["normalizer_class", "kwargs"],
     [
-        (fpixel.VahadaneNormalizer, {}),
-        (fpixel.MacenkoNormalizer, {"angular_percentile": 99}),
+        (fmedical.VahadaneNormalizer, {}),
+        (fmedical.MacenkoNormalizer, {"angular_percentile": 99}),
     ],
 )
 def test_normalizer_output_shape(normalizer_class, kwargs, synthetic_he_image):
@@ -3364,8 +3365,8 @@ def test_normalizer_output_shape(normalizer_class, kwargs, synthetic_he_image):
 @pytest.mark.parametrize(
     ["normalizer_class", "kwargs", "angle_tolerance"],
     [
-        (fpixel.VahadaneNormalizer, {}, 46),  # 46 allows for NMF numerical noise
-        (fpixel.MacenkoNormalizer, {"angular_percentile": 99}, 45),
+        (fmedical.VahadaneNormalizer, {}, 46),  # 46 allows for NMF numerical noise
+        (fmedical.MacenkoNormalizer, {"angular_percentile": 99}, 45),
     ],
 )
 def test_normalizer_stain_separation(normalizer_class, kwargs, angle_tolerance, synthetic_he_image):
@@ -3391,7 +3392,7 @@ def test_normalizer_stain_separation(normalizer_class, kwargs, angle_tolerance, 
 def test_macenko_angular_percentile(angular_percentile, synthetic_he_image):
     """Test MacenkoNormalizer with different angular percentiles."""
     img = synthetic_he_image[0]
-    normalizer = fpixel.MacenkoNormalizer(
+    normalizer = fmedical.MacenkoNormalizer(
         angular_percentile=angular_percentile,
     )
     normalizer.fit(img)
@@ -3424,7 +3425,7 @@ def test_stain_augmentation_effects(synthetic_he_image, scale_factors, shift_val
     # Ensure stain_matrix is float32
     stain_matrix = stain_matrix.astype(np.float32)
 
-    result = fpixel.apply_he_stain_augmentation(
+    result = fmedical.apply_he_stain_augmentation(
         img=img,
         stain_matrix=stain_matrix,
         scale_factors=scale_factors,
@@ -3468,7 +3469,7 @@ def test_background_augmentation(synthetic_he_image):
     """Test that background augmentation flag works correctly."""
     img, stain_matrix, _ = synthetic_he_image
 
-    result = fpixel.apply_he_stain_augmentation(
+    result = fmedical.apply_he_stain_augmentation(
         img=img,
         stain_matrix=stain_matrix,
         scale_factors=np.array([2.0, 2.0]),

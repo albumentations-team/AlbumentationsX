@@ -1,4 +1,4 @@
-"""Histology stain normalization functional helpers."""
+"""Histology stain normalization, augmentation, and presets."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Literal, cast
 
 from albucore import exp as albucore_exp
 
-from ._functional_shared import (
+from albumentations.augmentations.pixel._functional_shared import (
     MAX_VALUES_BY_DTYPE,
     ImageType,
     clipped,
@@ -22,10 +22,9 @@ _SPARSE_TISSUE_MAX_FRACTION = 0.4
 
 
 def rgb_to_optical_density(img: ImageType, eps: float = 1e-6) -> np.ndarray:
-    """Convert RGB image to optical density (-log10). eps avoids log(0). Expects uint8 or float32 in
-    [0,1]. Returns (N*H*W, 3) float64. For stain normalization.
+    """Convert RGB image to optical density (-log). eps avoids log(0). Expects uint8 or float32 in
+    [0,1]. Returns (N*H*W, 3) float32. For stain normalization.
 
-    This function converts an RGB image to optical density.
 
     Args:
         img (ImageType): Input image.
@@ -50,7 +49,6 @@ def normalize_vectors(vectors: np.ndarray) -> np.ndarray:
     """Normalize vectors to unit length (L2). Axis and dtype preserved; 1D or 2D. For stain
     normalization (e.g. Macenko) stain vector normalization.
 
-    This function normalizes vectors.
 
     Args:
         vectors (np.ndarray): Vectors to normalize.
@@ -67,7 +65,6 @@ def get_normalizer(method: Literal["vahadane", "macenko"]) -> StainNormalizer:
     """Get stain normalizer based on method ('vahadane' or 'macenko'). Returns
     VahadaneNormalizer or MacenkoNormalizer instance for histology stain norm.
 
-    This function gets a stain normalizer based on a method.
 
     Args:
         method (Literal['vahadane', 'macenko']): Method to use for stain normalization.
@@ -91,7 +88,6 @@ class StainNormalizer:
         """Fit the stain normalizer to a reference image. Learns stain matrix from img; call transform
         on target images after. Subclass implements the actual extraction.
 
-        This function fits the stain normalizer to an image.
 
         Args:
             img (ImageType): Input image.
@@ -148,7 +144,6 @@ class SimpleNMF:
         """Fit the NMF model to optical density matrix. Learns stain basis and
         concentrations; used internally by VahadaneNormalizer for stain separation.
 
-        This function fits the NMF model to optical density.
 
         Args:
             optical_density (np.ndarray): Optical density image.
@@ -202,18 +197,14 @@ def order_stains_combined(stain_colors: np.ndarray) -> tuple[int, int]:
         tuple[int, int]: Hematoxylin and eosin indices.
 
     """
-    # Normalize stain vectors
     stain_colors = normalize_vectors(stain_colors)
 
-    # Calculate angles (Macenko)
     angles = np.mod(np.arctan2(stain_colors[:, 1], stain_colors[:, 0]), np.pi)
 
-    # Calculate spectral ratios (Ruifrok)
     stain_sums = np.asarray(reduce_sum(stain_colors, axis=1), dtype=np.float32) + 1e-6
     blue_ratio = stain_colors[:, 2] / stain_sums
     red_ratio = stain_colors[:, 0] / stain_sums
 
-    # Combine scores
     # High angle and high blue ratio indicates Hematoxylin
     # Low angle and high red ratio indicates Eosin
     scores = angles * blue_ratio - red_ratio
@@ -252,7 +243,7 @@ class VahadaneNormalizer(StainNormalizer):
     Examples:
         >>> import numpy as np
         >>> import albumentations as A
-        >>> from albumentations.augmentations.pixel import functional as F
+        >>> from albumentations.augmentations.medical import functional as F
         >>> import cv2
         >>>
         >>> # Load source and target images (H&E stained histopathology)
@@ -261,11 +252,9 @@ class VahadaneNormalizer(StainNormalizer):
         >>> target_img = cv2.imread('target_image.png')
         >>> target_img = cv2.cvtColor(target_img, cv2.COLOR_BGR2RGB)
         >>>
-        >>> # Create and fit the normalizer to the target image
         >>> normalizer = F.VahadaneNormalizer()
         >>> normalizer.fit(target_img)
         >>>
-        >>> # Normalize the source image to match the target's stain characteristics
         >>> normalized_img = normalizer.transform(source_img)
 
     """
@@ -274,7 +263,6 @@ class VahadaneNormalizer(StainNormalizer):
         """Fit the Vahadane stain normalizer to a reference image. Runs NMF on OD
         matrix; call transform on target images for normalization.
 
-        This function fits the Vahadane stain normalizer to an image.
 
         Args:
             img (ImageType): Input image.
@@ -309,7 +297,6 @@ class MacenkoNormalizer(StainNormalizer):
         """Fit the Macenko stain normalizer to a reference image. SVD-based;
         call transform on target images for H&E normalization.
 
-        This function fits the Macenko stain normalizer to an image.
 
         Args:
             img (ImageType): Input image.
@@ -393,7 +380,6 @@ class MacenkoNormalizer(StainNormalizer):
         )
         stain_vectors = stain_vectors / stain_norms
 
-        # Step 10: Order vectors as [hematoxylin, eosin]
         self.stain_matrix_target = stain_vectors if stain_vectors[0, 0] > stain_vectors[1, 0] else stain_vectors[::-1]
 
 
@@ -596,13 +582,13 @@ def apply_he_stain_augmentation(
 
     Examples:
         >>> import numpy as np
-        >>> from albumentations.augmentations.pixel import functional as fpixel
+        >>> from albumentations.augmentations.medical import functional as fmedical
         >>> image = np.full((8, 8, 3), 0.5, dtype=np.float32)
         >>> stain_matrix = np.array(
         ...     [[0.65, 0.70, 0.29], [0.07, 0.99, 0.11], [0.27, 0.57, 0.78]],
         ...     dtype=np.float32,
         ... )
-        >>> result = fpixel.apply_he_stain_augmentation(
+        >>> result = fmedical.apply_he_stain_augmentation(
         ...     image,
         ...     stain_matrix,
         ...     scale_factors=np.array([1.05, 0.95, 1.02]),
@@ -654,6 +640,7 @@ def apply_he_stain_augmentation(
 
 
 __all__ = [
+    "STAIN_MATRICES",
     "MacenkoNormalizer",
     "SimpleNMF",
     "StainNormalizer",
@@ -665,3 +652,55 @@ __all__ = [
     "order_stains_combined",
     "rgb_to_optical_density",
 ]
+
+
+STAIN_MATRICES = {
+    "ruifrok": np.array(
+        [  # Ruifrok & Johnston standard reference
+            [0.644211, 0.716556, 0.266844],  # Hematoxylin
+            [0.092789, 0.954111, 0.283111],  # Eosin
+        ],
+    ),
+    "macenko": np.array(
+        [  # Macenko's reference
+            [0.5626, 0.7201, 0.4062],
+            [0.2159, 0.8012, 0.5581],
+        ],
+    ),
+    "standard": np.array(
+        [  # Standard bright-field microscopy
+            [0.65, 0.70, 0.29],
+            [0.07, 0.99, 0.11],
+        ],
+    ),
+    "high_contrast": np.array(
+        [  # Enhanced contrast
+            [0.55, 0.88, 0.11],
+            [0.12, 0.86, 0.49],
+        ],
+    ),
+    "h_heavy": np.array(
+        [  # Hematoxylin dominant
+            [0.75, 0.61, 0.32],
+            [0.04, 0.93, 0.36],
+        ],
+    ),
+    "e_heavy": np.array(
+        [  # Eosin dominant
+            [0.60, 0.75, 0.28],
+            [0.17, 0.95, 0.25],
+        ],
+    ),
+    "dark": np.array(
+        [  # Darker staining
+            [0.78, 0.55, 0.28],
+            [0.09, 0.97, 0.21],
+        ],
+    ),
+    "light": np.array(
+        [  # Lighter staining
+            [0.57, 0.71, 0.38],
+            [0.15, 0.89, 0.42],
+        ],
+    ),
+}

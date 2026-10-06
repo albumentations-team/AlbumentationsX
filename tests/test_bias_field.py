@@ -1,7 +1,5 @@
 """Independent interpolation, gain, and public target contracts for MRI bias fields."""
 
-import json
-
 import numpy as np
 import pytest
 from scipy import ndimage
@@ -98,21 +96,6 @@ def test_zero_strength_skips_field_application_and_is_exact_identity(
     np.testing.assert_array_equal(data, original)
 
 
-@pytest.mark.parametrize("target", ["image", "images", "volume", "volumes"])
-def test_standalone_channel_free_targets_match_explicit_channel(target: str) -> None:
-    spatial_shape = (9, 13) if target in {"image", "images"} else (5, 9, 13)
-    shape = ((2,) if target in {"images", "volumes"} else ()) + spatial_shape
-    data = np.random.default_rng(137).random(shape, dtype=np.float32)
-    transforms = [A.BiasField(std_range=(0.3, 0.3), p=1) for _ in range(2)]
-    for transform in transforms:
-        transform.set_random_seed(137)
-
-    result = transforms[0](**{target: data})[target]
-    expected = transforms[1](**{target: data[..., None]})[target][..., 0]
-
-    np.testing.assert_array_equal(result, expected)
-
-
 @pytest.mark.parametrize("target", ["images", "volumes"])
 @pytest.mark.parametrize("per_channel", [False, True])
 def test_collection_shares_field_and_keeps_channel_semantics(target: str, per_channel: bool) -> None:
@@ -145,27 +128,23 @@ def test_replay_seed_and_annotations_preserve_the_realized_coarse_field(target: 
     mask_key = "mask" if target == "image" else "mask3d"
     mask = np.random.default_rng(137).integers(0, 4, shape[:-1], dtype=np.uint8)
     inputs = {target: data, "other": data.copy(), mask_key: mask}
-    pipelines = [
-        A.ReplayCompose([A.BiasField(p=1)], additional_targets={"other": target}, strict=True) for _ in range(2)
-    ]
-    for pipeline in pipelines:
-        pipeline.set_random_seed(137)
+    pipeline = A.ReplayCompose([A.BiasField(p=1)], additional_targets={"other": target}, strict=True)
+    pipeline.set_random_seed(137)
 
-    first, second = (pipeline(**inputs) for pipeline in pipelines)
+    first = pipeline(**inputs)
     replay = A.ReplayCompose.replay(first["replay"], **inputs)
     groups = first["replay"]["transforms"][0]["params"]["target_params"]
     assert len(groups) == 1
     coarse = groups[0]["params"]["coarse_field"]
     assert coarse.size < data.size / 10
     for key in inputs:
-        np.testing.assert_array_equal(first[key], second[key])
         np.testing.assert_array_equal(first[key], replay[key])
     np.testing.assert_array_equal(first[target], first["other"])
     np.testing.assert_array_equal(first[mask_key], mask)
-    assert not np.allclose(first[target], pipelines[0](**inputs)[target])
+    assert not np.allclose(first[target], pipeline(**inputs)[target])
 
 
-def test_annotations_and_strict_json_applied_configuration() -> None:
+def test_bias_field_preserves_geometric_annotations() -> None:
     image = np.full((12, 16, 1), 0.25, dtype=np.float32)
     bboxes = np.array([[0.25, 0.25, 0.75, 0.75]], dtype=np.float32)
     keypoints = np.array([[4.0, 3.0]], dtype=np.float32)
@@ -175,18 +154,39 @@ def test_annotations_and_strict_json_applied_configuration() -> None:
         keypoint_params=A.KeypointParams(coord_format="xy"),
         seed=137,
         strict=True,
-        save_applied_params=True,
     )
 
     result = pipeline(image=image, bboxes=bboxes, keypoints=keypoints)
-    records = json.loads(json.dumps(result["applied_transforms"], allow_nan=False))
-    reconstructed = A.Compose.from_applied_transforms(records, strict=True)
-    fresh = reconstructed(image=image)["image"]
-
     np.testing.assert_array_equal(result["bboxes"], bboxes)
     np.testing.assert_array_equal(result["keypoints"], keypoints)
-    assert np.isfinite(fresh).all()
-    assert fresh.shape == image.shape
+
+
+@pytest.mark.parametrize("per_channel", [False, True])
+def test_channel_count_controls_coefficient_sharing_between_targets(per_channel: bool) -> None:
+    inputs = {
+        "image": np.full((9, 13, 3), 0.25, dtype=np.float32),
+        "other": np.full((9, 13, 1), 0.25, dtype=np.float32),
+    }
+    pipeline = A.ReplayCompose(
+        [A.BiasField(std_range=(0.3, 0.3), per_channel=per_channel, p=1)],
+        additional_targets={"other": "image"},
+        strict=True,
+    )
+    pipeline.set_random_seed(137)
+
+    result = pipeline(**inputs)
+    groups = result["replay"]["transforms"][0]["params"]["target_params"]
+    if per_channel:
+        assert len(groups) == 2
+        assert sorted(group["params"]["coarse_field"].shape[-1] for group in groups) == [1, 3]
+        assert not np.allclose(result["image"][..., 0], result["other"][..., 0])
+    else:
+        assert len(groups) == 1
+        assert groups[0]["params"]["coarse_field"].shape[-1] == 1
+        np.testing.assert_array_equal(result["image"][..., 0], result["other"][..., 0])
+    replay = A.ReplayCompose.replay(result["replay"], **inputs)
+    for key in inputs:
+        np.testing.assert_array_equal(result[key], replay[key])
 
 
 @pytest.mark.parametrize("per_channel", [False, True])

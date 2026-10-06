@@ -15,6 +15,7 @@ from ._functional_shared import (
     add_array,
     add_vector,
     add_weighted,
+    clip,
     clipped,
     cv2,
     fgeometric,
@@ -34,26 +35,21 @@ def bias_field(img: ImageType, coarse_field: np.ndarray, *, is_batch: bool = Fal
     The coarse grid has spatial axes followed by channels. A leading image/volume batch axis in `img`
     shares one generated field; no interpolation occurs across batch or channel axes.
     """
-    spatial_rank = coarse_field.ndim - 1
-    channel_free = img.ndim == spatial_rank + int(is_batch)
-    working_shape = (*img.shape, 1) if channel_free else img.shape
-    spatial_shape = working_shape[-(spatial_rank + 1) : -1]
+    spatial_shape = img.shape[-coarse_field.ndim : -1]
     field = generate_bias_field(coarse_field, spatial_shape)
     if is_batch and img.dtype == np.uint8:
         result = np.empty_like(img)
         for index, item in enumerate(img):
-            result[index] = _apply_bias_gain(item, field, channel_free=channel_free)
+            result[index] = _apply_bias_gain(item, field)
         return result
-    return _apply_bias_gain(img, field, channel_free=channel_free)
+    return _apply_bias_gain(img, field)
 
 
 @float32_io
-@clipped
-def _apply_bias_gain(img: ImageType, field: np.ndarray, *, channel_free: bool) -> ImageType:
-    """Apply a sampled gain with image-range and channel-free layout handling."""
-    working_img = img[..., None] if channel_free else img
-    result = multiply(working_img, field, inplace=False)
-    return result[..., 0] if channel_free else result
+def _apply_bias_gain(img: ImageType, field: np.ndarray) -> ImageType:
+    """Multiply normalized intensities and clip the owned float32 result in place."""
+    result = multiply(img, field, inplace=False)
+    return clip(result, img.dtype, inplace=True)
 
 
 def generate_bias_field(coarse_field: np.ndarray, spatial_shape: tuple[int, ...]) -> np.ndarray:

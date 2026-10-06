@@ -1507,7 +1507,8 @@ class BiasField(_FullVolumeNoiseTransform):
     Args:
         std_range (tuple[float, float]): Nondecreasing range in `[0, 1]` for the coarse log-gain standard deviation.
             Larger values produce stronger intensity variation. Zero gives exact identity. Default: `(0.0, 0.5)`.
-        scale_range (tuple[float, float]): Nondecreasing range in `(0, 1]` for the coarse-to-input spatial size ratio.
+        scale_range (tuple[float, float]): Nondecreasing range in `(0, 1]` for the ratio of coarse axis length
+            to input axis length.
             Smaller values produce smoother fields; `1.0` uses an unsmoothed voxel-wise log-gain grid.
             Each non-singleton coarse axis has at least two points. Default: `(0.025, 0.025)`.
         per_channel (bool): If True, sample independent log-gain coefficients for each channel. If False,
@@ -1585,6 +1586,10 @@ class BiasField(_FullVolumeNoiseTransform):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
+        """Share coefficients by spatial shape and sampling family, including channel count only for per_channel.
+
+        Replay validates each target's sampling topology against the captured requirements.
+        """
         std = sampling.py_random.uniform(*self.std_range)
         scale = sampling.py_random.uniform(*self.scale_range)
         sampling.applied_overrides.update({"std_range": (std, std), "scale_range": (scale, scale)})

@@ -117,7 +117,9 @@ representation test before changing the implementation.
 - `albumentations/augmentations/pixel/color_gray.py`: `Colorize`.
 - `albumentations/augmentations/pixel/color_lighting.py`: `Illumination`, `Vignetting`.
 - `albumentations/augmentations/pixel/compression.py`: `ImageCompression`, `Downscale`.
-- `albumentations/augmentations/pixel/noise.py`: `ISONoise`, `ShotNoise`.
+- `albumentations/augmentations/pixel/noise.py`: `ISONoise`, `ShotNoise`, `GibbsRinging`. `GibbsRinging` shares one
+  retained bandwidth fraction across channels, images, volumes, and aliases; each target derives its cutoff bins
+  from its own spatial dimensions.
 - `albumentations/augmentations/pixel/transforms.py`: `Sharpen`, `Emboss`, `Enhance`, `Superpixels`, `RingingOvershoot`,
   `UnsharpMask`, `Halftone`.
 - `albumentations/augmentations/transforms3d/transforms.py`: `Pad3D`.

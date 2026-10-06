@@ -543,6 +543,7 @@ _BASE_CASE_SPECS: list[list[Any]] = [
     [A.ShotNoise, {"scale_range": (0.1, 0.3)}],
     [A.RicianNoise, {"std_range": (0.05, 0.15)}],
     [A.BiasField, {"std_range": (0.1, 0.3), "scale_range": (0.03, 0.06)}],
+    [A.GibbsRinging, {"retained_fraction_range": (0.35, 0.7)}],
     [
         A.KSpaceSpikeNoise,
         {
@@ -1378,6 +1379,7 @@ _REFERENCE_METADATA_KEYS = {
     A.PixelDistributionAdaptation: "pda_metadata",
 }
 _EXACT_TRANSFORMS = {
+    A.GibbsRinging,
     A.GhostingArtifact,
     A.Affine3D,
     A.Anisotropy3D,

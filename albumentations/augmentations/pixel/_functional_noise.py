@@ -29,6 +29,30 @@ from ._functional_shared import (
 )
 
 
+@float32_io
+@clipped
+def gibbs_ringing(img: ImageType, retained_fraction: float) -> ImageType:
+    """Truncate a channel-last image or volume spectrum to a conjugate-symmetric central box.
+
+    Spatial axes use signed frequency bins with abs(k) <= floor(retained_fraction * length / 2).
+    Zeroing slabs of the real half-spectrum avoids shifted spectra and a dense spatial mask.
+    The complex inverse axes reuse the owned spectrum before the final real inverse, limiting temporary storage.
+    """
+    spatial_shape = img.shape[:-1]
+    cutoffs = tuple(int(retained_fraction * size / 2) for size in spatial_shape)
+    if all(cutoff >= size // 2 for cutoff, size in zip(cutoffs, spatial_shape, strict=True)):
+        return img
+
+    axes = tuple(range(len(spatial_shape)))
+    spectrum = fft.rfftn(img, axes=axes, workers=1)
+    for axis, (size, cutoff) in enumerate(zip(spatial_shape, cutoffs, strict=True)):
+        index = [slice(None)] * img.ndim
+        index[axis] = slice(cutoff + 1, None if axis == axes[-1] else size - cutoff)
+        spectrum[tuple(index)] = 0
+    spectrum = fft.ifftn(spectrum, axes=axes[:-1], workers=1, overwrite_x=True)
+    return fft.irfft(spectrum, n=spatial_shape[-1], axis=axes[-1], workers=1)
+
+
 def bias_field(img: ImageType, coarse_field: np.ndarray, *, is_batch: bool = False) -> ImageType:
     """Upsample a Gaussian log-gain grid, exponentiate it, and multiply image or volume intensities.
 
@@ -816,6 +840,7 @@ __all__ = [
     "generate_shared_noise",
     "generate_spatial_noise",
     "get_safe_brightness_contrast_params",
+    "gibbs_ringing",
     "k_space_spike",
     "rician_noise",
     "sample_beta",

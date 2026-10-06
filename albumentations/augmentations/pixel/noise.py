@@ -43,6 +43,7 @@ __all__ = [
     "BiasField",
     "FilmGrain",
     "GaussNoise",
+    "GibbsRinging",
     "ISONoise",
     "KSpaceSpikeNoise",
     "MultiplicativeNoise",
@@ -117,6 +118,104 @@ def _target_parameter_group(
 
 class _FullVolumeNoiseTransform(ImageOnlyTransform):
     _volume_sampling_is_slice_wise: ClassVar[bool] = False
+
+
+class GibbsRinging(ImageOnlyTransform):
+    """Simulate Gibbs ringing near sharp intensity boundaries by truncating high-frequency k-space
+    in an image or a whole 3D volume.
+
+    A hard rectangular frequency cutoff creates oscillations and reduces spatial resolution. Use it to model
+    finite Cartesian acquisition bandwidth; it is a generic artifact simulation, not a correction algorithm.
+
+    Args:
+        retained_fraction_range (tuple[float, float]): Nondecreasing range in `[0, 1]` for the fraction of
+            the frequency bandwidth retained along every spatial axis. Smaller values remove more frequencies.
+            One is an exact identity; zero keeps only DC, giving each channel its spatial mean.
+            Default: `(0.5, 0.9)`.
+        p (float): Probability of applying the transform. Default: `0.5`.
+
+    Targets:
+        image, images, volume, volumes
+
+    Image types:
+        uint8, float32
+
+    Number of channels:
+        Any
+
+    Notes:
+        - FFT/IFFT operate over `(H, W)` for images and `(D, H, W)` for volumes, including singleton depth.
+          Channels and collection items are independent signals with one shared sampled cutoff fraction.
+        - On an axis of length `N`, retain signed frequency indices with
+          `abs(k) <= floor(retained_fraction * N / 2)`. DC is always included. Even-length Nyquist bins
+          are retained only when the cutoff reaches `N / 2`; odd lengths use their actual signed bins.
+        - The retained region is a rectangle in 2D and a rectangular box in 3D. The fraction describes
+          bandwidth along each axis, not the fraction of all Fourier coefficients or physical voxel spacing.
+        - FFT normalization is backward. The symmetric mask gives a real inverse reconstruction;
+          no magnitude operation is applied. Fourier boundaries are periodic, so image-border jumps can ring.
+        - Inputs must be finite real uint8 or float32 arrays; float32 inputs are expected in `[0, 1]`.
+          Float32 reconstruction is clipped to `[0, 1]`; uint8 is processed in float32 and rounded back
+          into `[0, 255]`. Clipping can change the mean.
+        - Cutoffs are discrete. Nearby fractions can select the same bins, and sufficiently small arrays can
+          retain their entire spectrum. Removing more frequencies does not guarantee a larger local overshoot.
+
+    Examples:
+        >>> import albumentations as A
+        >>> import numpy as np
+        >>> image = np.zeros((64, 96, 1), dtype=np.float32)
+        >>> image[16:48, 24:72] = 0.75
+        >>> transform = A.GibbsRinging(retained_fraction_range=(0.4, 0.8), p=1)
+        >>> augmented = transform(image=image)["image"]
+        >>> volume = np.zeros((16, 64, 96, 1), dtype=np.float32)
+        >>> volume[4:12, 16:48, 24:72] = 0.75
+        >>> pipeline = A.Compose([transform], seed=137, strict=True)
+        >>> result = pipeline(volume=volume)["volume"]
+        >>> result.shape
+        (16, 64, 96, 1)
+
+    References:
+        Gibbs Ringing in Diffusion MRI: https://pmc.ncbi.nlm.nih.gov/articles/PMC4915073/
+
+    """
+
+    class InitSchema(BaseTransformInitSchema):
+        retained_fraction_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
+
+    def __init__(
+        self,
+        *,
+        retained_fraction_range: tuple[float, float] = (0.5, 0.9),
+        p: float = 0.5,
+    ) -> None:
+        super().__init__(p=p)
+        self.retained_fraction_range = retained_fraction_range
+
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
+        sampling: SamplingContext,
+    ) -> SampledParams:
+        retained_fraction = sampling.py_random.uniform(*self.retained_fraction_range)
+        sampling.applied_overrides["retained_fraction_range"] = (retained_fraction, retained_fraction)
+        return SampledParams(params={"retained_fraction": retained_fraction})
+
+    def apply(self, img: ImageType, retained_fraction: float, **params: Any) -> ImageType:
+        if img.dtype not in (np.uint8, np.float32):
+            raise ValueError("GibbsRinging supports uint8 or float32 real inputs")
+        if img.dtype == np.float32 and not np.isfinite(img).all():
+            raise ValueError("GibbsRinging requires finite inputs")
+        if retained_fraction == 1:
+            return img
+        return fpixel.gibbs_ringing(img, retained_fraction)
+
+    def apply_to_volume(self, volume: ImageType, retained_fraction: float, **params: Any) -> ImageType:
+        return self.apply(volume, retained_fraction, **params)
 
 
 class StochasticConvolution(_FullVolumeNoiseTransform):

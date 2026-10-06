@@ -193,6 +193,7 @@ PIXEL_ALIAS_TO_TRANSFORM = {
     "sharpen": "Sharpen",
     "shot_noise": "ShotNoise",
     "rician_noise": "RicianNoise",
+    "gibbs_ringing": "GibbsRinging",
     "kspace_spike_noise": "KSpaceSpikeNoise",
     "stochastic_convolution": "StochasticConvolution",
     "posterize": "Posterize",
@@ -238,6 +239,7 @@ SPECIAL_TARGET_ALIAS_TO_TRANSFORM = {
 }
 
 VOLUME_ALIAS_TO_TRANSFORM = {
+    "gibbs_ringing": "GibbsRinging",
     "ghosting_artifact": "GhostingArtifact",
     "bias_field": "BiasField",
     "motion_artifact": "MotionArtifact",

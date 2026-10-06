@@ -48,6 +48,7 @@
   "FromFloat": ["dtype", "max_value", "p"],
   "GaussNoise": ["std_range", "mean_range", "per_channel", "p"],
   "GhostingArtifact": [],
+  "GibbsRinging": [],
   "GaussianBlur": ["blur_range", "sigma_range", "p"],
   "GlassBlur": ["sigma", "max_delta", "iterations", "mode", "p"],
   "GridDistortion": ["num_steps", "distort_range", "interpolation", "normalized", "mask_interpolation", "keypoint_remapping_method", "p", "border_mode", "fill", "fill_mask", "map_resolution_range"],

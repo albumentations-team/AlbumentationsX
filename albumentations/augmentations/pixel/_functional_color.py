@@ -778,15 +778,18 @@ def exposure_match_batch(images: ImageType, gains: np.ndarray) -> ImageType:
 
 
 def gamma_transform(img: ImageType, gamma: float) -> ImageType:
-    """Apply gamma transformation: pixel^gamma to brighten or darken. gamma > 1 brightens;
-    gamma < 1 darkens. Supports uint8 and float32.
+    """Apply a power-law correction (gamma correction) to image intensities, brightening or darkening
+    midtones to adjust exposure and tonal contrast.
 
-    This function applies gamma transformation to an image by raising each pixel value to the power of gamma.
-    The result is a non-linear transformation that can enhance or reduce the contrast of the image.
+    For normalized intensities in [0, 1], output = input ** gamma: gamma > 1 darkens,
+    0 < gamma < 1 brightens, and gamma = 1 leaves float32 intensities unchanged.
+    uint8 values are normalized by 255 before the power operation, then scaled back by 255
+    and converted to uint8, truncating fractional values. float32 values are used directly.
+    At gamma = 1, floating-point roundoff before integer conversion can decrease some uint8 values by 1.
 
     Args:
-        img (ImageType): The image to apply gamma transformation to.
-        gamma (float): The gamma value to apply.
+        img (ImageType): Input image with uint8 values in [0, 255] or float32 values in [0, 1].
+        gamma (float): The exponent applied to normalized intensities.
 
     Returns:
         ImageType: The gamma transformed image.

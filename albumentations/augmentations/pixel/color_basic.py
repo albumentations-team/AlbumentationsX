@@ -1173,8 +1173,8 @@ class CLAHE(ImageOnlyTransform):
 
 
 class RandomGamma(ImageOnlyTransform):
-    """Apply random gamma correction (power-law on intensity). gamma_range controls range.
-    Common for exposure and display variation.
+    """Apply a random power-law correction (random gamma) to image intensities, brightening or darkening
+    midtones to simulate exposure and display variation.
 
     Gamma correction, or simply gamma, is a nonlinear operation used to encode and decode luminance
     or tristimulus values in imaging systems. This transform can adjust the brightness of an image
@@ -1182,11 +1182,9 @@ class RandomGamma(ImageOnlyTransform):
     for simulating different lighting conditions or correcting for display characteristics.
 
     Args:
-        gamma_range (tuple[float, float]): Lower and upper bounds for gamma adjustment, sampled
-            per image. Values are in terms of percentage change, e.g. (80, 120) means the gamma
-            will be between 80% and 120% of the original. Default: (80, 120).
-        eps (float): A small value added to the gamma to avoid division by zero or log of zero errors.
-            Default: 1e-7.
+        gamma_range (tuple[float, float]): Lower and upper bounds for a uniformly sampled value
+            that is divided by 100 to obtain the exponent. For example, (80, 120) gives exponents
+            from 0.8 to 1.2, while (100, 100) gives an exponent of 1. Default: (80, 120).
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
@@ -1199,8 +1197,10 @@ class RandomGamma(ImageOnlyTransform):
         Any
 
     Note:
-        - The gamma correction is applied using the formula: output = input^gamma
-        - Gamma values > 1 will make the image darker, while values < 1 will make it brighter
+        - For normalized intensities in [0, 1], gamma > 1 darkens the image, while
+          0 < gamma < 1 brightens it. Gamma = 1 leaves float32 intensities unchanged.
+        - At gamma = 1, some uint8 values can decrease by 1 because of floating-point roundoff
+          before conversion to integers.
         - This transform is particularly useful for:
           * Simulating different lighting conditions
           * Correcting for non-linear display characteristics
@@ -1208,14 +1208,13 @@ class RandomGamma(ImageOnlyTransform):
           * Data augmentation in computer vision tasks
 
     Mathematical Formulation:
-        Let I be the input image and G (gamma) be the correction factor.
-        The gamma correction is applied as follows:
-        1. Normalize the image to [0, 1] range: I_norm = I / 255 (for uint8 images)
-        2. Apply gamma correction: I_corrected = I_norm ^ (1 / G)
-        3. Scale back to original range: output = I_corrected * 255 (for uint8 images)
-
-        The actual gamma value used is calculated as:
-        G = 1 + (random_value / 100), where random_value is sampled from gamma_range range.
+        Sample a value uniformly from gamma_range and set gamma = sampled_value / 100.
+        For an input image I:
+        1. For uint8 images, normalize to [0, 1]: I_norm = I / 255.
+           For float32 images in [0, 1], use I_norm = I directly.
+        2. Apply the power law: I_corrected = I_norm ** gamma.
+        3. For uint8 images, multiply by 255 and convert to uint8, truncating fractional values.
+           For float32 images, return I_corrected.
 
     Examples:
         >>> import numpy as np
@@ -1229,6 +1228,12 @@ class RandomGamma(ImageOnlyTransform):
         # Custom gamma range
         >>> transform = A.RandomGamma(gamma_range=(50, 150), p=1.0)
         >>> augmented_image = transform(image=image)["image"]
+
+        # A fixed exponent of 2 darkens a normalized midtone
+        >>> midtone = np.full((2, 2, 3), 0.5, dtype=np.float32)
+        >>> transform = A.RandomGamma(gamma_range=(200, 200), p=1.0)
+        >>> float(transform(image=midtone)["image"][0, 0, 0])
+        0.25
 
         # Applying with other transforms
         >>> transform = A.Compose([

@@ -113,6 +113,19 @@ PATH_RULES: tuple[tuple[tuple[str, ...], frozenset[str]], ...] = (
         ("albumentations/augmentations/transforms3d/",),
         frozenset({"PeakMemory", "TimeBatch", "TimeFunctional3DKernels", "TimeVolumetricFullMatrix"}),
     ),
+    (
+        ("albumentations/augmentations/medical/",),
+        frozenset(
+            {
+                "PeakMemory",
+                "TimeBatch",
+                "TimeFunctionalPixelKernels",
+                "TimeFunctional3DKernels",
+                "TimePixelFullMatrix",
+                "TimeVolumetricFullMatrix",
+            },
+        ),
+    ),
 )
 
 PATTERN_ORDER = (

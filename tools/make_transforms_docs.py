@@ -1,6 +1,5 @@
 import argparse
 import inspect
-import os
 import re
 import sys
 from pathlib import Path
@@ -54,6 +53,10 @@ def is_deprecated(cls) -> bool:
     return any("deprecated" in line.lower() for line in main_desc.split("\n") if line.strip())
 
 
+def is_medical_transform(cls: type) -> bool:
+    return cls.__module__.startswith("albumentations.augmentations.medical.")
+
+
 def get_image_only_transforms_info():
     image_only_info = {}
     members = inspect.getmembers(albumentations)
@@ -63,6 +66,7 @@ def get_image_only_transforms_info():
             and issubclass(cls, albumentations.ImageOnlyTransform)
             and not issubclass(cls, albumentations.Transform3D)
             and name not in IGNORED_CLASSES
+            and not is_medical_transform(cls)
         ) and not is_deprecated(cls):
             image_only_info[name] = {
                 "docs_link": make_augmentation_docs_link(cls),
@@ -79,6 +83,7 @@ def get_dual_transforms_info():
             and issubclass(cls, albumentations.DualTransform)
             and not issubclass(cls, albumentations.Transform3D)  # Exclude 3D transforms
             and name not in IGNORED_CLASSES
+            and not is_medical_transform(cls)
         ) and not is_deprecated(cls):
             supported_bbox_types = getattr(cls, "_supported_bbox_types", frozenset({"hbb"}))
 
@@ -98,6 +103,7 @@ def get_3d_transforms_info():
             inspect.isclass(cls)
             and issubclass(cls, (albumentations.Transform3D, albumentations.VolumeOnlyTransform))
             and name not in IGNORED_CLASSES
+            and not is_medical_transform(cls)
         ) and not is_deprecated(cls):
             targets = cls._targets if hasattr(cls, "_targets") else albumentations.Transform3D._targets
 
@@ -106,6 +112,17 @@ def get_3d_transforms_info():
                 "docs_link": make_augmentation_docs_link(cls),
             }
     return transforms_3d_info
+
+
+def get_medical_transforms_info():
+    return {
+        name: {"targets": cls._targets, "docs_link": make_augmentation_docs_link(cls)}
+        for name, cls in inspect.getmembers(albumentations)
+        if inspect.isclass(cls)
+        and issubclass(cls, albumentations.BasicTransform)
+        and is_medical_transform(cls)
+        and not is_deprecated(cls)
+    }
 
 
 def make_transforms_targets_table(transforms_info, header, targets_to_check=None, split_bboxes=False):
@@ -154,6 +171,7 @@ def check_docs(
     image_only_transforms_links: str,
     dual_transforms_table: str,
     transforms_3d_table: str,
+    medical_transforms_table: str,
 ) -> None:
     """Check if the documentation file is up to date with the current transforms.
 
@@ -162,6 +180,7 @@ def check_docs(
         image_only_transforms_links (str): Generated links for pixel-level transforms
         dual_transforms_table (str): Generated table for spatial-level transforms
         transforms_3d_table (str): Generated table for 3D transforms
+        medical_transforms_table (str): Generated table for medical transforms
 
     Raises:
         ValueError: If any section is outdated with detailed information about missing lines
@@ -184,6 +203,11 @@ def check_docs(
         "3D": {
             "pattern": r"### 3D transforms\n\n(.*?)(?=###|\Z)",
             "generated": transforms_3d_table,
+            "lines_not_in_text": [],
+        },
+        "Medical": {
+            "pattern": r"### Medical transforms\n\n(.*?)(?=###|\Z)",
+            "generated": medical_transforms_table,
             "lines_not_in_text": [],
         },
     }
@@ -212,7 +236,7 @@ def check_docs(
             "and paste them to {filename}.\n\n"
         ).format(
             outdated_docs_headers=", ".join(sorted(outdated_docs)),
-            py_file=Path(os.path.realpath(__file__)).name,
+            py_file=Path(__file__).stem,
             filename=Path(filepath).name,
         )
 
@@ -226,7 +250,7 @@ def check_docs(
         raise ValueError(msg.strip())
 
 
-def generated_transform_docs() -> tuple[str, str, str]:
+def generated_transform_docs() -> tuple[str, str, str, str]:
     """Return the generated README content for each transform category."""
     image_only_transforms = get_image_only_transforms_info()
     dual_transforms = get_dual_transforms_info()
@@ -253,7 +277,13 @@ def generated_transform_docs() -> tuple[str, str, str]:
         header=["Transform", *[target.value for target in targets_3d]],
         targets_to_check=targets_3d,
     )
-    return image_only_transform_links, dual_transform_table, transforms_3d_table
+    medical_targets = [Targets.IMAGE, Targets.IMAGES, Targets.VOLUME, Targets.VOLUMES]
+    medical_transforms_table = make_transforms_targets_table(
+        get_medical_transforms_info(),
+        header=["Transform", *[target.value for target in medical_targets]],
+        targets_to_check=medical_targets,
+    )
+    return image_only_transform_links, dual_transform_table, transforms_3d_table, medical_transforms_table
 
 
 def check_transform_docs(filepath: str | Path) -> None:
@@ -267,22 +297,15 @@ def main() -> None:
     if command not in {"make", "check"}:
         raise ValueError(f"You should provide a valid command: {{make|check}}. Got {command} instead.")
 
-    image_only_transform_links, dual_transform_table, transforms_3d_table = generated_transform_docs()
+    docs = generated_transform_docs()
 
     if command == "make":
-        print("===== COPY THIS TABLE TO README.MD BELOW ### Pixel-level transforms =====")
-        print(image_only_transform_links)
-        print("===== END OF COPY =====")
-        print()
-        print("===== COPY THIS TABLE TO README.MD BELOW ### Spatial-level transforms =====")
-        print(dual_transform_table)
-        print("===== END OF COPY =====")
-        print()
-        print("===== COPY THIS TABLE TO README.MD BELOW ### 3D transforms =====")
-        print(transforms_3d_table)
-        print("===== END OF COPY =====")
+        for category, content in zip(("Pixel-level", "Spatial-level", "3D", "Medical"), docs, strict=True):
+            print(f"===== COPY THIS TABLE TO README.MD BELOW ### {category} transforms =====")
+            print(content)
+            print("===== END OF COPY =====\n")
     else:
-        check_docs(args.filepath, image_only_transform_links, dual_transform_table, transforms_3d_table)
+        check_docs(args.filepath, *docs)
 
 
 if __name__ == "__main__":

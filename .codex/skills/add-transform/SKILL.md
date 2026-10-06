@@ -17,6 +17,7 @@ Put the transform in the most specific matching subpackage:
 - `albumentations/augmentations/blur/` — blurring
 - `albumentations/augmentations/crops/` — cropping
 - `albumentations/augmentations/mixing/` — multi-image mixing
+- `albumentations/augmentations/medical/` — medical acquisition artifacts and histology stain transforms
 - `albumentations/augmentations/transforms3d/` — 3D/volume
 - `albumentations/augmentations/other/` — everything else
 

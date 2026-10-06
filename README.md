@@ -99,6 +99,7 @@ Here is an example of how you can apply some [pixel-level](#pixel-level-transfor
 - [List of augmentations](#list-of-augmentations)
   - [Pixel-level transforms](#pixel-level-transforms)
   - [Spatial-level transforms](#spatial-level-transforms)
+  - [Medical transforms](#medical-transforms)
   - [3D transforms](#3d-transforms)
 - [Augmentation examples](#a-few-more-examples-of-augmentations)
 - [Benchmark results](#benchmark-results)
@@ -219,7 +220,6 @@ See [data collection and opt-out](https://github.com/albumentations-team/Albumen
 
 - [AdditiveNoise](https://albumentations.ai/explore/transform/AdditiveNoise/)
 - [AdvancedBlur](https://albumentations.ai/explore/transform/AdvancedBlur/)
-- [BiasField](https://albumentations.ai/explore/transform/BiasField/)
 - [AnnotationArtifacts](https://albumentations.ai/explore/transform/AnnotationArtifacts/)
 - [AtmosphericFog](https://albumentations.ai/explore/transform/AtmosphericFog/)
 - [AutoContrast](https://albumentations.ai/explore/transform/AutoContrast/)
@@ -244,9 +244,7 @@ See [data collection and opt-out](https://github.com/albumentations-team/Albumen
 - [FromFloat](https://albumentations.ai/explore/transform/FromFloat/)
 - [GaussNoise](https://albumentations.ai/explore/transform/GaussNoise/)
 - [GaussianBlur](https://albumentations.ai/explore/transform/GaussianBlur/)
-- [GibbsRinging](https://albumentations.ai/explore/transform/GibbsRinging/)
 - [GlassBlur](https://albumentations.ai/explore/transform/GlassBlur/)
-- [HEStain](https://albumentations.ai/explore/transform/HEStain/)
 - [Halftone](https://albumentations.ai/explore/transform/Halftone/)
 - [HistogramMatching](https://albumentations.ai/explore/transform/HistogramMatching/)
 - [HueSaturationValue](https://albumentations.ai/explore/transform/HueSaturationValue/)
@@ -254,7 +252,6 @@ See [data collection and opt-out](https://github.com/albumentations-team/Albumen
 - [Illumination](https://albumentations.ai/explore/transform/Illumination/)
 - [ImageCompression](https://albumentations.ai/explore/transform/ImageCompression/)
 - [InvertImg](https://albumentations.ai/explore/transform/InvertImg/)
-- [KSpaceSpikeNoise](https://albumentations.ai/explore/transform/KSpaceSpikeNoise/)
 - [LensFlare](https://albumentations.ai/explore/transform/LensFlare/)
 - [MedianBlur](https://albumentations.ai/explore/transform/MedianBlur/)
 - [ModeFilter](https://albumentations.ai/explore/transform/ModeFilter/)
@@ -277,7 +274,6 @@ See [data collection and opt-out](https://github.com/albumentations-team/Albumen
 - [RandomSnow](https://albumentations.ai/explore/transform/RandomSnow/)
 - [RandomSunFlare](https://albumentations.ai/explore/transform/RandomSunFlare/)
 - [RandomToneCurve](https://albumentations.ai/explore/transform/RandomToneCurve/)
-- [RicianNoise](https://albumentations.ai/explore/transform/RicianNoise/)
 - [RingingOvershoot](https://albumentations.ai/explore/transform/RingingOvershoot/)
 - [SaltAndPepper](https://albumentations.ai/explore/transform/SaltAndPepper/)
 - [Sharpen](https://albumentations.ai/explore/transform/Sharpen/)
@@ -357,20 +353,33 @@ See [data collection and opt-out](https://github.com/albumentations-team/Albumen
 | [WaterRefraction](https://albumentations.ai/explore/transform/WaterRefraction/)                   | ✓     | ✓      | ✓    | ✓     | ✓            | ✓            | ✓         | ✓      | ✓       | ✓      | ✓       |
 | [XYMasking](https://albumentations.ai/explore/transform/XYMasking/)                               | ✓     | ✓      | ✓    | ✓     | ✓            |              | ✓         | ✓      | ✓       | ✓      | ✓       |
 
+### Medical transforms
+
+Medical acquisition artifacts and histology stain augmentation live in `albumentations.augmentations.medical`.
+Use their public names through `albumentations`, such as `A.GibbsRinging` and `A.HEStain`.
+
+| Transform                                                                         | Image | Images | Volume | Volumes |
+| --------------------------------------------------------------------------------- | :---: | :----: | :----: | :-----: |
+| [Anisotropy3D](https://albumentations.ai/explore/transform/Anisotropy3D/)         |       |        | ✓      | ✓       |
+| [BiasField](https://albumentations.ai/explore/transform/BiasField/)               | ✓     | ✓      | ✓      | ✓       |
+| [GhostingArtifact](https://albumentations.ai/explore/transform/GhostingArtifact/) |       |        | ✓      | ✓       |
+| [GibbsRinging](https://albumentations.ai/explore/transform/GibbsRinging/)         | ✓     | ✓      | ✓      | ✓       |
+| [HEStain](https://albumentations.ai/explore/transform/HEStain/)                   | ✓     | ✓      | ✓      | ✓       |
+| [KSpaceSpikeNoise](https://albumentations.ai/explore/transform/KSpaceSpikeNoise/) | ✓     | ✓      | ✓      | ✓       |
+| [MotionArtifact](https://albumentations.ai/explore/transform/MotionArtifact/)     |       |        | ✓      | ✓       |
+| [RicianNoise](https://albumentations.ai/explore/transform/RicianNoise/)           | ✓     | ✓      | ✓      | ✓       |
+
 ### 3D transforms
 
 | Transform                                                                               | Volume | Volumes | Mask3D | Masks3D | Keypoints |
 | --------------------------------------------------------------------------------------- | :----: | :-----: | :----: | :-----: | :-------: |
 | [Affine3D](https://albumentations.ai/explore/transform/Affine3D/)                       | ✓      | ✓       | ✓      | ✓       | ✓         |
-| [Anisotropy3D](https://albumentations.ai/explore/transform/Anisotropy3D/)               | ✓      | ✓       |        |         |           |
 | [CenterCrop3D](https://albumentations.ai/explore/transform/CenterCrop3D/)               | ✓      | ✓       | ✓      | ✓       | ✓         |
 | [CoarseDropout3D](https://albumentations.ai/explore/transform/CoarseDropout3D/)         | ✓      | ✓       | ✓      | ✓       | ✓         |
 | [CubicSymmetry](https://albumentations.ai/explore/transform/CubicSymmetry/)             | ✓      | ✓       | ✓      | ✓       | ✓         |
 | [ElasticTransform3D](https://albumentations.ai/explore/transform/ElasticTransform3D/)   | ✓      | ✓       | ✓      | ✓       | ✓         |
 | [Flip3D](https://albumentations.ai/explore/transform/Flip3D/)                           | ✓      | ✓       | ✓      | ✓       | ✓         |
-| [GhostingArtifact](https://albumentations.ai/explore/transform/GhostingArtifact/)       | ✓      | ✓       |        |         |           |
 | [GridShuffle3D](https://albumentations.ai/explore/transform/GridShuffle3D/)             | ✓      | ✓       | ✓      | ✓       | ✓         |
-| [MotionArtifact](https://albumentations.ai/explore/transform/MotionArtifact/)           | ✓      | ✓       |        |         |           |
 | [Pad3D](https://albumentations.ai/explore/transform/Pad3D/)                             | ✓      | ✓       | ✓      | ✓       | ✓         |
 | [PadIfNeeded3D](https://albumentations.ai/explore/transform/PadIfNeeded3D/)             | ✓      | ✓       | ✓      | ✓       | ✓         |
 | [RandomCrop3D](https://albumentations.ai/explore/transform/RandomCrop3D/)               | ✓      | ✓       | ✓      | ✓       | ✓         |

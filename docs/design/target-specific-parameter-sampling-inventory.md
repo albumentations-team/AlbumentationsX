@@ -44,7 +44,8 @@ it must include every property used to construct the execution value.
 - `albumentations/augmentations/pixel/color_gray.py`: `FancyPCA`.
 - `albumentations/augmentations/pixel/color_lighting.py`: `PlasmaBrightnessContrast`, `PlasmaShadow`.
 - `albumentations/augmentations/pixel/noise.py`: `GaussNoise`, `MultiplicativeNoise`, `AdditiveNoise`,
-  `SaltAndPepper`, `FilmGrain`, `BiasField`, `RicianNoise`.
+  `SaltAndPepper`, `FilmGrain`.
+- `albumentations/augmentations/medical/transforms.py`: `BiasField`, `RicianNoise`, `KSpaceSpikeNoise`.
 - `albumentations/augmentations/pixel/transforms.py`: `Dithering`, `LensFlare`.
 - `albumentations/augmentations/pixel/weather.py`: `RandomSnow`, `RandomGravel`, `RandomRain`, `RandomFog`,
   `RandomSunFlare`, `RandomShadow`, `Spatter`, `AtmosphericFog`.
@@ -78,9 +79,10 @@ group key.
   `RandomGridShuffle`.
 - `albumentations/augmentations/mixing/copy_paste.py`: `CopyAndPaste`.
 - `albumentations/augmentations/mixing/domain_adaptation.py`: `FDA`.
-- `albumentations/augmentations/transforms3d/transforms.py`: `Affine3D`, `Anisotropy3D`, `Resize3D`, `PadIfNeeded3D`,
+- `albumentations/augmentations/transforms3d/transforms.py`: `Affine3D`, `Resize3D`, `PadIfNeeded3D`,
   `CenterCrop3D`, `RandomCrop3D`, `RandomResizedCrop3D`, `CoarseDropout3D`, `Flip3D`, `CubicSymmetry`,
   `RandomRotate90_3D`, `GridShuffle3D`.
+- `albumentations/augmentations/medical/transforms.py`: `Anisotropy3D`, `MotionArtifact`.
 
 ## Content-derived or mixed policy
 
@@ -94,7 +96,7 @@ realized value is consumed by multiple representations, move the materialization
 - `albumentations/augmentations/mixing/domain_adaptation.py`: `HistogramMatching`, `PixelDistributionAdaptation`.
 - `albumentations/augmentations/mixing/mosaic.py`: `Mosaic`.
 - `albumentations/augmentations/mixing/overlay.py`: `OverlayElements`.
-- `albumentations/augmentations/pixel/color_advanced.py`: `HEStain`.
+- `albumentations/augmentations/medical/transforms.py`: `HEStain`.
 - `albumentations/augmentations/pixel/color_basic.py`: `Equalize`.
 
 ## Parameters without target-specific values
@@ -117,13 +119,13 @@ representation test before changing the implementation.
 - `albumentations/augmentations/pixel/color_gray.py`: `Colorize`.
 - `albumentations/augmentations/pixel/color_lighting.py`: `Illumination`, `Vignetting`.
 - `albumentations/augmentations/pixel/compression.py`: `ImageCompression`, `Downscale`.
-- `albumentations/augmentations/pixel/noise.py`: `ISONoise`, `ShotNoise`, `GibbsRinging`. `GibbsRinging` shares one
-  retained bandwidth fraction across channels, images, volumes, and aliases; each target derives its cutoff bins
-  from its own spatial dimensions.
+- `albumentations/augmentations/pixel/noise.py`: `ISONoise`, `ShotNoise`.
+- `albumentations/augmentations/medical/transforms.py`: `GibbsRinging` shares one retained bandwidth fraction across
+  channels, images, volumes, and aliases; each target derives its cutoff bins from its own spatial dimensions.
 - `albumentations/augmentations/pixel/transforms.py`: `Sharpen`, `Emboss`, `Enhance`, `Superpixels`, `RingingOvershoot`,
   `UnsharpMask`, `Halftone`.
 - `albumentations/augmentations/transforms3d/transforms.py`: `Pad3D`.
-- `albumentations/augmentations/transforms3d/transforms.py`: `GhostingArtifact` shares its comb period, intensity,
+- `albumentations/augmentations/medical/transforms.py`: `GhostingArtifact` shares its comb period, intensity,
   and central restoration fraction across all active volume targets. Its sampled values are independent of shape,
   channel count, and dtype; each target applies the same frequency rule on its own spatial grid.
 

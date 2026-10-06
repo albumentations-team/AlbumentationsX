@@ -1189,58 +1189,6 @@ def get_mask_array(data: dict[str, Any]) -> np.ndarray | None:
     return None
 
 
-STAIN_MATRICES = {
-    "ruifrok": np.array(
-        [  # Ruifrok & Johnston standard reference
-            [0.644211, 0.716556, 0.266844],  # Hematoxylin
-            [0.092789, 0.954111, 0.283111],  # Eosin
-        ],
-    ),
-    "macenko": np.array(
-        [  # Macenko's reference
-            [0.5626, 0.7201, 0.4062],
-            [0.2159, 0.8012, 0.5581],
-        ],
-    ),
-    "standard": np.array(
-        [  # Standard bright-field microscopy
-            [0.65, 0.70, 0.29],
-            [0.07, 0.99, 0.11],
-        ],
-    ),
-    "high_contrast": np.array(
-        [  # Enhanced contrast
-            [0.55, 0.88, 0.11],
-            [0.12, 0.86, 0.49],
-        ],
-    ),
-    "h_heavy": np.array(
-        [  # Hematoxylin dominant
-            [0.75, 0.61, 0.32],
-            [0.04, 0.93, 0.36],
-        ],
-    ),
-    "e_heavy": np.array(
-        [  # Eosin dominant
-            [0.60, 0.75, 0.28],
-            [0.17, 0.95, 0.25],
-        ],
-    ),
-    "dark": np.array(
-        [  # Darker staining
-            [0.78, 0.55, 0.28],
-            [0.09, 0.97, 0.21],
-        ],
-    ),
-    "light": np.array(
-        [  # Lighter staining
-            [0.57, 0.71, 0.38],
-            [0.15, 0.89, 0.42],
-        ],
-    ),
-}
-
-
 def _create_vignette_mask(
     height: int,
     width: int,
@@ -1525,7 +1473,6 @@ def generate_water_displacement_maps(
 
 
 __all__ = [
-    "STAIN_MATRICES",
     "_auto_contrast_single_channel",
     "_create_vignette_mask",
     "apply_corner_illumination",

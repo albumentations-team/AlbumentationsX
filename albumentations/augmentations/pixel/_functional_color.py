@@ -778,8 +778,8 @@ def exposure_match_batch(images: ImageType, gains: np.ndarray) -> ImageType:
 
 
 def gamma_transform(img: ImageType, gamma: float) -> ImageType:
-    """Apply a power-law correction to image intensities, brightening or darkening midtones
-    to adjust exposure and tonal contrast.
+    """Apply a power-law correction (gamma correction) to image intensities, brightening or darkening
+    midtones to adjust exposure and tonal contrast.
 
     For normalized intensities in [0, 1], output = input ** gamma: gamma > 1 darkens,
     0 < gamma < 1 brightens, and gamma = 1 leaves float32 intensities unchanged.

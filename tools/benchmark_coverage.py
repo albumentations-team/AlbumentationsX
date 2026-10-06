@@ -126,6 +126,7 @@ GEOMETRY_ALIAS_TO_TRANSFORM = {
 }
 
 PIXEL_ALIAS_TO_TRANSFORM = {
+    "bias_field": "BiasField",
     "additive_noise": "AdditiveNoise",
     "advanced_blur": "AdvancedBlur",
     "annotation_artifacts": "AnnotationArtifacts",
@@ -237,6 +238,7 @@ SPECIAL_TARGET_ALIAS_TO_TRANSFORM = {
 }
 
 VOLUME_ALIAS_TO_TRANSFORM = {
+    "bias_field": "BiasField",
     "motion_artifact": "MotionArtifact",
     "affine3d": "Affine3D",
     "anisotropy3d": "Anisotropy3D",
@@ -258,6 +260,7 @@ VOLUME_ALIAS_TO_TRANSFORM = {
 }
 
 BATCH_ALIAS_TO_TRANSFORM = {
+    "bias_field": "BiasField",
     "channel_dropout": "ChannelDropout",
     "coarse_dropout": "CoarseDropout",
     "exposure_matching": "ExposureMatching",

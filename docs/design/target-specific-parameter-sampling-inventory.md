@@ -44,10 +44,14 @@ it must include every property used to construct the execution value.
 - `albumentations/augmentations/pixel/color_gray.py`: `FancyPCA`.
 - `albumentations/augmentations/pixel/color_lighting.py`: `PlasmaBrightnessContrast`, `PlasmaShadow`.
 - `albumentations/augmentations/pixel/noise.py`: `GaussNoise`, `MultiplicativeNoise`, `AdditiveNoise`,
-  `SaltAndPepper`, `FilmGrain`, `RicianNoise`.
+  `SaltAndPepper`, `FilmGrain`, `BiasField`, `RicianNoise`.
 - `albumentations/augmentations/pixel/transforms.py`: `Dithering`, `LensFlare`.
 - `albumentations/augmentations/pixel/weather.py`: `RandomSnow`, `RandomGravel`, `RandomRain`, `RandomFog`,
   `RandomSunFlare`, `RandomShadow`, `Spatter`, `AtmosphericFog`.
+
+`BiasField` shares coarse coefficients by `(spatial_shape, channel_count if per_channel else None, sampling_family)`.
+The sampling family distinguishes 2D images from true 3D volumes. Channel-shared mode can group aligned targets with
+different channel counts. Captured requirements also validate each target's sampling topology during replay.
 
 ## Shared spatial frame
 

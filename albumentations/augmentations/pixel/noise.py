@@ -40,6 +40,7 @@ from albumentations.core.type_definitions import (
 
 __all__ = [
     "AdditiveNoise",
+    "BiasField",
     "FilmGrain",
     "GaussNoise",
     "ISONoise",
@@ -1494,6 +1495,157 @@ class FilmGrain(_FullVolumeNoiseTransform):
             return resize3d(grain, spatial_shape, cv2.INTER_LINEAR)[..., 0]
         spatial_shape_2d = (spatial_shape[0], spatial_shape[1])
         return fgeometric.resize(grain, spatial_shape_2d, interpolation=cv2.INTER_LINEAR)[:, :, 0]
+
+
+class BiasField(_FullVolumeNoiseTransform):
+    """Simulate smooth MRI intensity inhomogeneity by multiplying images and volumes by a positive field
+    sampled on a coarse spatial grid.
+
+    The transform samples zero-mean Gaussian log-gain coefficients, interpolates them across all spatial axes,
+    and exponentiates the result. The field changes tissue intensity across space while preserving anatomy labels.
+
+    Args:
+        std_range (tuple[float, float]): Nondecreasing range in `[0, 1]` for the coarse log-gain standard deviation.
+            Larger values produce stronger intensity variation. Zero gives exact identity. Default: `(0.0, 0.5)`.
+        scale_range (tuple[float, float]): Nondecreasing range in `(0, 1]` for the ratio of coarse axis length
+            to input axis length.
+            Smaller values produce smoother fields; `1.0` uses an unsmoothed voxel-wise log-gain grid.
+            Each non-singleton coarse axis has at least two points. Default: `(0.025, 0.025)`.
+        per_channel (bool): If True, sample independent log-gain coefficients for each channel. If False,
+            share one field across channels. Default: `False`.
+        p (float): Probability of applying the transform. Default: `0.5`.
+
+    Targets:
+        image, images, volume, volumes
+
+    Image types:
+        uint8, float32
+
+    Number of channels:
+        Any
+
+    Notes:
+        - Images use bilinear interpolation over `(H, W)`; volumes use trilinear interpolation over `(D, H, W)`.
+          Singleton axes remain singleton. Batch elements and aligned additional targets share sampled coefficients.
+        - The coarse axis length is `min(size, max(2, int(size * scale)))`. The standard deviation describes
+          the coarse coefficients; interpolation generally reduces the final log-field variance.
+        - The positive gain is `exp(interpolated_log_gain)`. Results are clipped to `[0, 1]` for float32
+          and rounded back into `[0, 255]` for uint8. Clipping can change contrast near the intensity maximum.
+        - TorchIO uses `std=0.5` and `scale=0.025` as reference MRI settings. The default range samples up to
+          that strength. Strong fields can obscure tissue contrast or alter clinical semantics; inspect augmented
+          examples for the intended anatomy and task.
+        - Parameters use voxel dimensions. Physical spacing and scanner-specific coil sensitivity are not modelled.
+
+    Examples:
+        >>> import albumentations as A
+        >>> import numpy as np
+        >>> volume = np.full((16, 64, 96, 1), 0.25, dtype=np.float32)
+        >>> mask3d = np.zeros((16, 64, 96), dtype=np.uint8)
+        >>> pipeline = A.Compose([
+        ...     A.BiasField(std_range=(0.1, 0.3), scale_range=(0.02, 0.04), p=1),
+        ... ], seed=137, strict=True)
+        >>> result = pipeline(volume=volume, mask3d=mask3d)
+        >>> result["volume"].shape
+        (16, 64, 96, 1)
+
+    References:
+        TorchIO BiasField: https://docs.torchio.org/2.0/reference/transforms/bias_field/
+
+    """
+
+    class InitSchema(BaseTransformInitSchema):
+        std_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
+        scale_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, 1, min_inclusive=False)),
+            AfterValidator(nondecreasing),
+        ]
+        per_channel: bool
+
+    def __init__(
+        self,
+        *,
+        std_range: tuple[float, float] = (0.0, 0.5),
+        scale_range: tuple[float, float] = (0.025, 0.025),
+        per_channel: bool = False,
+        p: float = 0.5,
+    ) -> None:
+        super().__init__(p=p)
+        self.std_range = std_range
+        self.scale_range = scale_range
+        self.per_channel = per_channel
+
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
+        sampling: SamplingContext,
+    ) -> SampledParams:
+        """Share coefficients by spatial shape and sampling family, including channel count only for per_channel.
+
+        Replay validates each target's sampling topology against the captured requirements.
+        """
+        std = sampling.py_random.uniform(*self.std_range)
+        scale = sampling.py_random.uniform(*self.scale_range)
+        sampling.applied_overrides.update({"std_range": (std, std), "scale_range": (scale, scale)})
+        if std == 0:
+            return SampledParams(params={"coarse_field": None})
+
+        groups: list[TargetParams] = []
+        for views in targets.group_image_like_by(
+            lambda view: (
+                tuple(view.descriptor.spatial_shape or ()),
+                view.descriptor.channels if self.per_channel else None,
+                _sampling_family(view),
+            ),
+        ):
+            view = views[0]
+            spatial_shape = tuple(view.descriptor.spatial_shape or ())
+            coarse_shape = tuple(min(size, max(2, int(size * scale))) for size in spatial_shape)
+            channels = (view.descriptor.channels or 1) if self.per_channel else 1
+            coarse_field = sampling.random_generator.standard_normal((*coarse_shape, channels), dtype=np.float32)
+            np.multiply(coarse_field, std, out=coarse_field)
+            groups.append(
+                _target_parameter_group(
+                    views,
+                    "coarse_field",
+                    coarse_field,
+                    spatial_shape=True,
+                    channels=self.per_channel,
+                    topology=True,
+                ),
+            )
+        return SampledParams(params={}, target_params=tuple(groups))
+
+    @staticmethod
+    def _apply_field(
+        img: ImageType,
+        coarse_field: np.ndarray | None,
+        *,
+        is_batch: bool,
+    ) -> ImageType:
+        if img.dtype not in (np.uint8, np.float32):
+            raise ValueError("BiasField supports uint8 or float32 image/volume targets")
+        if coarse_field is None:
+            return img
+        return fpixel.bias_field(img, coarse_field, is_batch=is_batch)
+
+    def apply(self, img: ImageType, coarse_field: np.ndarray | None, **params: Any) -> ImageType:
+        return self._apply_field(img, coarse_field, is_batch=False)
+
+    def apply_to_images(self, images: ImageType, coarse_field: np.ndarray | None, **params: Any) -> ImageType:
+        return self._apply_field(images, coarse_field, is_batch=True)
+
+    def apply_to_volume(self, volume: ImageType, coarse_field: np.ndarray | None, **params: Any) -> ImageType:
+        return self.apply(volume, coarse_field, **params)
+
+    def apply_to_volumes(self, volumes: ImageType, coarse_field: np.ndarray | None, **params: Any) -> ImageType:
+        return self.apply_to_images(volumes, coarse_field, **params)
 
 
 class RicianNoise(_FullVolumeNoiseTransform):

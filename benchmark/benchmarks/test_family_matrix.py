@@ -156,6 +156,7 @@ PIXEL_TRANSFORMS: Mapping[str, PixelSpec] = {
     "noop": PixelSpec(lambda: albumentations.NoOp(p=1.0)),
     "shot_noise": PixelSpec(lambda: albumentations.ShotNoise(p=1.0), dtypes=("uint8",)),
     "rician_noise": PixelSpec(lambda: albumentations.RicianNoise(p=1.0)),
+    "gibbs_ringing": PixelSpec(lambda: albumentations.GibbsRinging(retained_fraction_range=(0.5, 0.5), p=1.0)),
     "kspace_spike_noise": PixelSpec(
         lambda: albumentations.KSpaceSpikeNoise(
             num_spikes_range=(2, 2),
@@ -325,6 +326,7 @@ VOLUME_TRANSFORMS: Mapping[str, Factory] = {
     "random_rotate90_3d": lambda: albumentations.RandomRotate90_3D(axis_pair=(0, 2), group_element="r90", p=1.0),
     "resize3d": lambda: albumentations.Resize3D(size=(12, 96, 96), p=1.0),
     "rician_noise": lambda: albumentations.RicianNoise(std_range=(0.1, 0.1), p=1.0),
+    "gibbs_ringing": lambda: albumentations.GibbsRinging(retained_fraction_range=(0.5, 0.5), p=1.0),
     "bias_field": lambda: albumentations.BiasField(std_range=(0.25, 0.25), p=1.0),
     "motion_artifact": lambda: albumentations.MotionArtifact(p=1.0),
     "ghosting_artifact": lambda: albumentations.GhostingArtifact(intensity_range=(0.4, 0.4), p=1.0),

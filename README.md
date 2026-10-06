@@ -244,6 +244,7 @@ See [data collection and opt-out](https://github.com/albumentations-team/Albumen
 - [FromFloat](https://albumentations.ai/explore/transform/FromFloat/)
 - [GaussNoise](https://albumentations.ai/explore/transform/GaussNoise/)
 - [GaussianBlur](https://albumentations.ai/explore/transform/GaussianBlur/)
+- [GibbsRinging](https://albumentations.ai/explore/transform/GibbsRinging/)
 - [GlassBlur](https://albumentations.ai/explore/transform/GlassBlur/)
 - [HEStain](https://albumentations.ai/explore/transform/HEStain/)
 - [Halftone](https://albumentations.ai/explore/transform/Halftone/)

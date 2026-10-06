@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import albumentations
+from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.augmentations.transforms3d import functional as f3d
 from benchmarks.common import DTYPES, VOLUME_SIZES, make_volume
 
@@ -136,4 +137,26 @@ class TimeGhostingArtifact:
         self.pipeline(volume=self.volume)
 
     def peakmem_compose(self, size: str, channels: int, dtype: str, axis: int) -> None:
+        self.pipeline(volume=self.volume)
+
+
+class TimeGibbsRinging:
+    """Measure true 3D truncation through the kernel and public volume route."""
+
+    params = (tuple(VOLUME_SIZES), (1, 3, 5), tuple(DTYPES))
+    param_names = ("size", "channels", "dtype")
+
+    def setup(self, size: str, channels: int, dtype: str) -> None:
+        self.volume = make_volume(size, channels, DTYPES[dtype])
+        self.pipeline = albumentations.Compose(
+            [albumentations.GibbsRinging(retained_fraction_range=(0.5, 0.5), p=1)], seed=137, strict=True
+        )
+
+    def time_kernel(self, size: str, channels: int, dtype: str) -> None:
+        fpixel.gibbs_ringing(self.volume, 0.5)
+
+    def time_compose(self, size: str, channels: int, dtype: str) -> None:
+        self.pipeline(volume=self.volume)
+
+    def peakmem_compose(self, size: str, channels: int, dtype: str) -> None:
         self.pipeline(volume=self.volume)

@@ -14,6 +14,7 @@ from .geometric.pad import *
 from .geometric.resize import *
 from .geometric.rotate import *
 from .geometric.transforms import *
+from .medical.transforms import *
 from .mixing.domain_adaptation import *
 from .mixing.transforms import *
 from .other.annotation_artifacts import *

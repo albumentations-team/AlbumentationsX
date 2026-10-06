@@ -15,8 +15,7 @@ from typing import Any, Literal, cast
 import cv2
 import numpy as np
 import torch
-from albucore import clip, clipped, float32_io, pad3d, remap3d, resize3d, warp_affine3d
-from scipy import fft
+from albucore import clip, pad3d, remap3d, warp_affine3d
 
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.utils import handle_empty_array
@@ -24,91 +23,6 @@ from albumentations.core.type_definitions import NUM_VOLUME_DIMENSIONS, ImageTyp
 from albumentations.core.utils import get_volume_shape
 
 AxisValues3D = Mapping[Literal["x", "y", "z"], float] | Mapping[str, float]
-
-
-@float32_io
-@clipped
-def ghosting_artifact(
-    volume: ImageType,
-    num_ghosts: int,
-    intensity: float,
-    axis: int,
-    restore: float,
-) -> ImageType:
-    """Attenuate conjugate-symmetric periodic frequency planes outside a protected central band.
-
-    The plane mask depends only on the selected spatial frequency. Transforms of the other axes cancel,
-    so one axis-wise real FFT implements the full 3D spectral-plane filter without full-volume complex FFTs.
-    """
-    length = volume.shape[axis]
-    cutoff = int(restore * length / 2)
-    start = (cutoff // num_ghosts + 1) * num_ghosts
-    if intensity == 0 or start > length // 2:
-        return volume
-
-    spectrum = fft.rfft(volume, axis=axis, workers=1)
-    index = [slice(None)] * volume.ndim
-    index[axis] = slice(start, None, num_ghosts)
-    spectrum[tuple(index)] *= 1 - intensity
-    reconstructed = fft.irfft(spectrum, n=length, axis=axis, workers=1, overwrite_x=True)
-    return np.abs(reconstructed, out=reconstructed)
-
-
-@float32_io
-@clipped
-def motion_artifact(
-    volume: VolumeType,
-    matrices: np.ndarray,
-    boundaries: tuple[int, ...],
-    axis: int,
-    interpolation: int,
-) -> VolumeType:
-    """Combine sequential centred k-space segments from absolute rigid motion states.
-
-    The first segment is stationary. Each subsequent segment uses one forward `(x, y, z)` matrix.
-    Full complex FFTs preserve asymmetric acquisition segments; magnitude reconstruction handles
-    their non-Hermitian spectrum. Only one moved volume and its spectrum are retained at a time.
-    """
-    identity = np.eye(4, dtype=np.float32)
-    if matrices.size == 0 or np.all(matrices == identity):
-        return volume
-
-    spatial_shape = volume.shape[:3]
-    spectrum = fft.fftn(volume, axes=(0, 1, 2), workers=1)
-    for matrix, begin, end in zip(matrices, boundaries, (*boundaries[1:], volume.shape[axis]), strict=True):
-        if np.array_equal(matrix, identity):
-            continue
-        moved = warp_affine3d(
-            volume,
-            matrix,
-            spatial_shape,
-            interpolation=interpolation,
-            border_mode=cv2.BORDER_CONSTANT,
-            border_value=0,
-        )
-        moved_spectrum = fft.fftn(moved, axes=(0, 1, 2), workers=1)
-        _replace_motion_segment(spectrum, moved_spectrum, axis, begin, end)
-        del moved, moved_spectrum
-
-    reconstructed = fft.ifftn(spectrum, axes=(0, 1, 2), workers=1, overwrite_x=True)
-    return np.abs(reconstructed)
-
-
-def _replace_motion_segment(
-    spectrum: np.ndarray,
-    moved_spectrum: np.ndarray,
-    axis: int,
-    begin: int,
-    end: int,
-) -> None:
-    """Write a centred acquisition interval without allocating a shifted spectrum."""
-    length = spectrum.shape[axis]
-    start = (begin + (length + 1) // 2) % length
-    stop = start + end - begin
-    index = [slice(None)] * spectrum.ndim
-    for lower, upper in ((start, min(stop, length)), (0, max(0, stop - length))):
-        index[axis] = slice(lower, upper)
-        spectrum[tuple(index)] = moved_spectrum[tuple(index)]
 
 
 def create_affine_transformation_matrix_3d(
@@ -662,51 +576,6 @@ def keypoints_affine_3d(keypoints: np.ndarray, matrix: np.ndarray) -> np.ndarray
     )
     transformed_keypoints[:, :3] = (homogeneous_coordinates @ matrix.T)[:, :3]
     return transformed_keypoints
-
-
-def get_anisotropy_downsample_shape(
-    spatial_shape: tuple[int, int, int],
-    axes: tuple[int, ...],
-    downscale_factor: float,
-) -> tuple[int, int, int]:
-    """Derive an anisotropic intermediate shape by scaling selected axes while retaining non-selected axes, ensuring
-    every requested spatial dimension remains valid.
-    """
-    return cast(
-        "tuple[int, int, int]",
-        tuple(
-            max(1, round(axis_size / downscale_factor)) if axis_index in axes else axis_size
-            for axis_index, axis_size in enumerate(spatial_shape)
-        ),
-    )
-
-
-def anisotropy_3d(
-    volume: VolumeType | torch.Tensor,
-    downsample_shape: tuple[int, int, int],
-    antialias: bool,
-) -> VolumeType | torch.Tensor:
-    """Simulate thicker or lower-resolution volume acquisition by shrinking selected spatial axes and restoring the
-    original shape for 3D robustness training.
-
-    Both routes delegate to Albucore `resize3d`, which resizes only spatial axes and preserves the input representation.
-    NumPy applies antialiasing while shrinking; PyTorch does not yet provide 5D trilinear antialiasing, so Tensor input
-    uses the non-antialiased native route until upstream support is available.
-    """
-    source_shape = get_volume_shape(volume)
-    if source_shape == downsample_shape:
-        return volume
-
-    is_channel_less_numpy_volume = isinstance(volume, np.ndarray) and volume.ndim == NUM_VOLUME_DIMENSIONS - 1
-    working_volume = volume[..., np.newaxis] if is_channel_less_numpy_volume else volume
-    downsampled = resize3d(
-        working_volume,
-        downsample_shape,
-        interpolation=cv2.INTER_LINEAR,
-        antialias=antialias and not isinstance(volume, torch.Tensor),
-    )
-    restored = resize3d(downsampled, source_shape, interpolation=cv2.INTER_LINEAR)
-    return restored[..., 0] if is_channel_less_numpy_volume else restored
 
 
 @handle_empty_array("keypoints")

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import albumentations
-from albumentations.augmentations.transforms3d import functional as f3d
+from albumentations.augmentations.medical import functional as fmedical
 from benchmarks.common import DTYPES, VOLUME_SIZES, make_volume
 
 
@@ -105,7 +105,7 @@ class TimeMotionArtifact:
         self.motion(volume=self.volume)
 
     def time_motion_kernel(self, size: str, channels: int, dtype: str, events: int) -> None:
-        f3d.motion_artifact(self.volume, self.motion_params["matrices"], self.motion_params["boundaries"], 2, 1)
+        fmedical.motion_artifact(self.volume, self.motion_params["matrices"], self.motion_params["boundaries"], 2, 1)
 
     def peakmem_motion_artifact(self, size: str, channels: int, dtype: str, events: int) -> None:
         self.motion(volume=self.volume)
@@ -130,10 +130,32 @@ class TimeGhostingArtifact:
         )
 
     def time_kernel(self, size: str, channels: int, dtype: str, axis: int) -> None:
-        f3d.ghosting_artifact(self.volume, 2, 0.4, axis, 0.02)
+        fmedical.ghosting_artifact(self.volume, 2, 0.4, axis, 0.02)
 
     def time_compose(self, size: str, channels: int, dtype: str, axis: int) -> None:
         self.pipeline(volume=self.volume)
 
     def peakmem_compose(self, size: str, channels: int, dtype: str, axis: int) -> None:
+        self.pipeline(volume=self.volume)
+
+
+class TimeGibbsRinging:
+    """Measure true 3D truncation through the kernel and public volume route."""
+
+    params = (tuple(VOLUME_SIZES), (1, 3, 5), tuple(DTYPES))
+    param_names = ("size", "channels", "dtype")
+
+    def setup(self, size: str, channels: int, dtype: str) -> None:
+        self.volume = make_volume(size, channels, DTYPES[dtype])
+        self.pipeline = albumentations.Compose(
+            [albumentations.GibbsRinging(retained_fraction_range=(0.5, 0.5), p=1)], seed=137, strict=True
+        )
+
+    def time_kernel(self, size: str, channels: int, dtype: str) -> None:
+        fmedical.gibbs_ringing(self.volume, 0.5)
+
+    def time_compose(self, size: str, channels: int, dtype: str) -> None:
+        self.pipeline(volume=self.volume)
+
+    def peakmem_compose(self, size: str, channels: int, dtype: str) -> None:
         self.pipeline(volume=self.volume)

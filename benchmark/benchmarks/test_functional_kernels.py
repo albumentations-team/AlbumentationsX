@@ -13,6 +13,7 @@ from albucore import median_blur, resize3d
 from albumentations.augmentations.blur import functional as fblur
 from albumentations.augmentations.dropout import functional as fdropout
 from albumentations.augmentations.geometric import functional as fgeometric
+from albumentations.augmentations.medical import functional as fmedical
 from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.augmentations.transforms3d import functional as f3d
 from benchmarks.common import (
@@ -467,7 +468,7 @@ def _call_pad_3d_with_params(benchmark: Any) -> np.ndarray:
 
 
 def _call_anisotropy_3d(benchmark: Any) -> np.ndarray:
-    return f3d.anisotropy_3d(benchmark.volume, benchmark.anisotropy_downsample_shape, antialias=True)
+    return fmedical.anisotropy_3d(benchmark.volume, benchmark.anisotropy_downsample_shape, antialias=True)
 
 
 def _call_elastic_3d(benchmark: Any) -> np.ndarray:
@@ -502,11 +503,11 @@ def _call_swap_tiles_on_volume(benchmark: Any) -> np.ndarray:
 
 
 def _call_rician_noise(benchmark: Any) -> np.ndarray:
-    return fpixel.rician_noise(benchmark.volume, benchmark.real_noise, benchmark.imaginary_noise)
+    return fmedical.rician_noise(benchmark.volume, benchmark.real_noise, benchmark.imaginary_noise)
 
 
 def _call_k_space_spike(benchmark: Any) -> np.ndarray:
-    return fpixel.k_space_spike(benchmark.volume, benchmark.spikes, 0.1)
+    return fmedical.k_space_spike(benchmark.volume, benchmark.spikes, 0.1)
 
 
 FUNCTIONAL_3D_CALLS: Mapping[str, ImageKernelCall] = {

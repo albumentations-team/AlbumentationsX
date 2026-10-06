@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 import albumentations as A
-from albumentations.augmentations.pixel import functional as fpixel
+from albumentations.augmentations.medical import functional as fmedical
 from albumentations.core.transform_params import SampledParams
 from tests.helpers import TestDataFactory
 
@@ -219,7 +219,7 @@ def test_apply_he_stain_augmentation_nearly_collinear_residual_basis_falls_back_
     scale_factors = np.array([1.2, 0.8, 1.5], dtype=np.float32)
     shift_values = np.array([0.1, -0.05, 0.2], dtype=np.float32)
 
-    residual = fpixel.apply_he_stain_augmentation(
+    residual = fmedical.apply_he_stain_augmentation(
         image,
         nearly_collinear_matrix,
         scale_factors,
@@ -227,7 +227,7 @@ def test_apply_he_stain_augmentation_nearly_collinear_residual_basis_falls_back_
         augment_background=True,
         residual_mode="augment",
     )
-    project = fpixel.apply_he_stain_augmentation(
+    project = fmedical.apply_he_stain_augmentation(
         image,
         nearly_collinear_matrix,
         scale_factors[:2],
@@ -254,7 +254,7 @@ def test_apply_he_stain_augmentation_rejects_mismatched_residual_parameters(
     image = np.full((8, 8, 3), 0.5, dtype=np.float32)
 
     with pytest.raises(ValueError, match=rf"{invalid_parameter} must have shape \(3,\)"):
-        fpixel.apply_he_stain_augmentation(
+        fmedical.apply_he_stain_augmentation(
             image,
             CUSTOM_STAIN_MATRIX,
             scale_factors,
@@ -285,7 +285,7 @@ def test_apply_he_stain_augmentation_rejects_invalid_full_basis(
     image = np.full((8, 8, 3), 0.5, dtype=np.float32)
 
     with pytest.raises(ValueError, match=message):
-        fpixel.apply_he_stain_augmentation(
+        fmedical.apply_he_stain_augmentation(
             image,
             stain_matrix,
             np.ones(parameter_count, dtype=np.float32),
@@ -386,7 +386,7 @@ def test_hestain_residual_modes_respect_tissue_mask(residual_mode: str, dense_ti
     )
 
     result = transform(image=image)["image"]
-    tissue_mask = fpixel.get_tissue_mask(image).reshape(image.shape[:2])
+    tissue_mask = fmedical.get_tissue_mask(image).reshape(image.shape[:2])
 
     np.testing.assert_array_equal(result[~tissue_mask], image[~tissue_mask])
     assert not np.allclose(result[tissue_mask], image[tissue_mask])
@@ -407,7 +407,7 @@ def test_hestain_uses_custom_stain_matrix() -> None:
 
     params = SampledParams.from_dict(transform.get_applied_params()).params
     np.testing.assert_array_equal(params["stain_matrix"], CUSTOM_STAIN_MATRIX)
-    expected = fpixel.apply_he_stain_augmentation(
+    expected = fmedical.apply_he_stain_augmentation(
         img=image,
         stain_matrix=CUSTOM_STAIN_MATRIX,
         scale_factors=np.array([1.2, 1.2]),

@@ -5,7 +5,7 @@ import pytest
 from scipy import ndimage
 
 import albumentations as A
-from albumentations.augmentations.pixel import functional as fpixel
+from albumentations.augmentations.medical import functional as fmedical
 
 
 def _reference_bias_field(img: np.ndarray, coarse: np.ndarray) -> np.ndarray:
@@ -47,7 +47,7 @@ def test_bias_field_matches_independent_half_pixel_interpolation(
     original, original_coarse = img.copy(), coarse.copy()
     img.setflags(write=False)
 
-    result = fpixel.bias_field(img, coarse)
+    result = fmedical.bias_field(img, coarse)
 
     expected = _reference_bias_field(img, coarse)
     np.testing.assert_allclose(result, expected, atol=1 if dtype == np.uint8 else 2e-6, rtol=1e-5)
@@ -63,7 +63,7 @@ def test_full_resolution_grid_is_exponentiated_without_mutating_coefficients(spa
     coarse = np.broadcast_to(log_gains, img.shape)
     original = coarse.copy()
 
-    result = fpixel.bias_field(img, coarse)
+    result = fmedical.bias_field(img, coarse)
 
     expected = np.broadcast_to(np.array([0.25, 0.5, 0.125, 0.75, 0.0625], dtype=np.float32), img.shape)
     np.testing.assert_allclose(result, expected, atol=1e-6)
@@ -87,7 +87,7 @@ def test_zero_strength_skips_field_application_and_is_exact_identity(
     def unexpected_kernel(*args: object, **kwargs: object) -> None:
         raise AssertionError("A zero-strength field must not enter the reconstruction kernel")
 
-    monkeypatch.setattr(fpixel, "bias_field", unexpected_kernel)
+    monkeypatch.setattr(fmedical, "bias_field", unexpected_kernel)
     pipeline = A.Compose([A.BiasField(std_range=(0, 0), p=1)], seed=137, strict=True)
 
     result = pipeline(**{target: data})[target]

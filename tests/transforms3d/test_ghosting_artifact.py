@@ -5,7 +5,7 @@ import pytest
 import torch
 
 import albumentations as A
-from albumentations.augmentations.transforms3d import functional as f3d
+from albumentations.augmentations.medical import functional as fmedical
 
 
 def _full_fft_reference(volume: np.ndarray, ghosts: int, intensity: float, axis: int, restore: float) -> np.ndarray:
@@ -69,7 +69,7 @@ def test_impulse_ghost_spacing_matches_circular_shift_formula(axis: int) -> None
     spacing = volume.shape[axis] // ghosts
     comb = sum(np.roll(volume, index * spacing, axis=axis) for index in range(ghosts)) / ghosts
     expected = np.abs(volume - intensity * comb + intensity * volume.mean(axis=axis, keepdims=True))
-    result = f3d.ghosting_artifact(volume, ghosts, intensity, axis, 0)
+    result = fmedical.ghosting_artifact(volume, ghosts, intensity, axis, 0)
     np.testing.assert_allclose(result, expected, atol=1e-7)
     position = [1, 2, 3, 0]
     position[axis] += spacing
@@ -171,5 +171,5 @@ def test_central_band_preserves_selected_low_frequency(restore: float) -> None:
     volume = np.broadcast_to((0.25 + 0.1 * cosine).astype(np.float32), (3, 5, 16))[..., None].copy()
     amplitude = 0.1 if restore == 0.5 else 0.1 * 0.4
     expected = np.broadcast_to(0.25 + amplitude * cosine, volume.shape[:3])[..., None]
-    result = f3d.ghosting_artifact(volume, 4, 0.6, 2, restore)
+    result = fmedical.ghosting_artifact(volume, 4, 0.6, 2, restore)
     np.testing.assert_allclose(result, expected, atol=1e-7)

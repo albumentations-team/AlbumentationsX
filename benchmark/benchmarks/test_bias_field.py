@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import albumentations
-from albumentations.augmentations.pixel import _functional_noise as fnoise
+from albumentations.augmentations.medical import functional as fmedical
 from benchmarks.common import DTYPES, SIZES, VOLUME_SIZES, make_image, make_volume
 
 BIAS_FIELD_CASES = tuple(
@@ -35,10 +35,10 @@ class TimeBiasField:
         self.coarse_field = groups[0]["params"]["coarse_field"]
 
     def time_generate_field(self, case_id: str) -> None:
-        fnoise.generate_bias_field(self.coarse_field, self.data.shape[:-1])
+        fmedical.generate_bias_field(self.coarse_field, self.data.shape[:-1])
 
     def time_kernel(self, case_id: str) -> None:
-        fnoise.bias_field(self.data, self.coarse_field)
+        fmedical.bias_field(self.data, self.coarse_field)
 
     def time_compose(self, case_id: str) -> None:
         self.pipeline(**{self.target: self.data})

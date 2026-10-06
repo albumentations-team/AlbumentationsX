@@ -73,6 +73,16 @@ def test_select_benchmark_filters_add_memory_and_volume_paths_for_3d_changes() -
     assert "TimeVolumetricFullMatrix" in patterns
 
 
+def test_select_benchmark_filters_cover_medical_image_and_volume_routes() -> None:
+    patterns = select_benchmark_patterns(["albumentations/augmentations/medical/functional.py"])
+
+    assert "TimePixelFullMatrix" in patterns
+    assert "TimeFunctionalPixelKernels" in patterns
+    assert "TimeVolumetricFullMatrix" in patterns
+    assert "TimeFunctional3DKernels" in patterns
+    assert "PeakMemory" in patterns
+
+
 def test_select_benchmark_filters_requires_an_explicit_filter_for_benchmark_infrastructure_changes() -> None:
     assert select_benchmark_patterns(["benchmark/benchmarks/test_family_matrix.py"]) == ()
 

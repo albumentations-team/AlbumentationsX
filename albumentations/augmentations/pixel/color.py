@@ -4,7 +4,6 @@ from .color_advanced import *
 from .color_advanced import (
     ChromaticAberration,
     ColorJitter,
-    HEStain,
     PhotoMetricDistort,
     PlanckianJitter,
     RGBShift,
@@ -47,7 +46,6 @@ __all__ = [
     "Equalize",
     "ExposureMatching",
     "FancyPCA",
-    "HEStain",
     "HueSaturationValue",
     "Illumination",
     "PhotoMetricDistort",

@@ -626,6 +626,10 @@ _BASE_CASE_SPECS: list[list[Any]] = [
     ],
     [A.CenterCrop3D, {"size": (2, 30, 30)}],
     [
+        A.GhostingArtifact,
+        {"num_ghosts_range": (3, 3), "intensity_range": (0.4, 0.6), "axis": 1, "restore_range": (0.1, 0.2)},
+    ],
+    [
         A.MotionArtifact,
         {
             "num_events_range": (1, 1),
@@ -1374,6 +1378,7 @@ _REFERENCE_METADATA_KEYS = {
     A.PixelDistributionAdaptation: "pda_metadata",
 }
 _EXACT_TRANSFORMS = {
+    A.GhostingArtifact,
     A.Affine3D,
     A.Anisotropy3D,
     A.Blur,

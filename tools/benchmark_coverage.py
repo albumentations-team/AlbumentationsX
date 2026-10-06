@@ -238,6 +238,7 @@ SPECIAL_TARGET_ALIAS_TO_TRANSFORM = {
 }
 
 VOLUME_ALIAS_TO_TRANSFORM = {
+    "ghosting_artifact": "GhostingArtifact",
     "bias_field": "BiasField",
     "motion_artifact": "MotionArtifact",
     "affine3d": "Affine3D",

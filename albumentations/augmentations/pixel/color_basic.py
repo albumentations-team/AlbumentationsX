@@ -1173,8 +1173,8 @@ class CLAHE(ImageOnlyTransform):
 
 
 class RandomGamma(ImageOnlyTransform):
-    """Apply a random power-law correction to image intensities, brightening or darkening midtones
-    to simulate exposure and display variation.
+    """Apply a random power-law correction (random gamma) to image intensities, brightening or darkening
+    midtones to simulate exposure and display variation.
 
     Gamma correction, or simply gamma, is a nonlinear operation used to encode and decode luminance
     or tristimulus values in imaging systems. This transform can adjust the brightness of an image

@@ -120,7 +120,7 @@ class _FullVolumeNoiseTransform(ImageOnlyTransform):
     _volume_sampling_is_slice_wise: ClassVar[bool] = False
 
 
-class GibbsRinging(ImageOnlyTransform):
+class GibbsRinging(_FullVolumeNoiseTransform):
     """Simulate Gibbs ringing near sharp intensity boundaries by truncating high-frequency k-space
     in an image or a whole 3D volume.
 
@@ -144,6 +144,8 @@ class GibbsRinging(ImageOnlyTransform):
         Any
 
     Notes:
+        - `Compose` normalizes optional channel axes. Direct calls use explicit channel-last `(H, W, C)`
+          images or `(D, H, W, C)` volumes.
         - FFT/IFFT operate over `(H, W)` for images and `(D, H, W)` for volumes, including singleton depth.
           Channels and collection items are independent signals with one shared sampled cutoff fraction.
         - On an axis of length `N`, retain signed frequency indices with

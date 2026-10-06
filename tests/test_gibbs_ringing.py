@@ -121,6 +121,20 @@ def test_constant_channels_and_singleton_depth_match_image(fraction: float) -> N
     np.testing.assert_allclose(result["volume"][0], result["image"], atol=1e-7)
 
 
+@pytest.mark.parametrize("target,shape", [("image", (9, 13)), ("volume", (7, 9, 13))])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_compose_normalizes_channel_free_inputs_before_spatial_fft(
+    target: str, shape: tuple[int, ...], dtype: type[np.generic]
+) -> None:
+    raw = np.random.default_rng(137).integers(0, 256, shape, dtype=np.uint8)
+    data = raw if dtype == np.uint8 else raw.astype(np.float32) / 255
+    result = A.Compose([A.GibbsRinging(retained_fraction_range=(0.5, 0.5), p=1)], strict=True)(**{target: data})[target]
+    expected = _full_fft_reference(data[..., None], 0.5)[..., 0]
+    normalized = result.astype(np.float32) / 255 if dtype == np.uint8 else result
+    np.testing.assert_allclose(normalized, expected, atol=0.5 / 255 + 1e-6 if dtype == np.uint8 else 2e-6)
+    assert result.shape == data.shape
+
+
 def test_direct_image_and_seeded_replay_preserve_annotations() -> None:
     image = np.random.default_rng(137).random((9, 13, 5), dtype=np.float32)
     direct = A.GibbsRinging(retained_fraction_range=(0.5, 0.5), p=1)(image=image)["image"]

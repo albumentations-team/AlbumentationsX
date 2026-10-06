@@ -109,3 +109,31 @@ class TimeMotionArtifact:
 
     def peakmem_motion_artifact(self, size: str, channels: int, dtype: str, events: int) -> None:
         self.motion(volume=self.volume)
+
+
+class TimeGhostingArtifact:
+    """Measure the selected-axis spectral filter and public volume route."""
+
+    params = (tuple(VOLUME_SIZES), (1, 3, 5), tuple(DTYPES), (0, 1, 2))
+    param_names = ("size", "channels", "dtype", "axis")
+
+    def setup(self, size: str, channels: int, dtype: str, axis: int) -> None:
+        self.volume = make_volume(size, channels, DTYPES[dtype])
+        self.pipeline = albumentations.Compose(
+            [
+                albumentations.GhostingArtifact(
+                    num_ghosts_range=(2, 2), intensity_range=(0.4, 0.4), axis=axis, restore_range=(0.02, 0.02), p=1
+                ),
+            ],
+            seed=137,
+            strict=True,
+        )
+
+    def time_kernel(self, size: str, channels: int, dtype: str, axis: int) -> None:
+        f3d.ghosting_artifact(self.volume, 2, 0.4, axis, 0.02)
+
+    def time_compose(self, size: str, channels: int, dtype: str, axis: int) -> None:
+        self.pipeline(volume=self.volume)
+
+    def peakmem_compose(self, size: str, channels: int, dtype: str, axis: int) -> None:
+        self.pipeline(volume=self.volume)

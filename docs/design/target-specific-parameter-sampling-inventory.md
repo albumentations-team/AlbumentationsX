@@ -121,6 +121,9 @@ representation test before changing the implementation.
 - `albumentations/augmentations/pixel/transforms.py`: `Sharpen`, `Emboss`, `Enhance`, `Superpixels`, `RingingOvershoot`,
   `UnsharpMask`, `Halftone`.
 - `albumentations/augmentations/transforms3d/transforms.py`: `Pad3D`.
+- `albumentations/augmentations/transforms3d/transforms.py`: `GhostingArtifact` shares its comb period, intensity,
+  and central restoration fraction across all active volume targets. Its sampled values are independent of shape,
+  channel count, and dtype; each target applies the same frequency rule on its own spatial grid.
 
 ## Review requirements for additions
 

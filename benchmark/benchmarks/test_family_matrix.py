@@ -327,6 +327,7 @@ VOLUME_TRANSFORMS: Mapping[str, Factory] = {
     "rician_noise": lambda: albumentations.RicianNoise(std_range=(0.1, 0.1), p=1.0),
     "bias_field": lambda: albumentations.BiasField(std_range=(0.25, 0.25), p=1.0),
     "motion_artifact": lambda: albumentations.MotionArtifact(p=1.0),
+    "ghosting_artifact": lambda: albumentations.GhostingArtifact(intensity_range=(0.4, 0.4), p=1.0),
     "kspace_spike_noise": lambda: albumentations.KSpaceSpikeNoise(
         num_spikes_range=(2, 2),
         intensity_range=(0.1, 0.1),

@@ -28,6 +28,34 @@ AxisValues3D = Mapping[Literal["x", "y", "z"], float] | Mapping[str, float]
 
 @float32_io
 @clipped
+def ghosting_artifact(
+    volume: ImageType,
+    num_ghosts: int,
+    intensity: float,
+    axis: int,
+    restore: float,
+) -> ImageType:
+    """Attenuate conjugate-symmetric periodic frequency planes outside a protected central band.
+
+    The plane mask depends only on the selected spatial frequency. Transforms of the other axes cancel,
+    so one axis-wise real FFT implements the full 3D spectral-plane filter without full-volume complex FFTs.
+    """
+    length = volume.shape[axis]
+    cutoff = int(restore * length / 2)
+    start = (cutoff // num_ghosts + 1) * num_ghosts
+    if intensity == 0 or start > length // 2:
+        return volume
+
+    spectrum = fft.rfft(volume, axis=axis, workers=1)
+    index = [slice(None)] * volume.ndim
+    index[axis] = slice(start, None, num_ghosts)
+    spectrum[tuple(index)] *= 1 - intensity
+    reconstructed = fft.irfft(spectrum, n=length, axis=axis, workers=1, overwrite_x=True)
+    return np.abs(reconstructed, out=reconstructed)
+
+
+@float32_io
+@clipped
 def motion_artifact(
     volume: VolumeType,
     matrices: np.ndarray,

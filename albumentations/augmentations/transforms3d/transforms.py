@@ -30,6 +30,7 @@ from albumentations.core.type_definitions import (
     CV2_INTER_LINEAR,
     CV2_INTER_NEAREST,
     C4GroupElement,
+    ImageType,
     Targets,
     VolumeType,
     c4_group_elements,
@@ -43,6 +44,7 @@ __all__ = [
     "CubicSymmetry",
     "ElasticTransform3D",
     "Flip3D",
+    "GhostingArtifact",
     "GridShuffle3D",
     "MotionArtifact",
     "Pad3D",
@@ -69,6 +71,134 @@ PositiveAxisRanges3D = dict[AxisName3D, PositiveAxisRange3D]
 DEFAULT_ROTATION_AXIS_PAIRS: tuple[AxisPair3D, ...] = ((0, 1), (0, 2), (1, 2))
 DEFAULT_FLIP_AXES: tuple[AxisIndex3D, ...] = (0, 1, 2)
 AXIS_NAMES_3D: tuple[AxisName3D, ...] = ("x", "y", "z")
+
+
+class GhostingArtifact(VolumeOnlyTransform):
+    """Simulate repeated MRI ghost replicas along one spatial axis by attenuating periodic k-space planes
+    while protecting central frequencies.
+
+    Periodic frequency loss creates displaced copies of anatomy in the reconstructed magnitude volume.
+    The same acquisition parameters apply to every channel and collection item; anatomy annotations stay unchanged.
+
+    Args:
+        num_ghosts_range (tuple[int, int]): Inclusive frequency-comb period, at least two. When the axis length
+            is divisible by the period, replicas are spaced by `axis_length / num_ghosts` voxels.
+            Default: `(2, 4)`.
+        intensity_range (tuple[float, float]): Nondecreasing range in `[0, 1]` for the fraction removed from
+            affected Fourier coefficients. Zero gives exact identity; one removes those coefficients.
+            Default: `(0.1, 0.5)`.
+        axis (Literal[0, 1, 2]): Phase-encode axis in array order `(D, H, W)`. Default: `2`.
+        restore_range (tuple[float, float]): Nondecreasing range in `[0, 1]` for the protected central fraction
+            of the frequency axis. Frequencies with `abs(k) <= floor(restore * axis_length / 2)` are unchanged.
+            Zero still protects DC; one gives exact identity. Default: `(0.02, 0.08)`.
+        p (float): Probability of applying the transform. Default: `0.5`.
+
+    Targets:
+        volume, volumes
+
+    Image types:
+        uint8, float32
+
+    Number of channels:
+        Any
+
+    Notes:
+        - Inputs are real magnitude volumes. `Compose` supplies canonical NumPy `(D, H, W, C)` layouts
+          and restores optional singleton channel dimensions. Complex input is unsupported.
+        - The comb is anchored at DC: positive and negative frequencies that are multiples of `num_ghosts`
+          are multiplied by `1 - intensity` outside the protected band. This preserves conjugate symmetry.
+        - FFT/IFFT use backward normalization. A real FFT along the selected spatial axis is mathematically
+          equivalent to a full 3D FFT with this plane mask; batch and channel axes are never transformed.
+        - Reconstruction takes the absolute value and clips to `[0, 1]` for float32, or rounds back into
+          `[0, 255]` for uint8. Magnitude and clipping can change the mean despite preserving central coefficients.
+        - Non-divisible axis lengths give sampled, broadened replicas. If no affected frequency fits outside
+          the protected band, the transform is an exact identity. This includes a singleton selected axis.
+        - Physical spacing and scanner trajectories are not modelled. Select the axis for the input layout
+          and inspect strong artifacts for the intended anatomy and task.
+
+    Examples:
+        >>> import albumentations as A
+        >>> import numpy as np
+        >>> volume = np.random.default_rng(137).random((16, 64, 96, 1), dtype=np.float32)
+        >>> mask3d = np.zeros((16, 64, 96), dtype=np.uint8)
+        >>> pipeline = A.Compose([
+        ...     A.GhostingArtifact(num_ghosts_range=(2, 4), intensity_range=(0.2, 0.5), axis=1, p=1),
+        ... ], seed=137, strict=True)
+        >>> result = pipeline(volume=volume, mask3d=mask3d)
+        >>> result["volume"].shape
+        (16, 64, 96, 1)
+
+    References:
+        TorchIO Ghosting: https://docs.torchio.org/2.0/reference/transforms/ghosting/
+
+    """
+
+    class InitSchema(BaseTransformInitSchema):
+        num_ghosts_range: Annotated[
+            tuple[int, int],
+            AfterValidator(check_range_bounds(2, None)),
+            AfterValidator(nondecreasing),
+        ]
+        intensity_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
+        axis: AxisIndex3D
+        restore_range: Annotated[
+            tuple[float, float],
+            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(nondecreasing),
+        ]
+
+    def __init__(
+        self,
+        *,
+        num_ghosts_range: tuple[int, int] = (2, 4),
+        intensity_range: tuple[float, float] = (0.1, 0.5),
+        axis: AxisIndex3D = 2,
+        restore_range: tuple[float, float] = (0.02, 0.08),
+        p: float = 0.5,
+    ) -> None:
+        super().__init__(p=p)
+        self.num_ghosts_range = num_ghosts_range
+        self.intensity_range = intensity_range
+        self.axis = axis
+        self.restore_range = restore_range
+
+    def sample_parameters(
+        self,
+        params: dict[str, Any],
+        data: dict[str, Any],
+        targets: TargetSet,
+        sampling: SamplingContext,
+    ) -> SampledParams:
+        """Share the sampled comb period, strength and central fraction across all volume targets."""
+        num_ghosts = sampling.py_random.randint(*self.num_ghosts_range)
+        intensity = sampling.py_random.uniform(*self.intensity_range)
+        restore = sampling.py_random.uniform(*self.restore_range)
+        sampling.applied_overrides.update(
+            {
+                "num_ghosts_range": (num_ghosts, num_ghosts),
+                "intensity_range": (intensity, intensity),
+                "restore_range": (restore, restore),
+            },
+        )
+        return SampledParams(params={"num_ghosts": num_ghosts, "intensity": intensity, "restore": restore})
+
+    def apply_to_volume(
+        self,
+        volume: ImageType,
+        num_ghosts: int,
+        intensity: float,
+        restore: float,
+        **params: Any,
+    ) -> ImageType:
+        if volume.dtype not in (np.uint8, np.float32):
+            raise ValueError("GhostingArtifact supports uint8 or float32 real magnitude volumes")
+        if intensity == 0 or restore == 1:
+            return volume
+        return f3d.ghosting_artifact(volume, num_ghosts, intensity, self.axis, restore)
 
 
 class MotionArtifact(VolumeOnlyTransform):

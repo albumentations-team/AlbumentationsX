@@ -68,6 +68,9 @@ def _profile_case_names() -> tuple[str, ...]:
 
 def test_volumetric_benchmark_discovery_without_medical_package(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.syspath_prepend(str(BENCHMARK_ROOT))
+    for cached_name in tuple(sys.modules):
+        if cached_name.startswith("albumentations.augmentations.medical"):
+            monkeypatch.delitem(sys.modules, cached_name)
     monkeypatch.setitem(sys.modules, "albumentations", types.ModuleType("albumentations"))
 
     original_import = builtins.__import__

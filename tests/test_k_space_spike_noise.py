@@ -541,6 +541,7 @@ def test_uint8_volume_keeps_half_spectrum_rounding(shape: tuple[int, int, int, i
 
 
 def _boundary_plane_spike_reference(volume: np.ndarray, spikes: np.ndarray, intensity: float) -> np.ndarray:
+    """Reference only DC/Nyquist-plane spikes with the legacy float32 FFT rounding."""
     spectrum = fft.rfftn(volume if volume.dtype == np.float32 else to_float(volume), axes=(0, 1, 2), workers=1)
     amplitude = intensity * float(np.abs(spectrum).max())
     for spike in spikes:
@@ -585,3 +586,11 @@ def test_functional_noop_preserves_dtype_specific_output_ownership(dtype: type[n
 
     np.testing.assert_array_equal(result, volume)
     assert np.shares_memory(result, volume) == (dtype == np.float32)
+
+
+@pytest.mark.parametrize("coordinate", [(16, 0, 0), (0, 128, 0), (0, 0, 129), (-17, 0, 0), (0, -129, 0)])
+def test_out_of_range_volume_spikes_keep_fft_index_errors(coordinate: tuple[int, int, int]) -> None:
+    volume = np.full((16, 128, 128, 1), 0.25, dtype=np.float32)
+
+    with pytest.raises(IndexError, match="out of bounds"):
+        fmedical.k_space_spike(volume, np.array([coordinate]), 0.25)

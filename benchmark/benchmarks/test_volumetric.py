@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import albumentations
 from albumentations.augmentations.medical import functional as fmedical
-from benchmarks.common import DTYPES, VOLUME_SIZES, make_volume
+from benchmarks.common import DTYPES, MRI_VOLUME_SIZES, VOLUME_SIZES, make_volume
 
 
 class TimeVolumetricTransforms:
@@ -142,11 +142,11 @@ class TimeGhostingArtifact:
 class TimeGibbsRinging:
     """Measure true 3D truncation through the kernel and public volume route."""
 
-    params = (tuple(VOLUME_SIZES), (1, 3, 5), tuple(DTYPES), (0.25, 0.5, 0.9))
+    params = (tuple(MRI_VOLUME_SIZES), (1, 3, 5), tuple(DTYPES), (0.25, 0.5, 0.9))
     param_names = ("size", "channels", "dtype", "fraction")
 
     def setup(self, size: str, channels: int, dtype: str, fraction: float) -> None:
-        self.volume = make_volume(size, channels, DTYPES[dtype])
+        self.volume = make_volume(size, channels, DTYPES[dtype], sizes=MRI_VOLUME_SIZES)
         self.pipeline = albumentations.Compose(
             [albumentations.GibbsRinging(retained_fraction_range=(fraction, fraction), p=1)], seed=137, strict=True
         )
@@ -164,11 +164,11 @@ class TimeGibbsRinging:
 class TimeKSpaceSpikeVolume:
     """Measure the analytic and FFT spike regions for MRI volumes."""
 
-    params = (tuple(VOLUME_SIZES), (1, 3, 5), tuple(DTYPES), (1, 5, 16), (False, True))
+    params = (tuple(MRI_VOLUME_SIZES), (1, 3, 5), tuple(DTYPES), (1, 5, 16), (False, True))
     param_names = ("size", "channels", "dtype", "spikes", "per_channel")
 
     def setup(self, size: str, channels: int, dtype: str, spikes: int, per_channel: bool) -> None:
-        self.volume = make_volume(size, channels, DTYPES[dtype])
+        self.volume = make_volume(size, channels, DTYPES[dtype], sizes=MRI_VOLUME_SIZES)
         kwargs = {
             "num_spikes_range": (spikes, spikes),
             "intensity_range": (0.25, 0.25),

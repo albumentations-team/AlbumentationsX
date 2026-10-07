@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import numpy as np
 
 SIZES = {
@@ -30,8 +32,8 @@ RELEASE_CORE_ANNOTATION_COUNTS = (10,)
 VOLUME_SIZES = {
     "small": (8, 64, 64),
     "medium": (16, 128, 128),
-    "large": (32, 256, 256),
 }
+MRI_VOLUME_SIZES = {**VOLUME_SIZES, "large": (32, 256, 256)}
 
 
 def make_image(size_name: str, channels: int, dtype: type[np.generic] = np.uint8) -> np.ndarray:
@@ -160,9 +162,11 @@ def make_volume(
     size_name: str = "small",
     channels: int = 1,
     dtype: type[np.generic] = np.uint8,
+    *,
+    sizes: Mapping[str, tuple[int, int, int]] = VOLUME_SIZES,
 ) -> np.ndarray:
     """Create a deterministic channel-last volume for benchmark inputs."""
-    depth, height, width = VOLUME_SIZES[size_name]
+    depth, height, width = sizes[size_name]
     rng = np.random.default_rng(137 + depth + height + width + channels)
     shape = (depth, height, width, channels)
     if dtype == np.uint8:

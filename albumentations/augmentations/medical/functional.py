@@ -174,6 +174,9 @@ def k_space_spike(
         and spikes.shape[-1] == 3
         and len(injections) <= 5
         and intensity <= 1
+        and all(
+            0 <= coord < size for coords, _ in injections for coord, size in zip(coords, img.shape[:3], strict=True)
+        )
         and img.size
         and img.min() >= 0
         and img.max() <= 1

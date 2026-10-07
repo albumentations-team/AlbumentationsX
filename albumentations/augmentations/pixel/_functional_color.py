@@ -782,10 +782,9 @@ def gamma_transform(img: ImageType, gamma: float) -> ImageType:
     midtones to adjust exposure and tonal contrast.
 
     For normalized intensities in [0, 1], output = input ** gamma: gamma > 1 darkens,
-    0 < gamma < 1 brightens, and gamma = 1 leaves float32 intensities unchanged.
+    0 < gamma < 1 brightens, and gamma = 1 leaves intensities unchanged.
     uint8 values are normalized by 255 before the power operation, then scaled back by 255
     and converted to uint8, truncating fractional values. float32 values are used directly.
-    At gamma = 1, floating-point roundoff before integer conversion can decrease some uint8 values by 1.
 
     Args:
         img (ImageType): Input image with uint8 values in [0, 255] or float32 values in [0, 1].
@@ -796,7 +795,7 @@ def gamma_transform(img: ImageType, gamma: float) -> ImageType:
 
     """
     if img.dtype == np.uint8:
-        table = (np.arange(0, 256.0 / 255, 1.0 / 255) ** gamma) * 255
+        table = (np.arange(256, dtype=np.float64) / 255) ** gamma * 255
         return sz_lut(cast("ImageUInt8", img), table.astype(np.uint8), inplace=False)
 
     return power(img, gamma)

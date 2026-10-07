@@ -1,5 +1,6 @@
 import hashlib
 from copy import deepcopy
+from math import isqrt
 
 import cv2
 import numpy as np
@@ -135,6 +136,22 @@ def test_gamma_transform(gamma, expected):
     img = fpixel.gamma_transform(img, gamma=gamma)
     assert img.dtype == np.dtype("uint8")
     np.testing.assert_array_equal(img, expected)
+
+
+@pytest.mark.parametrize(
+    ("gamma", "expected"),
+    [
+        (0.5, [isqrt(255 * value) for value in range(256)]),
+        (2, [value * value // 255 for value in range(256)]),
+    ],
+)
+def test_gamma_transform_uint8_exact_powers(gamma: float, expected: list[int]) -> None:
+    image = np.arange(256, dtype=np.uint8).reshape(16, 16, 1)
+
+    result = fpixel.gamma_transform(image, gamma)
+
+    assert result.dtype == image.dtype
+    np.testing.assert_array_equal(result.ravel(), expected)
 
 
 @pytest.mark.parametrize(["gamma", "expected"], [(1, 0.4), (10, 0.00010486)])

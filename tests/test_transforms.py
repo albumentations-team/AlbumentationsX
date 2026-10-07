@@ -34,6 +34,30 @@ from .utils import (
 )
 
 
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize(
+    ("target", "shape"),
+    [
+        ("image", (16, 16, 1)),
+        ("images", (2, 16, 16, 1)),
+        ("volume", (2, 16, 16, 1)),
+        ("volumes", (2, 2, 16, 16, 1)),
+    ],
+)
+def test_random_gamma_identity(dtype: np.dtype, target: str, shape: tuple[int, ...]) -> None:
+    source = np.resize(np.arange(256, dtype=np.uint8), shape)
+    if dtype == np.float32:
+        source = source.astype(np.float32) / 255
+    expected = source.copy()
+    transform = A.Compose([A.RandomGamma(gamma_range=(100, 100), p=1)], strict=True, telemetry=False)
+
+    result = transform(**{target: source})[target]
+
+    assert result.dtype == source.dtype
+    np.testing.assert_array_equal(result, expected)
+    np.testing.assert_array_equal(source, expected)
+
+
 def test_transpose_both_image_and_mask():
     image = np.ones((8, 6, 3))
     mask = np.ones((8, 6))

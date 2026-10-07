@@ -1198,9 +1198,7 @@ class RandomGamma(ImageOnlyTransform):
 
     Note:
         - For normalized intensities in [0, 1], gamma > 1 darkens the image, while
-          0 < gamma < 1 brightens it. Gamma = 1 leaves float32 intensities unchanged.
-        - At gamma = 1, some uint8 values can decrease by 1 because of floating-point roundoff
-          before conversion to integers.
+          0 < gamma < 1 brightens it. Gamma = 1 leaves intensities unchanged.
         - This transform is particularly useful for:
           * Simulating different lighting conditions
           * Correcting for non-linear display characteristics

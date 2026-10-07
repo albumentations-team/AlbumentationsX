@@ -90,7 +90,7 @@ jobs:
         --output release-candidate-evidence/benchmark-performance-budget-${{ matrix.operating-system }}-${{ matrix.python-version }}.json
     - name: Upload release candidate evidence
       if: always()
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: release-candidate-${{ matrix.operating-system }}-${{ matrix.python-version }}
         path: release-candidate-evidence/
@@ -215,7 +215,7 @@ jobs:
         --output release-candidate-performance-evidence/benchmark-performance-budget.json
     - name: Upload release candidate performance evidence
       if: always()
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: release-candidate-performance
         path: release-candidate-performance-evidence/

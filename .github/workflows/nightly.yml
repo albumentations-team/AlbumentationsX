@@ -40,7 +40,7 @@ jobs:
           --junitxml=nightly-evidence/junit.xml
     - name: Upload compatibility evidence
       if: always()
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: nightly-compatibility-${{ matrix.operating-system }}-${{ matrix.python-version }}
         path: nightly-evidence/
@@ -115,7 +115,7 @@ jobs:
         --allow-incomplete
     - name: Upload lower-bound evidence
       if: always()
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: lower-bound-evidence
         path: nightly-evidence/
@@ -158,7 +158,7 @@ jobs:
         --allow-incomplete
     - name: Upload property evidence
       if: always()
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: property-regression-evidence
         path: nightly-evidence/
@@ -193,7 +193,7 @@ jobs:
         --command "optional extras smoke"
     - name: Upload optional extras evidence
       if: always()
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: optional-extras-evidence
         path: nightly-evidence/

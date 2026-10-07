@@ -70,7 +70,7 @@ jobs:
           --summary "${GITHUB_STEP_SUMMARY}"
 
       - name: Upload routing evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: pr-ci-plan
           path: ci-plan/
@@ -205,7 +205,7 @@ jobs:
           --allow-incomplete
       - name: Upload compatibility evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: compatibility-${{ matrix.operating-system }}-${{ matrix.python-version }}
           path: ci-evidence/
@@ -309,7 +309,7 @@ jobs:
           --no-deps --disable-pip --format=json --output dependency-audit.json
       - name: Upload dependency audit evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dependency-audit-evidence
           path: dependency-audit.json
@@ -571,7 +571,7 @@ jobs:
           --github-output "${GITHUB_OUTPUT}"
       - name: Upload publishable release bundle
         if: success()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ steps.finalize.outputs.artifact_name }}
           path: ${{ runner.temp }}/release-bundle/
@@ -580,7 +580,7 @@ jobs:
           retention-days: 90
       - name: Upload failed preflight diagnostics
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-diagnostics-${{ steps.metadata.outputs.package_version }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/release-bundle/evidence/

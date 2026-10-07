@@ -30,6 +30,7 @@ RELEASE_CORE_ANNOTATION_COUNTS = (10,)
 VOLUME_SIZES = {
     "small": (8, 64, 64),
     "medium": (16, 128, 128),
+    "large": (32, 256, 256),
 }
 
 

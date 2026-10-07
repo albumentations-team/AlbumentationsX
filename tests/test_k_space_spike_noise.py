@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from albucore import from_float, to_float
+from scipy import fft
 
 import albumentations as A
 from albumentations.augmentations.medical import functional as fmedical
@@ -464,3 +466,108 @@ def test_extreme_intensity_stays_finite_and_clipped() -> None:
 def test_k_space_spike_noise_rejects_invalid_ranges(kwargs: dict[str, object], match: str) -> None:
     with pytest.raises(ValueError, match=match):
         A.KSpaceSpikeNoise(**kwargs)
+
+
+def _full_spectrum_spike_reference(volume: np.ndarray, spikes: np.ndarray, intensity: float) -> np.ndarray:
+    axes = (0, 1, 2)
+    shape = volume.shape[:3]
+    spectrum = np.fft.fftn(volume.astype(np.float64), axes=axes)
+    amplitude = intensity * np.abs(spectrum).max()
+    for spike in spikes:
+        coordinate = tuple(int(value) for value in spike)
+        mirror = tuple((-value) % size for value, size in zip(coordinate, shape, strict=True))
+        spectrum[coordinate] += amplitude
+        if mirror != coordinate:
+            spectrum[mirror] += amplitude
+    return np.clip(np.fft.ifftn(spectrum, axes=axes).real, 0, 1)
+
+
+@pytest.mark.parametrize("shape", [(1, 9, 7, 1), (7, 9, 11, 3), (8, 16, 18, 5), (16, 128, 128, 3)])
+@pytest.mark.parametrize("num_spikes", [1, 5, 16])
+def test_volume_spikes_match_full_spectrum_reference_without_mutating_input(
+    shape: tuple[int, int, int, int], num_spikes: int
+) -> None:
+    rng = np.random.default_rng(137)
+    raw = rng.random((shape[0], shape[1], shape[2] * 2, shape[3]), dtype=np.float32)
+    volume = raw[:, :, ::2]
+    volume.setflags(write=False)
+    original = volume.copy()
+    spikes = rng.integers(0, shape[:3], size=(num_spikes, 3))
+
+    result = fmedical.k_space_spike(volume, spikes, 0.25)
+
+    np.testing.assert_allclose(result, _full_spectrum_spike_reference(volume, spikes, 0.25), atol=2e-6)
+    np.testing.assert_array_equal(volume, original)
+    assert not np.shares_memory(result, volume)
+
+
+@pytest.mark.parametrize("spike", [(0, 0, 0), (8, 64, 64), (1, 0, 0), (1, 3, 127)])
+def test_volume_spike_dc_nyquist_mirrors_and_duplicates(spike: tuple[int, int, int]) -> None:
+    volume = np.full((16, 128, 128, 3), 0.25, dtype=np.float32)
+    spikes = np.array([spike, spike])
+
+    result = fmedical.k_space_spike(volume, spikes, 0.25)
+
+    np.testing.assert_allclose(result, _full_spectrum_spike_reference(volume, spikes, 0.25), atol=2e-6)
+
+
+def test_signed_volume_spike_amplitude_uses_spectral_maximum() -> None:
+    volume = np.random.default_rng(137).uniform(-0.5, 0.5, (16, 128, 128, 3)).astype(np.float32)
+    spikes = np.array([[1, 3, 7], [2, 0, 0]])
+
+    result = fmedical.k_space_spike(volume, spikes, 0.25)
+
+    np.testing.assert_allclose(result, _full_spectrum_spike_reference(volume, spikes, 0.25), atol=2e-6)
+
+
+def test_large_mri_volume_spikes_match_full_spectrum_reference() -> None:
+    volume = np.random.default_rng(137).random((32, 256, 256, 1), dtype=np.float32)
+    spikes = np.array([[5, 13, 127], [15, 91, 254]])
+
+    result = fmedical.k_space_spike(volume, spikes, 0.25)
+
+    np.testing.assert_allclose(result, _full_spectrum_spike_reference(volume, spikes, 0.25), atol=2e-6)
+
+
+@pytest.mark.parametrize("shape", [(8, 9, 11, 3), (32, 256, 256, 1)])
+def test_uint8_volume_keeps_half_spectrum_rounding(shape: tuple[int, int, int, int]) -> None:
+    volume = np.random.default_rng(137).integers(0, 256, shape, dtype=np.uint8)
+    spikes = np.array([[1, 3, 0], [0, 0, 0]])
+    expected = _boundary_plane_spike_reference(volume, spikes, 0.25)
+
+    result = fmedical.k_space_spike(volume, spikes, 0.25)
+
+    np.testing.assert_array_equal(result, expected)
+
+
+def _boundary_plane_spike_reference(volume: np.ndarray, spikes: np.ndarray, intensity: float) -> np.ndarray:
+    spectrum = fft.rfftn(volume if volume.dtype == np.float32 else to_float(volume), axes=(0, 1, 2), workers=1)
+    amplitude = intensity * float(np.abs(spectrum).max())
+    for spike in spikes:
+        coordinate = tuple(int(value) for value in spike)
+        mirror = tuple((-value) % size for value, size in zip(coordinate, volume.shape[:3], strict=True))
+        spectrum[coordinate] += amplitude
+        if mirror != coordinate:
+            spectrum[mirror] += amplitude
+    signal = fft.irfftn(spectrum, s=volume.shape[:3], axes=(0, 1, 2), workers=1)
+    result = np.clip(signal, 0, 1)
+    return result if volume.dtype == np.float32 else from_float(result, np.uint8)
+
+
+@pytest.mark.parametrize("intensity", [8.0, 1024.0])
+def test_large_spike_intensity_keeps_fft_roundoff(intensity: float) -> None:
+    volume = np.random.default_rng(137).random((16, 128, 128, 3), dtype=np.float32)
+    spikes = np.array([[1, 3, 0]])
+
+    result = fmedical.k_space_spike(volume, spikes, intensity)
+
+    np.testing.assert_array_equal(result, _boundary_plane_spike_reference(volume, spikes, intensity))
+
+
+def test_unnormalized_float32_volume_keeps_fft_roundoff() -> None:
+    volume = np.random.default_rng(137).random((16, 128, 128, 3), dtype=np.float32) * 8
+    spikes = np.array([[1, 3, 0]])
+
+    result = fmedical.k_space_spike(volume, spikes, 0.25)
+
+    np.testing.assert_array_equal(result, _boundary_plane_spike_reference(volume, spikes, 0.25))

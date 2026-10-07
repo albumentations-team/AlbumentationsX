@@ -571,3 +571,17 @@ def test_unnormalized_float32_volume_keeps_fft_roundoff() -> None:
     result = fmedical.k_space_spike(volume, spikes, 0.25)
 
     np.testing.assert_array_equal(result, _boundary_plane_spike_reference(volume, spikes, 0.25))
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("empty_spikes", [False, True])
+def test_functional_noop_preserves_dtype_specific_output_ownership(dtype: type[np.generic], empty_spikes: bool) -> None:
+    raw = np.random.default_rng(137).integers(0, 256, (5, 9, 11, 3), dtype=np.uint8)
+    volume = raw if dtype == np.uint8 else to_float(raw)
+    spikes = np.empty((0, 3), dtype=np.int64) if empty_spikes else np.array([[1, 3, 0]])
+    intensity = 0.25 if empty_spikes else 0.0
+
+    result = fmedical.k_space_spike(volume, spikes, intensity)
+
+    np.testing.assert_array_equal(result, volume)
+    assert np.shares_memory(result, volume) == (dtype == np.float32)

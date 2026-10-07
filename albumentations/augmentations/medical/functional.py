@@ -158,11 +158,11 @@ def k_space_spike(
     use cosine waves. Other inputs retain real FFT reconstruction, including the uint8 rounding behavior.
     """
     if intensity == 0 or spikes.size == 0:
-        return img
+        return _k_space_spike_fft(img, [], intensity, 0)
 
     injections = _spike_injections(spikes)
     if not injections:
-        return img
+        return _k_space_spike_fft(img, injections, intensity, 0)
 
     if (
         img.dtype == np.float32
@@ -217,6 +217,8 @@ def _k_space_spike_fft(
     ndim: int,
 ) -> ImageType:
     """Reconstruct general spike layouts with the original dtype-normalized real FFT operation."""
+    if intensity == 0 or not injections:
+        return img
     is_batch = img.ndim == ndim + 2
     axes = tuple(range(1, ndim + 1)) if is_batch else tuple(range(ndim))
     axis_sizes = tuple(img.shape[axis] for axis in axes)

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import builtins
 import importlib
+import sys
+import types
 from pathlib import Path
 from typing import Any
 
@@ -61,6 +64,33 @@ def _profile_case_names() -> tuple[str, ...]:
     return tuple(
         f"{class_name}.{method_name}" for _, class_name, _, methods in RELEASE_CORE_CASES for method_name in methods
     )
+
+
+def test_volumetric_benchmark_discovery_without_medical_package(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.syspath_prepend(str(BENCHMARK_ROOT))
+    for cached_name in tuple(sys.modules):
+        if cached_name.startswith("albumentations.augmentations.medical"):
+            monkeypatch.delitem(sys.modules, cached_name)
+    monkeypatch.setitem(sys.modules, "albumentations", types.ModuleType("albumentations"))
+
+    original_import = builtins.__import__
+
+    def import_without_medical(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name.startswith("albumentations.augmentations.medical"):
+            raise ModuleNotFoundError("medical package is unavailable", name=name)
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", import_without_medical)
+    module_name = "benchmarks.test_volumetric"
+    previous_module = sys.modules.pop(module_name, None)
+    try:
+        benchmark_module = importlib.import_module(module_name)
+        assert Path(benchmark_module.__file__).resolve() == BENCHMARK_ROOT / "benchmarks" / "test_volumetric.py"
+        assert hasattr(benchmark_module, "TimeVolumetricTransforms")
+    finally:
+        sys.modules.pop(module_name, None)
+        if previous_module is not None:
+            sys.modules[module_name] = previous_module
 
 
 def test_release_core_profile_has_exactly_the_runnable_cases(monkeypatch: pytest.MonkeyPatch) -> None:

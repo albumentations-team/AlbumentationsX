@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import importlib
+
 import albumentations
-from albumentations.augmentations.medical import functional as fmedical
 from benchmarks.common import DTYPES, MRI_VOLUME_SIZES, VOLUME_SIZES, make_volume
 
 
@@ -89,6 +90,7 @@ class TimeMotionArtifact:
     param_names = ("size", "channels", "dtype", "events")
 
     def setup(self, size: str, channels: int, dtype: str, events: int) -> None:
+        self.fmedical = importlib.import_module("albumentations.augmentations.medical.functional")
         self.volume = make_volume(size, channels, DTYPES[dtype])
         self.motion = albumentations.Compose(
             [albumentations.MotionArtifact(num_events_range=(events, events), p=1)],
@@ -105,7 +107,9 @@ class TimeMotionArtifact:
         self.motion(volume=self.volume)
 
     def time_motion_kernel(self, size: str, channels: int, dtype: str, events: int) -> None:
-        fmedical.motion_artifact(self.volume, self.motion_params["matrices"], self.motion_params["boundaries"], 2, 1)
+        self.fmedical.motion_artifact(
+            self.volume, self.motion_params["matrices"], self.motion_params["boundaries"], 2, 1
+        )
 
     def peakmem_motion_artifact(self, size: str, channels: int, dtype: str, events: int) -> None:
         self.motion(volume=self.volume)
@@ -118,6 +122,7 @@ class TimeGhostingArtifact:
     param_names = ("size", "channels", "dtype", "axis")
 
     def setup(self, size: str, channels: int, dtype: str, axis: int) -> None:
+        self.fmedical = importlib.import_module("albumentations.augmentations.medical.functional")
         self.volume = make_volume(size, channels, DTYPES[dtype])
         self.pipeline = albumentations.Compose(
             [
@@ -130,7 +135,7 @@ class TimeGhostingArtifact:
         )
 
     def time_kernel(self, size: str, channels: int, dtype: str, axis: int) -> None:
-        fmedical.ghosting_artifact(self.volume, 2, 0.4, axis, 0.02)
+        self.fmedical.ghosting_artifact(self.volume, 2, 0.4, axis, 0.02)
 
     def time_compose(self, size: str, channels: int, dtype: str, axis: int) -> None:
         self.pipeline(volume=self.volume)
@@ -146,13 +151,14 @@ class TimeGibbsRinging:
     param_names = ("size", "channels", "dtype", "fraction")
 
     def setup(self, size: str, channels: int, dtype: str, fraction: float) -> None:
+        self.fmedical = importlib.import_module("albumentations.augmentations.medical.functional")
         self.volume = make_volume(size, channels, DTYPES[dtype], sizes=MRI_VOLUME_SIZES)
         self.pipeline = albumentations.Compose(
             [albumentations.GibbsRinging(retained_fraction_range=(fraction, fraction), p=1)], seed=137, strict=True
         )
 
     def time_kernel(self, size: str, channels: int, dtype: str, fraction: float) -> None:
-        fmedical.gibbs_ringing(self.volume, fraction)
+        self.fmedical.gibbs_ringing(self.volume, fraction)
 
     def time_compose(self, size: str, channels: int, dtype: str, fraction: float) -> None:
         self.pipeline(volume=self.volume)
@@ -168,6 +174,7 @@ class TimeKSpaceSpikeVolume:
     param_names = ("size", "channels", "dtype", "spikes", "per_channel")
 
     def setup(self, size: str, channels: int, dtype: str, spikes: int, per_channel: bool) -> None:
+        self.fmedical = importlib.import_module("albumentations.augmentations.medical.functional")
         self.volume = make_volume(size, channels, DTYPES[dtype], sizes=MRI_VOLUME_SIZES)
         kwargs = {
             "num_spikes_range": (spikes, spikes),
@@ -182,7 +189,7 @@ class TimeKSpaceSpikeVolume:
         self.spikes = groups[0]["params"]["spikes"]
 
     def time_kernel(self, size: str, channels: int, dtype: str, spikes: int, per_channel: bool) -> None:
-        fmedical.k_space_spike(self.volume, self.spikes, 0.25)
+        self.fmedical.k_space_spike(self.volume, self.spikes, 0.25)
 
     def time_compose(self, size: str, channels: int, dtype: str, spikes: int, per_channel: bool) -> None:
         self.pipeline(volume=self.volume)

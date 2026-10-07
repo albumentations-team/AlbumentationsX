@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import albumentations
 from albumentations.augmentations.medical import functional as fmedical
-from benchmarks.common import DTYPES, SIZES, VOLUME_SIZES, make_image, make_volume
+from benchmarks.common import DTYPES, MRI_VOLUME_SIZES, SIZES, make_image, make_volume
 
 BIAS_FIELD_CASES = tuple(
     f"{target}|{size}|{channels}|{dtype}|{per_channel}"
-    for target, sizes in (("image", SIZES), ("volume", VOLUME_SIZES))
+    for target, sizes in (("image", SIZES), ("volume", MRI_VOLUME_SIZES))
     for size in sizes
     for channels in (1, 3, 5)
     for dtype in DTYPES
@@ -25,8 +25,11 @@ class TimeBiasField:
     def setup(self, case_id: str) -> None:
         target, size, channels, dtype, per_channel = case_id.split("|")
         self.target = target
-        factory = make_image if target == "image" else make_volume
-        self.data = factory(size, int(channels), DTYPES[dtype])
+        self.data = (
+            make_image(size, int(channels), DTYPES[dtype])
+            if target == "image"
+            else make_volume(size, int(channels), DTYPES[dtype], sizes=MRI_VOLUME_SIZES)
+        )
         kwargs = {"std_range": (0.25, 0.25), "per_channel": per_channel == "True", "p": 1}
         self.pipeline = albumentations.Compose([albumentations.BiasField(**kwargs)], seed=137, strict=True)
         capture = albumentations.ReplayCompose([albumentations.BiasField(**kwargs)])

@@ -933,9 +933,9 @@ class KSpaceSpikeNoise(_FullVolumeNoiseTransform):
         Any
 
     Notes:
-        - The Fourier transform is computed over spatial axes only; batch and channel dimensions
-          are excluded. Spikes are injected into one transform-domain representation and a single
-          inverse transform reconstructs the output.
+        - Fourier frequencies refer to spatial axes only; batch and channel dimensions are excluded.
+          Shared float32 volume spikes can be reconstructed analytically. Float32 results may differ
+          from FFT reconstruction by roundoff; uint8 retains FFT reconstruction and its rounding.
         - Each spike injects a real amplitude `intensity * max|F|` at the sampled bin and at its
           conjugate mirror, so the half-spectrum stays Hermitian and the reconstruction is real
           without discarding imaginary parts. Self-conjugate bins (DC and the Nyquist bin of even

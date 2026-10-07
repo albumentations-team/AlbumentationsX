@@ -8,8 +8,7 @@ import albumentations as A
 from albumentations.augmentations.medical import functional as fmedical
 
 
-def _reference_bias_field(img: np.ndarray, coarse: np.ndarray) -> np.ndarray:
-    spatial_shape = img.shape[: coarse.ndim - 1]
+def _reference_bias_gain(coarse: np.ndarray, spatial_shape: tuple[int, ...]) -> np.ndarray:
     coordinates = np.meshgrid(
         *[
             (np.arange(size, dtype=np.float64) + 0.5) * coarse_size / size - 0.5
@@ -24,10 +23,15 @@ def _reference_bias_field(img: np.ndarray, coarse: np.ndarray) -> np.ndarray:
         ],
         axis=-1,
     )
+    return np.exp(log_gain)
+
+
+def _reference_bias_field(img: np.ndarray, coarse: np.ndarray) -> np.ndarray:
+    spatial_shape = img.shape[: coarse.ndim - 1]
     signal = img.astype(np.float64)
     if img.dtype == np.uint8:
         signal /= 255
-    result = np.clip(signal * np.exp(log_gain), 0, 1)
+    result = np.clip(signal * _reference_bias_gain(coarse, spatial_shape), 0, 1)
     return np.rint(result * 255).astype(np.uint8) if img.dtype == np.uint8 else result.astype(np.float32)
 
 
@@ -246,3 +250,30 @@ def test_unsupported_dtype_is_rejected(dtype: type[np.generic]) -> None:
 def test_invalid_bias_field_policy_is_rejected(kwargs: dict[str, object]) -> None:
     with pytest.raises(ValueError):
         A.BiasField(**kwargs, strict=True)
+
+
+@pytest.mark.parametrize("shape", [(16, 128, 127, 1), (16, 128, 128, 1)])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_large_bias_field_matches_reference_at_contiguity_threshold(
+    shape: tuple[int, int, int, int], dtype: type[np.generic]
+) -> None:
+    rng = np.random.default_rng(137)
+    coarse = rng.standard_normal((2, 3, 4, 1), dtype=np.float32) * 0.25
+    raw = rng.integers(0, 256, shape, dtype=np.uint8)
+    volume = raw if dtype == np.uint8 else raw.astype(np.float32) / 255
+    original_volume = volume.copy()
+    original_coarse = coarse.copy()
+    volume.setflags(write=False)
+    coarse.setflags(write=False)
+
+    field = fmedical.generate_bias_field(coarse, shape[:-1])
+    result = fmedical.bias_field(volume, coarse)
+    expected_field = _reference_bias_gain(coarse, shape[:-1])
+    expected = _reference_bias_field(volume, coarse)
+
+    np.testing.assert_allclose(field, expected_field, atol=2e-6, rtol=1e-5)
+    np.testing.assert_allclose(result, expected, atol=1 if dtype == np.uint8 else 2e-6, rtol=1e-5)
+    np.testing.assert_array_equal(volume, original_volume)
+    np.testing.assert_array_equal(coarse, original_coarse)
+    assert not np.shares_memory(field, coarse)
+    assert not np.shares_memory(result, volume)

@@ -27,6 +27,10 @@ from ._functional_histology import (
     rgb_to_optical_density,
 )
 
+_BIAS_FIELD_MIN_CONTIGUOUS_ELEMENTS = 262_144
+_K_SPACE_MIN_ANALYTIC_DEPTH = 16
+_K_SPACE_MIN_ANALYTIC_PLANE_SIZE = 128
+
 __all__ = [
     "STAIN_MATRICES",
     "MacenkoNormalizer",
@@ -58,7 +62,8 @@ def gibbs_ringing(img: ImageType, retained_fraction: float) -> ImageType:
 
     Spatial axes use signed frequency bins with abs(k) <= floor(retained_fraction * length / 2).
     Zeroing slabs of the real half-spectrum avoids shifted spectra and a dense spatial mask.
-    The complex inverse axes reuse the owned spectrum before the final real inverse, limiting temporary storage.
+    Strong truncation transforms only retained last-axis frequencies over the remaining axes.
+    The full owned spectrum is reused before the final real inverse, limiting temporary storage.
     """
     spatial_shape = img.shape[:-1]
     cutoffs = tuple(int(retained_fraction * size / 2) for size in spatial_shape)
@@ -66,12 +71,23 @@ def gibbs_ringing(img: ImageType, retained_fraction: float) -> ImageType:
         return img
 
     axes = tuple(range(len(spatial_shape)))
-    spectrum = fft.rfftn(img, axes=axes, workers=1)
+    if retained_fraction <= 0.5:
+        spectrum = fft.rfft(img, axis=axes[-1], workers=1)
+        retained = spectrum[..., : cutoffs[-1] + 1, :]
+        retained = fft.fftn(retained, axes=axes[:-1], workers=1, overwrite_x=True)
+        spectrum[..., cutoffs[-1] + 1 :, :] = 0
+    else:
+        spectrum = fft.rfftn(img, axes=axes, workers=1)
+        retained = spectrum
     for axis, (size, cutoff) in enumerate(zip(spatial_shape, cutoffs, strict=True)):
         index = [slice(None)] * img.ndim
         index[axis] = slice(cutoff + 1, None if axis == axes[-1] else size - cutoff)
-        spectrum[tuple(index)] = 0
-    spectrum = fft.ifftn(spectrum, axes=axes[:-1], workers=1, overwrite_x=True)
+        retained[tuple(index)] = 0
+    reconstructed = fft.ifftn(retained, axes=axes[:-1], workers=1, overwrite_x=True)
+    if retained_fraction <= 0.5:
+        spectrum[..., : cutoffs[-1] + 1, :] = reconstructed
+    else:
+        spectrum = reconstructed
     return fft.irfft(spectrum, n=spatial_shape[-1], axis=axes[-1], workers=1)
 
 
@@ -109,6 +125,8 @@ def generate_bias_field(coarse_field: np.ndarray, spatial_shape: tuple[int, ...]
         field = resize3d(coarse_field, (spatial_shape[0], spatial_shape[1], spatial_shape[2]), cv2.INTER_LINEAR)
     else:
         field = fgeometric.resize(coarse_field, (spatial_shape[0], spatial_shape[1]), interpolation=cv2.INTER_LINEAR)
+    if field.ndim == 4 and field.size >= _BIAS_FIELD_MIN_CONTIGUOUS_ELEMENTS:
+        field = np.ascontiguousarray(field)
     return albucore_exp(field, inplace=True)
 
 
@@ -128,25 +146,82 @@ def rician_noise(
 
 
 @preserve_channel_dim
-@float32_io
 def k_space_spike(
     img: ImageType,
     spikes: np.ndarray,
     intensity: float,
 ) -> ImageType:
-    """Inject point spikes into the Fourier spectrum and reconstruct via inverse FFT.
+    """Apply Hermitian MRI Fourier spikes to channel-last images and volumes.
 
     Each spike adds a real amplitude `intensity * max|F|` at its frequency bin and at the
-    conjugate mirror, keeping the half-spectrum Hermitian so the reconstruction is real.
+    conjugate mirror. Large normalized float32 volumes with up to five shared spikes and intensity <= 1
+    use cosine waves. Other inputs retain real FFT reconstruction, including the uint8 rounding behavior.
     """
     if intensity == 0 or spikes.size == 0:
-        return img
+        return _k_space_spike_fft(img, [], intensity, 0)
 
     injections = _spike_injections(spikes)
     if not injections:
-        return img
+        return _k_space_spike_fft(img, injections, intensity, 0)
 
-    ndim = spikes.shape[-1]
+    if (
+        img.dtype == np.float32
+        and img.ndim == 4
+        and img.shape[0] >= _K_SPACE_MIN_ANALYTIC_DEPTH
+        and img.shape[1] >= _K_SPACE_MIN_ANALYTIC_PLANE_SIZE
+        and img.shape[2] >= _K_SPACE_MIN_ANALYTIC_PLANE_SIZE
+        and spikes.ndim == 2
+        and spikes.shape[-1] == 3
+        and len(injections) <= 5
+        and intensity <= 1
+        and all(
+            0 <= coord < size for coords, _ in injections for coord, size in zip(coords, img.shape[:3], strict=True)
+        )
+        and img.size
+        and img.min() >= 0
+        and img.max() <= 1
+    ):
+        return _k_space_spike_volume(img, injections, intensity)
+    return _k_space_spike_fft(img, injections, intensity, spikes.shape[-1])
+
+
+def _k_space_spike_volume(
+    volume: ImageType,
+    injections: list[tuple[tuple[int, ...], int | None]],
+    intensity: float,
+) -> ImageType:
+    """Add shared Fourier spike pairs using one owned output and XY-sized scratch buffers."""
+    spatial_shape = volume.shape[:3]
+    # The spectral maximum of nonnegative magnitude data is its DC coefficient.
+    max_channel_mean = float(volume.mean(axis=(0, 1, 2), dtype=np.float64).max())
+    result = volume.copy()
+    working = np.empty(spatial_shape[1:], dtype=np.complex64)
+    noise = np.empty(spatial_shape[1:], dtype=np.float32)
+    for coords, _ in injections:
+        factors = [
+            np.exp(2j * np.pi * coord * np.arange(size) / size).astype(np.complex64)
+            for coord, size in zip(coords, spatial_shape, strict=True)
+        ]
+        plane = factors[1][:, None] * factors[2][None, :]
+        self_conjugate = all((2 * coord) % size == 0 for coord, size in zip(coords, spatial_shape, strict=True))
+        amplitude = np.float32(intensity * max_channel_mean * (1 if self_conjugate else 2))
+        for depth, depth_factor in enumerate(factors[0]):
+            np.multiply(plane, depth_factor, out=working)
+            np.multiply(working.real, amplitude, out=noise)
+            np.add(result[depth], noise[..., None], out=result[depth])
+    return np.clip(result, 0.0, 1.0, out=result)
+
+
+@float32_io
+def _k_space_spike_fft(
+    img: ImageType,
+    injections: list[tuple[tuple[int, ...], int | None]],
+    intensity: float,
+    ndim: int,
+) -> ImageType:
+    """Reconstruct general spike layouts with the original dtype-normalized real FFT operation."""
+    if intensity == 0 or not injections:
+        return img
     is_batch = img.ndim == ndim + 2
     axes = tuple(range(1, ndim + 1)) if is_batch else tuple(range(ndim))
     axis_sizes = tuple(img.shape[axis] for axis in axes)

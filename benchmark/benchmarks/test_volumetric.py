@@ -86,12 +86,12 @@ class TimeAffine3D:
 class TimeMotionArtifact:
     """Measure MRI motion reconstruction across channels, dtype, volume size, and event count."""
 
-    params = (tuple(VOLUME_SIZES), (1, 3, 5), tuple(DTYPES), (1, 4))
+    params = (tuple(MRI_VOLUME_SIZES), (1, 3, 5), tuple(DTYPES), (1, 2, 4))
     param_names = ("size", "channels", "dtype", "events")
 
     def setup(self, size: str, channels: int, dtype: str, events: int) -> None:
         self.fmedical = importlib.import_module("albumentations.augmentations.medical.functional")
-        self.volume = make_volume(size, channels, DTYPES[dtype])
+        self.volume = make_volume(size, channels, DTYPES[dtype], sizes=MRI_VOLUME_SIZES)
         self.motion = albumentations.Compose(
             [albumentations.MotionArtifact(num_events_range=(events, events), p=1)],
             seed=137,

@@ -279,10 +279,13 @@ def test_large_bias_field_matches_reference_at_contiguity_threshold(
     assert not np.shares_memory(result, volume)
 
 
-@pytest.mark.parametrize("coarse_shape", [(2, 3, 4, 1), (2, 3, 4, 5), (16, 3, 4, 5), (16, 128, 128, 5)])
+@pytest.mark.parametrize(
+    ("coarse_shape", "streaming_eligible"),
+    [((2, 3, 4, 1), False), ((2, 3, 4, 5), True), ((16, 3, 4, 5), True), ((16, 128, 128, 5), False)],
+)
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
 def test_large_volume_gain_matches_interpolation_reference(
-    coarse_shape: tuple[int, int, int, int], dtype: type[np.generic]
+    coarse_shape: tuple[int, int, int, int], dtype: type[np.generic], streaming_eligible: bool, mocker
 ) -> None:
     rng = np.random.default_rng(137)
     raw = rng.integers(0, 256, (16, 128, 128, 5), dtype=np.uint8)
@@ -292,6 +295,8 @@ def test_large_volume_gain_matches_interpolation_reference(
     original_volume, original_coarse = volume.copy(), coarse.copy()
     volume.setflags(write=False)
     coarse.setflags(write=False)
+    streaming = mocker.spy(fmedical, "_bias_field_volume")
+    full_field = mocker.spy(fmedical, "generate_bias_field")
 
     result = fmedical.bias_field(volume, coarse)
 
@@ -299,3 +304,24 @@ def test_large_volume_gain_matches_interpolation_reference(
     np.testing.assert_array_equal(volume, original_volume)
     np.testing.assert_array_equal(coarse, original_coarse)
     assert not np.shares_memory(result, volume)
+    expected_streaming = streaming_eligible and dtype == np.float32
+    assert streaming.call_count == int(expected_streaming)
+    assert full_field.call_count == int(not expected_streaming)
+
+
+@pytest.mark.parametrize("is_batch", [False, True])
+def test_direct_float32_batch_shares_one_volume_field(is_batch: bool, mocker) -> None:
+    rng = np.random.default_rng(137)
+    volumes = rng.random((4, 64, 1024, 1, 1), dtype=np.float32) * 0.5
+    coarse = rng.standard_normal((2, 2, 1, 1), dtype=np.float32) * 0.25
+    original = volumes.copy()
+    volumes.setflags(write=False)
+    streaming = mocker.spy(fmedical, "_bias_field_volume")
+
+    result = fmedical.bias_field(volumes, coarse, is_batch=is_batch)
+
+    expected = np.stack([_reference_bias_field(volume, coarse) for volume in volumes])
+    np.testing.assert_allclose(result, expected, atol=2e-6)
+    np.testing.assert_array_equal(volumes, original)
+    assert not np.shares_memory(result, volumes)
+    streaming.assert_not_called()

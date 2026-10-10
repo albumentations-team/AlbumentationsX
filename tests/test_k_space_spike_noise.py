@@ -482,10 +482,19 @@ def _full_spectrum_spike_reference(volume: np.ndarray, spikes: np.ndarray, inten
     return np.clip(np.fft.ifftn(spectrum, axes=axes).real, 0, 1)
 
 
-@pytest.mark.parametrize("shape", [(1, 9, 7, 1), (7, 9, 11, 3), (8, 16, 18, 5), (16, 128, 128, 3), (17, 129, 131, 5)])
-@pytest.mark.parametrize("num_spikes", [1, 5, 16])
+@pytest.mark.parametrize(
+    ("shape", "analytic_eligible"),
+    [
+        ((1, 9, 7, 1), False),
+        ((7, 9, 11, 3), False),
+        ((8, 16, 18, 5), False),
+        ((16, 128, 128, 3), True),
+        ((17, 129, 131, 5), True),
+    ],
+)
+@pytest.mark.parametrize(("num_spikes", "intensity"), [(1, 0.25), (5, 0.25), (16, 0.25), (5, 1.0)])
 def test_volume_spikes_match_full_spectrum_reference_without_mutating_input(
-    shape: tuple[int, int, int, int], num_spikes: int
+    shape: tuple[int, int, int, int], num_spikes: int, intensity: float, analytic_eligible: bool, mocker
 ) -> None:
     rng = np.random.default_rng(137)
     raw = rng.random((shape[0], shape[1], shape[2] * 2, shape[3]), dtype=np.float32)
@@ -493,12 +502,36 @@ def test_volume_spikes_match_full_spectrum_reference_without_mutating_input(
     volume.setflags(write=False)
     original = volume.copy()
     spikes = rng.integers(0, shape[:3], size=(num_spikes, 3))
+    analytic = mocker.spy(fmedical, "_k_space_spike_volume")
+    fourier = mocker.spy(fmedical, "_k_space_spike_fft")
 
-    result = fmedical.k_space_spike(volume, spikes, 0.25)
+    result = fmedical.k_space_spike(volume, spikes, intensity)
 
-    np.testing.assert_allclose(result, _full_spectrum_spike_reference(volume, spikes, 0.25), atol=2e-6)
+    np.testing.assert_allclose(result, _full_spectrum_spike_reference(volume, spikes, intensity), atol=2e-6)
     np.testing.assert_array_equal(volume, original)
     assert not np.shares_memory(result, volume)
+    expected_analytic = analytic_eligible and num_spikes <= 5
+    assert analytic.call_count == int(expected_analytic)
+    assert fourier.call_count == int(not expected_analytic)
+
+
+@pytest.mark.parametrize("channels", [1, 5, 64])
+def test_shared_spike_scratch_storage_is_independent_of_channels(channels: int, mocker) -> None:
+    volume = np.full((16, 128, 128, channels), 0.25, dtype=np.float32)
+    matrix_product = mocker.spy(fmedical, "matmul")
+    additions = mocker.spy(fmedical, "add")
+
+    result = fmedical.k_space_spike(volume, np.array([[0, 0, 0]]), 0.25)
+
+    np.testing.assert_array_equal(result, 0.3125)
+    np.testing.assert_array_equal(volume, 0.25)
+    assert not np.shares_memory(result, volume)
+    assert matrix_product.call_count > 0
+    assert additions.call_count > 0
+    for call in matrix_product.call_args_list:
+        assert call.args[1].shape == (2, 128 * 128)
+    for call in additions.call_args_list:
+        assert call.args[0].size <= 128 * 128
 
 
 @pytest.mark.parametrize("spike", [(0, 0, 0), (8, 64, 64), (1, 0, 0), (1, 3, 127)])

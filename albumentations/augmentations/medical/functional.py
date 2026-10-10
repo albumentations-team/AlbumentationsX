@@ -5,8 +5,9 @@ from typing import Any, cast
 import cv2
 import numpy as np
 import torch
-from albucore import clip, clipped, float32_io, multiply, preserve_channel_dim, resize3d, warp_affine3d
+from albucore import add, clip, clipped, float32_io, matmul, multiply, preserve_channel_dim, resize3d, warp_affine3d
 from albucore import exp as albucore_exp
+from albucore import mean as albucore_mean
 from scipy import fft
 
 from albumentations.augmentations.geometric import functional as fgeometric
@@ -104,6 +105,7 @@ def bias_field(img: ImageType, coarse_field: np.ndarray, *, is_batch: bool = Fal
     spatial_shape = img.shape[-coarse_field.ndim : -1]
     if (
         not is_batch
+        and img.ndim == 4
         and coarse_field.ndim == 4
         and img.dtype == np.float32
         and coarse_field.shape[-1] == img.shape[-1]
@@ -228,29 +230,41 @@ def _k_space_spike_volume(
     injections: list[tuple[tuple[int, ...], int | None]],
     intensity: float,
 ) -> ImageType:
-    """Accumulate separable Fourier spike pairs into one owned volume with CPU matrix products."""
+    """Accumulate shared Fourier spikes from channel-independent XY coefficients."""
     spatial_shape = volume.shape[:3]
     # The spectral maximum of nonnegative magnitude data is its DC coefficient.
-    max_channel_mean = max(float(volume[..., channel].mean(dtype=np.float64)) for channel in range(volume.shape[-1]))
-    result = volume.copy()
-    with torch.no_grad():
-        working = torch.from_numpy(result).reshape(spatial_shape[0], -1)
-        for coords, _ in injections:
-            factors = [
-                np.exp(2j * np.pi * coord * np.arange(size) / size).astype(np.complex64)
-                for coord, size in zip(coords, spatial_shape, strict=True)
-            ]
-            plane = factors[1][:, None] * factors[2][None, :]
-            self_conjugate = all((2 * coord) % size == 0 for coord, size in zip(coords, spatial_shape, strict=True))
-            amplitude = np.float32(intensity * max_channel_mean * (1 if self_conjugate else 2))
-            depth_factors = np.stack((factors[0].real, factors[0].imag), axis=1)
-            plane_factors = np.stack((plane.real * amplitude, plane.imag * -amplitude))
-            if volume.shape[-1] > 1:
-                plane_factors = np.repeat(plane_factors[..., None], volume.shape[-1], axis=-1)
-            plane_factors = plane_factors.reshape(2, -1)
-            working.addmm_(torch.from_numpy(depth_factors), torch.from_numpy(plane_factors))
-        working.clamp_(0, 1)
-    return result
+    max_channel_mean = float(np.max(albucore_mean(volume, axis="per_channel")))
+    depth_factors = np.empty((spatial_shape[0], 2 * len(injections)), dtype=np.float32)
+    plane_factors = np.empty((2 * len(injections), spatial_shape[1] * spatial_shape[2]), dtype=np.float32)
+    for index, (coords, _) in enumerate(injections):
+        factors = [
+            np.exp(2j * np.pi * coord * np.arange(size) / size).astype(np.complex64)
+            for coord, size in zip(coords, spatial_shape, strict=True)
+        ]
+        plane = factors[1][:, None] * factors[2][None, :]
+        self_conjugate = all((2 * coord) % size == 0 for coord, size in zip(coords, spatial_shape, strict=True))
+        amplitude = np.float32(intensity * max_channel_mean * (1 if self_conjugate else 2))
+        depth_factors[:, 2 * index] = factors[0].real
+        depth_factors[:, 2 * index + 1] = factors[0].imag
+        plane_factors[2 * index] = (plane.real * amplitude).reshape(-1)
+        plane_factors[2 * index + 1] = (plane.imag * -amplitude).reshape(-1)
+
+    result = np.empty_like(volume, order="C")
+    channels_per_block = min(volume.shape[-1], spatial_shape[1])
+    rows_per_block = max(1, spatial_shape[1] // channels_per_block)
+    for depth in range(spatial_shape[0]):
+        noise = matmul(depth_factors[depth : depth + 1], plane_factors).reshape(*spatial_shape[1:], 1)
+        # add() allocates; keep its output no larger than one XY plane.
+        for channel in range(0, volume.shape[-1], channels_per_block):
+            for row in range(0, spatial_shape[1], rows_per_block):
+                block = (
+                    depth,
+                    slice(row, row + rows_per_block),
+                    slice(None),
+                    slice(channel, channel + channels_per_block),
+                )
+                result[block] = add(volume[block], noise[row : row + rows_per_block])
+    return clip(result, result.dtype, inplace=True)
 
 
 @float32_io

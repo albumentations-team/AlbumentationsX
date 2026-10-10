@@ -11,20 +11,15 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
-    allow:
-      - dependency-type: "development"
-      - dependency-name: "cryptography"
-        dependency-type: "indirect"
-      - dependency-name: "pip"
-        dependency-type: "indirect"
-      - dependency-name: "urllib3"
-        dependency-type: "indirect"
-      - dependency-name: "virtualenv"
-        dependency-type: "indirect"
+    versioning-strategy: "lockfile-only"
     groups:
-      python-development-dependencies:
+      python-dependencies:
+        applies-to: "version-updates"
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "github-actions"
     directory: "/"

@@ -6,12 +6,14 @@ import re
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 from tools.ci_matrix import (
     CI_FOUNDATION_SHA,
     TORCH_RUNTIME_JOBS,
     _check_ci_dependency_groups,
+    _check_conda_torch_metadata,
     _check_lower_bound_install_commands,
     _check_project_runtime_lower_bounds,
 )
@@ -97,3 +99,30 @@ def test_runtime_dependencies_must_declare_lower_bounds() -> None:
         )
         == []
     )
+
+
+@pytest.mark.parametrize(
+    ("dependency", "prohibited"),
+    [
+        ("pytorch>=2.13.0", True),
+        ("torchvision>=0.24", True),
+        ("conda-forge::pytorch>=2.13.0", True),
+        ("conda-forge::torchvision >=0.24", True),
+        ("conda-forge/linux-64::torchvision", True),
+        ("https://conda.anaconda.org/pytorch::pytorch", True),
+        ("numpy >=2.2.6", False),
+        ("conda-forge::numpy >=2.2.6", False),
+    ],
+)
+def test_conda_runtime_dependencies_must_not_select_torch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    dependency: str,
+    prohibited: bool,
+) -> None:
+    recipe = tmp_path / "meta.yaml"
+    recipe.write_text(f"requirements:\n  run:\n    - {dependency}\n", encoding="utf-8")
+    monkeypatch.setattr("tools.ci_matrix.CONDA_RECIPE", recipe)
+
+    expected = ["conda.recipe/meta.yaml run dependencies must not select Torch or TorchVision"] if prohibited else []
+    assert _check_conda_torch_metadata() == expected

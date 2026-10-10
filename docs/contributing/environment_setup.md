@@ -41,12 +41,19 @@ If uv is unavailable, create and activate a virtual environment:
 ```bash
 python3 -m venv env
 source env/bin/activate
-pip install -e .
-pip install -r requirements-dev.txt
+python -m pip install --upgrade pip
 ```
 
 On Windows, activate with `env\Scripts\activate.bat` in cmd.exe or `env\Scripts\activate.ps1` in PowerShell.
-Install the appropriate PyTorch build separately. In the commands below, omit `uv run` when using this activated
+Use pip 25.1 or higher for dependency-group support. Install the appropriate PyTorch build, then install the project
+and development tools from the groups in `pyproject.toml`:
+
+```bash
+python -m pip install -e . --group dev
+```
+
+This uses the same dependency declarations as uv. Pip resolves allowed versions independently; use the uv commands
+above when reproducing the locked CI environment. In the commands below, omit `uv run` when using this activated
 pip environment.
 
 ## Enable hooks and verify the environment

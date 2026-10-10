@@ -359,37 +359,35 @@ def motion_artifact(
         and volume.flags.writeable
         and all(stride >= 0 for stride in volume.strides)
     )
-    if use_torch:
-        with torch.no_grad():
-            spectrum = torch.fft.fft(torch.from_numpy(volume), dim=axis).numpy()
-    else:
-        spectrum = fft.fft(volume, axis=axis, workers=1)
-    for matrix, begin, end in zip(matrices, boundaries, (*boundaries[1:], volume.shape[axis]), strict=True):
-        if np.array_equal(matrix, identity):
-            continue
-        moved = warp_affine3d(
-            volume,
-            matrix,
-            spatial_shape,
-            interpolation=interpolation,
-            border_mode=cv2.BORDER_CONSTANT,
-            border_value=0,
-        )
+    with torch.no_grad():
         if use_torch:
-            with torch.no_grad():
-                moved_spectrum = torch.fft.fft(torch.from_numpy(moved), dim=axis).numpy()
+            spectrum = torch.fft.fft(torch.from_numpy(volume), dim=axis).numpy()
         else:
-            moved_spectrum = fft.fft(moved, axis=axis, workers=1)
-        _replace_motion_segment(spectrum, moved_spectrum, axis, begin, end)
-        del moved, moved_spectrum
+            spectrum = fft.fft(volume, axis=axis, workers=1)
+        for matrix, begin, end in zip(matrices, boundaries, (*boundaries[1:], volume.shape[axis]), strict=True):
+            if np.array_equal(matrix, identity):
+                continue
+            moved = warp_affine3d(
+                volume,
+                matrix,
+                spatial_shape,
+                interpolation=interpolation,
+                border_mode=cv2.BORDER_CONSTANT,
+                border_value=0,
+            )
+            if use_torch:
+                moved_spectrum = torch.fft.fft(torch.from_numpy(moved), dim=axis).numpy()
+            else:
+                moved_spectrum = fft.fft(moved, axis=axis, workers=1)
+            _replace_motion_segment(spectrum, moved_spectrum, axis, begin, end)
+            del moved, moved_spectrum
 
-    if use_torch:
-        with torch.no_grad():
+        if use_torch:
             working = torch.from_numpy(spectrum)
             torch.fft.ifft(working, dim=axis, out=working)
-        reconstructed = spectrum
-    else:
-        reconstructed = fft.ifft(spectrum, axis=axis, workers=1, overwrite_x=True)
+            reconstructed = spectrum
+        else:
+            reconstructed = fft.ifft(spectrum, axis=axis, workers=1, overwrite_x=True)
     return np.abs(reconstructed)
 
 

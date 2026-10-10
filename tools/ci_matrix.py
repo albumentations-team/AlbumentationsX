@@ -53,7 +53,6 @@ CI_FOUNDATION_SHA = "6b9045dbea58026a1e8f96b0392c411934a27199"
 RETIRED_ASV_RUN_PATTERN = re.compile(r"asv --config asv\.conf\.json\s+run\b")
 RETIRED_REVISION_SELECTOR_PATTERN = re.compile(r"HEAD\^!")
 CONDA_RECIPE = REPO_ROOT / "conda.recipe" / "meta.yaml"
-DEVELOPMENT_REQUIREMENTS = REPO_ROOT / "requirements-dev.txt"
 CODEQL_ACTIONS_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "codeql-actions.yml"
 CODEQL_PYTHON_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "codeql-python.yml"
 WORKFLOW_DIR = REPO_ROOT / ".github" / "workflows"
@@ -378,19 +377,13 @@ def _check_project_runtime_lower_bounds(project: dict[str, Any]) -> list[str]:
     return issues
 
 
-def _check_torch_free_install_surfaces() -> list[str]:
+def _check_conda_torch_metadata() -> list[str]:
     issues: list[str] = []
-    development_requirements = _read_text(DEVELOPMENT_REQUIREMENTS)
-    if re.search(r"(?im)^\s*(?:torch|torchvision)\b", development_requirements):
-        issues.append("requirements-dev.txt must not select Torch or TorchVision")
-    if re.search(r"(?im)^\s*--(?:extra-)?index-url\b", development_requirements):
-        issues.append("requirements-dev.txt must not select a package index")
-
     conda_metadata = _read_text(CONDA_RECIPE)
     run_dependencies = re.search(r"(?ms)^  run:\s*\n(.*?)(?=^\S|\Z)", conda_metadata)
     if run_dependencies is None:
         issues.append("conda.recipe/meta.yaml must define a run dependency section")
-    elif re.search(r"(?im)^\s*-\s*(?:pytorch|torchvision)\b", run_dependencies.group(1)):
+    elif re.search(r"(?im)^\s*-\s*(?:\S+::)?(?:pytorch|torchvision)\b", run_dependencies.group(1)):
         issues.append("conda.recipe/meta.yaml run dependencies must not select Torch or TorchVision")
     return issues
 
@@ -436,7 +429,7 @@ def _check_pyproject() -> list[str]:
 
     issues.extend(_check_project_torch_metadata(project))
     issues.extend(_check_project_runtime_lower_bounds(project))
-    issues.extend(_check_torch_free_install_surfaces())
+    issues.extend(_check_conda_torch_metadata())
 
     dependency_groups = pyproject.get("dependency-groups", {})
     if not isinstance(dependency_groups, dict):

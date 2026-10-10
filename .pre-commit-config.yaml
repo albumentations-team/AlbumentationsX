@@ -83,7 +83,6 @@ repos:
       - id: debug-statements
       - id: end-of-file-fixer
       - id: trailing-whitespace
-      - id: requirements-txt-fixer
   - repo: local
     hooks:
     - id: check-local-markdown-links

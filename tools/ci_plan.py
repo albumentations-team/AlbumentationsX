@@ -50,7 +50,6 @@ PACKAGING_PATHS = {
 DEPENDENCY_PATHS = {
     "conda.recipe/meta.yaml",
     "pyproject.toml",
-    "requirements-dev.txt",
     "uv.lock",
 }
 CI_POLICY_PATHS = {

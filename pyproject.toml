@@ -201,6 +201,7 @@ dev = [
   { include-group = "ci-package" },
   { include-group = "ci-benchmark" },
   { include-group = "ci-release" },
+  "huggingface-hub>=1.27.0",
 ]
 
 [project.urls]

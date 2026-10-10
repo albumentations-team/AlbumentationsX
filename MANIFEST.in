@@ -19,4 +19,3 @@ prune benchmark
 prune conda.recipe
 prune pre-commit-config.yaml
 prune .github
-prune requirements-dev.txt

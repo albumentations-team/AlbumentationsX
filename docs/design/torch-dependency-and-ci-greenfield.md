@@ -65,8 +65,8 @@ distributions, and records no accelerator state. Cache keys include both axes.
 
 ## Package and contributor contracts
 
-`project.dependencies`, optional extras, Conda `run` dependencies, and
-`requirements-dev.txt` do not select Torch or TorchVision. The project does
+`project.dependencies`, optional extras, Conda `run` dependencies, and the
+`dev` dependency group do not select Torch or TorchVision. The project does
 not provide an `albumentationsx[torch]` extra: that extra could not know whether
 the user needs CPU, CUDA, or MPS.
 

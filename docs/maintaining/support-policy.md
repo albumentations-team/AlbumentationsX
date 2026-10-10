@@ -47,6 +47,45 @@ metadata, and release notes are updated in the same change. Minimum dependency
 jobs are scoped to combinations where those lower bounds are actually
 installable.
 
+## Dependency Updates
+
+`pyproject.toml` owns runtime requirements, optional extras, and development
+groups. `uv.lock` records the resolved versions used by CI. Contributor setup
+uses those groups through uv or pip; see the
+[environment setup guide](../contributing/environment_setup.md).
+
+Dependabot monitors the uv project with `versioning-strategy: lockfile-only`:
+
+- Direct runtime and development dependencies receive weekly version updates
+  within their declared ranges, after a seven-day cooldown for new releases.
+- Patch and minor updates share one pull request. Major updates use separate
+  pull requests.
+- Security updates cover vulnerable direct and transitive dependencies and
+  receive separate pull requests without the version-update cooldown.
+- Updates that require changing a declared requirement, including exact pins
+  such as `albucore==...`, need a maintainer-authored pull request.
+
+Dependabot alerts and security updates stay enabled in repository settings.
+The strategy and grouping options are described in the
+[Dependabot options reference](https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference).
+
+Minimum runtime versions change when the library needs a newer API, a security
+fix, or a supported installation that upstream packages no longer provide.
+The pull request states the reason and verifies the affected behavior with
+the declared minimum versions. A new upstream release alone does not require
+raising the minimum.
+
+A lockfile security fix protects the repository environment. If a supported
+runtime requirement still permits a vulnerable version, maintainers review
+and update that requirement and verify the new lower bound. Dependabot's
+lockfile-only strategy leaves that compatibility decision to maintainers.
+
+Dependency updates merge after the selected compatibility checks pass and a
+maintainer approves the change. Changes to base runtime versions also require the
+[dependency license review](dependency-license-review.md). The existing
+declared-minimum nightly and release checks continue to verify the advertised
+lower bounds.
+
 ## OpenCV Policy
 
 The default CI runtime path uses `opencv-python-headless`. The

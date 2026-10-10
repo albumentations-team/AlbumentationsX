@@ -76,6 +76,31 @@ def test_motion_matches_independent_resampling_and_fft(
     np.testing.assert_allclose(result, expected, atol=2e-6, rtol=2e-5)
 
 
+@pytest.mark.parametrize("shape", [(15, 257, 271, 1), (16, 256, 256, 1)])
+@pytest.mark.parametrize("axis", [0, 1, 2])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_large_motion_backend_boundary_matches_independent_reconstruction(shape, axis, dtype) -> None:
+    depth, height, width = (np.sin(np.linspace(0, np.pi, length)).astype(np.float32) for length in shape[:3])
+    volume = (0.5 * depth[:, None, None] * height[None, :, None] * width[None, None, :])[..., None]
+    if dtype == np.uint8:
+        volume = np.rint(volume * 255).astype(np.uint8)
+    original = volume.copy()
+    pipeline = A.ReplayCompose([A.MotionArtifact(num_events_range=(1, 1), axis=axis, p=1)], strict=True)
+    pipeline.set_random_seed(137)
+
+    result = pipeline(volume=volume)
+
+    params = result["replay"]["transforms"][0]["params"]["params"]
+    expected = _reference_motion(volume, params["matrices"], params["boundaries"], axis, cv2.INTER_LINEAR)
+    actual = result["volume"].astype(np.float32)
+    if dtype == np.uint8:
+        actual /= 255
+    np.testing.assert_allclose(actual, expected, atol=1 / 255 if dtype == np.uint8 else 3e-6)
+    np.testing.assert_array_equal(volume, original)
+    replayed = A.ReplayCompose.replay(result["replay"], volume=volume)
+    np.testing.assert_array_equal(replayed["volume"], result["volume"])
+
+
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
 @pytest.mark.parametrize("num_events", [0, 2])
 def test_zero_motion_is_exact_identity(dtype: type[np.generic], num_events: int) -> None:
@@ -201,15 +226,17 @@ def test_tensor_volume_uses_spatial_axes_only(target: str) -> None:
     torch.testing.assert_close(tensor, original, rtol=0, atol=0)
 
 
-def test_stationary_event_after_motion_retains_its_original_spectrum_segment() -> None:
+@pytest.mark.parametrize("axis", [0, 1, 2])
+def test_stationary_event_after_motion_retains_its_original_spectrum_segment(axis: int) -> None:
     volume = np.random.default_rng(137).random((5, 7, 9, 1), dtype=np.float32)
     moved = np.eye(4, dtype=np.float32)
     moved[0, 3] = 1
     matrices = np.stack([moved, np.eye(4, dtype=np.float32)])
 
-    result = fmedical.motion_artifact(volume, matrices, (2, 5), 2, cv2.INTER_LINEAR)
+    boundaries = (1, volume.shape[axis] - 1)
+    result = fmedical.motion_artifact(volume, matrices, boundaries, axis, cv2.INTER_LINEAR)
 
-    expected = _reference_motion(volume, matrices, (2, 5), 2, cv2.INTER_LINEAR)
+    expected = _reference_motion(volume, matrices, boundaries, axis, cv2.INTER_LINEAR)
     np.testing.assert_allclose(result, expected, atol=1e-6)
 
 

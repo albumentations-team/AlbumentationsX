@@ -30,6 +30,8 @@ from ._functional_histology import (
 _BIAS_FIELD_MIN_CONTIGUOUS_ELEMENTS = 262_144
 _K_SPACE_MIN_ANALYTIC_DEPTH = 16
 _K_SPACE_MIN_ANALYTIC_PLANE_SIZE = 128
+_MOTION_MIN_TORCH_ELEMENTS = 1_048_576
+_RICIAN_MIN_TORCH_ELEMENTS = 1_048_576
 
 __all__ = [
     "STAIN_MATRICES",
@@ -137,8 +139,20 @@ def rician_noise(
     real_noise: np.ndarray,
     imaginary_noise: np.ndarray,
 ) -> ImageType:
-    """Apply sampled real and imaginary MRI noise fields through magnitude reconstruction."""
+    """Apply sampled MRI noise fields, fusing large float32 magnitude reconstructions on CPU."""
     result = np.add(img, real_noise)
+    if (
+        result.size >= _RICIAN_MIN_TORCH_ELEMENTS
+        and result.dtype == np.float32
+        and imaginary_noise.dtype == np.float32
+        and imaginary_noise.flags.writeable
+        and all(stride >= 0 and stride % imaginary_noise.itemsize == 0 for stride in imaginary_noise.strides)
+    ):
+        working = torch.from_numpy(result)
+        imaginary = torch.from_numpy(imaginary_noise)
+        with torch.no_grad():
+            working.square_().addcmul_(imaginary, imaginary).sqrt_().clamp_(0, 1)
+        return result
     np.multiply(result, result, out=result)
     np.add(result, np.square(imaginary_noise), out=result)
     np.sqrt(result, out=result)
@@ -329,31 +343,51 @@ def motion_artifact(
     """Combine sequential centred k-space segments from absolute rigid motion states.
 
     The first segment is stationary. Each subsequent segment uses one forward `(x, y, z)` matrix.
-    Full complex FFTs preserve asymmetric acquisition segments; magnitude reconstruction handles
-    their non-Hermitian spectrum. Only one moved volume and its spectrum are retained at a time.
+    Segment masks depend only on the acquisition axis, so the other spatial FFTs cancel with their
+    inverses. A full complex FFT along that axis preserves asymmetric, non-Hermitian segments.
+    Large writable single-channel volumes use CPU Tensor FFTs. Only one moved volume and its spectrum
+    are retained at a time, and the combined spectrum is reused for the inverse.
     """
     identity = np.eye(4, dtype=np.float32)
     if matrices.size == 0 or np.all(matrices == identity):
         return volume
 
     spatial_shape = volume.shape[:3]
-    spectrum = fft.fftn(volume, axes=(0, 1, 2), workers=1)
-    for matrix, begin, end in zip(matrices, boundaries, (*boundaries[1:], volume.shape[axis]), strict=True):
-        if np.array_equal(matrix, identity):
-            continue
-        moved = warp_affine3d(
-            volume,
-            matrix,
-            spatial_shape,
-            interpolation=interpolation,
-            border_mode=cv2.BORDER_CONSTANT,
-            border_value=0,
-        )
-        moved_spectrum = fft.fftn(moved, axes=(0, 1, 2), workers=1)
-        _replace_motion_segment(spectrum, moved_spectrum, axis, begin, end)
-        del moved, moved_spectrum
+    use_torch = (
+        volume.size >= _MOTION_MIN_TORCH_ELEMENTS
+        and volume.shape[-1] == 1
+        and volume.flags.writeable
+        and all(stride >= 0 and stride % volume.itemsize == 0 for stride in volume.strides)
+    )
+    with torch.no_grad():
+        if use_torch:
+            spectrum = torch.fft.fft(torch.from_numpy(volume), dim=axis).numpy()
+        else:
+            spectrum = fft.fft(volume, axis=axis, workers=1)
+        for matrix, begin, end in zip(matrices, boundaries, (*boundaries[1:], volume.shape[axis]), strict=True):
+            if np.array_equal(matrix, identity):
+                continue
+            moved = warp_affine3d(
+                volume,
+                matrix,
+                spatial_shape,
+                interpolation=interpolation,
+                border_mode=cv2.BORDER_CONSTANT,
+                border_value=0,
+            )
+            if use_torch:
+                moved_spectrum = torch.fft.fft(torch.from_numpy(moved), dim=axis).numpy()
+            else:
+                moved_spectrum = fft.fft(moved, axis=axis, workers=1)
+            _replace_motion_segment(spectrum, moved_spectrum, axis, begin, end)
+            del moved, moved_spectrum
 
-    reconstructed = fft.ifftn(spectrum, axes=(0, 1, 2), workers=1, overwrite_x=True)
+        if use_torch:
+            working = torch.from_numpy(spectrum)
+            torch.fft.ifft(working, dim=axis, out=working)
+            reconstructed = spectrum
+        else:
+            reconstructed = fft.ifft(spectrum, axis=axis, workers=1, overwrite_x=True)
     return np.abs(reconstructed)
 
 

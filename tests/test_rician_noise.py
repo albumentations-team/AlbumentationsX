@@ -88,6 +88,7 @@ def test_rician_reconstruction_preserves_sampled_fields_and_replay(shape, dtype,
         ((1024, 1024, 1), "contiguous"),
         ((1024, 1024, 1), "readonly"),
         ((1024, 1024, 1), "negative-stride"),
+        ((1024, 1024, 1), "unaligned-stride"),
     ],
 )
 def test_rician_backend_boundary_and_noise_layouts_match_reference(shape, layout) -> None:
@@ -99,6 +100,15 @@ def test_rician_backend_boundary_and_noise_layouts_match_reference(shape, layout
         imaginary_noise.setflags(write=False)
     elif layout == "negative-stride":
         imaginary_noise = imaginary_noise[::-1]
+    elif layout == "unaligned-stride":
+        strided_noise = np.ndarray(
+            shape,
+            dtype=np.float32,
+            buffer=np.empty(imaginary_noise.size * 5, dtype=np.uint8),
+            strides=(shape[1] * 5, 5, 4),
+        )
+        strided_noise[...] = imaginary_noise
+        imaginary_noise = strided_noise
     originals = [array.copy() for array in (image, real_noise, imaginary_noise)]
     expected = np.clip(np.sqrt(np.square(image + real_noise) + np.square(imaginary_noise)), 0, 1)
 

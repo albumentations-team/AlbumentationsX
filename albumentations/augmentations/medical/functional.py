@@ -146,7 +146,7 @@ def rician_noise(
         and result.dtype == np.float32
         and imaginary_noise.dtype == np.float32
         and imaginary_noise.flags.writeable
-        and all(stride >= 0 for stride in imaginary_noise.strides)
+        and all(stride >= 0 and stride % imaginary_noise.itemsize == 0 for stride in imaginary_noise.strides)
     ):
         working = torch.from_numpy(result)
         imaginary = torch.from_numpy(imaginary_noise)
@@ -357,7 +357,7 @@ def motion_artifact(
         volume.size >= _MOTION_MIN_TORCH_ELEMENTS
         and volume.shape[-1] == 1
         and volume.flags.writeable
-        and all(stride >= 0 for stride in volume.strides)
+        and all(stride >= 0 and stride % volume.itemsize == 0 for stride in volume.strides)
     )
     with torch.no_grad():
         if use_torch:

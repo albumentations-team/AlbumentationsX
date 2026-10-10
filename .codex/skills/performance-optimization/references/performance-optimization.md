@@ -2,7 +2,7 @@
 
 ## Prevalidated caller boundary
 
-Albucore routers run after the caller has validated the input contract. Upstream code owns container, rank, channel-last layout, dtype, device, contiguity, autograd state, and operation-control validation. Albucore keeps only dispatch branches and kernel-required normalization needed to select and execute the benchmarked implementation; hot paths must not repeat those checks.
+Albucore routers run after the caller has validated the input contract. Upstream code owns container, rank, layout, dtype, device, contiguity, autograd state, and operation-control validation. NumPy uses channel-last layouts; CPU Tensor layouts are explicit. Albucore keeps only dispatch branches and kernel-required normalization needed to select and execute the benchmarked implementation; hot paths must not repeat those checks.
 
 Use this workflow whenever implementing, reviewing, or profiling runtime code in Albucore or AlbumentationsX. Its
 order matters: remove work before making the remaining work faster. Treat every proposed optimization as a hypothesis
@@ -39,7 +39,9 @@ Count full-array reads and writes, not only Python statements. Image kernels are
   coordinates.
 - Reuse output buffers when ownership is clear.
 - Avoid full-array `astype`, `copy`, and `ascontiguousarray` calls unless the selected backend earns their cost.
-- Keep working arrays `float32` unless correctness requires wider precision.
+- Use float32 as the default working dtype unless a different route wins with equal correctness. For float16 storage,
+  compare native-half kernels with a float32 working buffer and one output cast; include both conversions and their
+  allocations in the public-path timing.
 - Preallocate outside repeated loops and reset only the data that must change.
 - Prefer a view when downstream code accepts its strides and ownership.
 - Choose sparse coordinates, rectangles, or indices instead of a dense image-sized mask when the affected set is
@@ -141,6 +143,10 @@ For each atomic operation, benchmark viable implementations end to end:
 Include dispatch, dtype conversion, contiguity, allocation, clipping, and output-shape repair in the timing. A fast
 kernel that requires a full-size copy can lose at the public API.
 
+Cross-dtype comparisons must use the same logical input and equivalent controls. For float16/float32 comparisons,
+derive both inputs from the same float32 values and use controls exactly representable in half where practical. Avoid
+accidental identity operations in only one dtype; verify the actual router branch and output dtype before comparing.
+
 Route only where evidence wins. Thresholds may depend on dtype, rank, size, channel count, contiguity, scalar versus
 per-channel parameters, and in-place versus allocating mode. Existing Albucore routes demonstrate that no backend is
 globally fastest:
@@ -150,6 +156,10 @@ globally fastest:
 - OpenCV wins many dense image operations but has channel and layout constraints;
 - StringZilla is competitive for selected uint8 translation paths.
 - CPU PyTorch is competitive for selected eager 3D volume operations when the complete interop route wins.
+- Float16 is not automatically faster than float32 on CPU. Keep support in every documented operation and compare its
+  full public path with float32, including native-half kernels, float32 working buffers, bridges, and output casts. The
+  float16 route must meet the no-slower-than-float32 release gate; if no local candidate does, pursue the missing
+  upstream kernel rather than deleting dtype support or hiding the slowdown behind a microbenchmark.
 
 ### 6a. Escalate missing backend capabilities
 
@@ -211,7 +221,7 @@ read-after-write calculations. Benchmark both modes and test aliasing explicitly
 
 After removing work and comparing straight implementations, consider routing by:
 
-- uint8 versus float32;
+- uint8 versus float16 versus float32;
 - scalar versus per-channel parameters;
 - 1, 3, 4, and high-channel inputs;
 - image and image-batch ranks; single-volume and volume-batch ranks where the router supports them;

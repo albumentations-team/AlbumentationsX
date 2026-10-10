@@ -252,7 +252,7 @@ def test_invalid_bias_field_policy_is_rejected(kwargs: dict[str, object]) -> Non
         A.BiasField(**kwargs, strict=True)
 
 
-@pytest.mark.parametrize("shape", [(16, 128, 127, 1), (16, 128, 128, 1)])
+@pytest.mark.parametrize("shape", [(16, 128, 127, 1), (16, 128, 128, 1), (1024, 16, 16, 1), (2, 512, 256, 1)])
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
 def test_large_bias_field_matches_reference_at_contiguity_threshold(
     shape: tuple[int, int, int, int], dtype: type[np.generic]
@@ -276,4 +276,26 @@ def test_large_bias_field_matches_reference_at_contiguity_threshold(
     np.testing.assert_array_equal(volume, original_volume)
     np.testing.assert_array_equal(coarse, original_coarse)
     assert not np.shares_memory(field, coarse)
+    assert not np.shares_memory(result, volume)
+
+
+@pytest.mark.parametrize("coarse_shape", [(2, 3, 4, 1), (2, 3, 4, 5), (16, 3, 4, 5), (16, 128, 128, 5)])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_large_volume_gain_matches_interpolation_reference(
+    coarse_shape: tuple[int, int, int, int], dtype: type[np.generic]
+) -> None:
+    rng = np.random.default_rng(137)
+    raw = rng.integers(0, 256, (16, 128, 128, 5), dtype=np.uint8)
+    volume = raw if dtype == np.uint8 else raw.astype(np.float32) / 255
+    volume = volume[:, :, ::-1]
+    coarse = rng.standard_normal(coarse_shape, dtype=np.float32) * 0.25
+    original_volume, original_coarse = volume.copy(), coarse.copy()
+    volume.setflags(write=False)
+    coarse.setflags(write=False)
+
+    result = fmedical.bias_field(volume, coarse)
+
+    np.testing.assert_allclose(result, _reference_bias_field(volume, coarse), atol=1 if dtype == np.uint8 else 2e-6)
+    np.testing.assert_array_equal(volume, original_volume)
+    np.testing.assert_array_equal(coarse, original_coarse)
     assert not np.shares_memory(result, volume)

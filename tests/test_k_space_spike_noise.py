@@ -482,7 +482,7 @@ def _full_spectrum_spike_reference(volume: np.ndarray, spikes: np.ndarray, inten
     return np.clip(np.fft.ifftn(spectrum, axes=axes).real, 0, 1)
 
 
-@pytest.mark.parametrize("shape", [(1, 9, 7, 1), (7, 9, 11, 3), (8, 16, 18, 5), (16, 128, 128, 3)])
+@pytest.mark.parametrize("shape", [(1, 9, 7, 1), (7, 9, 11, 3), (8, 16, 18, 5), (16, 128, 128, 3), (17, 129, 131, 5)])
 @pytest.mark.parametrize("num_spikes", [1, 5, 16])
 def test_volume_spikes_match_full_spectrum_reference_without_mutating_input(
     shape: tuple[int, int, int, int], num_spikes: int

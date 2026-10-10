@@ -383,7 +383,7 @@ def _check_conda_torch_metadata() -> list[str]:
     run_dependencies = re.search(r"(?ms)^  run:\s*\n(.*?)(?=^\S|\Z)", conda_metadata)
     if run_dependencies is None:
         issues.append("conda.recipe/meta.yaml must define a run dependency section")
-    elif re.search(r"(?im)^\s*-\s*(?:pytorch|torchvision)\b", run_dependencies.group(1)):
+    elif re.search(r"(?im)^\s*-\s*(?:\S+::)?(?:pytorch|torchvision)\b", run_dependencies.group(1)):
         issues.append("conda.recipe/meta.yaml run dependencies must not select Torch or TorchVision")
     return issues
 

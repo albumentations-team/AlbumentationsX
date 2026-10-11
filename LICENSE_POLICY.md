@@ -44,6 +44,15 @@ contradictory, or changed evidence requires an updated decision before merge.
 Never replace unresolved evidence with a generic "allowed" label. Packages
 reachable only through extras do not need a record in this registry.
 
+For same-repository Dependabot lockfile updates, the registry workflow can
+confirm unchanged evidence automatically. It checks every hash-pinned wheel
+and source archive against the already reviewed base lockfile: distribution
+identity, license metadata, declared license files, and packaged licenses and
+notices must match. Changed dependency names, changed or missing evidence, and
+non-PyPI sources require maintainer review. The workflow adds only verified
+versions and runs the ordinary PR checks on the resulting commit; the
+maintainer still reviews and merges the PR.
+
 Runtime dependencies are installed separately from the AlbumentationsX wheel
 and sdist. When distributing a combined environment or copied binary material,
 preserve notices that belong to those components. The project package itself

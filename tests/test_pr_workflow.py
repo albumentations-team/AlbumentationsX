@@ -164,3 +164,20 @@ def test_dependency_audit_scopes_licenses_to_base_and_keeps_extra_vulnerability_
 def test_obsolete_unconditional_pr_workflows_are_removed() -> None:
     assert not (REPO_ROOT / ".github" / "workflows" / "ci.yml").exists()
     assert not (REPO_ROOT / ".github" / "workflows" / "legal-integrity.yml").exists()
+
+
+def test_registry_dispatch_resolves_current_pr_and_preserves_routing_inputs() -> None:
+    plan = _workflow()["jobs"]["plan"]
+    steps = {step["name"]: step for step in plan["steps"]}
+    resolver = steps["Resolve dispatched pull request"]
+
+    assert resolver["if"] == "github.event_name == 'workflow_dispatch'"
+    assert ".head.sha == env.GITHUB_SHA" in resolver["run"]
+    assert ".head.repo.full_name == env.GITHUB_REPOSITORY" in resolver["run"]
+    assert 'error("Dispatched commit' in resolver["run"]
+    for name in ("BASE_SHA", "HEAD_SHA"):
+        assert "steps.dispatched.outputs." in steps["Collect changed paths"]["env"][name]
+        assert "github.event.pull_request." in steps["Collect changed paths"]["env"][name]
+    for name in ("DRAFT", "FORCE_FULL"):
+        assert "steps.dispatched.outputs." in steps["Select pull-request checks"]["env"][name]
+        assert "github.event.pull_request." in steps["Select pull-request checks"]["env"][name]

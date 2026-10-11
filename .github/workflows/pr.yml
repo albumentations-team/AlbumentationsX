@@ -4,12 +4,19 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, labeled, unlabeled]
+  workflow_dispatch:
+    inputs:
+      pull-request:
+        description: Same-repository pull request to validate after a registry synchronization
+        required: true
+        type: number
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || inputs.pull-request }}
   cancel-in-progress: true
 
 jobs:
@@ -41,10 +48,25 @@ jobs:
           python-version: "3.12"
           dependency-group: ci-quality
 
+      - name: Resolve dispatched pull request
+        if: github.event_name == 'workflow_dispatch'
+        id: dispatched
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pull-request }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '
+            if .state == "open" and .base.ref == "main" and
+               .head.repo.full_name == env.GITHUB_REPOSITORY and .head.sha == env.GITHUB_SHA
+            then "base_sha=\(.base.sha)", "head_sha=\(.head.sha)", "draft=\(.draft)",
+                 "force_full=\(.labels | any(.name == "full-ci"))"
+            else error("Dispatched commit must be the current head of an open same-repository PR against main")
+            end' >> "$GITHUB_OUTPUT"
+
       - name: Collect changed paths
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ steps.dispatched.outputs.base_sha || github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ steps.dispatched.outputs.head_sha || github.event.pull_request.head.sha }}
         run: |
           mkdir -p ci-plan
           git diff --name-only -z "${BASE_SHA}" "${HEAD_SHA}" -- > ci-plan/changed-files.z
@@ -56,8 +78,8 @@ jobs:
       - name: Select pull-request checks
         id: plan
         env:
-          DRAFT: ${{ github.event.pull_request.draft }}
-          FORCE_FULL: ${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}
+          DRAFT: ${{ steps.dispatched.outputs.draft || github.event.pull_request.draft }}
+          FORCE_FULL: ${{ steps.dispatched.outputs.force_full || contains(github.event.pull_request.labels.*.name, 'full-ci') }}
         run: >-
           python -m tools.ci_plan
           --paths-file ci-plan/changed-files.z --null

@@ -103,14 +103,14 @@ repos:
         language: system
         files: ^(pyproject\.toml|conda\.recipe/meta\.yaml|tools/check_conda_dependencies\.py)$
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.10
+    rev: v0.17.0
     hooks:
       - id: ruff
         exclude: '__pycache__/'
         args: [ --fix ]
       - id: ruff-format
   - repo: https://github.com/asottile/pyupgrade
-    rev: v3.21.2
+    rev: v3.22.0
     hooks:
       - id: pyupgrade
         args: [--py311-plus]

@@ -1,0 +1,62 @@
+name: Synchronize dependency license registry
+
+# Dependabot PR events have read-only tokens. This job executes trusted default-branch tooling only.
+on: # zizmor: ignore[dangerous-triggers]
+  workflow_run:
+    workflows: [PR]
+    types: [requested]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-license-sync-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  synchronize:
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.actor.login == 'dependabot[bot]' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      startsWith(github.event.workflow_run.head_branch, 'dependabot/uv/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: write
+      pull-requests: read
+    steps:
+      - name: Checkout trusted base automation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up trusted review environment
+        uses: albumentations-team/ci-foundation/actions/setup-python-uv@6b9045dbea58026a1e8f96b0392c411934a27199
+        with:
+          activate-environment: "true"
+          cache-enabled: "false"
+          python-version: "3.12"
+          uv-version: "0.12.0"
+      - name: Install trusted review dependencies
+        run: uv sync --locked --only-group ci-security --no-install-project
+      - name: Compare distribution evidence and synchronize registry
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          BASE_SHA: ${{ github.sha }}
+        run: >-
+          python -m tools.sync_dependency_licenses
+          --repository "${GITHUB_REPOSITORY}"
+          --run-id "${RUN_ID}"
+          --base-sha "${BASE_SHA}"
+          --output "${RUNNER_TEMP}/dependency-license-review"
+      - name: Upload distribution license evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dependency-license-review
+          path: ${{ runner.temp }}/dependency-license-review/*.json
+          if-no-files-found: ignore
+          retention-days: 90

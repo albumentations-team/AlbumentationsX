@@ -104,11 +104,11 @@ class GitHubClient:
         """Fetch a GitHub REST endpoint without exposing the token in arguments or logs."""
         return self._request_json(path)
 
-    def post_json(self, path: str, payload: dict[str, str]) -> GitHubResponse:
+    def post_json(self, path: str, payload: dict[str, Any]) -> GitHubResponse:
         """Create a GitHub resource with an authenticated JSON request."""
         return self._request_json(path, payload)
 
-    def _request_json(self, path: str, payload: dict[str, str] | None = None) -> GitHubResponse:
+    def _request_json(self, path: str, payload: dict[str, Any] | None = None) -> GitHubResponse:
         request = urllib.request.Request(
             f"{self.api_url}{path}",
             data=json.dumps(payload).encode("utf-8") if payload is not None else None,
@@ -121,6 +121,8 @@ class GitHubClient:
             },
         )
         with urllib.request.urlopen(request, timeout=30) as response:
+            if response.status == 204:
+                return {}
             data = json.load(response)
         if not isinstance(data, (dict, list)):
             msg = f"GitHub API endpoint {path} did not return a JSON object or array"

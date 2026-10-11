@@ -5,8 +5,9 @@ from typing import Any, cast
 import cv2
 import numpy as np
 import torch
-from albucore import clip, clipped, float32_io, multiply, preserve_channel_dim, resize3d, warp_affine3d
+from albucore import add, clip, clipped, float32_io, matmul, multiply, preserve_channel_dim, resize3d, warp_affine3d
 from albucore import exp as albucore_exp
+from albucore import mean as albucore_mean
 from scipy import fft
 
 from albumentations.augmentations.geometric import functional as fgeometric
@@ -28,6 +29,8 @@ from ._functional_histology import (
 )
 
 _BIAS_FIELD_MIN_CONTIGUOUS_ELEMENTS = 262_144
+_BIAS_FIELD_MIN_STREAMING_VOXELS = 262_144
+_BIAS_FIELD_MIN_STREAMING_PLANE_PIXELS = 16_384
 _K_SPACE_MIN_ANALYTIC_DEPTH = 16
 _K_SPACE_MIN_ANALYTIC_PLANE_SIZE = 128
 _MOTION_MIN_TORCH_ELEMENTS = 1_048_576
@@ -100,6 +103,19 @@ def bias_field(img: ImageType, coarse_field: np.ndarray, *, is_batch: bool = Fal
     shares one generated field; no interpolation occurs across batch or channel axes.
     """
     spatial_shape = img.shape[-coarse_field.ndim : -1]
+    if (
+        not is_batch
+        and img.ndim == 4
+        and coarse_field.ndim == 4
+        and img.dtype == np.float32
+        and coarse_field.shape[-1] == img.shape[-1]
+        and coarse_field.shape[1] < img.shape[1]
+        and coarse_field.shape[2] < img.shape[2]
+        and img.shape[0] > 1
+        and img.shape[0] * img.shape[1] * img.shape[2] >= _BIAS_FIELD_MIN_STREAMING_VOXELS
+        and img.shape[1] * img.shape[2] >= _BIAS_FIELD_MIN_STREAMING_PLANE_PIXELS
+    ):
+        return _bias_field_volume(img, coarse_field)
     field = generate_bias_field(coarse_field, spatial_shape)
     if is_batch and img.dtype == np.uint8:
         result = np.empty_like(img)
@@ -107,6 +123,16 @@ def bias_field(img: ImageType, coarse_field: np.ndarray, *, is_batch: bool = Fal
             result[index] = _apply_bias_gain(item, field)
         return result
     return _apply_bias_gain(img, field)
+
+
+def _bias_field_volume(img: ImageType, coarse_field: np.ndarray) -> ImageType:
+    """Interpolate depth on the coarse grid and apply each XY gain without a full-volume field."""
+    depth_field = resize3d(coarse_field, (img.shape[0], coarse_field.shape[1], coarse_field.shape[2]), cv2.INTER_LINEAR)
+    result = np.empty_like(img)
+    for depth, coefficients in enumerate(depth_field):
+        field = fgeometric.resize(coefficients, img.shape[1:3], interpolation=cv2.INTER_LINEAR)
+        result[depth] = _apply_bias_gain(img[depth], albucore_exp(field, inplace=True))
+    return result
 
 
 @float32_io
@@ -139,7 +165,7 @@ def rician_noise(
     real_noise: np.ndarray,
     imaginary_noise: np.ndarray,
 ) -> ImageType:
-    """Apply sampled MRI noise fields, fusing large float32 magnitude reconstructions on CPU."""
+    """Apply sampled real and imaginary MRI noise fields through magnitude reconstruction."""
     result = np.add(img, real_noise)
     if (
         result.size >= _RICIAN_MIN_TORCH_ELEMENTS
@@ -204,14 +230,13 @@ def _k_space_spike_volume(
     injections: list[tuple[tuple[int, ...], int | None]],
     intensity: float,
 ) -> ImageType:
-    """Add shared Fourier spike pairs using one owned output and XY-sized scratch buffers."""
+    """Accumulate shared Fourier spikes from channel-independent XY coefficients."""
     spatial_shape = volume.shape[:3]
     # The spectral maximum of nonnegative magnitude data is its DC coefficient.
-    max_channel_mean = float(volume.mean(axis=(0, 1, 2), dtype=np.float64).max())
-    result = volume.copy()
-    working = np.empty(spatial_shape[1:], dtype=np.complex64)
-    noise = np.empty(spatial_shape[1:], dtype=np.float32)
-    for coords, _ in injections:
+    max_channel_mean = float(np.max(albucore_mean(volume, axis="per_channel")))
+    depth_factors = np.empty((spatial_shape[0], 2 * len(injections)), dtype=np.float32)
+    plane_factors = np.empty((2 * len(injections), spatial_shape[1] * spatial_shape[2]), dtype=np.float32)
+    for index, (coords, _) in enumerate(injections):
         factors = [
             np.exp(2j * np.pi * coord * np.arange(size) / size).astype(np.complex64)
             for coord, size in zip(coords, spatial_shape, strict=True)
@@ -219,11 +244,27 @@ def _k_space_spike_volume(
         plane = factors[1][:, None] * factors[2][None, :]
         self_conjugate = all((2 * coord) % size == 0 for coord, size in zip(coords, spatial_shape, strict=True))
         amplitude = np.float32(intensity * max_channel_mean * (1 if self_conjugate else 2))
-        for depth, depth_factor in enumerate(factors[0]):
-            np.multiply(plane, depth_factor, out=working)
-            np.multiply(working.real, amplitude, out=noise)
-            np.add(result[depth], noise[..., None], out=result[depth])
-    return np.clip(result, 0.0, 1.0, out=result)
+        depth_factors[:, 2 * index] = factors[0].real
+        depth_factors[:, 2 * index + 1] = factors[0].imag
+        plane_factors[2 * index] = (plane.real * amplitude).reshape(-1)
+        plane_factors[2 * index + 1] = (plane.imag * -amplitude).reshape(-1)
+
+    result = np.empty_like(volume, order="C")
+    channels_per_block = min(volume.shape[-1], spatial_shape[1])
+    rows_per_block = max(1, spatial_shape[1] // channels_per_block)
+    for depth in range(spatial_shape[0]):
+        noise = matmul(depth_factors[depth : depth + 1], plane_factors).reshape(*spatial_shape[1:], 1)
+        # add() allocates; keep its output no larger than one XY plane.
+        for channel in range(0, volume.shape[-1], channels_per_block):
+            for row in range(0, spatial_shape[1], rows_per_block):
+                block = (
+                    depth,
+                    slice(row, row + rows_per_block),
+                    slice(None),
+                    slice(channel, channel + channels_per_block),
+                )
+                result[block] = add(volume[block], noise[row : row + rows_per_block])
+    return clip(result, result.dtype, inplace=True)
 
 
 @float32_io

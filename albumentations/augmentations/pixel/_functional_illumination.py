@@ -190,9 +190,9 @@ def _plasma_pattern_for_batch(images: ImageType, plasma_pattern: np.ndarray) -> 
 
 def _finish_plasma_brightness_contrast_batch(work: ImageFloat32, output_dtype: np.dtype[Any]) -> ImageType:
     """Clip and restore an owned float32 batch to the public dtype and contiguous layout."""
-    if output_dtype == np.float32:
-        np.clip(work, 0.0, 1.0, out=work)
-        return cast("ImageType", np.ascontiguousarray(work))
+    if output_dtype.type in (np.float16, np.float32):
+        np.clip(work, 0.0, 1.0, out=work, dtype=np.float32, casting="unsafe")
+        return cast("ImageType", np.ascontiguousarray(work.astype(output_dtype, copy=False)))
     return cast("ImageType", np.ascontiguousarray(from_float(work, target_dtype=output_dtype)))
 
 
@@ -304,7 +304,7 @@ def apply_plasma_brightness_contrast_batch(
     reusing shared spatial setup for efficient lighting augmentation.
 
     The result matches stacking :func:`apply_plasma_brightness_contrast` for nonzero adjustments. Empty batches
-    preserve identity; zero-effect batches are independent copies, with float32 values clipped to `[0, 1]`.
+    preserve identity; zero-effect batches are independent copies, with floating-point values clipped to `[0, 1]`.
 
     Args:
         images (ImageType): Image batch in `(N, H, W, C)` format, or `(N, H, W)` for direct grayscale calls.
@@ -327,8 +327,9 @@ def apply_plasma_brightness_contrast_batch(
         return images
 
     if brightness_factor == 0 and contrast_factor == 0:
-        if images.dtype == np.float32:
-            result: ImageType = cast("ImageFloat32", np.clip(images, 0.0, 1.0, order="C"))
+        if images.dtype.type in (np.float16, np.float32):
+            result: ImageType = np.empty_like(images, order="C")
+            np.clip(images, 0.0, 1.0, out=result, dtype=np.float32, casting="unsafe")
         else:
             result = cast("ImageUInt8", np.array(images, copy=True, order="C"))
         return result

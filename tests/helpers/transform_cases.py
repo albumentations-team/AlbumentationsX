@@ -401,7 +401,7 @@ _BASE_CASE_SPECS: list[list[Any]] = [
             "absolute_scale": True,
         },
     ],
-    [A.ChannelDropout, dict(channel_drop_range=(1, 2), fill=1)],
+    [A.ChannelDropout, dict(dropout_ratio=0.25, fill=1)],
     [A.ChannelShuffle, {}],
     [
         A.Downscale,
@@ -831,6 +831,7 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
         },
     ),
     ("padded", A.CenterCrop3D, {"pad_if_needed": True, "fill": 7, "fill_mask": 3}),
+    ("selected-channels", A.ChannelDropout, {"channels_to_drop": (0, 2)}),
     ("fixed-order", A.ChannelShuffle, {"channel_order": (2, 0, 1)}),
     (
         "red-blue-cubic",

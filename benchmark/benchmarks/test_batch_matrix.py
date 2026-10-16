@@ -49,7 +49,7 @@ class BatchSpec:
 
 IMAGE_BATCH_TRANSFORMS: Mapping[str, BatchSpec] = {
     "bias_field": BatchSpec(lambda: albumentations.BiasField(std_range=(0.25, 0.25), p=1.0)),
-    "channel_dropout": BatchSpec(lambda: albumentations.ChannelDropout(p=1.0), channels=(3, 5)),
+    "channel_dropout": BatchSpec(lambda: albumentations.ChannelDropout(p=1.0)),
     "coarse_dropout": BatchSpec(lambda: albumentations.CoarseDropout(p=1.0)),
     "exposure_matching": BatchSpec(
         lambda: albumentations.ExposureMatching(p=1.0),

@@ -435,21 +435,6 @@ def test_lambda_transform():
     np.testing.assert_array_almost_equal(output["keypoints"], expected_xyas)
 
 
-def test_channel_droput():
-    img = np.ones((10, 10, 3), dtype=np.float32)
-
-    aug = A.ChannelDropout(channel_drop_range=(1, 1), p=1)  # Drop one channel
-
-    transformed = aug(image=img)["image"]
-
-    assert sum(transformed[:, :, c].max() for c in range(img.shape[2])) == 2
-
-    aug = A.ChannelDropout(channel_drop_range=(2, 2), p=1)  # Drop two channels
-    transformed = aug(image=img)["image"]
-
-    assert sum(transformed[:, :, c].max() for c in range(img.shape[2])) == 1
-
-
 def test_equalize():
     aug = A.Equalize(p=1)
 

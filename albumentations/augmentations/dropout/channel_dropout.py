@@ -1,5 +1,6 @@
 """Drop a fraction of eligible image channels."""
 
+from decimal import Decimal
 from typing import Annotated, Any
 
 from pydantic import Field, field_validator
@@ -28,7 +29,7 @@ class ChannelDropout(ImageOnlyTransform):
             dropout. None makes every input channel eligible. An explicit sequence must be
             non-empty, and every index must exist in each image-like target. Default: None.
         dropout_ratio (float): Fraction of eligible channels to replace, in [0, 1]. The count
-            is rounded to the nearest integer, with halves rounded up, then capped at the
+            is rounded to the nearest integer using decimal half-up rounding, then capped at the
             total number of input channels minus one. Default: 0.5.
         fill (float): Value assigned to the selected channels. Use a value in the input
             dtype's image range, such as 0 for missing signal. Default: 0.
@@ -118,13 +119,17 @@ class ChannelDropout(ImageOnlyTransform):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
+        ratio_numerator, ratio_denominator = Decimal(str(self.dropout_ratio)).as_integer_ratio()
         groups: list[TargetParams] = []
         for views in targets.group_image_like_by(lambda view: view.descriptor.channels):
             num_channels = views[0].descriptor.channels or 1
             if self.channels_to_drop is not None and max(self.channels_to_drop) >= num_channels:
                 raise ValueError(f"channels_to_drop contains an index outside the input's {num_channels} channels")
             eligible_channels = range(num_channels) if self.channels_to_drop is None else self.channels_to_drop
-            num_drop_channels = min(int(len(eligible_channels) * self.dropout_ratio + 0.5), num_channels - 1)
+            num_drop_channels = min(
+                (2 * len(eligible_channels) * ratio_numerator + ratio_denominator) // (2 * ratio_denominator),
+                num_channels - 1,
+            )
             selected_channels = tuple(sampling.py_random.sample(eligible_channels, k=num_drop_channels))
             groups.append(
                 TargetParams(

@@ -27,6 +27,13 @@ from albumentations.core.transform_params import SampledParams
         (10, (0, 2, 4, 6), 0.625, 3),
         (4, (0, 1, 2, 3), 1, 3),
         (3, (2,), 1, 1),
+        pytest.param(45, None, 0.7, 32, id="decimal-half-45"),
+        pytest.param(100, None, 0.145, 15, id="decimal-half-100"),
+        pytest.param(50, None, 0.29, 15, id="decimal-half-50"),
+        pytest.param(45, None, float(np.nextafter(0.7, 0)), 31, id="below-half-45"),
+        pytest.param(100, None, float(np.nextafter(0.145, 0)), 14, id="below-half-100"),
+        pytest.param(50, None, float(np.nextafter(0.29, 0)), 14, id="below-half-50"),
+        pytest.param(3, (0,), float(np.nextafter(0.5, 0)), 0, id="below-half-single-eligible"),
     ],
 )
 def test_channel_dropout_fraction_and_protected_channels(

@@ -2050,7 +2050,40 @@ def test_apply_plasma_brightness_contrast_batch_per_image_route_preserves_output
     np.testing.assert_array_equal(result, expected)
 
 
-@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("num_channels", [1, 3, 5])
+def test_finish_plasma_brightness_contrast_batch_clips_before_conversion(dtype, num_channels):
+    work = np.tile(np.array([-0.25, 0.125, 0.75, 1.25], dtype=np.float32).reshape(1, 4, 1), (2, 1, num_channels))
+    values = [0, 32, 191, 255] if dtype == np.uint8 else [0, 0.125, 0.75, 1]
+    expected = np.tile(np.array(values, dtype=dtype).reshape(1, 4, 1), (2, 1, num_channels))
+
+    result = fillumination._finish_plasma_brightness_contrast_batch(work, np.dtype(dtype))
+
+    assert result.dtype == dtype
+    assert result.flags.c_contiguous
+    assert result.flags.writeable
+    np.testing.assert_array_equal(result, expected)
+
+
+def test_plasma_brightness_contrast_zero_effect_clips_all_half_encodings():
+    images = np.arange(65536, dtype=np.uint16).view(np.float16).reshape(4, 64, 256, 1)
+    original_bits = images.view(np.uint16).copy()
+    pattern = np.zeros((64, 256), dtype=np.float32)
+    expected = np.clip(images, 0, 1)
+
+    with np.errstate(all="raise"):
+        result = fpixel.apply_plasma_brightness_contrast_batch(images, 0, 0, pattern)
+
+    finite_or_infinite = ~np.isnan(images)
+    assert result.dtype == np.float16
+    np.testing.assert_array_equal(
+        result[finite_or_infinite].view(np.uint16), expected[finite_or_infinite].view(np.uint16)
+    )
+    np.testing.assert_array_equal(np.isnan(result), np.isnan(expected))
+    np.testing.assert_array_equal(images.view(np.uint16), original_bits)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
 @pytest.mark.parametrize("num_channels", [1, 5])
 @pytest.mark.parametrize("layout", ["strided", "fortran"])
 def test_apply_plasma_brightness_contrast_batch_zero_effect_returns_semantic_copy(dtype, num_channels, layout):
@@ -2058,14 +2091,14 @@ def test_apply_plasma_brightness_contrast_batch_zero_effect_returns_semantic_cop
     if dtype == np.uint8:
         source = np.arange(np.prod(shape), dtype=np.uint8).reshape(shape)
     else:
-        source = np.linspace(-0.25, 1.25, num=np.prod(shape), dtype=np.float32).reshape(shape)
+        source = np.linspace(-0.25, 1.25, num=np.prod(shape), dtype=dtype).reshape(shape)
     images = source[:, :, ::2] if layout == "strided" else np.asfortranarray(source)
     images.setflags(write=False)
     images_before = images.copy()
     plasma_pattern = np.zeros(images.shape[1:3], dtype=np.float32)
 
     result = fpixel.apply_plasma_brightness_contrast_batch(images, 0.0, 0.0, plasma_pattern)
-    expected = np.clip(images, 0.0, 1.0) if dtype == np.float32 else images
+    expected = np.clip(images, 0.0, 1.0) if dtype != np.uint8 else images
 
     assert result.shape == images.shape
     assert result.dtype == images.dtype

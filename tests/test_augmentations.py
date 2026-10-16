@@ -1958,6 +1958,29 @@ def test_plasma_brightness_contrast_batch_routes_match_per_image(
     np.testing.assert_array_equal(actual, expected)
 
 
+@pytest.mark.parametrize("target_name", ["images", "volume"])
+@pytest.mark.parametrize("num_channels", [1, 3, 5])
+def test_plasma_brightness_contrast_zero_effect_clips_float16(target_name, num_channels):
+    source = np.linspace(-0.25, 1.25, num=4 * 9 * 22 * num_channels, dtype=np.float16).reshape(4, 9, 22, num_channels)
+    data = source[:, :, ::2]
+    data.setflags(write=False)
+    before = data.copy()
+    compose = A.Compose(
+        [A.PlasmaBrightnessContrast(brightness_range=(0, 0), contrast_range=(0, 0), p=1)],
+        seed=137,
+        strict=True,
+    )
+
+    result = compose(**{target_name: data})[target_name]
+
+    assert result.dtype == np.float16
+    assert result.flags.c_contiguous
+    assert result.flags.writeable
+    assert not np.shares_memory(result, data)
+    np.testing.assert_array_equal(result, np.clip(before, 0, 1))
+    np.testing.assert_array_equal(data, before)
+
+
 def _overlapping_shadow_params() -> tuple[list[np.ndarray], np.ndarray]:
     vertices_list = [
         np.array([[1, 1], [5, 1], [5, 5], [1, 5]], dtype=np.int32),

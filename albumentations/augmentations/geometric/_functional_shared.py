@@ -15,19 +15,23 @@ import numpy as np
 from albucore import (
     clip,
     from_float,
-    hflip,
     preserve_channel_dim,
     reduce_sum,
     remap,
     to_float,
-    vflip,
     warp_perspective,
 )
 from albucore import (
     copy_make_border as albucore_copy_make_border,
 )
 from albucore import (
+    hflip as albucore_hflip,
+)
+from albucore import (
     resize as albucore_resize,
+)
+from albucore import (
+    vflip as albucore_vflip,
 )
 
 from albumentations.augmentations.utils import angle_2pi_range, handle_empty_array
@@ -96,13 +100,37 @@ __all__ = [
 _RANGE_OVERSHOOT_INTERPOLATIONS = frozenset({cv2.INTER_CUBIC, cv2.INTER_LANCZOS4})
 
 
-def clip_if_interpolation_can_overshoot(image: ImageType, interpolation: int) -> ImageType:
-    """Restore the public floating image range after cubic or Lanczos interpolation, whose kernels can overshoot it.
+def hflip(img: ImageType) -> ImageType:
+    """Mirror image or mask columns, preserving an omitted channel axis."""
+    if img.ndim == 2:
+        return albucore_hflip(img[..., None])[..., 0]
+    return albucore_hflip(img)
+
+
+def vflip(img: ImageType) -> ImageType:
+    """Reverse image or mask rows, preserving an omitted channel axis."""
+    if img.ndim == 2:
+        return albucore_vflip(img[..., None])[..., 0]
+    return albucore_vflip(img)
+
+
+def clip_if_interpolation_can_overshoot(
+    image: ImageType,
+    interpolation: int,
+    *,
+    source: ImageType | None = None,
+) -> ImageType:
+    """Clip new floating samples after cubic or Lanczos interpolation to [0, 1].
+    Pass the original source to leave unresampled identity and shared-storage views untouched.
     Use it for images, not masks.
     """
-    if interpolation in _RANGE_OVERSHOOT_INTERPOLATIONS:
-        if image.dtype == np.float16:
-            return np.clip(image, 0.0, 1.0, out=image, dtype=np.float32, casting="unsafe")
-        if image.dtype == np.float32:
-            return clip(image, image.dtype, inplace=True)
-    return image
+    is_half = image.dtype.type is np.float16
+    if interpolation not in _RANGE_OVERSHOOT_INTERPOLATIONS or not (is_half or image.dtype == np.float32):
+        return image
+    if image is source or (source is not None and np.shares_memory(image, source)):
+        return image
+    if not image.flags.writeable:
+        image = image.copy()
+    if is_half:
+        return np.clip(image, 0.0, 1.0, out=image, dtype=np.float32, casting="unsafe")
+    return clip(image, image.dtype, inplace=True)

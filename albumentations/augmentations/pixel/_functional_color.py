@@ -490,22 +490,16 @@ def move_tone_curve(
                 float(low_y_scalar),
                 float(high_y_scalar),
             )
-        lut = cast(
-            "ImageUInt8",
-            clip(np.rint(evaluate_bez(float(low_y_scalar), float(high_y_scalar))), np.dtype(np.uint8), inplace=False),
-        )
+        lut = clip(np.rint(evaluate_bez(float(low_y_scalar), float(high_y_scalar))), np.dtype(np.uint8), inplace=False)
         return sz_lut(cast("ImageUInt8", img), lut, inplace=False)
 
     if isinstance(low_y, np.ndarray) and isinstance(high_y, np.ndarray):
         if img.dtype == np.float32:
             return _move_tone_curve_float32(cast("ImageFloat32", img), low_y, high_y)
-        lut = cast(
-            "ImageUInt8",
-            clip(
-                np.rint(evaluate_bez(low_y, high_y)),
-                np.dtype(np.uint8),
-                inplace=False,
-            ),
+        lut = clip(
+            np.rint(evaluate_bez(low_y, high_y)),
+            np.dtype(np.uint8),
+            inplace=False,
         )
         return apply_uint8_lut(cast("ImageUInt8", img), lut[:, np.newaxis, :])
 

@@ -884,7 +884,7 @@ class RandomSunFlare(ImageOnlyTransform):
     def apply(
         self,
         img: ImageType,
-        flare_center: tuple[float, float],
+        flare_center: tuple[int, int],
         circles: list[Any],
         **params: Any,
     ) -> ImageType:

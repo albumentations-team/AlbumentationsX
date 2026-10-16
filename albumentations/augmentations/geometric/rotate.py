@@ -434,7 +434,7 @@ class Rotate(DualTransform):
         )
         if self.crop_border:
             img_out = fcrops.crop(img_out, x_min, y_min, x_max, y_max)
-        return fgeometric.clip_if_interpolation_can_overshoot(img_out, self.interpolation)
+        return fgeometric.clip_if_interpolation_can_overshoot(img_out, self.interpolation, source=img)
 
     def apply_to_mask(
         self,

@@ -1036,7 +1036,7 @@ class ExposureMatching(ImageOnlyTransform):
 
     def apply(self, img: ImageType, gain: float, **params: Any) -> ImageType:
         result = albucore.multiply(img, gain, inplace=False)
-        if result.dtype == np.float16:
+        if result.dtype.type is np.float16:
             return np.clip(result, 0.0, 1.0, out=result, dtype=np.float32, casting="unsafe")
         return fpixel.clip(result, img.dtype, inplace=True) if img.dtype == np.float32 else result
 

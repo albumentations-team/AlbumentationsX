@@ -494,7 +494,7 @@ def add_sun_flare_physics_based(
     img: ImageType,
     flare_center: tuple[int, int],
     src_radius: int,
-    src_color: tuple[int, int, int],
+    src_color: tuple[int, ...],
     circles: list[Any],
 ) -> ImageType:
     """Physics-based sun flare: circle, spikes, ghosts, chromatic aberration, screen blend.
@@ -508,7 +508,7 @@ def add_sun_flare_physics_based(
         img (ImageType): Input image.
         flare_center (tuple[int, int]): (x, y) coordinates of the sun's center in pixels.
         src_radius (int): Radius of the main sun circle in pixels.
-        src_color (tuple[int, int, int]): Color of the sun in RGB format.
+        src_color (tuple[int, ...]): Color of the sun in RGB format.
         circles (list[Any]): List of tuples, each representing a flare circle with parameters:
             (alpha, center, size, color)
             - alpha (float): Transparency of the circle (0.0 to 1.0).

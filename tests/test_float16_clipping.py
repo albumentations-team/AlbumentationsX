@@ -1,14 +1,9 @@
 import cv2
 import numpy as np
 import pytest
-from albucore.utils import MAX_VALUES_BY_DTYPE
 
 import albumentations as A
-
-
-def _require_half_core(dtype):
-    if dtype == np.float16 and np.dtype(np.float16) not in MAX_VALUES_BY_DTYPE:
-        pytest.skip("This route requires half-enabled Albucore >= 0.3.0")
+from albumentations.augmentations.geometric import functional as fgeometric
 
 
 @pytest.mark.parametrize("dtype", [np.float16, np.float32])
@@ -46,7 +41,6 @@ def _require_half_core(dtype):
     ids=["add-brightness", "scale-contrast", "mean-contrast", "jitter-brightness", "jitter-contrast"],
 )
 def test_photometric_float_clipping(dtype, target, strided, transform_type, kwargs, expected_values):
-    _require_half_core(dtype)
     image = np.tile(np.array([0, 0.25, 0.75, 1], dtype=dtype), (8, 2))[..., None]
     expected = np.tile(np.array(expected_values, dtype=dtype), (8, 2))[..., None]
     if target != "image":
@@ -70,7 +64,6 @@ def test_photometric_float_clipping(dtype, target, strided, transform_type, kwar
 @pytest.mark.parametrize("target", ["image", "images", "volume"])
 @pytest.mark.parametrize("elementwise", [False, True])
 def test_multiplicative_noise_float_clipping(dtype, target, elementwise):
-    _require_half_core(dtype)
     image = np.tile(np.array([0, 0.25, 0.75, 1], dtype=dtype), (8, 2))[..., None]
     expected = np.tile(np.array([0, 0.375, 1, 1], dtype=dtype), (8, 2))[..., None]
     if target != "image":
@@ -88,7 +81,6 @@ def test_multiplicative_noise_float_clipping(dtype, target, elementwise):
 
 @pytest.mark.parametrize("dtype", [np.float16, np.float32])
 def test_exposure_matching_image_float_clipping(dtype):
-    _require_half_core(dtype)
     image = np.array([0, 0.25, 0.75, 1], dtype=dtype).reshape(2, 2, 1)
     original = image.copy()
     transform = A.Compose([A.ExposureMatching(target_mean_range=(0.75, 0.75), p=1)], seed=137)
@@ -103,7 +95,6 @@ def test_exposure_matching_image_float_clipping(dtype):
 @pytest.mark.parametrize("dtype", [np.float16, np.float32])
 @pytest.mark.parametrize("target", ["image", "images", "volume"])
 def test_film_grain_float_clipping(dtype, target):
-    _require_half_core(dtype)
     shape = (8, 8, 1) if target == "image" else (2, 8, 8, 1)
     image = np.full(shape, 0.5, dtype=dtype)
     image.setflags(write=False)
@@ -121,9 +112,9 @@ def test_film_grain_float_clipping(dtype, target):
 @pytest.mark.parametrize("dtype", [np.float16, np.float32])
 @pytest.mark.parametrize("target", ["image", "images", "volume"])
 @pytest.mark.parametrize(("mode", "effect_type"), [("corner", "darken"), ("gaussian", "brighten")])
-def test_high_channel_illumination_float_clipping(dtype, target, mode, effect_type):
-    _require_half_core(dtype)
-    shape = (8, 8, 5) if target == "image" else (2, 8, 8, 5)
+@pytest.mark.parametrize("channels", [1, 3, 5])
+def test_illumination_float_clipping(dtype, target, mode, effect_type, channels):
+    shape = (8, 8, channels) if target == "image" else (2, 8, 8, channels)
     image = np.ones(shape, dtype=dtype)
     image.setflags(write=False)
     transform = A.Compose(
@@ -144,7 +135,6 @@ def test_high_channel_illumination_float_clipping(dtype, target, mode, effect_ty
 @pytest.mark.parametrize("target", ["image", "images", "volume"])
 @pytest.mark.parametrize("interpolation", [cv2.INTER_CUBIC, cv2.INTER_LANCZOS4])
 def test_resize_float_clipping_preserves_mask_range(dtype, target, interpolation):
-    _require_half_core(dtype)
     image = np.zeros((8, 8, 1), dtype=dtype)
     image[:, 4:] = 1
     if target != "image":
@@ -160,4 +150,56 @@ def test_resize_float_clipping_preserves_mask_range(dtype, target, interpolation
     assert result[target].min() == 0
     assert result[target].max() == 1
     np.testing.assert_array_equal(result[mask_target], np.full(result[target].shape[:-1], 137, dtype=np.float32))
+    np.testing.assert_array_equal(image, original)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("target", ["image", "images", "volume"])
+@pytest.mark.parametrize("interpolation", [cv2.INTER_CUBIC, cv2.INTER_LANCZOS4])
+def test_same_size_resize_preserves_readonly_input(dtype, target, interpolation):
+    shape = (8, 8, 1) if target == "image" else (2, 8, 8, 1)
+    image = np.full(shape, 0.5 if dtype != np.uint8 else 137, dtype=dtype)
+    original = image.copy()
+    image.setflags(write=False)
+    transform = A.Compose([A.Resize(8, 8, interpolation=interpolation, p=1)], seed=137)
+
+    result = transform(**{target: image})[target]
+
+    assert result.dtype == image.dtype
+    np.testing.assert_array_equal(result, original)
+    np.testing.assert_array_equal(image, original)
+
+
+@pytest.mark.parametrize("dtype", [np.dtype(np.float16), np.dtype(np.float16).newbyteorder("S")])
+@pytest.mark.parametrize("interpolation", [cv2.INTER_CUBIC, cv2.INTER_LANCZOS4])
+@pytest.mark.parametrize("readonly", [False, True])
+def test_interpolated_half_clipping_preserves_byte_order(dtype, interpolation, readonly):
+    image = np.array([-0.25, 0, 0.25, 1, 1.25], dtype=dtype).reshape(1, 5, 1)
+    original = image.copy()
+    if readonly:
+        image.setflags(write=False)
+
+    result = fgeometric.clip_if_interpolation_can_overshoot(image, interpolation)
+
+    assert result.dtype == dtype
+    np.testing.assert_array_equal(result.ravel(), np.array([0, 0, 0.25, 1, 1], dtype=dtype))
+    if readonly:
+        np.testing.assert_array_equal(image, original)
+    else:
+        assert result is image
+
+
+@pytest.mark.parametrize("dtype", [np.dtype(np.float16), np.dtype(np.float16).newbyteorder("S")])
+@pytest.mark.parametrize("interpolation", [cv2.INTER_CUBIC, cv2.INTER_LANCZOS4])
+def test_interpolation_clipping_leaves_shared_views(dtype, interpolation):
+    image = np.empty((8, 8, 1), dtype=dtype)
+    image[..., 0] = np.tile([0, 0.25, 0.75, 1], (8, 2))
+    original = image.copy()
+    image.setflags(write=False)
+    view = image.transpose(1, 0, 2)
+
+    result = fgeometric.clip_if_interpolation_can_overshoot(view, interpolation, source=image)
+
+    assert result is view
+    np.testing.assert_array_equal(result, original.transpose(1, 0, 2))
     np.testing.assert_array_equal(image, original)

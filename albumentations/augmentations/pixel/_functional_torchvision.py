@@ -258,7 +258,7 @@ def _apply_brightness_only_torchvision(img: ImageType, brightness_factor: float)
         return img
 
     result = multiply(img, brightness_factor, inplace=False)
-    if result.dtype == np.float16:
+    if result.dtype.type is np.float16:
         return np.clip(result, 0.0, 1.0, out=result, dtype=np.float32, casting="unsafe")
     return np.clip(result, 0.0, 1.0, out=result) if result.dtype == np.float32 else result
 
@@ -272,7 +272,7 @@ def _apply_contrast_only_torchvision(img: ImageType, contrast_factor: float) -> 
         return cast("ImageType", np.full_like(img, img_mean, dtype=img.dtype))
 
     result = multiply_add(img, contrast_factor, img_mean * (1 - contrast_factor), inplace=False)
-    if result.dtype == np.float16:
+    if result.dtype.type is np.float16:
         return np.clip(result, 0.0, 1.0, out=result, dtype=np.float32, casting="unsafe")
     return np.clip(result, 0.0, 1.0, out=result) if result.dtype == np.float32 else result
 
@@ -470,7 +470,7 @@ def apply_random_brightness_contrast(
     if ensure_safe_output:
         alpha, beta = get_safe_brightness_contrast_params(alpha, beta, max_value)
     result = multiply_add(img, alpha, beta, inplace=False)
-    if result.dtype == np.float16:
+    if result.dtype.type is np.float16:
         return np.clip(result, 0.0, 1.0, out=result, dtype=np.float32, casting="unsafe")
     return clip(result, img.dtype, inplace=True) if img.dtype == np.float32 else result
 

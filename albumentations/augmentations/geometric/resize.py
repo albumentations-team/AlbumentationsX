@@ -233,7 +233,7 @@ class RandomScale(DualTransform):
             interpolation = cv2.INTER_AREA
 
         result = fgeometric.scale_xy(img, scale_x, scale_y, interpolation)
-        return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation)
+        return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation, source=img)
 
     def apply_to_mask(
         self,
@@ -432,7 +432,7 @@ class BaseMaxSizeTransform(DualTransform):
             interpolation = cv2.INTER_AREA
 
         result = fgeometric.resize(img, (new_height, new_width), interpolation=interpolation)
-        return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation)
+        return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation, source=img)
 
     def apply_to_mask(
         self,
@@ -842,7 +842,7 @@ class Resize(DualTransform):
             interpolation = cv2.INTER_AREA
 
         result = fgeometric.resize(img, (self.height, self.width), interpolation=interpolation)
-        return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation)
+        return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation, source=img)
 
     def apply_to_mask(self, mask: ImageType, **params: Any) -> ImageType:
         height, width = mask.shape[:2]
@@ -990,7 +990,7 @@ class LetterBox(DualTransform):
             border_mode=cv2.BORDER_CONSTANT,
             value=self.fill,
         )
-        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
+        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation, source=img)
 
     def apply_to_mask(
         self,

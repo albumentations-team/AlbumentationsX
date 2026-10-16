@@ -2,7 +2,7 @@
 
 from typing import Annotated, Any
 
-from pydantic import AfterValidator, Field
+from pydantic import Field, field_validator
 
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import (
@@ -17,12 +17,6 @@ from albumentations.core.type_definitions import ImageType
 from .functional import channel_dropout
 
 __all__ = ["ChannelDropout"]
-
-
-def _check_unique_channels(channels_to_drop: tuple[int, ...]) -> tuple[int, ...]:
-    if len(channels_to_drop) != len(set(channels_to_drop)):
-        raise ValueError("channels_to_drop must not contain duplicate indices")
-    return channels_to_drop
 
 
 class ChannelDropout(ImageOnlyTransform):
@@ -86,12 +80,18 @@ class ChannelDropout(ImageOnlyTransform):
             Annotated[
                 tuple[Annotated[int, Field(strict=True, ge=0)], ...],
                 Field(min_length=1),
-                AfterValidator(_check_unique_channels),
             ]
             | None
         )
         dropout_ratio: float = Field(ge=0, le=1)
         fill: float
+
+        @field_validator("channels_to_drop")
+        @classmethod
+        def _validate_channels_to_drop(cls, value: tuple[int, ...] | None) -> tuple[int, ...] | None:
+            if value is not None and len(value) != len(set(value)):
+                raise ValueError("channels_to_drop must not contain duplicate indices")
+            return value
 
     def __init__(
         self,

@@ -1960,8 +1960,16 @@ def test_plasma_brightness_contrast_batch_routes_match_per_image(
 
 @pytest.mark.parametrize("target_name", ["images", "volume"])
 @pytest.mark.parametrize("num_channels", [1, 3, 5])
-def test_plasma_brightness_contrast_zero_effect_clips_float16(target_name, num_channels):
-    source = np.linspace(-0.25, 1.25, num=4 * 9 * 22 * num_channels, dtype=np.float16).reshape(4, 9, 22, num_channels)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        np.float16,
+        pytest.param(np.dtype(np.float16).newbyteorder("S"), id="swapped-float16"),
+        pytest.param(np.dtype(np.float32).newbyteorder("S"), id="swapped-float32"),
+    ],
+)
+def test_plasma_brightness_contrast_zero_effect_clips_floating_input(target_name, num_channels, dtype):
+    source = np.linspace(-0.25, 1.25, num=4 * 9 * 22 * num_channels, dtype=dtype).reshape(4, 9, 22, num_channels)
     data = source[:, :, ::2]
     data.setflags(write=False)
     before = data.copy()
@@ -1973,7 +1981,7 @@ def test_plasma_brightness_contrast_zero_effect_clips_float16(target_name, num_c
 
     result = compose(**{target_name: data})[target_name]
 
-    assert result.dtype == np.float16
+    assert result.dtype == data.dtype
     assert result.flags.c_contiguous
     assert result.flags.writeable
     assert not np.shares_memory(result, data)

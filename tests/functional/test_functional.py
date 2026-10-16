@@ -2050,7 +2050,16 @@ def test_apply_plasma_brightness_contrast_batch_per_image_route_preserves_output
     np.testing.assert_array_equal(result, expected)
 
 
-@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        np.uint8,
+        np.float16,
+        np.float32,
+        pytest.param(np.dtype(np.float16).newbyteorder("S"), id="swapped-float16"),
+        pytest.param(np.dtype(np.float32).newbyteorder("S"), id="swapped-float32"),
+    ],
+)
 @pytest.mark.parametrize("num_channels", [1, 3, 5])
 def test_finish_plasma_brightness_contrast_batch_clips_before_conversion(dtype, num_channels):
     work = np.tile(np.array([-0.25, 0.125, 0.75, 1.25], dtype=np.float32).reshape(1, 4, 1), (2, 1, num_channels))
@@ -2083,7 +2092,16 @@ def test_plasma_brightness_contrast_zero_effect_clips_all_half_encodings():
     np.testing.assert_array_equal(images.view(np.uint16), original_bits)
 
 
-@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        np.uint8,
+        np.float16,
+        np.float32,
+        pytest.param(np.dtype(np.float16).newbyteorder("S"), id="swapped-float16"),
+        pytest.param(np.dtype(np.float32).newbyteorder("S"), id="swapped-float32"),
+    ],
+)
 @pytest.mark.parametrize("num_channels", [1, 5])
 @pytest.mark.parametrize("layout", ["strided", "fortran"])
 def test_apply_plasma_brightness_contrast_batch_zero_effect_returns_semantic_copy(dtype, num_channels, layout):

@@ -190,7 +190,7 @@ def _plasma_pattern_for_batch(images: ImageType, plasma_pattern: np.ndarray) -> 
 
 def _finish_plasma_brightness_contrast_batch(work: ImageFloat32, output_dtype: np.dtype[Any]) -> ImageType:
     """Clip and restore an owned float32 batch to the public dtype and contiguous layout."""
-    if output_dtype in (np.float16, np.float32):
+    if output_dtype.type in (np.float16, np.float32):
         np.clip(work, 0.0, 1.0, out=work, dtype=np.float32, casting="unsafe")
         return cast("ImageType", np.ascontiguousarray(work.astype(output_dtype, copy=False)))
     return cast("ImageType", np.ascontiguousarray(from_float(work, target_dtype=output_dtype)))
@@ -327,7 +327,7 @@ def apply_plasma_brightness_contrast_batch(
         return images
 
     if brightness_factor == 0 and contrast_factor == 0:
-        if images.dtype in (np.float16, np.float32):
+        if images.dtype.type in (np.float16, np.float32):
             result: ImageType = np.empty_like(images, order="C")
             np.clip(images, 0.0, 1.0, out=result, dtype=np.float32, casting="unsafe")
         else:

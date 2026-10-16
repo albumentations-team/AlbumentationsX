@@ -97,9 +97,12 @@ _RANGE_OVERSHOOT_INTERPOLATIONS = frozenset({cv2.INTER_CUBIC, cv2.INTER_LANCZOS4
 
 
 def clip_if_interpolation_can_overshoot(image: ImageType, interpolation: int) -> ImageType:
-    """Restore the public float32 range after cubic or Lanczos interpolation, whose kernels can overshoot it.
+    """Restore the public floating image range after cubic or Lanczos interpolation, whose kernels can overshoot it.
     Use it for images, not masks.
     """
-    if image.dtype == np.float32 and interpolation in _RANGE_OVERSHOOT_INTERPOLATIONS:
-        return clip(image, image.dtype, inplace=True)
+    if interpolation in _RANGE_OVERSHOOT_INTERPOLATIONS:
+        if image.dtype == np.float16:
+            return np.clip(image, 0.0, 1.0, out=image, dtype=np.float32, casting="unsafe")
+        if image.dtype == np.float32:
+            return clip(image, image.dtype, inplace=True)
     return image

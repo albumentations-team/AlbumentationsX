@@ -719,8 +719,11 @@ def apply_illumination_batch(
         result = _apply_clipped_illumination_batch(images, gradient, implicit_grayscale, num_channels)
     else:
         result = multiply_by_array(images, gradient)
-        if images.dtype == np.float32 and clip_required:
-            result = clip(result, images.dtype, inplace=True)
+        if clip_required:
+            if result.dtype == np.float16:
+                np.clip(result, 0.0, 1.0, out=result, dtype=np.float32, casting="unsafe")
+            elif images.dtype == np.float32:
+                result = clip(result, images.dtype, inplace=True)
     return result
 
 
@@ -1278,6 +1281,8 @@ def apply_film_grain(
     modulated = (grain * inv_lum * intensity * max_val).astype(np.float32)
 
     result = add_array(img, modulated[..., np.newaxis])
+    if result.dtype == np.float16:
+        return np.clip(result, 0.0, 1.0, out=result, dtype=np.float32, casting="unsafe")
     return clip(result, img.dtype, inplace=True) if img.dtype == np.float32 else result
 
 

@@ -620,6 +620,8 @@ class MultiplicativeNoise(ImageOnlyTransform):
         **kwargs: Any,
     ) -> ImageType:
         result = multiply(img, multiplier)
+        if result.dtype == np.float16:
+            return np.clip(result, 0.0, 1.0, out=result, dtype=np.float32, casting="unsafe")
         return clip(result, img.dtype, inplace=True) if img.dtype == np.float32 else result
 
     def apply_to_images(self, images: ImageType, multiplier: float | np.ndarray, **kwargs: Any) -> ImageType:

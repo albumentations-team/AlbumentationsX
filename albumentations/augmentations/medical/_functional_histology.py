@@ -12,9 +12,10 @@ from albumentations.augmentations.pixel._functional_shared import (
     ImageType,
     clipped,
     cv2,
-    float32_io,
+    from_float,
     np,
     reduce_sum,
+    to_float,
 )
 
 _Cv2InPlaceOp = Callable[..., np.ndarray]
@@ -540,7 +541,6 @@ def _apply_residual_stain_affine(
 
 
 @clipped
-@float32_io
 def apply_he_stain_augmentation(
     img: ImageType,
     stain_matrix: np.ndarray,
@@ -598,6 +598,8 @@ def apply_he_stain_augmentation(
         ... )
 
     """
+    input_dtype = img.dtype
+    img = from_float(img, target_dtype=np.float32) if input_dtype == np.float16 else to_float(img)
     stain_matrix, scale_factors, shift_values = _validate_stain_augmentation_inputs(
         stain_matrix,
         scale_factors,
@@ -636,7 +638,8 @@ def apply_he_stain_augmentation(
                 augment_background,
             )
 
-    return rgb_result.reshape(img.shape)
+    result = rgb_result.reshape(img.shape)
+    return result if input_dtype == np.float32 else from_float(result, target_dtype=input_dtype)
 
 
 __all__ = [

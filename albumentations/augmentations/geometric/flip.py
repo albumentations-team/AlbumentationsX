@@ -27,7 +27,7 @@ from typing import Any, Literal, cast
 
 import numpy as np
 import torch
-from albucore import flip_volume, hflip, vflip
+from albucore import flip_volume
 
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet
@@ -121,7 +121,7 @@ class VerticalFlip(DualTransform):
     def apply(self, img: ImageType | torch.Tensor, **params: Any) -> ImageType:
         if isinstance(img, torch.Tensor):
             return cast("ImageType", fgeometric.flip_tensor(img, dims=(-2,)))
-        return vflip(img)
+        return fgeometric.vflip(img)
 
     def apply_to_bboxes(self, bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"], **params: Any) -> np.ndarray:
         return fgeometric.bboxes_vflip(bboxes, bbox_type=bbox_type)
@@ -232,7 +232,7 @@ class HorizontalFlip(DualTransform):
     def apply(self, img: ImageType | torch.Tensor, **params: Any) -> ImageType:
         if isinstance(img, torch.Tensor):
             return cast("ImageType", fgeometric.flip_tensor(img, dims=(-1,)))
-        return hflip(img)
+        return fgeometric.hflip(img)
 
     def apply_to_bboxes(self, bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"], **params: Any) -> np.ndarray:
         return fgeometric.bboxes_hflip(bboxes, bbox_type=bbox_type)

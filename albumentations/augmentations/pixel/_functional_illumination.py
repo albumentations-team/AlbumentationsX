@@ -129,7 +129,6 @@ def generate_plasma_pattern(
 
 
 @clipped
-@float32_io
 def apply_plasma_brightness_contrast(
     img: ImageType,
     brightness_factor: float,
@@ -151,9 +150,10 @@ def apply_plasma_brightness_contrast(
         ImageType: The image with the brightness and contrast adjustments applied.
 
     """
-    # Early return if no adjustments needed
+    input_dtype = img.dtype
+    img = from_float(img, target_dtype=np.float32) if input_dtype == np.float16 else to_float(img)
     if brightness_factor == 0 and contrast_factor == 0:
-        return img
+        return img if input_dtype == np.float32 else from_float(img, target_dtype=input_dtype)
 
     img = img.copy()
 
@@ -172,9 +172,9 @@ def apply_plasma_brightness_contrast(
         img = multiply(img, contrast_weights, inplace=True)
 
         mean_factor = img_mean * (1.0 - contrast_weights)
-        return add(img, mean_factor, inplace=True)
+        img = add(img, mean_factor, inplace=True)
 
-    return img
+    return img if input_dtype == np.float32 else from_float(img, target_dtype=input_dtype)
 
 
 def _plasma_pattern_for_batch(images: ImageType, plasma_pattern: np.ndarray) -> np.ndarray:
@@ -207,10 +207,7 @@ def _apply_plasma_brightness_contrast_dedicated(
     image_pattern = _plasma_pattern_for_batch(images, plasma_pattern)
 
     if brightness_factor != 0:
-        work = cast(
-            "ImageFloat32",
-            add(work, np.multiply(image_pattern, np.float32(brightness_factor)), inplace=True),
-        )
+        work = add(work, np.multiply(image_pattern, np.float32(brightness_factor)), inplace=True)
 
     if contrast_factor != 0:
         image_means = tuple(mean(image) for image in work)
@@ -220,7 +217,7 @@ def _apply_plasma_brightness_contrast_dedicated(
         )
         contrast_weights = image_contrast_weights[np.newaxis]
         image_contrast_offsets = np.subtract(np.float32(1.0), image_contrast_weights)
-        work = cast("ImageFloat32", multiply(work, contrast_weights, inplace=True))
+        work = multiply(work, contrast_weights, inplace=True)
         for index, image_mean in enumerate(image_means):
             work[index] = cast(
                 "ImageFloat32",
@@ -257,15 +254,12 @@ def _apply_plasma_brightness_contrast_loop(
         )
 
         if brightness_map is not None:
-            work = cast("ImageFloat32", add(work, brightness_map, inplace=True))
+            work = add(work, brightness_map, inplace=True)
 
         if contrast_weights is not None and contrast_offsets is not None:
             image_mean = mean(work)
-            work = cast("ImageFloat32", multiply(work, contrast_weights, inplace=True))
-            work = cast(
-                "ImageFloat32",
-                add(work, np.multiply(image_mean, contrast_offsets), inplace=True),
-            )
+            work = multiply(work, contrast_weights, inplace=True)
+            work = add(work, np.multiply(image_mean, contrast_offsets), inplace=True)
         result[index] = _finish_plasma_brightness_contrast_batch(work, output_dtype)
 
     return cast("ImageType", result)
@@ -719,8 +713,11 @@ def apply_illumination_batch(
         result = _apply_clipped_illumination_batch(images, gradient, implicit_grayscale, num_channels)
     else:
         result = multiply_by_array(images, gradient)
-        if images.dtype == np.float32 and clip_required:
-            result = clip(result, images.dtype, inplace=True)
+        if clip_required:
+            if result.dtype.type is np.float16:
+                np.clip(result, 0.0, 1.0, out=result, dtype=np.float32, casting="unsafe")
+            elif images.dtype == np.float32:
+                result = clip(result, images.dtype, inplace=True)
     return result
 
 
@@ -1278,6 +1275,8 @@ def apply_film_grain(
     modulated = (grain * inv_lum * intensity * max_val).astype(np.float32)
 
     result = add_array(img, modulated[..., np.newaxis])
+    if result.dtype.type is np.float16:
+        return np.clip(result, 0.0, 1.0, out=result, dtype=np.float32, casting="unsafe")
     return clip(result, img.dtype, inplace=True) if img.dtype == np.float32 else result
 
 

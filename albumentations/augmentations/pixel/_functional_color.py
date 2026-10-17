@@ -490,22 +490,16 @@ def move_tone_curve(
                 float(low_y_scalar),
                 float(high_y_scalar),
             )
-        lut = cast(
-            "ImageUInt8",
-            clip(np.rint(evaluate_bez(float(low_y_scalar), float(high_y_scalar))), np.dtype(np.uint8), inplace=False),
-        )
+        lut = clip(np.rint(evaluate_bez(float(low_y_scalar), float(high_y_scalar))), np.dtype(np.uint8), inplace=False)
         return sz_lut(cast("ImageUInt8", img), lut, inplace=False)
 
     if isinstance(low_y, np.ndarray) and isinstance(high_y, np.ndarray):
         if img.dtype == np.float32:
             return _move_tone_curve_float32(cast("ImageFloat32", img), low_y, high_y)
-        lut = cast(
-            "ImageUInt8",
-            clip(
-                np.rint(evaluate_bez(low_y, high_y)),
-                np.dtype(np.uint8),
-                inplace=False,
-            ),
+        lut = clip(
+            np.rint(evaluate_bez(low_y, high_y)),
+            np.dtype(np.uint8),
+            inplace=False,
         )
         return apply_uint8_lut(cast("ImageUInt8", img), lut[:, np.newaxis, :])
 
@@ -1202,12 +1196,12 @@ def to_gray_pca(img: ImageType) -> ImageType:
     pixels = img.reshape(-1, img.shape[-1])
 
     pca = PCA(n_components=1, dtype=np.float32)
-    pca_result = pca.fit_transform(pixels)
+    pca_result: ImageFloat32 = pca.fit_transform(pixels)
 
     grayscale = pca_result.reshape(*img.shape[:-1], 1)
     grayscale = normalize_per_image(grayscale, "min_max")
 
-    return from_float(grayscale, target_dtype=dtype) if dtype == np.uint8 else grayscale
+    return from_float(grayscale, target_dtype=np.uint8) if dtype == np.uint8 else grayscale
 
 
 def to_gray(

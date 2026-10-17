@@ -1290,8 +1290,9 @@ def grayscale_to_multichannel(
     if num_output_channels == 3 and grayscale_image.ndim == 2:
         return cv2.cvtColor(grayscale_image, cv2.COLOR_GRAY2RGB)
 
-    squeezed = np.squeeze(grayscale_image)
-    # For multi-channel output, use tile for better performance
+    squeezed = (
+        grayscale_image[..., 0] if grayscale_image.ndim >= 3 and grayscale_image.shape[-1] == 1 else grayscale_image
+    )
     return np.tile(squeezed[..., np.newaxis], (1,) * squeezed.ndim + (num_output_channels,))
 
 

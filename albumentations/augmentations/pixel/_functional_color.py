@@ -1197,12 +1197,12 @@ def to_gray_pca(img: ImageType) -> ImageType:
 
     # Perform PCA
     pca = PCA(n_components=1, dtype=np.float32)
-    pca_result = pca.fit_transform(pixels)
+    pca_result: ImageFloat32 = pca.fit_transform(pixels)
 
     grayscale = pca_result.reshape(img.shape[:-1])
     grayscale = normalize_per_image(grayscale, "min_max")
 
-    return from_float(grayscale, target_dtype=dtype) if dtype == np.uint8 else grayscale
+    return from_float(grayscale, target_dtype=np.uint8) if dtype == np.uint8 else grayscale
 
 
 def to_gray(

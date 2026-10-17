@@ -16,6 +16,7 @@ from albumentations.core.transform_params import SampledParams
         (3, None, 0.1, 0),
         (3, None, 0.5, 2),
         (5, None, 0.5, 3),
+        (19, None, 0.5, 10),
         (3, None, 1, 2),
         (1, None, 0, 0),
         (1, None, 1, 0),
@@ -196,3 +197,47 @@ def test_channel_dropout_seed_reproduces_selection_from_eligible_channels() -> N
         selections.add(tuple(np.flatnonzero(np.all(original == 0, axis=(0, 1)))))
     assert len(selections) > 1
     assert set().union(*map(set, selections)) == {0, 2, 4, 6}
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("fill", [0, -0.0, 0.125])
+@pytest.mark.parametrize("layout", ["contiguous", "reversed", "planar"])
+@pytest.mark.parametrize(
+    ("target", "shape"),
+    [
+        ("image", (7, 11, 19)),
+        ("images", (2, 7, 11, 19)),
+        ("volume", (3, 7, 11, 19)),
+        ("volumes", (2, 3, 7, 11, 19)),
+    ],
+)
+def test_channel_dropout_fill_matches_sampled_channels(
+    dtype: type[np.generic],
+    fill: float,
+    layout: str,
+    target: str,
+    shape: tuple[int, ...],
+) -> None:
+    source = np.random.default_rng(137).integers(1, 200, shape, dtype=np.uint8).astype(dtype)
+    if dtype != np.uint8:
+        source = source / dtype(256)
+        source.reshape(-1)[:5] = [-0.0, np.nan, np.inf, -np.inf, 0.0]
+    if layout == "reversed":
+        source = source[..., ::-1, :]
+    elif layout == "planar":
+        source = np.moveaxis(np.moveaxis(source, -1, 0).copy(), 0, -1)
+    source.setflags(write=False)
+    original = source.copy()
+    dropout = A.ChannelDropout(dropout_ratio=0.5, fill=fill, p=1)
+    transform = A.Compose([dropout], seed=137, strict=True, save_applied_params=True)
+
+    result = transform(**{target: source})[target]
+
+    selected = SampledParams.from_dict(dropout.get_applied_params()).params_for(target)["selected_channels"]
+    assert len(selected) == 10
+    expected = original.copy()
+    expected[..., selected] = fill
+    np.testing.assert_array_equal(result, expected)
+    np.testing.assert_array_equal(source, original)
+    assert result.dtype == source.dtype
+    assert not np.shares_memory(result, source)

@@ -63,7 +63,28 @@ def channel_dropout(
     if not selected_channels:
         return img
     img = img.copy()
-    img[..., selected_channels] = fill
+    if (
+        isinstance(fill, (int, float))
+        and (fill == 0 or len(selected_channels) > 2)
+        and img.size
+        and img.shape[-1] <= 128
+    ):
+        # OpenCV fills channels in cache-sized blocks; OpenCV 5 supports at most 128 channels.
+        view = img.reshape(-1, img.shape[-2], img.shape[-1])
+        source_channel = -1
+        if fill != 0:
+            source_channel = selected_channels[0]
+            source_channel = source_channel if source_channel >= 0 else img.shape[-1] + source_channel
+            img[..., source_channel] = fill
+            selected_channels = selected_channels[1:]
+        from_to = [
+            index
+            for channel in selected_channels
+            for index in (source_channel, channel if channel >= 0 else img.shape[-1] + channel)
+        ]
+        cv2.mixChannels([view], [view], from_to)
+    else:
+        img[..., selected_channels] = fill
     return img
 
 

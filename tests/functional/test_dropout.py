@@ -28,6 +28,7 @@ def test_channel_dropout_fill_matches_index_assignment(
     np.testing.assert_array_equal(result, expected)
     np.testing.assert_array_equal(image, original)
     assert result.dtype == image.dtype
+    assert result is not image
     assert not np.shares_memory(result, image)
 
 

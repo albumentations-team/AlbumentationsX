@@ -54,7 +54,9 @@ def channel_dropout(
     Args:
         img (ImageType): Image, image batch, or volume with an explicit final channel axis.
         selected_channels (tuple[int, ...]): Channel indices selected by the caller.
-        fill (tuple[float, ...] | float): Shared value or one value per selected channel. Default: 0.
+        fill (tuple[float, ...] | float): Shared value or one value per selected channel.
+            Scalar positive and negative zero are equivalent; the sign of filled zeros
+            is not guaranteed. Default: 0.
 
     Returns:
         ImageType: A copy with selected channels filled, or the input when no channels are selected.

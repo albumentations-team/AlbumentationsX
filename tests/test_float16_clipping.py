@@ -203,3 +203,40 @@ def test_interpolation_clipping_leaves_shared_views(dtype, interpolation):
     assert result is view
     np.testing.assert_array_equal(result, original.transpose(1, 0, 2))
     np.testing.assert_array_equal(image, original)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("value", [0.25, 0.75])
+@pytest.mark.parametrize(
+    "target,shape",
+    [
+        ("image", (5, 7, 1)),
+        ("images", (2, 5, 7, 1)),
+        ("volume", (3, 5, 7, 1)),
+        ("volumes", (2, 3, 5, 7, 1)),
+    ],
+)
+def test_color_jitter_zero_contrast_keeps_fractional_gray_mean(dtype, value, target, shape):
+    source = np.full(shape, round(value * 255) if dtype == np.uint8 else value, dtype=dtype)
+    source.flags.writeable = False
+    original = source.copy()
+    pipeline = A.Compose(
+        [
+            A.ColorJitter(
+                brightness_range=(1, 1),
+                contrast_range=(0, 0),
+                saturation_range=(1, 1),
+                hue_range=(0, 0),
+                p=1,
+            ),
+        ],
+        seed=137,
+        strict=True,
+    )
+
+    result = pipeline(**{target: source})[target]
+
+    assert result.shape == source.shape
+    assert result.dtype == source.dtype
+    np.testing.assert_array_equal(result, original)
+    np.testing.assert_array_equal(source, original)

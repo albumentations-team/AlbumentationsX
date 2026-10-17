@@ -267,7 +267,7 @@ def _apply_contrast_only_torchvision(img: ImageType, contrast_factor: float) -> 
     gray_img = img if is_grayscale_image(img) else to_gray_weighted_average(img)
     img_mean = float(mean(gray_img))
     if contrast_factor == 0:
-        if img.dtype != np.float32:
+        if img.dtype == np.uint8:
             img_mean = int(img_mean + 0.5)
         return cast("ImageType", np.full_like(img, img_mean, dtype=img.dtype))
 

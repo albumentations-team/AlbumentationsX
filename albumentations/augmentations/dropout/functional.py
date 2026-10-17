@@ -14,8 +14,6 @@ import numpy as np
 from albucore import (
     MAX_VALUES_BY_DTYPE,
     get_num_channels,
-    is_grayscale_image,
-    preserve_channel_dim,
     reduce_sum,
     uint8_io,
     warp_affine,
@@ -46,32 +44,26 @@ __all__ = [
 ]
 
 
-@preserve_channel_dim
 def channel_dropout(
     img: ImageType,
-    channels_to_drop: int | tuple[int, ...] | np.ndarray,
+    selected_channels: tuple[int, ...],
     fill: tuple[float, ...] | float = 0,
 ) -> ImageType:
-    """Replace selected channels with fill; others unchanged. channels_to_drop: index/indices;
-    fill: scalar or per-channel. Multi-channel only.
-
-    This function drops channels from an image.
+    """Replace selected channels in a channel-last array without modifying the input.
 
     Args:
-        img (ImageType): Input image.
-        channels_to_drop (int | tuple[int, ...] | np.ndarray): Channels to drop.
-        fill (tuple[float, ...] | float): Value to fill the dropped channels with.
+        img (ImageType): Image, image batch, or volume with an explicit final channel axis.
+        selected_channels (tuple[int, ...]): Channel indices selected by the caller.
+        fill (tuple[float, ...] | float): Shared value or one value per selected channel. Default: 0.
 
     Returns:
-        ImageType: Image with channels dropped.
+        ImageType: A copy with selected channels filled, or the input when no channels are selected.
 
     """
-    if is_grayscale_image(img):
-        msg = "Only one channel. ChannelDropout is not defined."
-        raise NotImplementedError(msg)
-
+    if not selected_channels:
+        return img
     img = img.copy()
-    img[..., channels_to_drop] = fill
+    img[..., selected_channels] = fill
     return img
 
 

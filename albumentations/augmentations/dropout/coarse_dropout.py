@@ -102,6 +102,9 @@ class CoarseDropout(BaseDropout):
         - Random Erasing: https://arxiv.org/abs/1708.04896
         - OpenCV Inpainting methods: https://docs.opencv.org/master/df/d3d/tutorial_py_inpainting.html
 
+    See Also:
+        - ChannelDropout: Replace entire channels selected from an eligible set.
+
     """
 
     class InitSchema(BaseDropoutInitSchema):

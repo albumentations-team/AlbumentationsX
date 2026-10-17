@@ -44,7 +44,6 @@ class TransformTestHelper:
 
     # Transforms that only work with RGB images (not grayscale)
     RGB_ONLY_TRANSFORMS: ClassVar[set[type]] = {
-        A.ChannelDropout,
         A.Spatter,
         A.ISONoise,
         A.RandomGravel,

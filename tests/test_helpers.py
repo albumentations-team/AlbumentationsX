@@ -136,7 +136,7 @@ class TestTransformTestHelper:
 
     def test_is_rgb_only(self):
         """Test RGB-only transform detection."""
-        assert TransformTestHelper.is_rgb_only(A.ChannelDropout)
+        assert not TransformTestHelper.is_rgb_only(A.ChannelDropout)
         assert TransformTestHelper.is_rgb_only(A.HEStain)
         assert not TransformTestHelper.is_rgb_only(A.HorizontalFlip)
 
@@ -304,7 +304,7 @@ class TestParametrizeHelpers:
         transform_classes = {t[0] for t in filtered}
         # Should not contain metadata or RGB-only transforms
         assert A.FDA not in transform_classes
-        assert A.ChannelDropout not in transform_classes
+        assert A.HEStain not in transform_classes
 
     def test_build_exclude_set(self):
         """Test building exclude set."""
@@ -312,7 +312,7 @@ class TestParametrizeHelpers:
 
         assert A.FDA in exclude_set
         assert A.Mosaic in exclude_set
-        assert A.ChannelDropout in exclude_set
+        assert A.ChannelDropout not in exclude_set
         assert A.HEStain in exclude_set
 
     def test_build_exclude_set_invalid_category(self):

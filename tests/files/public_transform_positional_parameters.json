@@ -16,7 +16,7 @@
   "CLAHE": ["clip_range", "tile_grid_size", "p"],
   "CenterCrop": ["height", "width", "pad_if_needed", "pad_position", "border_mode", "fill", "fill_mask", "p"],
   "CenterCrop3D": ["size", "pad_if_needed", "fill", "fill_mask", "p"],
-  "ChannelDropout": ["channel_drop_range", "fill", "p"],
+  "ChannelDropout": ["channels_to_drop", "dropout_ratio", "fill", "p"],
   "ChannelShuffle": ["channel_order", "p"],
   "ChannelSwap": ["channel_order", "p"],
   "ChromaticAberration": ["primary_distortion_range", "secondary_distortion_range", "mode", "interpolation", "p"],

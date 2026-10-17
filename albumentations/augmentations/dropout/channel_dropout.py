@@ -1,17 +1,11 @@
-"""Implementation of the Channel Dropout transform for multi-channel images.
+"""Drop a fraction of eligible image channels."""
 
-This module provides the ChannelDropout transform, which randomly drops (sets to a fill value)
-one or more channels in multi-channel images. This augmentation can help models become more
-robust to missing or corrupted channel information and encourage learning from all available
-channels rather than relying on a subset.
-"""
-
+from decimal import Decimal
 from typing import Annotated, Any
 
-from pydantic import AfterValidator
+from pydantic import Field, field_validator
 
 from albumentations.core.invocation import SamplingContext
-from albumentations.core.pydantic import check_range_bounds
 from albumentations.core.transform_params import (
     SampledParams,
     TargetParams,
@@ -25,37 +19,21 @@ from .functional import channel_dropout
 
 __all__ = ["ChannelDropout"]
 
-MIN_DROPOUT_CHANNEL_LIST_LENGTH = 2
-
 
 class ChannelDropout(ImageOnlyTransform):
-    """Randomly drop channels. channel_drop_range, fill. Replaces selected channels with fill;
-    improves robustness to missing channels. Image-only.
-
-    This transform randomly selects a number of channels to drop from the input image
-    and replaces them with a specified fill value. This can improve model robustness
-    to missing or corrupted channels.
-
-    The technique is conceptually similar to:
-    - Dropout layers in neural networks, which randomly set input units to 0 during training.
-    - CoarseDropout augmentation, which drops out regions in the spatial dimensions of the image.
-
-    However, ChannelDropout operates on the channel dimension, effectively "dropping out"
-    entire color channels or feature maps.
+    """Replace a fraction of eligible channels with a fill value to model missing spectral bands
+    or unavailable sensors while retaining at least one input channel.
 
     Args:
-        channel_drop_range (tuple[int, int]): Range from which to choose the number
-            of channels to drop. The actual number will be randomly selected from
-            the inclusive range [min, max]. Default: (1, 1).
-        fill (float): Pixel value used to fill the dropped channels.
-            Default: 0.
-        p (float): Probability of applying the transform. Must be in the range
-            [0, 1]. Default: 0.5.
-
-    Raises:
-        NotImplementedError: If the input image has only one channel.
-        ValueError: If the upper bound of channel_drop_range is greater than or
-            equal to the number of channels in the input image.
+        channels_to_drop (tuple[int, ...] | None): Unique, non-negative channel indices eligible for
+            dropout. None makes every input channel eligible. An explicit sequence must be
+            non-empty, and every index must exist in each image-like target. Default: None.
+        dropout_ratio (float): Fraction of eligible channels to replace, in [0, 1]. The count
+            is rounded to the nearest integer using decimal half-up rounding, then capped at the
+            total number of input channels minus one. Default: 0.5.
+        fill (float): Value assigned to the selected channels. Use a value in the input
+            dtype's image range, such as 0 for missing signal. Default: 0.
+        p (float): Probability of applying the transform, in [0, 1]. Default: 0.5.
 
     Targets:
         image, images, volume, volumes
@@ -63,49 +41,76 @@ class ChannelDropout(ImageOnlyTransform):
     Image types:
         uint8, float32
 
+    Number of channels:
+        Any
+
+    Note:
+        - Channels are selected uniformly without replacement from the eligible set.
+        - The fraction is measured against eligible channels, not all input channels.
+          With four eligible channels, dropout_ratio=0.5 selects two of them.
+        - At least one input channel is retained. A single-channel input is unchanged.
+        - A zero ratio or a count rounded to zero leaves the input unchanged.
+        - Targets with equal channel counts share the selected indices, including all
+          frames in an image batch and all slices in a volume. Different channel counts
+          receive separate selections.
+        - Retained channel values are unchanged; no dropout rescaling is applied.
+
+    Raises:
+        ValueError: If channels_to_drop is empty, contains duplicate or negative indices, or contains
+            an index outside an input target's channel range; or if dropout_ratio is outside [0, 1].
+
     Examples:
         >>> import numpy as np
         >>> import albumentations as A
-        >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
-        >>> transform = A.ChannelDropout(channel_drop_range=(1, 2), fill=128, p=1.0)
-        >>> result = transform(image=image)
-        >>> dropped_image = result['image']
-        >>> assert dropped_image.shape == image.shape
-        >>> assert np.any(dropped_image != image)  # Some channels should be different
+        >>> image = np.ones((64, 96, 10), dtype=np.float32)
+        >>> transform = A.ChannelDropout(
+        ...     channels_to_drop=(0, 2, 4, 6), dropout_ratio=0.5, p=1.0,
+        ... )
+        >>> result = transform(image=image)["image"]
+        >>> assert np.count_nonzero(np.all(result == 0, axis=(0, 1))) == 2
+        >>> np.testing.assert_array_equal(result[..., (1, 3, 5, 7, 8, 9)], 1)
 
-    Note:
-        - The number of channels to drop is randomly chosen within the specified range.
-        - Channels are randomly selected for dropping.
-        - This transform is not applicable to single-channel (grayscale) images.
-        - The transform will raise an error if it's not possible to drop the specified
-          number of channels (e.g., trying to drop 3 channels from an RGB image).
-        - This augmentation can be particularly useful for training models to be robust
-          against missing or corrupted channel data in multi-spectral or hyperspectral imagery.
+    See Also:
+        - PixelDropout: Replace individual pixels instead of entire channels.
+        - CoarseDropout: Replace rectangular spatial regions.
 
     """
 
     class InitSchema(BaseTransformInitSchema):
-        channel_drop_range: Annotated[tuple[int, int], AfterValidator(check_range_bounds(1, None))]
+        channels_to_drop: (
+            Annotated[
+                tuple[Annotated[int, Field(strict=True, ge=0)], ...],
+                Field(min_length=1),
+            ]
+            | None
+        )
+        dropout_ratio: float = Field(ge=0, le=1)
         fill: float
+
+        @field_validator("channels_to_drop")
+        @classmethod
+        def _validate_channels_to_drop(cls, value: tuple[int, ...] | None) -> tuple[int, ...] | None:
+            if value is not None and len(value) != len(set(value)):
+                raise ValueError("channels_to_drop must not contain duplicate indices")
+            return value
 
     def __init__(
         self,
-        channel_drop_range: tuple[int, int] = (1, 1),
+        channels_to_drop: tuple[int, ...] | None = None,
+        dropout_ratio: float = 0.5,
         fill: float = 0,
         p: float = 0.5,
     ):
         super().__init__(p=p)
-
-        self.channel_drop_range = channel_drop_range
+        self.channels_to_drop = channels_to_drop
+        self.dropout_ratio = dropout_ratio
         self.fill = fill
 
-    def apply(self, img: ImageType, channels_to_drop: tuple[int, ...], **params: Any) -> ImageType:
-        return channel_dropout(img, channels_to_drop, self.fill)
+    def apply(self, img: ImageType, selected_channels: tuple[int, ...], **params: Any) -> ImageType:
+        return channel_dropout(img, selected_channels, self.fill)
 
-    def apply_to_images(self, images: ImageType, channels_to_drop: tuple[int, ...], **params: Any) -> ImageType:
-        result = images.copy()
-        result[:, :, :, channels_to_drop] = self.fill
-        return result
+    def apply_to_images(self, images: ImageType, selected_channels: tuple[int, ...], **params: Any) -> ImageType:
+        return channel_dropout(images, selected_channels, self.fill)
 
     def sample_parameters(
         self,
@@ -114,22 +119,22 @@ class ChannelDropout(ImageOnlyTransform):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
+        ratio_numerator, ratio_denominator = Decimal(str(self.dropout_ratio)).as_integer_ratio()
         groups: list[TargetParams] = []
         for views in targets.group_image_like_by(lambda view: view.descriptor.channels):
-            view = views[0]
-            num_channels = view.descriptor.channels or 1
-            if num_channels == 1:
-                msg = "Images has one channel. ChannelDropout is not defined."
-                raise NotImplementedError(msg)
-            if self.channel_drop_range[1] >= num_channels:
-                msg = "Can not drop all channels in ChannelDropout."
-                raise ValueError(msg)
-            num_drop_channels = sampling.py_random.randint(*self.channel_drop_range)
-            channels_to_drop = tuple(sampling.py_random.sample(range(num_channels), k=num_drop_channels))
+            num_channels = views[0].descriptor.channels or 1
+            if self.channels_to_drop is not None and max(self.channels_to_drop) >= num_channels:
+                raise ValueError(f"channels_to_drop contains an index outside the input's {num_channels} channels")
+            eligible_channels = range(num_channels) if self.channels_to_drop is None else self.channels_to_drop
+            num_drop_channels = min(
+                (2 * len(eligible_channels) * ratio_numerator + ratio_denominator) // (2 * ratio_denominator),
+                num_channels - 1,
+            )
+            selected_channels = tuple(sampling.py_random.sample(eligible_channels, k=num_drop_channels))
             groups.append(
                 TargetParams(
-                    targets=tuple(item.name for item in views),
-                    params={"channels_to_drop": channels_to_drop},
+                    targets=tuple(view.name for view in views),
+                    params={"selected_channels": selected_channels},
                     requirements=requirements_for_views(views, channels=True),
                 ),
             )

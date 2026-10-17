@@ -9,6 +9,29 @@ from albumentations.augmentations.dropout.functional import label as cv_label
 from tests.utils import set_seed
 
 
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("fill", [0, -0.0, 137, 0.125, (0.5, 0, 0.25)])
+@pytest.mark.parametrize("shape", [(4, 7, 19), (2, 3, 4, 7, 19), (4, 7, 128), (4, 7, 129), (0, 7, 19)])
+def test_channel_dropout_fill_matches_index_assignment(
+    dtype: type[np.generic],
+    fill: tuple[float, ...] | float,
+    shape: tuple[int, ...],
+) -> None:
+    image = np.random.default_rng(137).integers(1, 200, shape, dtype=np.uint8).astype(dtype)
+    original = image.copy()
+    selected_channels = (7, 1, -1)
+    expected = image.copy()
+    expected[..., selected_channels] = fill
+
+    result = fdropout.channel_dropout(image, selected_channels, fill)
+
+    np.testing.assert_array_equal(result, expected)
+    np.testing.assert_array_equal(image, original)
+    assert result.dtype == image.dtype
+    assert result is not image
+    assert not np.shares_memory(result, image)
+
+
 @pytest.mark.parametrize(
     "shape, dtype, connectivity",
     [

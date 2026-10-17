@@ -262,7 +262,7 @@ def _apply_brightness_only_torchvision(img: ImageType, brightness_factor: float)
 
 
 def _apply_contrast_only_torchvision(img: ImageType, contrast_factor: float) -> ImageType:
-    gray_img = img if is_grayscale_image(img) else cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2GRAY))
+    gray_img = img if is_grayscale_image(img) else to_gray_weighted_average(img)
     img_mean = float(mean(gray_img))
     if contrast_factor == 0:
         if img.dtype != np.float32:

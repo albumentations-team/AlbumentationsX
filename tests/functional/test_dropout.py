@@ -896,3 +896,21 @@ def test_mask_dropout_bboxes_float_coords_dropped_area_accuracy() -> None:
         min_visibility=0.01,
     )
     assert len(result_frac) == 1, "Partially visible box should be kept"
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("channels", [3, 5])
+def test_volume_grayscale_holes_preserve_singleton_width(dtype, channels):
+    source = np.arange(2 * 5 * 7 * channels, dtype=np.uint8).reshape(2, 5, 7, channels)
+    if dtype != np.uint8:
+        source = source.astype(dtype) / 255
+    holes = np.array([[2, 1, 3, 4]])
+    expected = np.stack([fdropout.fill_holes_with_grayscale(frame.copy(), holes) for frame in source])
+    destination = source.copy()
+
+    result = fdropout.fill_volume_holes_with_grayscale(destination, holes)
+
+    assert result is destination
+    assert result.shape == source.shape
+    assert result.dtype == source.dtype
+    np.testing.assert_array_equal(result, expected)

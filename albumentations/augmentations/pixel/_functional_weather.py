@@ -1019,12 +1019,9 @@ def apply_atmospheric_fog(
         fog_array = np.pad(fog_array, (0, num_channels - len(fog_array)), mode="edge")
     fog_array = fog_array[:num_channels].reshape(1, 1, -1)
 
-    if img.dtype == np.float32:
-        result = np.multiply(img, transmission, dtype=np.float32)
-        np.subtract(np.float32(1.0), transmission, out=transmission)
-        np.add(result, fog_array * transmission, out=result)
-    else:
-        result = img.astype(np.float32) * transmission + fog_array * (1.0 - transmission)
+    result = np.multiply(img, transmission, dtype=np.float32)
+    np.subtract(np.float32(1.0), transmission, out=transmission)
+    np.add(result, fog_array * transmission, out=result)
 
     return clip(result, img.dtype)
 

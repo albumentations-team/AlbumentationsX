@@ -8,6 +8,7 @@ from typing import Literal, cast
 from ._functional_shared import (
     NUM_MULTI_CHANNEL_DIMENSIONS,
     ImageType,
+    ImageUInt8,
     clipped,
     cv2,
     lru_cache,
@@ -139,22 +140,21 @@ def pixel_dropout(
 
 
 @uint8_io
-@clipped
 def chromatic_aberration(
-    img: ImageType,
+    img: ImageUInt8,
     primary_distortion_red: float,
     secondary_distortion_red: float,
     primary_distortion_blue: float,
     secondary_distortion_blue: float,
     interpolation: int,
-) -> ImageType:
+) -> ImageUInt8:
     """Chromatic aberration: shift R/B channels. primary/secondary_distortion_red/blue, interpolation.
     Simulates lens R/B shift. uint8 I/O, clipped.
 
     This function applies chromatic aberration to an image by distorting the red and blue channels.
 
     Args:
-        img (ImageType): Input image as a numpy array.
+        img (ImageUInt8): Uint8 working image. Float32 input is converted automatically.
         primary_distortion_red (float): The primary distortion of the red channel.
         secondary_distortion_red (float): The secondary distortion of the red channel.
         primary_distortion_blue (float): The primary distortion of the blue channel.
@@ -162,7 +162,7 @@ def chromatic_aberration(
         interpolation (int): The interpolation method to use.
 
     Returns:
-        ImageType: The chromatic aberration applied to the image.
+        ImageUInt8: Uint8 kernel output. Float32 calls are restored to their original dtype.
 
     """
     height, width = img.shape[:2]

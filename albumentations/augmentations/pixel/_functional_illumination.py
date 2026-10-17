@@ -503,7 +503,7 @@ def create_corner_illumination_gradient(
     y = np.arange(height, dtype=np.float32)[:, np.newaxis] - corner_y
     x = np.arange(width, dtype=np.float32)[np.newaxis, :] - corner_x
 
-    pattern = x * x + y * y
+    pattern = np.add(x * x, y * y, dtype=np.float32)
     pattern = albucore_sqrt(pattern, inplace=True)
     _multiply_scalar_inplace(pattern, -intensity / math.sqrt(height * height + width * width))
     _add_scalar_inplace(pattern, 1.0)

@@ -3,7 +3,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
 import albumentations as A
@@ -2815,6 +2815,12 @@ class TestPipelineInvariantsHypothesis:
             assert inst["mask"].ndim == 2
             assert "bbox" in inst
 
+    @example(
+        seed=757,
+        pre=["perspective", "shift_scale_rotate"],
+        mix="mosaic",
+        post=["perspective", "perspective", "shift_scale_rotate"],
+    )
     @settings(
         max_examples=100,
         deadline=2_000,

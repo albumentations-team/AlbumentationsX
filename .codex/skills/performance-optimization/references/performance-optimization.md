@@ -2,7 +2,7 @@
 
 ## Prevalidated caller boundary
 
-Albucore routers run after the caller has validated the input contract. Upstream code owns container, rank, channel-last layout, dtype, device, contiguity, autograd state, and operation-control validation. Albucore keeps only dispatch branches and kernel-required normalization needed to select and execute the benchmarked implementation; hot paths must not repeat those checks.
+Albucore routers run after the caller has validated the input contract. Upstream code owns container, rank, layout, dtype, device, contiguity, autograd state, and operation-control validation. NumPy uses channel-last layouts; CPU Tensor layouts are explicit. Albucore keeps only dispatch branches and kernel-required normalization needed to select and execute the benchmarked implementation; hot paths must not repeat those checks.
 
 Use this workflow whenever implementing, reviewing, or profiling runtime code in Albucore or AlbumentationsX. Its
 order matters: remove work before making the remaining work faster. Treat every proposed optimization as a hypothesis
@@ -39,7 +39,9 @@ Count full-array reads and writes, not only Python statements. Image kernels are
   coordinates.
 - Reuse output buffers when ownership is clear.
 - Avoid full-array `astype`, `copy`, and `ascontiguousarray` calls unless the selected backend earns their cost.
-- Keep working arrays `float32` unless correctness requires wider precision.
+- Use float32 as the default working dtype unless a different route wins with equal correctness. For float16 storage,
+  compare native-half kernels with a float32 working buffer and one output cast; include both conversions and their
+  allocations in the public-path timing.
 - Preallocate outside repeated loops and reset only the data that must change.
 - Prefer a view when downstream code accepts its strides and ownership.
 - Choose sparse coordinates, rectangles, or indices instead of a dense image-sized mask when the affected set is
@@ -47,6 +49,9 @@ Count full-array reads and writes, not only Python statements. Image kernels are
 
 Measure peak memory or allocation counts when the change targets allocations. A lower wall time with much higher peak
 memory is not an unconditional win.
+For architecture acceptance, compare live buffers and fresh-process peak/steady RSS. Report fixed resident library-code
+pages separately when a memory map proves their origin; inputs, outputs, workspace, backend heap, and retained arrays
+must still satisfy the no-growth condition. A small RSS increment alone does not establish that it is code.
 
 ### 3. Vectorize the right dimension
 
@@ -141,6 +146,10 @@ For each atomic operation, benchmark viable implementations end to end:
 Include dispatch, dtype conversion, contiguity, allocation, clipping, and output-shape repair in the timing. A fast
 kernel that requires a full-size copy can lose at the public API.
 
+Cross-dtype comparisons must use the same logical input and equivalent controls. For float16/float32 comparisons,
+derive both inputs from the same float32 values and use controls exactly representable in half where practical. Avoid
+accidental identity operations in only one dtype; verify the actual router branch and output dtype before comparing.
+
 Route only where evidence wins. Thresholds may depend on dtype, rank, size, channel count, contiguity, scalar versus
 per-channel parameters, and in-place versus allocating mode. Existing Albucore routes demonstrate that no backend is
 globally fastest:
@@ -150,6 +159,13 @@ globally fastest:
 - OpenCV wins many dense image operations but has channel and layout constraints;
 - StringZilla is competitive for selected uint8 translation paths.
 - CPU PyTorch is competitive for selected eager 3D volume operations when the complete interop route wins.
+- Preserve float16 support in every documented operation. Compare baseline and candidate at the same dtype,
+  including dispatch, bridges, allocations, casts, and output restoration. Float16-versus-float32 comparisons are
+  mandatory diagnostics, not an independent migration blocker. Pursue missing upstream kernels when useful; do not
+  remove dtype support or hide a slow route behind a kernel-only benchmark.
+- A substantial simplification may cost at most 5% on an individual public operation only when accuracy is preserved,
+  memory does not grow, and the complete AlbumentationsX path has no sustained slowdown. Verify these conditions
+  independently on Linux x86-64 and macOS ARM64; gains on one platform cannot compensate for regressions on another.
 
 ### 6a. Escalate missing backend capabilities
 
@@ -211,7 +227,7 @@ read-after-write calculations. Benchmark both modes and test aliasing explicitly
 
 After removing work and comparing straight implementations, consider routing by:
 
-- uint8 versus float32;
+- uint8 versus float16 versus float32;
 - scalar versus per-channel parameters;
 - 1, 3, 4, and high-channel inputs;
 - image and image-batch ranks; single-volume and volume-batch ranks where the router supports them;
@@ -238,7 +254,7 @@ For Albucore, benchmark the public router, not only its private backend. Include
 
 Check these shared entry points before writing a local kernel:
 
-- `albucore.apply_uint8_lut` and `albucore.sz_lut` for benchmark-routed uint8 tables;
+- `albucore.apply_uint8_lut` for benchmark-routed uint8 tables;
 - `albucore.stats` for `sum`, `mean`, `std`, and `mean_std` across supported array ranks;
 - Albucore arithmetic and weighted routers for add, multiply, normalize, power, blend, and fused multiply-add;
 - Albucore geometric and resize functions for channel-safe OpenCV routing;
@@ -279,6 +295,13 @@ inter-op threads to one before work starts. Set `OMP_NUM_THREADS`, `OPENBLAS_NUM
 `VECLIB_MAXIMUM_THREADS`, and `NUMEXPR_NUM_THREADS` to `1` before importing numerical libraries. Record effective
 library thread settings; do not rely on environment variables alone. Benchmark additional thread counts only when the
 user explicitly requests a thread-scaling experiment.
+
+Record the CPU model and enabled backend capabilities, including `nk.get_capabilities()` when NumKong is used.
+Check that these flags match the intended host profile before accepting timings. A restricted macOS process can deny
+`sysctl` and silently disable NEON in NumKong ([#407](https://github.com/ashvardanian/NumKong/issues/407)). Measurements
+under that restricted profile do not establish native-host performance. Keep them as separate diagnostics and rerun
+affected comparisons in an authorized environment where the hardware probe succeeds. Do not force global backend
+capabilities just to obtain faster results.
 
 At minimum:
 

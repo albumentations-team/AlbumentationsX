@@ -956,7 +956,7 @@ def to_gray_weighted_average(img: ImageType) -> ImageType:
             - Volume: (D, H, W, 3)
 
     Returns:
-        ImageType: Grayscale image as a 2D numpy array.
+        ImageType: Grayscale image with unchanged spatial and collection axes and C=1.
 
     Image types:
         uint8, float32
@@ -966,10 +966,12 @@ def to_gray_weighted_average(img: ImageType) -> ImageType:
 
     """
     if img.ndim == 3:
-        return cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2GRAY))
+        gray = np.empty((*img.shape[:-1], 1), dtype=img.dtype)
+        return cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2GRAY, dst=gray))
     if img.ndim == 4:
         im, original_shape = _reshape_xhwc_for_opencv(img)
-        im = cast("ImageType", cv2.cvtColor(im, cv2.COLOR_RGB2GRAY))
+        gray = np.empty((*im.shape[:-1], 1), dtype=im.dtype)
+        im = cast("ImageType", cv2.cvtColor(im, cv2.COLOR_RGB2GRAY, dst=gray))
 
         new_shape = (*original_shape[:-1], 1)
 
@@ -1000,12 +1002,11 @@ def to_gray_from_lab(img: ImageType) -> ImageType:
 
     Returns:
         ImageType:
-            - Single image: (H, W)
-            - Batch of images: (N, H, W)
-            - Volume: (D, H, W)
+            - Single image: (H, W, 1)
+            - Batch of images: (N, H, W, 1)
+            - Volume: (D, H, W, 1)
 
-        The output dtype matches the input dtype. For float inputs, the L channel
-        is normalized to [0, 1] by dividing by 100.
+        The output dtype matches the input dtype. Floating outputs are normalized to [0, 1].
 
     Raises:
         ValueError: If the last dimension is not 3 (RGB channels)
@@ -1014,17 +1015,17 @@ def to_gray_from_lab(img: ImageType) -> ImageType:
         >>> # Single image
         >>> img = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
         >>> gray = to_gray_from_lab(img)
-        >>> assert gray.shape == (100, 100)
+        >>> assert gray.shape == (100, 100, 1)
 
         >>> # Batch of images - efficiently processed without loops
         >>> batch = np.random.randint(0, 256, (10, 100, 100, 3), dtype=np.uint8)
         >>> gray_batch = to_gray_from_lab(batch)
-        >>> assert gray_batch.shape == (10, 100, 100)
+        >>> assert gray_batch.shape == (10, 100, 100, 1)
 
         >>> # Volume (e.g., video frames or 3D medical data)
         >>> volume = np.random.randint(0, 256, (16, 100, 100, 3), dtype=np.uint8)
         >>> gray_volume = to_gray_from_lab(volume)
-        >>> assert gray_volume.shape == (16, 100, 100)
+        >>> assert gray_volume.shape == (16, 100, 100, 1)
 
         >>> # Float32 input
         >>> img_float = img.astype(np.float32) / 255.0
@@ -1038,10 +1039,10 @@ def to_gray_from_lab(img: ImageType) -> ImageType:
 
     """
     if img.ndim == 3:
-        return cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2LAB)[..., 0])
+        return cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2LAB)[..., :1])
     if img.ndim == 4:
         im, original_shape = _reshape_xhwc_for_opencv(img)
-        im = cast("ImageType", cv2.cvtColor(im, cv2.COLOR_RGB2LAB)[..., 0])
+        im = cast("ImageType", cv2.cvtColor(im, cv2.COLOR_RGB2LAB)[..., :1])
 
         new_shape = (*original_shape[:-1], 1)
 
@@ -1059,7 +1060,7 @@ def to_gray_desaturation(img: ImageType) -> ImageType:
         img (ImageType): Input image as a numpy array.
 
     Returns:
-        ImageType: Grayscale image as a 2D numpy array.
+        ImageType: Grayscale image with unchanged spatial and collection axes and C=1.
 
     Image types:
         uint8, float32
@@ -1070,10 +1071,10 @@ def to_gray_desaturation(img: ImageType) -> ImageType:
     """
     if img.dtype == np.uint8:
         if img.shape[-1] == 1:
-            return img[..., 0]
+            return img
         if img.ndim > NUM_MULTI_CHANNEL_DIMENSIONS:
-            ch_max = np.max(img, axis=-1).astype(np.uint16)
-            ch_min = np.min(img, axis=-1).astype(np.uint16)
+            ch_max = np.max(img, axis=-1, keepdims=True).astype(np.uint16)
+            ch_min = np.min(img, axis=-1, keepdims=True).astype(np.uint16)
             return ((ch_max + ch_min) >> 1).astype(np.uint8)
         channels = cv2.split(img)
         ch_max = channels[0]
@@ -1081,10 +1082,11 @@ def to_gray_desaturation(img: ImageType) -> ImageType:
         for channel in channels[1:]:
             ch_max = cv2.max(ch_max, channel)
             ch_min = cv2.min(ch_min, channel)
-        channel_sum = cast("np.ndarray", cv2.add(ch_max, ch_min, dtype=cv2.CV_16U))
+        channel_sum = np.empty((*img.shape[:-1], 1), dtype=np.uint16)
+        cv2.add(ch_max, ch_min, dst=channel_sum, dtype=cv2.CV_16U)
         return (channel_sum >> 1).astype(np.uint8)
     float_image = img.astype(np.float32)
-    return (np.max(float_image, axis=-1) + np.min(float_image, axis=-1)) * 0.5
+    return (np.max(float_image, axis=-1, keepdims=True) + np.min(float_image, axis=-1, keepdims=True)) * 0.5
 
 
 def to_gray_average(img: ImageType) -> ImageType:
@@ -1109,8 +1111,7 @@ def to_gray_average(img: ImageType) -> ImageType:
         img (ImageType): Input image as a numpy array. Can be any number of channels.
 
     Returns:
-        ImageType: Grayscale image as a 2D numpy array. The output data type
-                    matches the input data type.
+        ImageType: Grayscale image with unchanged leading axes, C=1, and the input dtype.
 
     Image types:
         uint8, float32
@@ -1119,7 +1120,7 @@ def to_gray_average(img: ImageType) -> ImageType:
         any
 
     """
-    return cast("ImageType", np.asarray(mean(img, axis=-1)).astype(img.dtype))
+    return cast("ImageType", np.asarray(mean(img, axis=-1, keepdims=True)).astype(img.dtype))
 
 
 def to_gray_max(img: ImageType) -> ImageType:
@@ -1146,8 +1147,7 @@ def to_gray_max(img: ImageType) -> ImageType:
         img (ImageType): Input image as a numpy array. Can be any number of channels.
 
     Returns:
-        ImageType: Grayscale image as a 2D numpy array. The output data type
-                    matches the input data type.
+        ImageType: Grayscale image with unchanged leading axes, C=1, and the input dtype.
 
     Image types:
         uint8, float32
@@ -1156,7 +1156,7 @@ def to_gray_max(img: ImageType) -> ImageType:
         any
 
     """
-    return cast("ImageType", np.max(img, axis=-1))
+    return np.max(img, axis=-1, keepdims=True)
 
 
 @clipped
@@ -1176,7 +1176,7 @@ def to_gray_pca(img: ImageType) -> ImageType:
             - Five-dimensional multi-channel tensor: (N, D, H, W, C)
 
     Returns:
-        ImageType: Grayscale image with the same spatial dimensions as input.
+        ImageType: Grayscale image with the same leading dimensions as input and C=1.
                     If input is uint8, output is uint8 in range [0, 255].
                     If input is float32, output is float32 in range [0, 1].
 
@@ -1195,11 +1195,10 @@ def to_gray_pca(img: ImageType) -> ImageType:
     dtype = img.dtype
     pixels = img.reshape(-1, img.shape[-1])
 
-    # Perform PCA
     pca = PCA(n_components=1, dtype=np.float32)
     pca_result: ImageFloat32 = pca.fit_transform(pixels)
 
-    grayscale = pca_result.reshape(img.shape[:-1])
+    grayscale = pca_result.reshape(*img.shape[:-1], 1)
     grayscale = normalize_per_image(grayscale, "min_max")
 
     return from_float(grayscale, target_dtype=np.uint8) if dtype == np.uint8 else grayscale
@@ -1236,7 +1235,7 @@ def to_gray(
             The method to use for grayscale conversion.
 
     Returns:
-        ImageType: Grayscale image as a 2D numpy array.
+        ImageType: Grayscale image with unchanged leading axes and num_output_channels channels.
 
     """
     if method == "weighted_average":
@@ -1261,32 +1260,25 @@ def grayscale_to_multichannel(
     grayscale_image: np.ndarray,
     num_output_channels: int = 3,
 ) -> np.ndarray:
-    """Convert grayscale to multi-channel by repeating. num_output_channels (default 3).
-    For blending gray with color in saturation/hue adjustments.
-
-    This function takes a 2D grayscale image or a 3D image with a single channel
-    and converts it to a multi-channel image by repeating the grayscale data
-    across the specified number of channels.
+    """Repeat an explicit grayscale channel, preserving spatial and collection axes.
 
     Args:
-        grayscale_image (np.ndarray): Input grayscale image. Can be 2D (height, width)
-                                      or 3D (height, width, 1).
-        num_output_channels (int, optional): Number of channels in the output image. Defaults to 3.
+        grayscale_image (np.ndarray): Channel-last grayscale data with C=1, such as
+            (H, W, 1), (N, H, W, 1), or (N, D, H, W, 1).
+        num_output_channels (int): Number of output channels. Defaults to 3.
 
     Returns:
-        np.ndarray: Multi-channel image with shape (height, width, num_channels)
+        np.ndarray: Grayscale values repeated along the last axis. Requesting one
+            output channel returns the input unchanged.
 
     """
-    # If output should be single channel, add channel dimension if needed
     if num_output_channels == 1:
         return grayscale_image
 
-    if num_output_channels == 3 and grayscale_image.ndim == 2:
+    if num_output_channels == 3 and grayscale_image.ndim == 3 and grayscale_image.dtype in (np.uint8, np.float32):
         return cv2.cvtColor(grayscale_image, cv2.COLOR_GRAY2RGB)
 
-    squeezed = np.squeeze(grayscale_image)
-    # For multi-channel output, use tile for better performance
-    return np.tile(squeezed[..., np.newaxis], (1,) * squeezed.ndim + (num_output_channels,))
+    return np.tile(grayscale_image, (1,) * (grayscale_image.ndim - 1) + (num_output_channels,))
 
 
 def _build_colorize_lut(
@@ -1341,24 +1333,17 @@ def colorize(
         ImageType: Image with the trailing channel dimension expanded to 3.
 
     """
-    gray = img[..., 0]
-
     if img.dtype == np.uint8:
         lut_float = _build_colorize_lut(black, white, mid, mid_value)
         # Floor-quantize to match `PIL.ImageOps.colorize` (integer floor division) bit-for-bit.
         lut_uint8 = np.clip(np.floor(lut_float), 0, 255).astype(np.uint8)
-        # cv2.LUT on a 3-channel uint8 image with a (1, 256, 3) LUT is the fastest path
-        # (~30x vs numpy fancy indexing). Replicate the gray channel into 3 first; cv2 then
-        # applies a different per-channel LUT in C.
         lut_cv = lut_uint8.reshape(1, 256, 3)
-        if gray.ndim == 2:
-            gray_3ch = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+        if img.ndim == 3:
+            gray_3ch = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
             return cast("ImageType", cv2.LUT(gray_3ch, lut_cv))
-        # Batched / volumetric: gray has a leading axis (N or D). Loop in Python over the
-        # leading axis but keep the per-frame work in cv2 — far cheaper than 4D fancy indexing.
-        out = np.empty((*gray.shape, 3), dtype=np.uint8)
-        flat_in = gray.reshape(-1, *gray.shape[-2:])
-        flat_out = out.reshape(-1, *gray.shape[-2:], 3)
+        out = np.empty((*img.shape[:-1], 3), dtype=np.uint8)
+        flat_in = img.reshape(-1, *img.shape[-3:])
+        flat_out = out.reshape(-1, *img.shape[-3:-1], 3)
         for frame_index in range(flat_in.shape[0]):
             flat_out[frame_index] = cv2.LUT(cv2.cvtColor(flat_in[frame_index], cv2.COLOR_GRAY2BGR), lut_cv)
         return out
@@ -1376,10 +1361,12 @@ def colorize(
         if mid is None
         else np.array([black, mid, white], dtype=np.float32) / 255.0
     )
-    out = np.empty((*gray.shape, 3), dtype=np.float32)
-    gray_clipped = np.clip(gray, 0.0, 1.0)
+    out = np.empty((*img.shape[:-1], 3), dtype=np.float32)
+    gray_clipped = np.clip(img, 0.0, 1.0)
     for color_channel in range(3):
-        out[..., color_channel] = np.interp(gray_clipped, anchor_intensity_float, anchor_color_float[:, color_channel])
+        out[..., color_channel : color_channel + 1] = np.interp(
+            gray_clipped, anchor_intensity_float, anchor_color_float[:, color_channel]
+        )
     return out
 
 

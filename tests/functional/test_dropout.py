@@ -9,6 +9,29 @@ from albumentations.augmentations.dropout.functional import label as cv_label
 from tests.utils import set_seed
 
 
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("fill", [0, -0.0, 137, 0.125, (0.5, 0, 0.25)])
+@pytest.mark.parametrize("shape", [(4, 7, 19), (2, 3, 4, 7, 19), (4, 7, 128), (4, 7, 129), (0, 7, 19)])
+def test_channel_dropout_fill_matches_index_assignment(
+    dtype: type[np.generic],
+    fill: tuple[float, ...] | float,
+    shape: tuple[int, ...],
+) -> None:
+    image = np.random.default_rng(137).integers(1, 200, shape, dtype=np.uint8).astype(dtype)
+    original = image.copy()
+    selected_channels = (7, 1, -1)
+    expected = image.copy()
+    expected[..., selected_channels] = fill
+
+    result = fdropout.channel_dropout(image, selected_channels, fill)
+
+    np.testing.assert_array_equal(result, expected)
+    np.testing.assert_array_equal(image, original)
+    assert result.dtype == image.dtype
+    assert result is not image
+    assert not np.shares_memory(result, image)
+
+
 @pytest.mark.parametrize(
     "shape, dtype, connectivity",
     [
@@ -873,3 +896,21 @@ def test_mask_dropout_bboxes_float_coords_dropped_area_accuracy() -> None:
         min_visibility=0.01,
     )
     assert len(result_frac) == 1, "Partially visible box should be kept"
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("channels", [3, 5])
+def test_volume_grayscale_holes_preserve_singleton_width(dtype, channels):
+    source = np.arange(2 * 5 * 7 * channels, dtype=np.uint8).reshape(2, 5, 7, channels)
+    if dtype != np.uint8:
+        source = source.astype(dtype) / 255
+    holes = np.array([[2, 1, 3, 4]])
+    expected = np.stack([fdropout.fill_holes_with_grayscale(frame.copy(), holes) for frame in source])
+    destination = source.copy()
+
+    result = fdropout.fill_volume_holes_with_grayscale(destination, holes)
+
+    assert result is destination
+    assert result.shape == source.shape
+    assert result.dtype == source.dtype
+    np.testing.assert_array_equal(result, expected)

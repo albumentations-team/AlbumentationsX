@@ -32,7 +32,8 @@ class ChannelDropout(ImageOnlyTransform):
             is rounded to the nearest integer using decimal half-up rounding, then capped at the
             total number of input channels minus one. Default: 0.5.
         fill (float): Value assigned to the selected channels. Use a value in the input
-            dtype's image range, such as 0 for missing signal. Default: 0.
+            dtype's image range, such as 0 for missing signal. Positive and negative zero
+            are equivalent; the sign of filled zeros is not guaranteed. Default: 0.
         p (float): Probability of applying the transform, in [0, 1]. Default: 0.5.
 
     Targets:

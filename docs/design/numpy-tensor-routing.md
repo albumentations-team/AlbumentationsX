@@ -11,6 +11,11 @@ targets.
 `Compose` normalizes optional channel axes before transform dispatch. NumPy targets are channel-last; Tensor targets
 are channel-first.
 
+NumPy image operations preserve that explicit trailing channel throughout execution, including grayscale
+intermediates. Channel reductions retain `C=1` with `keepdims=True` or a channel-preserving slice. Consumers rely on
+this invariant and do not infer or reconstruct channels from dimension sizes. The owning kernel handles any native
+backend representation at its boundary.
+
 ### Images and volumes
 
 | Target | Container | Accepted by `Compose` | Inside `Compose` | Returned container |

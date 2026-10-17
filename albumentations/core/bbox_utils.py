@@ -1515,12 +1515,13 @@ def mask_to_bboxes(
             bbox_coords_count = 5 if bbox_type == "obb" else 4
             new_bboxes.append(original_bboxes[idx, :bbox_coords_count].tolist())
 
-    new_bboxes = np.array(new_bboxes)
+    bbox_array = np.array(new_bboxes)
+    del new_bboxes
 
     # Preserve additional columns (labels, etc.)
     bbox_coords_count = 5 if bbox_type == "obb" else 4
     return (
-        np.column_stack([new_bboxes, original_bboxes[:, bbox_coords_count:]])
+        np.column_stack([bbox_array, original_bboxes[:, bbox_coords_count:]])
         if original_bboxes.shape[1] > bbox_coords_count
-        else new_bboxes
+        else bbox_array
     )

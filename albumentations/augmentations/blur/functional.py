@@ -56,9 +56,11 @@ def box_blur(img: ImageType, ksize: int) -> ImageType:
         ImageType: Blurred image.
 
     """
-    result = np.array(img, copy=True, order="C")
+    result = img.astype(np.float32, order="C") if img.dtype.type is np.float16 else img.copy(order="C")
     cv2.blur(result, (ksize, ksize), dst=result)
-    return cast("ImageType", result)
+    if img.dtype.type is np.float16:
+        return result.astype(cast("np.dtype[np.float16]", img.dtype))
+    return result
 
 
 @preserve_channel_dim
@@ -87,7 +89,8 @@ def glass_blur(
         ImageType: Glass blurred image.
 
     """
-    x = cv2.GaussianBlur(np.array(img), sigmaX=sigma, ksize=(0, 0))
+    working_dtype = np.float32 if img.dtype.type is np.float16 else img.dtype
+    x = cv2.GaussianBlur(np.array(img, dtype=working_dtype), sigmaX=sigma, ksize=(0, 0))
 
     if mode == "fast":
         hs = np.arange(img.shape[0] - max_delta, max_delta, -1)
@@ -115,7 +118,10 @@ def glass_blur(
     else:
         raise ValueError(f"Unsupported mode `{mode}`. Supports only `fast` and `exact`.")
 
-    return cast("ImageType", cv2.GaussianBlur(x, sigmaX=sigma, ksize=(0, 0)))
+    result = cast("ImageType", cv2.GaussianBlur(x, sigmaX=sigma, ksize=(0, 0)))
+    if img.dtype.type is np.float16:
+        return result.astype(cast("np.dtype[np.float16]", img.dtype))
+    return result
 
 
 @lru_cache(maxsize=128)
@@ -125,7 +131,7 @@ def _create_defocus_kernel_cached(radius: int, alias_blur: float) -> np.ndarray:
 
     x, y = np.meshgrid(length, length)
     aliased_disk = (x**2 + y**2 <= radius**2).astype(np.float32)
-    aliased_disk /= cast("np.float64", reduce_sum(aliased_disk))
+    aliased_disk /= reduce_sum(aliased_disk)
 
     return cv2.GaussianBlur(aliased_disk, (ksize, ksize), sigmaX=alias_blur)
 

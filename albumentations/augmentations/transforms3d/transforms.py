@@ -612,7 +612,7 @@ class Resize3D(Transform3D):
         return cast("VolumeType", resize3d(volume, self.size, self.interpolation))
 
     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
-        return cast("VolumeType", resize3d(mask3d, self.size, self.mask_interpolation))
+        return resize3d(mask3d, self.size, self.mask_interpolation)
 
     def apply_to_keypoints(
         self,

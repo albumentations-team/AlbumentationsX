@@ -9,10 +9,11 @@ from ._functional_shared import (
     NUM_MULTI_CHANNEL_DIMENSIONS,
     ImageType,
     ImageUInt8,
+    clip,
     clipped,
     cv2,
     lru_cache,
-    multiply_by_constant,
+    multiply,
     np,
     preserve_channel_dim,
     remap,
@@ -73,8 +74,14 @@ def unsharp_mask(
         np.ndarray: Unsharp masked image with same shape and dtype as input.
 
     """
+    input_dtype = image.dtype
+    if input_dtype.type is np.float16:
+        image = image.astype(np.float32)
+
     if image.ndim == NUM_MULTI_CHANNEL_DIMENSIONS and image.shape[2] == 1:
-        return unsharp_mask(image[..., 0], ksize, sigma, alpha, threshold)[..., np.newaxis]
+        return unsharp_mask(image[..., 0], ksize, sigma, alpha, threshold)[..., np.newaxis].astype(
+            input_dtype, copy=False
+        )
 
     ksize_tuple = (ksize, ksize)
     blurred = cv2.GaussianBlur(image, ksize_tuple, sigmaX=sigma)
@@ -84,19 +91,19 @@ def unsharp_mask(
         np.clip(sharpened, 0, 1, out=sharpened)
 
     if threshold <= 0:
-        return sharpened
+        return sharpened.astype(input_dtype, copy=False)
 
     diff = cast("np.ndarray", cv2.absdiff(image, blurred))
     threshold_value = threshold / 255.0 if image.dtype == np.float32 else threshold
     if image.ndim == NUM_MULTI_CHANNEL_DIMENSIONS and image.shape[2] not in {1, 3, 4}:
         mask = diff > threshold_value
-        return np.where(mask, sharpened, image).astype(image.dtype, copy=False)
+        return np.where(mask, sharpened, image).astype(input_dtype, copy=False)
 
     compare = cast("_Cv2Compare", cv2.compare)
     mask = compare(diff, threshold_value, cv2.CMP_GT)
     result = image.copy()
     cv2.copyTo(sharpened, mask, result)
-    return result
+    return result.astype(input_dtype, copy=False)
 
 
 @preserve_channel_dim
@@ -342,21 +349,14 @@ def planckian_jitter(
         np.multiply(img[..., 0], red_multiplier, out=img[..., 0])
         np.multiply(img[..., 2], blue_multiplier, out=img[..., 2])
     else:
-        img[..., 0] = multiply_by_constant(
-            img[..., 0],
-            red_multiplier,
-            inplace=True,
-        )
-        img[..., 2] = multiply_by_constant(
-            img[..., 2],
-            blue_multiplier,
-            inplace=True,
-        )
+        red = cast("ImageUInt8", img[..., 0:1])
+        blue = cast("ImageUInt8", img[..., 2:3])
+        multiply(red, red_multiplier, out=red)
+        multiply(blue, blue_multiplier, out=blue)
 
     return img
 
 
-@clipped
 @preserve_channel_dim
 def convolve(
     img: ImageType,
@@ -378,30 +378,27 @@ def convolve(
         ImageType: Convolved image.
 
     """
-    img = cast("ImageType", np.array(img, copy=True, order="C"))
+    input_dtype = img.dtype
+    working_dtype = np.float32 if input_dtype.type is np.float16 else input_dtype
+    img = cast("ImageType", np.array(img, dtype=working_dtype, copy=True, order="C"))
     if kernel.ndim == 2:
         cv2.filter2D(img, ddepth=-1, kernel=kernel, dst=img, borderType=border_mode)
-        return img
-
-    if kernel.ndim != 3:
-        raise ValueError(f"kernel must have 2 or 3 dimensions, got {kernel.ndim}")
-
-    channels = 1 if img.ndim == 2 else img.shape[-1]
-    if kernel.shape[0] != channels:
-        raise ValueError(f"Expected one kernel per channel ({channels}), got {kernel.shape[0]}")
-
-    if img.ndim == 2:
-        cv2.filter2D(img, ddepth=-1, kernel=kernel[0], dst=img, borderType=border_mode)
+    elif kernel.ndim == 3:
+        channels = 1 if img.ndim == 2 else img.shape[-1]
+        if kernel.shape[0] != channels:
+            raise ValueError(f"Expected one kernel per channel ({channels}), got {kernel.shape[0]}")
+        if img.ndim == 2:
+            cv2.filter2D(img, ddepth=-1, kernel=kernel[0], dst=img, borderType=border_mode)
+        else:
+            for channel, channel_kernel in enumerate(kernel):
+                img[..., channel] = cv2.filter2D(
+                    img[..., channel], ddepth=-1, kernel=channel_kernel, borderType=border_mode
+                )
     else:
-        for channel, channel_kernel in enumerate(kernel):
-            filtered_channel = cv2.filter2D(
-                img[..., channel],
-                ddepth=-1,
-                kernel=channel_kernel,
-                borderType=border_mode,
-            )
-            img[..., channel] = filtered_channel
-    return img
+        raise ValueError(f"kernel must have 2 or 3 dimensions, got {kernel.ndim}")
+    if input_dtype.type is np.float16:
+        return clip(img, dtype=cast("np.dtype[np.float16]", input_dtype))
+    return clip(img, out=img)
 
 
 def create_stochastic_convolution_kernel(
@@ -444,7 +441,6 @@ def create_stochastic_convolution_kernel(
     return kernel
 
 
-@clipped
 @preserve_channel_dim
 def separable_convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
     """Convolve with separable 1D kernel in two passes. Faster than full 2D for large kernels.
@@ -460,9 +456,13 @@ def separable_convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
         ImageType: Convolved image.
 
     """
-    img = cast("ImageType", np.array(img, copy=True, order="C"))
+    input_dtype = img.dtype
+    working_dtype = np.float32 if input_dtype.type is np.float16 else input_dtype
+    img = cast("ImageType", np.array(img, dtype=working_dtype, copy=True, order="C"))
     cv2.sepFilter2D(img, ddepth=-1, kernelX=kernel, kernelY=kernel, dst=img)
-    return img
+    if input_dtype.type is np.float16:
+        return clip(img, dtype=cast("np.dtype[np.float16]", input_dtype))
+    return clip(img, out=img)
 
 
 __all__ = [

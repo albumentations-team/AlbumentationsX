@@ -370,7 +370,7 @@ def elastic_transform_3d(
         return volume
     sampling_grid = getattr(sampler, "sampling_grid", None)
     uses_cached_grid = sampling_grid is not None
-    if not uses_cached_grid:
+    if sampling_grid is None:
         sampling_grid = create_elastic_grid_3d(control_coefficients, recorded_shape)
     try:
         return remap_3d(volume, sampling_grid, interpolation, border_mode, fill, is_mask=is_mask)
@@ -389,7 +389,7 @@ def _clip_interpolated_float_volume(
     if is_mask or interpolation == cv2.INTER_NEAREST:
         return result
     if isinstance(result, np.ndarray) and original_numpy_dtype == np.dtype(np.float32):
-        return clip(result, np.dtype(np.float32), inplace=True)
+        return clip(result, out=result) if result.dtype == np.float32 else clip(result, np.float32)
     if isinstance(result, torch.Tensor) and original_tensor_dtype == torch.float32:
         return result.clamp_(0.0, 1.0)
     return result

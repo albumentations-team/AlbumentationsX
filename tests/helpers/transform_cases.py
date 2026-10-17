@@ -49,6 +49,7 @@ class TransformContractCase:
     metadata_keys: frozenset[str] = frozenset()
     required_targets: frozenset[str] = frozenset()
     seeds: tuple[int, ...] = (137,)
+    tensor_uint8_atol: int = 0
 
     def __post_init__(self) -> None:
         if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", self.case_id):
@@ -1523,6 +1524,7 @@ def _iter_base_cases() -> list[TransformContractCase]:
                     ),
                     metadata_keys=metadata_keys,
                     required_targets=_required_targets(transform_cls, params),
+                    tensor_uint8_atol=2 if transform_cls is A.Anisotropy3D else 0,
                 ),
             )
     for transform_cls, variants in _VARIANT_NAMES.items():

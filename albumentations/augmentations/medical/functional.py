@@ -5,9 +5,22 @@ from typing import Any, cast
 import cv2
 import numpy as np
 import torch
-from albucore import add, clip, clipped, float32_io, matmul, multiply, preserve_channel_dim, resize3d, warp_affine3d
+from albucore import (
+    add,
+    clip,
+    clipped,
+    float32_io,
+    from_float,
+    matmul,
+    multiply,
+    preserve_channel_dim,
+    resize3d,
+    to_float,
+    warp_affine3d,
+)
 from albucore import exp as albucore_exp
 from albucore import mean as albucore_mean
+from numpy.typing import NDArray
 from scipy import fft
 
 from albumentations.augmentations.geometric import functional as fgeometric
@@ -131,15 +144,24 @@ def _bias_field_volume(img: ImageType, coarse_field: np.ndarray) -> ImageType:
     result = np.empty_like(img)
     for depth, coefficients in enumerate(depth_field):
         field = fgeometric.resize(coefficients, img.shape[1:3], interpolation=cv2.INTER_LINEAR)
-        result[depth] = _apply_bias_gain(img[depth], albucore_exp(field, inplace=True))
+        result[depth] = _apply_bias_gain(img[depth], albucore_exp(field, out=field))
     return result
 
 
-@float32_io
 def _apply_bias_gain(img: ImageType, field: np.ndarray) -> ImageType:
-    """Multiply normalized intensities and clip the owned float32 result in place."""
-    result = multiply(img, field, inplace=False)
-    return clip(result, img.dtype, inplace=True)
+    """Multiply normalized float32 intensities, clip, and restore the source dtype."""
+    input_dtype = img.dtype
+    if input_dtype == np.uint8:
+        working = to_float(cast("NDArray[np.uint8]", img))
+    elif input_dtype == np.float16:
+        working = from_float(cast("NDArray[np.float16]", img), target_dtype=np.float32)
+    else:
+        working = cast("NDArray[np.float32]", img)
+    result = multiply(working, field)
+    clip(result, out=result)
+    if input_dtype == np.float32:
+        return result
+    return from_float(result, target_dtype=input_dtype)
 
 
 def generate_bias_field(coarse_field: np.ndarray, spatial_shape: tuple[int, ...]) -> np.ndarray:
@@ -155,7 +177,7 @@ def generate_bias_field(coarse_field: np.ndarray, spatial_shape: tuple[int, ...]
         field = fgeometric.resize(coarse_field, (spatial_shape[0], spatial_shape[1]), interpolation=cv2.INTER_LINEAR)
     if field.ndim == 4 and field.size >= _BIAS_FIELD_MIN_CONTIGUOUS_ELEMENTS:
         field = np.ascontiguousarray(field)
-    return albucore_exp(field, inplace=True)
+    return albucore_exp(field, out=field)
 
 
 @preserve_channel_dim
@@ -221,15 +243,15 @@ def k_space_spike(
         and img.min() >= 0
         and img.max() <= 1
     ):
-        return _k_space_spike_volume(img, injections, intensity)
+        return _k_space_spike_volume(cast("NDArray[np.float32]", img), injections, intensity)
     return _k_space_spike_fft(img, injections, intensity, spikes.shape[-1])
 
 
 def _k_space_spike_volume(
-    volume: ImageType,
+    volume: NDArray[np.float32],
     injections: list[tuple[tuple[int, ...], int | None]],
     intensity: float,
-) -> ImageType:
+) -> NDArray[np.float32]:
     """Accumulate shared Fourier spikes from channel-independent XY coefficients."""
     spatial_shape = volume.shape[:3]
     # The spectral maximum of nonnegative magnitude data is its DC coefficient.
@@ -264,7 +286,7 @@ def _k_space_spike_volume(
                     slice(channel, channel + channels_per_block),
                 )
                 result[block] = add(volume[block], noise[row : row + rows_per_block])
-    return clip(result, result.dtype, inplace=True)
+    return clip(result, out=result)
 
 
 @float32_io

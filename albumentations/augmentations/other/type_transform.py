@@ -6,23 +6,24 @@ are useful for preprocessing before neural network input (ToFloat) and for conve
 network outputs back to standard image formats (FromFloat).
 """
 
-from typing import Any, Literal, Self, cast
+from typing import Any, Literal, Self, cast, overload
 
 import numpy as np
 from albucore import (
-    from_float,
     get_max_value,
     to_float,
 )
+from numpy.typing import NDArray
 from pydantic import (
     model_validator,
 )
 
+from albumentations.augmentations.other import type_transform_functional as ftype
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
 )
-from albumentations.core.type_definitions import ImageFloat32, ImageType
+from albumentations.core.type_definitions import ImageType
 
 __all__ = [
     "FromFloat",
@@ -31,14 +32,14 @@ __all__ = [
 
 
 class ToFloat(ImageOnlyTransform):
-    """Convert the input image to float32 in [0, 1] by dividing by max_value. Useful for
-    normalizing before neural networks or algorithms that expect float input.
+    """Convert byte intensities to floating values using a chosen maximum, while preserving the values and precision
+    of floating inputs.
 
     Args:
         max_value (float | None): The maximum possible input value. If None, the transform
             will try to infer the maximum value by inspecting the data type of the input image:
             - uint8: 255
-            - float32: 1.0
+            - float16, float32: 1.0 (floating inputs are preserved)
             Default: None.
         p (float): Probability of applying the transform. Default: 1.0.
 
@@ -46,15 +47,14 @@ class ToFloat(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Returns:
-        np.ndarray: Image in floating point representation, with values in range [0, 1.0].
+        np.ndarray | torch.Tensor: Converted image in the input container.
 
     Note:
-        - If the input image is already float32 with values in [0, 1], it will be returned unchanged.
-        - For uint8, the function will scale the values to [0, 1] range.
-        - The output will always be float32, regardless of the input type.
+        - Floating inputs retain their dtype and values, including NumPy float16.
+        - Uint8 values are divided by max_value into float32 without clipping.
         - This transform is often used as a preprocessing step before applying other transformations
           or feeding the image into a neural network.
 
@@ -88,10 +88,24 @@ class ToFloat(ImageOnlyTransform):
         super().__init__(p=p)
         self.max_value = max_value
 
-    def apply(self, img: ImageType, **params: Any) -> ImageFloat32:
+    @overload
+    def apply(self, img: NDArray[np.float16], **params: Any) -> NDArray[np.float16]: ...
+
+    @overload
+    def apply(self, img: NDArray[np.uint8] | NDArray[np.float32], **params: Any) -> NDArray[np.float32]: ...
+
+    def apply(self, img: ImageType, **params: Any) -> NDArray[np.float16] | NDArray[np.float32]:
         return to_float(img, self.max_value)
 
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageFloat32:
+    @overload
+    def apply_to_images(self, images: NDArray[np.float16], **params: Any) -> NDArray[np.float16]: ...
+
+    @overload
+    def apply_to_images(
+        self, images: NDArray[np.uint8] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.float32]: ...
+
+    def apply_to_images(self, images: ImageType, **params: Any) -> NDArray[np.float16] | NDArray[np.float32]:
         return to_float(images, self.max_value)
 
 
@@ -154,7 +168,7 @@ class FromFloat(ImageOnlyTransform):
         self.max_value = max_value
 
     def apply(self, img: ImageType, **params: Any) -> ImageType:
-        return from_float(cast("ImageFloat32", img), np.dtype(self.dtype), self.max_value)
+        return ftype.from_float(img, cast("float", self.max_value))
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
-        return from_float(cast("ImageFloat32", images), np.dtype(self.dtype), self.max_value)
+        return self.apply(images, **params)

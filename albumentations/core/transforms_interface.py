@@ -18,7 +18,7 @@ from warnings import warn
 import cv2
 import numpy as np
 import torch
-from albucore import sz_lut
+from albucore import apply_uint8_lut
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -1203,7 +1203,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
     def apply_to_volumes(
         self,
-        volumes: Annotated[NDArray[np.generic], torch.Tensor],
+        volumes: Annotated[ImageType, torch.Tensor],
         *args: Any,
         **params: Any,
     ) -> NDArray[np.generic] | torch.Tensor:
@@ -1777,7 +1777,7 @@ class DualTransform(BasicTransform):
         if is_empty:
             return mask
         if isinstance(mask, np.ndarray) and mask.dtype == np.uint8 and uint8_lut is not None:
-            return sz_lut(cast("NDArray[np.uint8]", mask), uint8_lut, inplace=False)
+            return apply_uint8_lut(cast("NDArray[np.uint8]", mask), uint8_lut)
 
         if isinstance(mask, torch.Tensor):
             result = mask.clone()

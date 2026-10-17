@@ -17,17 +17,17 @@ from numpy.typing import NDArray
 from typing_extensions import TypedDict
 
 Number = TypeVar("Number", float, int)
+ArrayT = TypeVar("ArrayT", bound=np.ndarray)
 
 IntNumType = np.integer | NDArray[np.integer]
 FloatNumType = np.floating | NDArray[np.floating]
 
-# Core image types - restrict to uint8 and float32 only
+# Supported image dtypes; array rank is independent of dtype.
 ImageUInt8: TypeAlias = NDArray[uint8]
 ImageFloat32: TypeAlias = NDArray[float32]
-ImageType: TypeAlias = ImageUInt8 | ImageFloat32
+ImageType: TypeAlias = ImageUInt8 | NDArray[np.float16] | ImageFloat32
 
-# Image and Volume types - restrict to uint8 and float32 only
-# VolumeType is same as ImageType (volume data is uint8/float32)
+# Volumes use the same supported storage dtypes as images.
 VolumeType: TypeAlias = ImageType
 
 # OpenCV exposes these constants as module-level ints. Literal aliases and typed constants use the

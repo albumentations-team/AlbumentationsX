@@ -8,14 +8,13 @@ from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
     MONO_CHANNEL_DIMENSIONS,
     ImageType,
-    add_array,
-    add_vector,
+    add,
     add_weighted,
     clipped,
     cv2,
     float32_io,
     math,
-    multiply_by_constant,
+    multiply,
     np,
     power,
     preserve_channel_dim,
@@ -39,20 +38,20 @@ def add_noise(img: ImageType, noise: np.ndarray) -> ImageType:
 
     """
     if img.ndim == 3 and noise.ndim == 1:
-        return add_vector(img, noise, inplace=False)
+        return add(img, noise)
 
     if noise.shape != img.shape:
         try:
             noise = np.broadcast_to(noise, img.shape)
         except ValueError:
-            n_tiles = np.prod(img.shape) // np.prod(noise.shape)
+            n_tiles = int(np.prod(img.shape) // np.prod(noise.shape))
             noise = np.tile(noise, (n_tiles,) + (1,) * noise.ndim).reshape(img.shape)
 
     if img.dtype == np.uint8 and not noise.flags.c_contiguous:
         # NumKong's dense uint8 route is faster with a dense array than with a zero-stride broadcast view.
         noise = np.ascontiguousarray(noise)
 
-    return add_array(img, noise)
+    return add(img, noise)
 
 
 def add_noise_by_patches(img: ImageType, noise: np.ndarray, patches: np.ndarray) -> ImageType:
@@ -124,11 +123,8 @@ def shot_noise(
     scaled_img = (img_linear + scale * 1e-6) / scale
 
     # Generate Poisson noise
-    noisy_img = multiply_by_constant(
-        random_generator.poisson(scaled_img).astype(np.float32),
-        scale,
-        inplace=True,
-    )
+    noisy_img = random_generator.poisson(scaled_img).astype(np.float32)
+    multiply(noisy_img, scale, out=noisy_img)
 
     # Scale back and apply gamma correction
     return power(np.clip(noisy_img, 0, 1, out=noisy_img), 1 / 2.2)
@@ -632,6 +628,8 @@ def sharpen_gaussian(
         ImageType: The sharpened image.
 
     """
+    if img.dtype.type is np.float16:
+        img = img.astype(np.float32)
     blurred = cast(
         "ImageType",
         cv2.GaussianBlur(

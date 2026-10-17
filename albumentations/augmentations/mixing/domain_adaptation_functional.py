@@ -22,6 +22,7 @@ from albucore import (
     to_float,
     uint8_io,
 )
+from numpy.typing import NDArray
 
 import albumentations.augmentations.geometric.functional as fgeometric
 from albumentations.augmentations.utils import PCA
@@ -330,7 +331,13 @@ class DomainAdapter:
         """
         if self.color_out is None:
             return img
-        return cast("ImageType", cv2.cvtColor(clip(img, np.dtype(np.uint8), inplace=True), self.color_out))
+        return cast(
+            "ImageType",
+            cv2.cvtColor(
+                clip(img, np.uint8, out=cast("NDArray[np.uint8]", img) if img.dtype == np.uint8 else None),
+                self.color_out,
+            ),
+        )
 
     def flatten(self, img: ImageType) -> np.ndarray:
         """Flatten image to (n_pixels, n_channels): target colorspace, to float, reshape. For
@@ -361,7 +368,7 @@ class DomainAdapter:
                 an explicit singleton channel dimension for grayscale images.
 
         """
-        pixels = clip(pixels, np.dtype(np.uint8), inplace=True)
+        pixels = clip(pixels, np.dtype(np.uint8), out=pixels if pixels.dtype == np.dtype(np.uint8) else None)
         return self.from_colorspace(pixels.reshape(height, width, self.num_channels))
 
     @staticmethod

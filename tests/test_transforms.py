@@ -15,6 +15,7 @@ import albumentations.augmentations.geometric.functional as fgeometric
 import albumentations.augmentations.pixel.functional as fpixel
 from albumentations.augmentations.pixel import _functional_noise as fnoise
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.tensor import numpy_to_tensor_spatial, tensor_to_numpy_spatial
 from albumentations.core.transform_params import SampledParams
 from albumentations.core.transforms_interface import BasicTransform
 from tests.conftest import (
@@ -2719,11 +2720,11 @@ def test_add_noise_materializes_broadcast_uint8_noise(monkeypatch):
     noise = np.ones((4, 6, 1), dtype=np.float32)
     captured_noise: list[np.ndarray] = []
 
-    def capture_add_array(image: np.ndarray, noise: np.ndarray) -> np.ndarray:
+    def capture_add(image: np.ndarray, noise: np.ndarray) -> np.ndarray:
         captured_noise.append(noise)
         return image
 
-    monkeypatch.setattr(fnoise, "add_array", capture_add_array)
+    monkeypatch.setattr(fnoise, "add", capture_add)
     fnoise.add_noise(image, noise)
 
     assert len(captured_noise) == 1
@@ -3443,3 +3444,45 @@ def test_random_snow_dtype_preservation(method, dtype):
     else:
         assert res.min() >= 0
         assert res.max() <= 255
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+@pytest.mark.parametrize(
+    "target,shape",
+    [
+        ("image", (5, 7, 1)),
+        ("image", (5, 7, 3)),
+        ("images", (2, 5, 7, 3)),
+        ("volume", (3, 5, 7, 3)),
+        ("volumes", (2, 3, 5, 7, 3)),
+    ],
+)
+def test_color_jitter_zero_contrast_preserves_uniform_image(dtype, container, target, shape):
+    expected = np.full(shape, 64 if dtype == np.uint8 else 0.25, dtype=dtype)
+    source = numpy_to_tensor_spatial(expected.copy(), target) if container == "tensor" else expected.copy()
+    if container == "numpy":
+        source.flags.writeable = False
+    pipeline = A.Compose(
+        [
+            A.ColorJitter(
+                brightness_range=(1, 1),
+                contrast_range=(0, 0),
+                saturation_range=(1, 1),
+                hue_range=(0, 0),
+                p=1,
+            ),
+        ],
+        strict=True,
+        seed=137,
+    )
+
+    result = pipeline(**{target: source})[target]
+
+    assert type(result) is type(source)
+    actual = tensor_to_numpy_spatial(result, target) if container == "tensor" else result
+    original = tensor_to_numpy_spatial(source, target) if container == "tensor" else source
+    assert actual.dtype == expected.dtype
+    assert actual.shape == expected.shape
+    np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(original, expected)

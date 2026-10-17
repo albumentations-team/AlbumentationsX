@@ -884,7 +884,7 @@ class RandomSunFlare(ImageOnlyTransform):
     def apply(
         self,
         img: ImageType,
-        flare_center: tuple[float, float],
+        flare_center: tuple[int, int],
         circles: list[Any],
         **params: Any,
     ) -> ImageType:
@@ -1528,7 +1528,8 @@ class AtmosphericFog(ImageOnlyTransform):
                 cy, cx = height / 2.0, width / 2.0
                 y = np.arange(height, dtype=np.float32)[:, np.newaxis] - cy
                 x = np.arange(width, dtype=np.float32)[np.newaxis, :] - cx
-                depth_map = albucore.sqrt(np.add(x * x, y * y, dtype=np.float32), inplace=True)
+                depth_map = np.add(x * x, y * y, dtype=np.float32)
+                depth_map = albucore.sqrt(depth_map, out=depth_map)
                 depth_map *= np.float32(1 / math.hypot(cy, cx))
             fog_color_scaled = tuple(c / max_val * actual_max for c in self.fog_color)
             groups.append(

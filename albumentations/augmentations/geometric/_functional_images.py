@@ -470,7 +470,7 @@ def transpose(img: ImageType) -> ImageType:
     return img.transpose(new_axes)
 
 
-D4_TRANSFORMATIONS = {
+D4_TRANSFORMATIONS: dict[str, Callable[[ImageType], ImageType]] = {
     "e": lambda x: x,  # Identity transformation
     "r90": lambda x: rot90(x, "r90"),  # Rotate 90 degrees
     "r180": lambda x: rot90(x, "r180"),  # Rotate 180 degrees
@@ -1072,6 +1072,10 @@ def erode(img: ImageType, kernel: np.ndarray) -> ImageType:
         ImageType: The eroded image.
 
     """
+    if img.dtype.type is np.float16:
+        working = img.astype(np.float32, order="C")
+        cv2.erode(working, kernel, dst=working, iterations=1)
+        return working.astype(cast("np.dtype[np.float16]", img.dtype))
     return cast("ImageType", cv2.erode(img, kernel, iterations=1))
 
 
@@ -1090,6 +1094,10 @@ def dilate(img: ImageType, kernel: np.ndarray) -> ImageType:
         ImageType: The dilated image.
 
     """
+    if img.dtype.type is np.float16:
+        working = img.astype(np.float32, order="C")
+        cv2.dilate(working, kernel, dst=working, iterations=1)
+        return working.astype(cast("np.dtype[np.float16]", img.dtype))
     return cast("ImageType", cv2.dilate(img, kernel, iterations=1))
 
 

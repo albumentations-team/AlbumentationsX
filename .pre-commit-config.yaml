@@ -136,6 +136,7 @@ repos:
       - id: mypy
         files: ^albumentations/
         additional_dependencies:
+          - numpy==2.4.6
           - types-PyYAML>=6.0.12.20260518
           - types-setuptools>=83.0.0.20260706
           - pydantic>=2.13.4

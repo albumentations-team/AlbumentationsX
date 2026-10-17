@@ -218,8 +218,9 @@ def test_invalid_retained_fraction_is_rejected(bounds: tuple[float, float]) -> N
 
 
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf")])
-def test_nonfinite_input_is_rejected(value: float) -> None:
-    image = np.full((9, 13, 1), value, dtype=np.float32)
+@pytest.mark.parametrize("dtype", [np.float16, np.float32])
+def test_nonfinite_input_is_rejected(value: float, dtype: type[np.generic]) -> None:
+    image = np.full((9, 13, 1), value, dtype=dtype)
     with pytest.raises(ValueError, match="finite inputs"):
         A.Compose([A.GibbsRinging(p=1)], strict=True)(image=image)
 

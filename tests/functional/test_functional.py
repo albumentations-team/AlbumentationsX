@@ -29,6 +29,23 @@ from tests.conftest import (
 from tests.utils import convert_2d_to_target_format
 
 
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("shape", [(3, 5), (3, 5, 1)])
+@pytest.mark.parametrize(("flip", "axis"), [(fgeometric.hflip, 1), (fgeometric.vflip, 0)])
+def test_flip_preserves_grayscale_axes_and_storage(dtype, shape, flip, axis):
+    image = np.arange(np.prod(shape), dtype=dtype).reshape(shape)
+    original = image.copy()
+    image.setflags(write=False)
+
+    result = flip(image)
+
+    assert result.dtype == image.dtype
+    assert result.shape == shape
+    assert np.shares_memory(result, image)
+    np.testing.assert_array_equal(result, np.flip(original, axis=axis))
+    np.testing.assert_array_equal(image, original)
+
+
 @pytest.mark.parametrize(
     ["input_shape", "expected_shape"],
     [[(128, 64), (64, 128)], [(128, 64, 3), (64, 128, 3)]],

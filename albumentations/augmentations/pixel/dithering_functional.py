@@ -4,7 +4,7 @@ import functools
 from typing import Any, cast
 
 import numpy as np
-from albucore import float32_io, sz_lut
+from albucore import apply_uint8_lut, float32_io
 
 from albumentations.augmentations.pixel._functional_shared import (
     MULTICHANNEL_LUT_LARGE_IMAGE_PIXELS,
@@ -328,12 +328,12 @@ def random_dither_uint8(
     if n_colors == 2:
         lut_binary = np.zeros(256, dtype=np.uint8)
         lut_binary[128:] = 255
-        return sz_lut(noisy, lut_binary, inplace=False)
+        return apply_uint8_lut(noisy, lut_binary)
 
     lut = np.round(np.arange(256) * (n_colors - 1) / 255) / (n_colors - 1) * 255
     lut = lut.astype(np.uint8)
 
-    return sz_lut(noisy, lut, inplace=False)
+    return apply_uint8_lut(noisy, lut)
 
 
 def random_dither(
@@ -454,7 +454,7 @@ def ordered_dither_uint8(
         dithered = img.astype(np.int16)
         dithered += ((tiled.astype(np.int16) - 128) // n_colors)[:, :, np.newaxis]
         np.clip(dithered, 0, 255, out=dithered)
-        return sz_lut(dithered.astype(np.uint8), lut, inplace=False)
+        return apply_uint8_lut(dithered.astype(np.uint8), lut)
 
     result = np.zeros_like(img)
     for channel_idx in range(img.shape[2]):
@@ -464,7 +464,7 @@ def ordered_dither_uint8(
         np.clip(dithered, 0, 255, out=dithered)
 
         # Reuse the same LUT for all channels
-        result[:, :, channel_idx] = sz_lut(dithered.astype(np.uint8), lut, inplace=False)
+        result[:, :, channel_idx] = apply_uint8_lut(dithered.astype(np.uint8), lut)
 
     return result
 

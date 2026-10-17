@@ -25,15 +25,18 @@ from albumentations.core.tensor import (
 )
 from tests.helpers.applied_config import ReplayProfile
 from tests.helpers.contract_assertions import assert_contract_values_equal
+from tests.helpers.contract_data import ContractDataFactory
 from tests.helpers.target_profiles import (
     IMAGE_ONLY_TENSOR_TARGET_PROFILES,
     TARGET_CONTRACT_PROFILES,
+    VOLUME_ONLY_TARGET_PROFILES,
     ProfileCost,
     TargetProfile,
 )
 from tests.helpers.transform_cases import (
     PRIMARY_DUAL_TRANSFORM_CONTRACT_CASES,
     PRIMARY_IMAGE_ONLY_TRANSFORM_CONTRACT_CASES,
+    PRIMARY_TRANSFORM_CONTRACT_CASES,
     TRANSFORM_CONTRACT_CASES,
     TransformContractCase,
 )
@@ -97,6 +100,14 @@ TENSOR_IMAGE_ONLY_TARGET_CONTRACT_PAIRS = tuple(
     if _supports_profile(case, profile, A.ImageOnlyTransform)
 )
 
+VOLUME_ONLY_TARGET_CONTRACT_PAIRS = tuple(
+    TargetContractPair(case=case, profile=profile)
+    for case in PRIMARY_TRANSFORM_CONTRACT_CASES
+    for profile in VOLUME_ONLY_TARGET_PROFILES
+    if _supports_profile(case, profile, A.VolumeOnlyTransform)
+)
+
+
 _TENSOR_EXTENDED_PROFILE_IDS = frozenset(
     {
         "float-image-mask",
@@ -112,6 +123,7 @@ TENSOR_TARGET_CONTRACT_PAIRS = (
     *CORE_TARGET_CONTRACT_PAIRS,
     *(pair for pair in EXTENDED_TARGET_CONTRACT_PAIRS if pair.profile.profile_id in _TENSOR_EXTENDED_PROFILE_IDS),
     *TENSOR_IMAGE_ONLY_TARGET_CONTRACT_PAIRS,
+    *VOLUME_ONLY_TARGET_CONTRACT_PAIRS,
 )
 
 
@@ -163,10 +175,52 @@ def _assert_tensor_result_containers(
             assert isinstance(result[data_name], torch.Tensor)
 
 
+IMAGE_TARGET_NAMES = frozenset({"image", "images", "volume", "volumes"})
+
+
+def _floating_image_data(
+    factory: ContractDataFactory, rng: np.random.Generator, dtype: np.dtype[np.float16]
+) -> dict[str, Any]:
+    data = factory(rng)
+    for target in IMAGE_TARGET_NAMES & data.keys():
+        image = data[target]
+        floating = image.astype(np.float32) / np.float32(255) if image.dtype == np.uint8 else image
+        if not image.flags.c_contiguous and not image.flags.f_contiguous:
+            backing = np.empty((*image.shape, 2), dtype=dtype)
+            converted = backing[..., 0]
+            np.copyto(converted, floating, casting="unsafe")
+        else:
+            converted = floating.astype(dtype, order="K", copy=True)
+        if not image.flags.writeable:
+            converted.flags.writeable = False
+        data[target] = converted
+    return data
+
+
+def _assert_image_dtype(
+    case: TransformContractCase,
+    source: dict[str, Any],
+    result: dict[str, Any],
+    dtype: np.dtype[np.float16] | None,
+) -> None:
+    if dtype is None:
+        return
+    expected = np.dtype(case.init_kwargs.get("dtype", dtype))
+    for target in IMAGE_TARGET_NAMES & source.keys():
+        input_image = source[target]
+        source_dtype = input_image.numpy().dtype if isinstance(input_image, torch.Tensor) else input_image.dtype
+        assert source_dtype == dtype, f"{case.case_id}: {target} input has {source_dtype}, expected {dtype}"
+        image = result[target]
+        observed = image.numpy().dtype if isinstance(image, torch.Tensor) else image.dtype
+        assert observed == expected, f"{case.case_id}: {target} returned {observed}, expected {expected}"
+
+
 def make_target_contract_data(
     case: TransformContractCase,
     profile: TargetProfile,
     rng: np.random.Generator,
+    *,
+    image_dtype: np.dtype[np.float16] | None = None,
 ) -> dict[str, Any]:
     """Build profile targets and transform-specific context for one contract execution."""
     if profile.primary_data_adapter is not None:
@@ -175,12 +229,20 @@ def make_target_contract_data(
         data_factory = profile.data_factory
     else:
         raise ValueError(f"{profile.profile_id}: missing data factory")
+    if image_dtype is not None:
+        data_factory = partial(_floating_image_data, data_factory, dtype=image_dtype)
     return case.make_data(rng, data_factory)
 
 
-def run_tensor_target_cluster_contract(case: TransformContractCase, profile: TargetProfile, seed: int) -> None:
+def run_tensor_target_cluster_contract(
+    case: TransformContractCase,
+    profile: TargetProfile,
+    seed: int,
+    *,
+    image_dtype: np.dtype[np.float16] | None = None,
+) -> None:
     """Replay one generated NumPy case with equivalent public Tensor targets."""
-    source = make_target_contract_data(case, profile, np.random.default_rng(seed))
+    source = make_target_contract_data(case, profile, np.random.default_rng(seed), image_dtype=image_dtype)
     numpy_data = copy.deepcopy(source)
     transform = case.transform_cls(**copy.deepcopy(dict(case.init_kwargs)), p=1)
     tensor_data = _convert_contract_data(source, transform, _numpy_target_to_tensor)
@@ -198,6 +260,8 @@ def run_tensor_target_cluster_contract(case: TransformContractCase, profile: Tar
     assert_contract_values_equal(tensor_data, tensor_snapshot, "tensor_input")
     _assert_tensor_result_containers(tensor_data, tensor_result, transform)
     profile.assert_result(case, tensor_snapshot, tensor_result)
+    _assert_image_dtype(case, numpy_data, numpy_result, image_dtype)
+    _assert_image_dtype(case, tensor_snapshot, tensor_result, image_dtype)
 
     comparable_tensor_result = _convert_contract_data(tensor_result, transform, _tensor_target_to_numpy)
     for key in source:
@@ -205,13 +269,24 @@ def run_tensor_target_cluster_contract(case: TransformContractCase, profile: Tar
         canonical_target = transform._additional_targets.get(key, key)
         if canonical_target in TENSOR_ANNOTATION_TARGETS and isinstance(expected, np.ndarray):
             expected = expected.astype(np.float32, copy=False)
-        assert_contract_values_equal(comparable_tensor_result[key], expected, key)
+        assert_contract_values_equal(
+            comparable_tensor_result[key],
+            expected,
+            key,
+            uint8_atol=case.tensor_uint8_atol if canonical_target in IMAGE_TARGET_NAMES else 0,
+        )
 
 
-def run_target_cluster_contract(case: TransformContractCase, profile: TargetProfile, seed: int) -> None:
+def run_target_cluster_contract(
+    case: TransformContractCase,
+    profile: TargetProfile,
+    seed: int,
+    *,
+    image_dtype: np.dtype[np.float16] | None = None,
+) -> None:
     """Execute one registered mode against one reusable target workload."""
-    source_data = make_target_contract_data(case, profile, np.random.default_rng(seed))
-    replay_data = make_target_contract_data(case, profile, np.random.default_rng(seed))
+    source_data = make_target_contract_data(case, profile, np.random.default_rng(seed), image_dtype=image_dtype)
+    replay_data = make_target_contract_data(case, profile, np.random.default_rng(seed), image_dtype=image_dtype)
     source_snapshot = copy.deepcopy(source_data)
     replay_snapshot = copy.deepcopy(replay_data)
     compose_kwargs = copy.deepcopy(dict(profile.compose_kwargs))
@@ -227,18 +302,20 @@ def run_target_cluster_contract(case: TransformContractCase, profile: TargetProf
     result = pipeline(**source_data)
     assert_contract_values_equal(source_data, source_snapshot, "input")
     profile.assert_result(case, source_snapshot, result)
+    _assert_image_dtype(case, source_snapshot, result, image_dtype)
 
     transported_record = json.loads(json.dumps(result["applied_transforms"], allow_nan=False))
     replay = A.Compose.from_applied_transforms(transported_record, seed=seed, **compose_kwargs)
     replay_result = replay(**replay_data)
     assert_contract_values_equal(replay_data, replay_snapshot, "replay_input")
     profile.assert_result(case, replay_snapshot, replay_result)
+    _assert_image_dtype(case, replay_snapshot, replay_result, image_dtype)
 
     if case.replay_profile is ReplayProfile.EXACT:
         for key in source_snapshot:
             assert_contract_values_equal(replay_result[key], result[key], key)
 
-    replay_compose_data = make_target_contract_data(case, profile, np.random.default_rng(seed))
+    replay_compose_data = make_target_contract_data(case, profile, np.random.default_rng(seed), image_dtype=image_dtype)
     replay_compose_snapshot = copy.deepcopy(replay_compose_data)
     replay_transform = case.transform_cls(**copy.deepcopy(dict(case.init_kwargs)), p=1)
     replay_pipeline = A.ReplayCompose([replay_transform], **copy.deepcopy(dict(profile.compose_kwargs)))
@@ -247,7 +324,7 @@ def run_target_cluster_contract(case: TransformContractCase, profile: TargetProf
     assert_contract_values_equal(replay_compose_data, replay_compose_snapshot, "replay_compose_input")
     replayed_result = A.ReplayCompose.replay(
         replay_compose_result["replay"],
-        **make_target_contract_data(case, profile, np.random.default_rng(seed)),
+        **make_target_contract_data(case, profile, np.random.default_rng(seed), image_dtype=image_dtype),
     )
     for key in replay_compose_snapshot:
         assert_contract_values_equal(replayed_result[key], replay_compose_result[key], key)

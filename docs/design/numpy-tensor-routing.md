@@ -107,14 +107,15 @@ may materialize contiguous or writable storage when its kernel requires it.
 
 | Target family | Accepted Tensor dtypes |
 | --- | --- |
-| `image`, `images`, `volume`, `volumes` | `torch.uint8`, `torch.float32` |
-| `mask`, `masks`, `mask3d`, `masks3d` | `torch.uint8`, `torch.int16`, `torch.float32` |
+| `image`, `images`, `volume`, `volumes` | `torch.uint8`, `torch.float16`, `torch.float32` |
+| `mask`, `masks`, `mask3d`, `masks3d` | `torch.uint8`, `torch.int16`, `torch.float16`, `torch.float32` |
 | `bboxes`, `keypoints` | `torch.float32` |
 
 This table describes validation at the `Compose` boundary. An applied fallback uses the transform's existing NumPy
 implementation and preserves the accepted dtype unless that transform's public contract intentionally changes it.
 
-Complex, quantized, and floating Tensor dtypes other than `float32` are rejected during root validation.
+Complex, quantized, and floating Tensor dtypes other than `float16`/`float32` are rejected during root validation.
+Full float16 transform coverage remains in progress; boundary acceptance does not establish every kernel's dtype support.
 
 ## Execution model
 
@@ -177,6 +178,10 @@ for Tensor input when its primary data argument includes `torch.Tensor`:
 ```python
 def apply(self, image: ImageType | torch.Tensor, **params: Any) -> ImageType: ...
 ```
+
+A helper that preserves image dtype and container can use Albucore `ImageInputT`. A native handler can declare
+`Annotated[ImageInputT, torch.Tensor]` so its generic signature retains the explicit Tensor capability marker.
+`RandomGamma.apply` uses this image-only route; its other handlers keep their declared routes.
 
 Handlers without a Tensor input annotation use the leaf-local NumPy fallback. This keeps the declaration with the code
 that receives the value: no transform-level Tensor flags, target lists, channel lists, or adapters are needed. Tensor

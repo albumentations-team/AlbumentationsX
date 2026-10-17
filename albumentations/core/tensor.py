@@ -41,8 +41,8 @@ TENSOR_CHANNEL_AXIS: Final[dict[str, int]] = {
     "mask3d": 0,
     "masks3d": 1,
 }
-TENSOR_IMAGE_DTYPES: Final[frozenset[torch.dtype]] = frozenset({torch.uint8, torch.float32})
-TENSOR_MASK_DTYPES: Final[frozenset[torch.dtype]] = frozenset({torch.uint8, torch.int16, torch.float32})
+TENSOR_IMAGE_DTYPES: Final[frozenset[torch.dtype]] = frozenset({torch.uint8, torch.float16, torch.float32})
+TENSOR_MASK_DTYPES: Final[frozenset[torch.dtype]] = frozenset({torch.uint8, torch.int16, torch.float16, torch.float32})
 TENSOR_ANNOTATION_DTYPES: Final[frozenset[torch.dtype]] = frozenset({torch.float32})
 TENSOR_TARGET_DTYPES: Final[dict[str, frozenset[torch.dtype]]] = {
     "image": TENSOR_IMAGE_DTYPES,
@@ -161,8 +161,8 @@ def tensor_metadata_to_numpy(value: torch.Tensor, target: str | None) -> NDArray
 
 
 def _numpy_to_tensor(value: NDArray[np.generic]) -> torch.Tensor:
-    if any(stride < 0 for stride in value.strides):
-        value = np.ascontiguousarray(value)
+    if not value.flags.writeable or any(stride < 0 for stride in value.strides):
+        value = np.array(value, copy=True, order="K")
     return torch.from_numpy(value)
 
 

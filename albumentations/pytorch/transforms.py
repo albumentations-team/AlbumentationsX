@@ -74,9 +74,7 @@ class ToTensorV2(BaseTensorTransform):
             msg = "Albumentations only supports images in HW or HWC format"
             raise ValueError(msg)
 
-        image = img
-        if img.ndim == MONO_CHANNEL_DIMENSIONS:
-            image = np.expand_dims(img, 2)
+        image = np.expand_dims(img, 2) if img.ndim == MONO_CHANNEL_DIMENSIONS else img
 
         return torch.from_numpy(np.ascontiguousarray(image.transpose(2, 0, 1)))
 

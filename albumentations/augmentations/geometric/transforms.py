@@ -213,7 +213,7 @@ class Perspective(DualTransform):
             self.keep_size,
             self.interpolation,
         )
-        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
+        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation, source=img)
 
     def apply_to_images(
         self,
@@ -233,7 +233,7 @@ class Perspective(DualTransform):
             self.keep_size,
             self.interpolation,
         )
-        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
+        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation, source=images)
 
     def apply_to_mask(
         self,
@@ -619,7 +619,7 @@ class Affine(DualTransform):
             border_mode=self.border_mode,
             border_value=self.fill,
         )
-        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
+        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation, source=img)
 
     def apply_to_images(
         self,
@@ -639,7 +639,9 @@ class Affine(DualTransform):
                 border_mode=self.border_mode,
                 border_value=self.fill,
             )
-        return fgeometric.clip_if_interpolation_can_overshoot(cast("ImageType", result), self.interpolation)
+        return fgeometric.clip_if_interpolation_can_overshoot(
+            cast("ImageType", result), self.interpolation, source=images
+        )
 
     def apply_to_mask(
         self,
@@ -1189,7 +1191,7 @@ class GridElasticDeform(DualTransform):
         if not is_rgb_image(img) and not is_grayscale_image(img):
             raise ValueError("GridElasticDeform transform is only supported for RGB and grayscale images.")
         result = fgeometric.distort_image(img, generated_mesh, self.interpolation)
-        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
+        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation, source=img)
 
     def apply_to_mask(
         self,

@@ -6,7 +6,7 @@ from albumentations import Compose
 from albumentations.augmentations import FromFloat, ToFloat, ToGray, ToRGB
 
 
-@pytest.mark.parametrize("dtype", ["uint8", "float32"])
+@pytest.mark.parametrize("dtype", ["uint8", "float16", "float32"])
 @pytest.mark.parametrize(
     "param, shape",
     [
@@ -14,18 +14,39 @@ from albumentations.augmentations import FromFloat, ToFloat, ToGray, ToRGB
         ("image", (8, 7)),
         ("images", (4, 8, 7, 6)),
         ("images", (4, 8, 7)),
+        ("volume", (3, 8, 7, 6)),
+        ("volume", (3, 8, 7)),
+        ("volumes", (2, 3, 8, 7, 6)),
+        ("volumes", (2, 3, 8, 7)),
     ],
 )
 def test_to_float(param, shape, dtype):
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(137)
     data = rng.uniform(0, 10, size=shape).astype(dtype)
 
     aug = ToFloat()
     result = aug(**{param: data})[param]
 
-    assert result.dtype == np.float32
+    assert result.dtype == (np.float16 if dtype == "float16" else np.float32)
     assert result.shape == data.shape
     np.testing.assert_allclose(data, result * get_max_value(np.dtype(dtype)))
+
+
+@pytest.mark.parametrize("target", ["image", "images", "volume", "volumes"])
+def test_to_float_preserves_half_bits_through_compose(target):
+    spatial = (2, 3) if target in {"image", "images"} else (2, 2, 3)
+    shape = ((2,) if target in {"images", "volumes"} else ()) + (*spatial, 1)
+    values = np.array([0x8000, 0x3800, 0x3C00, 0x3E00, 0x7C00, 0x7C01], dtype=np.uint16).view(np.float16)
+    image = np.resize(values, shape)
+    original = image.view(np.uint16).copy()
+    image.setflags(write=False)
+    pipeline = Compose([ToFloat(max_value=7.5)], seed=137, strict=True)
+
+    result = pipeline(**{target: image})[target]
+
+    assert result.dtype == np.float16
+    np.testing.assert_array_equal(result.view(np.uint16), original)
+    np.testing.assert_array_equal(image.view(np.uint16), original)
 
 
 @pytest.mark.parametrize("dtype", ["uint8"])

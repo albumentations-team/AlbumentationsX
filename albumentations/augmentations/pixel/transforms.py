@@ -15,6 +15,7 @@ from albucore import (
     normalize_per_image,
     reduce_sum,
 )
+from numpy.typing import NDArray
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 from pydantic.functional_validators import AfterValidator
 from scipy import special
@@ -223,7 +224,7 @@ class Normalize(ImageOnlyTransform):
         if self.clip_range is None:
             return normalized
         if normalized is img:
-            return np.clip(normalized, *self.clip_range)
+            return normalized.clip(*self.clip_range)
         return np.clip(normalized, *self.clip_range, out=normalized)
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
@@ -1377,6 +1378,7 @@ class Dithering(ImageOnlyTransform):
                 dtype=True,
                 sampling_topology=True,
             )
+            random_noise: NDArray[np.int16] | NDArray[np.float64]
             if view.descriptor.value_scale == 255:
                 random_noise = sampling.random_generator.uniform(
                     self.noise_range[0] * 255,

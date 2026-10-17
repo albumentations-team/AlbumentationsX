@@ -932,13 +932,10 @@ class GaussianBlur(ImageOnlyTransform):
     ) -> VolumeType:
         if self.volume_mode == "slice":
             return super().apply_to_volume(volume, kernel=kernel, **params)
-        return cast(
-            "VolumeType",
-            gaussian_blur3d(
-                volume,
-                sigma=sigma,
-                kernel_size=kernel_size,
-            ),
+        return gaussian_blur3d(
+            volume,
+            sigma=sigma,
+            kernel_size=kernel_size,
         )
 
     def _sample_3d_kernel_size(self, blur_range: tuple[int, int], sampling: SamplingContext) -> int:

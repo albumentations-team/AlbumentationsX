@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from ._functional_color import (
     channel_shuffle,
@@ -12,16 +12,21 @@ from ._functional_color import (
     to_gray_weighted_average,
 )
 from ._functional_noise import get_safe_brightness_contrast_params
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
     ImageType,
     ImageUInt8,
     add_weighted,
+    apply_uint8_lut,
     clip,
     clipped,
     cv2,
     fgeometric,
     float32_io,
+    from_float,
     get_num_channels,
     is_grayscale_image,
     is_rgb_image,
@@ -31,7 +36,6 @@ from ._functional_shared import (
     np,
     preserve_channel_dim,
     std,
-    sz_lut,
     uint8_io,
 )
 
@@ -221,7 +225,7 @@ def _adjust_hue_torchvision_uint8(img: ImageUInt8, factor: float) -> ImageUInt8:
 
     lut = np.arange(0, 256, dtype=np.int16)
     lut = np.mod(lut + 180 * factor, 180).astype(np.uint8)
-    img[..., 0] = sz_lut(img[..., 0], lut, inplace=False)
+    img[..., 0] = apply_uint8_lut(img[..., 0], lut)
 
     return cast("ImageUInt8", cv2.cvtColor(img, cv2.COLOR_HSV2RGB))
 
@@ -246,9 +250,13 @@ def adjust_hue_torchvision(img: ImageType, factor: float) -> ImageType:
     if img.dtype == np.uint8:
         return _adjust_hue_torchvision_uint8(cast("ImageUInt8", img), factor)
 
+    input_dtype = img.dtype
+    if input_dtype.type is np.float16:
+        img = img.astype(np.float32)
     img = cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2HSV))
     img[..., 0] = np.mod(img[..., 0] + factor * 360, 360)
-    return cast("ImageType", cv2.cvtColor(img, cv2.COLOR_HSV2RGB))
+    result = cast("NDArray[np.float32]", cv2.cvtColor(img, cv2.COLOR_HSV2RGB))
+    return from_float(result, target_dtype=input_dtype)
 
 
 def _apply_brightness_only_torchvision(img: ImageType, brightness_factor: float) -> ImageType:
@@ -257,7 +265,9 @@ def _apply_brightness_only_torchvision(img: ImageType, brightness_factor: float)
     if brightness_factor == 1:
         return img
 
-    result = multiply(img, brightness_factor, inplace=False)
+    result = multiply(img, brightness_factor)
+    if result.dtype == np.float16:
+        return clip(result, out=result)
     return np.clip(result, 0.0, 1.0, out=result) if result.dtype == np.float32 else result
 
 
@@ -265,11 +275,13 @@ def _apply_contrast_only_torchvision(img: ImageType, contrast_factor: float) -> 
     gray_img = img if is_grayscale_image(img) else to_gray_weighted_average(img)
     img_mean = float(mean(gray_img))
     if contrast_factor == 0:
-        if img.dtype != np.float32:
+        if img.dtype == np.uint8:
             img_mean = int(img_mean + 0.5)
         return cast("ImageType", np.full_like(img, img_mean, dtype=img.dtype))
 
-    result = multiply_add(img, contrast_factor, img_mean * (1 - contrast_factor), inplace=False)
+    result = multiply_add(img, contrast_factor, img_mean * (1 - contrast_factor))
+    if result.dtype == np.float16:
+        return clip(result, out=result)
     return np.clip(result, 0.0, 1.0, out=result) if result.dtype == np.float32 else result
 
 
@@ -289,7 +301,7 @@ def _apply_brightness_contrast_uint8(
         # Values are non-negative after clipping, so floor matches the uint8 cast between torchvision operations.
         np.floor(lut, out=lut)
         lut = np.clip(lut * brightness_factor, 0.0, 255.0)
-    return sz_lut(cast("ImageUInt8", img), lut.astype(np.uint8), inplace=False)
+    return apply_uint8_lut(cast("ImageUInt8", img), lut.astype(np.uint8))
 
 
 def _apply_brightness_contrast_float32(
@@ -465,8 +477,11 @@ def apply_random_brightness_contrast(
         beta *= max_value
     if ensure_safe_output:
         alpha, beta = get_safe_brightness_contrast_params(alpha, beta, max_value)
-    result = multiply_add(img, alpha, beta, inplace=False)
-    return clip(result, img.dtype, inplace=True) if img.dtype == np.float32 else result
+    result = multiply_add(img, alpha, beta)
+    if img.dtype not in (np.float16, np.float32):
+        return result
+    destination = result if result.flags.writeable and not np.shares_memory(result, img) else None
+    return clip(result, out=destination)
 
 
 def _batch_brightness_contrast_coefficients(
@@ -566,14 +581,14 @@ def apply_brightness_contrast_torchvision_batch(
         result = np.multiply(images, gains.reshape(broadcast_shape), dtype=np.float32)
         np.add(result, offsets.reshape(broadcast_shape), out=result)
         np.clip(result, 0.0, 1.0, out=result)
-        return cast("ImageType", result)
+        return from_float(result, target_dtype=images.dtype)
 
     result = np.multiply(images, contrast_factor, dtype=np.float32)
     np.add(result, offsets.reshape(broadcast_shape), out=result)
     np.clip(result, 0.0, 1.0, out=result)
     np.multiply(result, brightness_factor, out=result)
     np.clip(result, 0.0, 1.0, out=result)
-    return cast("ImageType", result)
+    return from_float(result, target_dtype=images.dtype)
 
 
 @uint8_io

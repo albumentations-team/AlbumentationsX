@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "reviewed_on": "2026-10-16",
+  "reviewed_on": "2026-10-17",
   "scope": "Runtime components resolved by uv for the base package, including transitive dependencies and Python or platform-specific lock variants. Declared extras are outside this registry unless a component is also resolved by the base package. Build, test, and CI tools are outside this registry.",
   "evidence_sources": {
     "pypi": "Locked distribution METADATA and license files, cross-checked at https://pypi.org/project/<name>/<version>/."
@@ -14,7 +14,7 @@
     {"name": "pydantic-core", "reviewed_versions": ["2.46.4", "2.46.5"], "license_expression": "MIT", "evidence_source": "pypi", "decision": "accepted", "notice": "Separately installed dependency."},
     {"name": "pyyaml", "reviewed_versions": ["6.0.3"], "license_expression": "MIT", "evidence_source": "pypi", "decision": "accepted", "notice": "Separately installed dependency."},
     {"name": "scipy", "reviewed_versions": ["1.15.3", "1.17.1", "1.18.0"], "license_expression": "BSD-3-Clause AND BSD-3-Clause-Open-MPI AND GPL-3.0-or-later WITH GCC-exception-3.1 AND LGPL-2.1-or-later", "metadata_identifiers": ["License :: OSI Approved :: BSD License"], "evidence_source": "pypi", "decision": "accepted", "notice": "Binary-wheel notices remain with the separately installed distribution."},
-    {"name": "stringzilla", "reviewed_versions": ["5.1.2"], "license_expression": "Apache-2.0", "evidence_source": "pypi", "decision": "accepted", "notice": "Separately installed dependency."},
+    {"name": "stringzilla", "reviewed_versions": ["5.1.2", "5.2.0"], "license_expression": "Apache-2.0", "evidence_source": "pypi", "decision": "accepted", "notice": "Separately installed dependency."},
     {"name": "typing-extensions", "reviewed_versions": ["4.16.0"], "license_expression": "PSF-2.0", "evidence_source": "pypi", "decision": "accepted", "notice": "Separately installed dependency."},
     {"name": "typing-inspection", "reviewed_versions": ["0.4.2"], "license_expression": "MIT", "evidence_source": "pypi", "decision": "accepted", "notice": "Separately installed dependency."}
   ]

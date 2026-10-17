@@ -1,6 +1,8 @@
 """Specialized crop transforms."""
 
-from typing import Annotated, Any, Self
+from typing import Annotated, Any, Self, TypeVar
+
+from numpy.typing import NDArray
 
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet
@@ -12,7 +14,6 @@ from ._transforms_shared import (
     AfterValidator,
     BaseTransformInitSchema,
     Field,
-    ImageType,
     check_range_bounds,
     cv2,
     fcrops,
@@ -24,6 +25,8 @@ from ._transforms_shared import (
 from .base import (
     BaseCrop,
 )
+
+_MaskDType = TypeVar("_MaskDType", np.uint8, np.float32)
 
 
 class CropNonEmptyMaskIfExists(BaseCrop):
@@ -172,7 +175,7 @@ class CropNonEmptyMaskIfExists(BaseCrop):
         self.ignore_values = ignore_values
         self.ignore_channels = ignore_channels
 
-    def _preprocess_mask(self, mask: ImageType) -> ImageType:
+    def _preprocess_mask(self, mask: NDArray[_MaskDType]) -> NDArray[_MaskDType]:
         mask_height, mask_width = mask.shape[:2]
 
         if self.ignore_values is not None:
@@ -213,7 +216,7 @@ class CropNonEmptyMaskIfExists(BaseCrop):
         if mask.any():
             # Find non-zero regions in mask
             mask_sum = reduce_sum(mask, axis=-1) if mask.ndim == NUM_MULTI_CHANNEL_DIMENSIONS else mask
-            non_empty_mask = np.asarray(mask_sum) > 0
+            non_empty_mask = np.greater(mask_sum, 0)
             non_zero_xy = cv2.findNonZero(non_empty_mask.astype(np.uint8))
             non_zero_yx = non_zero_xy.reshape(-1, 2)[:, ::-1]
             y, x = sampling.py_random.choice(non_zero_yx)

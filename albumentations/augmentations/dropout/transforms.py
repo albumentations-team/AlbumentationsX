@@ -330,6 +330,9 @@ class PixelDropout(DualTransform):
         >>> result = transform(image=image, mask=mask)
         >>> dropped_image, dropped_mask = result['image'], result['mask']
 
+    See Also:
+        - ChannelDropout: Replace entire channels selected from an eligible set.
+
     """
 
     class InitSchema(BaseTransformInitSchema):

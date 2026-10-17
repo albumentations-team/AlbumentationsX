@@ -260,7 +260,7 @@ def test_image_only_sampling_allows_unaligned_aliases() -> None:
 def test_channel_dropout_ignores_user_data_during_sampling() -> None:
     image = np.full((4, 5, 3), 255, dtype=np.uint8)
     user_data = {"source": "fixture"}
-    transform = A.ChannelDropout(channel_drop_range=(1, 1), fill=0, p=1.0)
+    transform = A.ChannelDropout(dropout_ratio=1 / 3, fill=0, p=1.0)
 
     result = transform(image=image, user_data=user_data)
 

@@ -595,7 +595,6 @@ def _apply_dithering_to_grayscale(
     """Convert to grayscale, apply dithering, then broadcast to original channel count.
     Grayscale path: one channel dithered then expanded.
     """
-    # Store original number of channels
     original_channels = img.shape[2]
 
     if img.shape[2] == 3:
@@ -605,14 +604,8 @@ def _apply_dithering_to_grayscale(
     else:
         gray = to_gray_average(img)
 
-    if gray.ndim == 2:
-        gray = gray[:, :, np.newaxis]
-
     dithered = _apply_single_dithering_method(gray, method, n_colors, **kwargs)
 
-    # Expand back to original number of channels (handle both 2D and 3D cases)
-    if dithered.ndim == 2:
-        dithered = dithered[:, :, np.newaxis]
     return cast("ImageType", np.repeat(dithered, original_channels, axis=2))
 
 

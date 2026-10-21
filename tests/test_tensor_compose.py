@@ -1,5 +1,6 @@
 """Public CPU Tensor routing contracts for :class:`albumentations.Compose`."""
 
+import warnings
 from typing import Any
 
 import numpy as np
@@ -316,6 +317,78 @@ def test_tensor_fallback_materializes_negative_stride_numpy_output() -> None:
     result = A.Compose([_NegativeStrideProbe()], strict=True)(image=image)["image"]
 
     torch.testing.assert_close(result, torch.flip(image, (-1,)))
+
+
+@pytest.mark.parametrize("channels", [1, 3])
+@pytest.mark.parametrize("dtype", [torch.uint8, torch.float32])
+def test_tensor_fallback_copies_readonly_callback_output(channels: int, dtype: torch.dtype) -> None:
+    image = torch.arange(channels * 5 * 7).reshape(channels, 5, 7).to(dtype)
+    if dtype == torch.float32:
+        image /= 255
+    source = image.clone()
+    callback_outputs: list[np.ndarray] = []
+
+    def readonly_copy(value: np.ndarray, **params: Any) -> np.ndarray:
+        result = np.frombuffer(value.tobytes(), dtype=value.dtype).reshape(value.shape)
+        callback_outputs.append(result)
+        return result
+
+    transform = A.Compose(
+        [A.Lambda(image=readonly_copy, p=1.0)],
+        additional_targets={"other": "image"},
+        strict=True,
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = transform(image=image, other=image)
+
+    assert not caught
+    for name, readonly in zip(("image", "other"), callback_outputs, strict=True):
+        assert not readonly.flags.writeable
+        assert not np.shares_memory(readonly, result[name].numpy())
+        torch.testing.assert_close(result[name], source)
+        result[name].fill_(137)
+        np.testing.assert_array_equal(readonly, source.permute(1, 2, 0).numpy())
+    torch.testing.assert_close(image, source)
+
+
+@pytest.mark.parametrize(
+    ("target", "shape"),
+    [
+        ("image", (1, 5, 7)),
+        ("images", (2, 1, 5, 7)),
+        ("volume", (1, 2, 5, 7)),
+        ("volumes", (2, 1, 2, 5, 7)),
+    ],
+)
+def test_random_gamma_tensor_fallback_output_is_writable(
+    target: str,
+    shape: tuple[int, ...],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    image = torch.zeros(shape, dtype=torch.uint8)
+    image[..., ::2] = 255
+    source = image.clone()
+    numpy_outputs: list[np.ndarray] = []
+    to_tensor = transforms_interface.numpy_to_tensor_spatial
+
+    def track_output(value: np.ndarray, name: str) -> torch.Tensor:
+        numpy_outputs.append(value)
+        return to_tensor(value, name)
+
+    monkeypatch.setattr(transforms_interface, "numpy_to_tensor_spatial", track_output)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = A.Compose([A.RandomGamma(gamma_range=(200, 200), p=1.0)], strict=True)(**{target: image})[target]
+
+    assert not caught
+    torch.testing.assert_close(result, source)
+    assert len(numpy_outputs) == 1
+    if not numpy_outputs[0].flags.writeable:
+        assert not np.shares_memory(numpy_outputs[0], result.numpy())
+    result.fill_(137)
+    torch.testing.assert_close(image, source)
 
 
 @pytest.mark.parametrize(

@@ -213,9 +213,10 @@ graph raises an error before probability or parameter sampling. Mixed-container 
 
 ### Conversion and storage
 
-Fallback uses `Tensor.numpy()` and `torch.from_numpy()` views when the dtype and strides permit them. Axis changes such
-as `C,H,W` to `H,W,C` are views when possible. A helper materializes data when the selected kernel requires contiguous
-or writable input, or when a NumPy result has negative strides that Torch cannot represent.
+Fallback uses `Tensor.numpy()` and `torch.from_numpy()` views when the dtype, strides, and writability permit them.
+Axis changes such as `C,H,W` to `H,W,C` are views when possible. A helper materializes data when a kernel requires contiguous
+or writable input. Before wrapping a NumPy result as a Tensor, the bridge copies readonly storage and arrays with
+negative strides, including negative strides on singleton axes. Compatible writable results retain zero-copy conversion.
 
 Transforms must not modify caller input values in place. Applied outputs carry no public storage-sharing guarantee.
 

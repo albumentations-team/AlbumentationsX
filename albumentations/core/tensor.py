@@ -161,8 +161,8 @@ def tensor_metadata_to_numpy(value: torch.Tensor, target: str | None) -> NDArray
 
 
 def _numpy_to_tensor(value: NDArray[np.generic]) -> torch.Tensor:
-    if any(stride < 0 for stride in value.strides):
-        value = np.ascontiguousarray(value)
+    if not value.flags.writeable or any(stride < 0 for stride in value.strides):
+        value = np.array(value, copy=True, order="C")
     return torch.from_numpy(value)
 
 

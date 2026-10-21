@@ -312,6 +312,34 @@ def test_deterministic_calls_do_not_materialize_rng(route: str, generator_alloca
 
 
 @pytest.mark.parametrize("invocation_seed", [None, 137])
+@pytest.mark.parametrize("probability", [0.5, 1])
+def test_probability_only_calls_do_not_allocate_sampler_state(
+    invocation_seed: int | None, probability: float, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def unexpected_state(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("probability-only execution allocated sampler state")
+
+    monkeypatch.setattr(invocation_module, "_InvocationRandomState", unexpected_state, raising=False)
+    pipeline = A.Compose([A.NoOp(p=0.5)], p=probability, seed=137)
+    image = np.ones((17, 19), np.float32)
+    for _ in range(100):
+        assert pipeline(image=image, invocation_seed=invocation_seed)["image"] is image
+
+
+@pytest.mark.parametrize("invocation_seed", [None, 137])
+def test_root_streams_created_before_sampling_are_shared(
+    invocation_seed: int | None, generator_allocations: dict
+) -> None:
+    context = A.Compose([], seed=137)._create_invocation_context(collect_applied=False, invocation_seed=invocation_seed)
+    python_stream, numpy_stream = context.py_random, context.random_generator
+    before = generator_allocations.copy()
+    sampling = context.sampling_context({})
+    assert sampling.py_random is python_stream
+    assert sampling.random_generator is numpy_stream
+    assert generator_allocations == before
+
+
+@pytest.mark.parametrize("invocation_seed", [None, 137])
 def test_numpy_only_sampler_does_not_create_isolated_python_rng(
     invocation_seed: int | None,
     generator_allocations: dict,

@@ -84,7 +84,10 @@ class _InvocationRandomState:
     _random_generator: np.random.Generator | None = None
     _reserved_random_streams: _ReservedRandomStreams | None = None
 
-    def _random_streams(self) -> _ReservedRandomStreams:
+    def random_streams(self) -> _ReservedRandomStreams:
+        """Return the shared lazy stream lease so root and sampling access reuse generator materialization without
+        copying streams or retaining execution state.
+        """
         if self._reserved_random_streams is None:
             seed = self.seed
             self._reserved_random_streams = (
@@ -103,7 +106,7 @@ class _InvocationRandomState:
         and retaining no execution context.
         """
         if self._random_generator is None:
-            self._random_generator = self._random_streams().get_random_generator()
+            self._random_generator = self.random_streams().get_random_generator()
         return self._random_generator
 
     @property
@@ -112,7 +115,7 @@ class _InvocationRandomState:
         requests it and retaining no execution context.
         """
         if self._py_random is None:
-            self._py_random = self._random_streams().get_py_random()
+            self._py_random = self.random_streams().get_py_random()
         return self._py_random
 
 
@@ -541,6 +544,25 @@ class InvocationContext:
     trace_session: Any | None = None
     _activation_token: Token[InvocationContext | None] | None = None
 
+    def _random_streams(self) -> _ReservedRandomStreams:
+        """Resolve root-only randomness without allocating a sampler view's state, sharing its streams if a view
+        already exists and capturing only seed values in isolated factories.
+        """
+        if self._reserved_random_streams is None:
+            if self._random_state is not None:
+                self._reserved_random_streams = self._random_state.random_streams()
+            else:
+                seed = self.seed
+                self._reserved_random_streams = (
+                    _ReservedRandomStreams(
+                        random_generator_factory=lambda: np.random.default_rng(seed),
+                        py_random_factory=lambda: random.Random(seed),
+                    )
+                    if self.random_stream_reserver is None
+                    else self.random_stream_reserver()
+                )
+        return self._reserved_random_streams
+
     def _get_random_state(self) -> _InvocationRandomState:
         """Share lazy RNG access with sampler views without giving them a reference to execution state, preserving
         stream reservations and primed root probability draws.
@@ -561,7 +583,7 @@ class InvocationContext:
         routes retain a zero-allocation fast path.
         """
         if self._random_generator is None:
-            self._random_generator = self._get_random_state().random_generator
+            self._random_generator = self._random_streams().get_random_generator()
         return self._random_generator
 
     @property
@@ -570,7 +592,7 @@ class InvocationContext:
         deterministic routes retain a zero-allocation fast path.
         """
         if self._py_random is None:
-            self._py_random = self._get_random_state().py_random
+            self._py_random = self._random_streams().get_py_random()
         return self._py_random
 
     def transform_state(self, transform: InvocationOwner) -> TransformInvocationState:

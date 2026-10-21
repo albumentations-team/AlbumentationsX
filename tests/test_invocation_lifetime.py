@@ -379,6 +379,17 @@ def test_unchanged_routes_keep_exact_identity(route: str, temporary_references: 
 
 
 @pytest.mark.usefixtures("refcount_only")
+@pytest.mark.parametrize("invocation_seed", [None, 137])
+@pytest.mark.parametrize("probability", [0.5, 1])
+def test_probability_only_calls_release_contexts(
+    invocation_seed: int | None, probability: float, temporary_references: list
+) -> None:
+    pipeline = A.Compose([A.NoOp(p=0.5)], p=probability, seed=137)
+    references = _call_target(pipeline, invocation_seed=invocation_seed)
+    _assert_released(references + temporary_references)
+
+
+@pytest.mark.usefixtures("refcount_only")
 def test_live_unchanged_output_is_a_legitimate_owner() -> None:
     def call() -> tuple[list, dict]:
         image = np.ones((17, 19), np.float32)
@@ -603,7 +614,7 @@ def test_retained_sampling_view_does_not_own_execution_state(temporary_reference
     references = _call_target(pipeline)
     # The retained view legitimately owns its RNG state, but not its invocation or buffers.
     assert all(
-        reference() is None or isinstance(reference(), invocation_module._InvocationRandomState)
+        not isinstance(reference(), (np.ndarray, torch.Tensor, invocation_module.InvocationContext))
         for reference in temporary_references
     )
     _assert_released(references)

@@ -73,6 +73,8 @@ The sampling view holds no reference to its invocation. Root probability and sam
 state; its provider may reserve streams from the configured owner but must not be a bound invocation method.
 Isolated stream factories capture seed values rather than their owning state. An ordinary invocation reuses one
 sampling view and replaces its override sink for each leaf; shared thread streams never contain those overrides.
+Probability-only execution resolves its streams on the invocation without allocating sampler state. If a sampler
+view is requested later, it shares the already resolved streams and generators without creating replacements.
 
 Optional-channel restoration keeps the original and normalized objects throughout execution so unchanged targets
 can retain their existing identity behavior. Once a call returns or raises and its callers release input, output,

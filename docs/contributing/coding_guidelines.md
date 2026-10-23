@@ -356,6 +356,38 @@ all stochastic parameters before `apply`, then return a `SampledParams`. Values 
 Use `targets` and its descriptors for channel, dtype, layout, topology, or target-content decisions. Do not derive
 those decisions from the first-target `params["shape"]` field.
 
+### SamplingContext compatibility and migration
+
+The fix for [#596](https://github.com/albumentations-team/AlbumentationsX/issues/596) removes
+`SamplingContext.invocation` and the `invocation=` constructor argument. This is a breaking change for custom samplers
+or utilities that used those elements. The sampling hook signature, RNG properties, `applied_overrides`, and
+`from_seed()` / `from_owner()` factories are unchanged. There is no deprecation adapter exposing the execution context:
+sampling views must not keep a completed invocation and its input buffers alive.
+
+During `sample_parameters`, use the supplied sampling view and hook arguments:
+
+| Previous access | Replacement |
+| --- | --- |
+| `sampling.invocation.py_random` | `sampling.py_random` |
+| `sampling.invocation.random_generator` | `sampling.random_generator` |
+| Invocation data or target inspection | Use the hook's `data`, `targets`, and `params` arguments |
+| Applied-configuration recording | Write to `sampling.applied_overrides` |
+
+For standalone sampler tests or utilities, replace direct construction around an `InvocationContext` with a factory.
+Choose the factory according to the intended RNG behavior:
+
+```python
+# Isolated draws from a fixed seed; no configured transform's stream is advanced.
+sampling = SamplingContext.from_seed(137, applied_overrides=overrides)
+
+# Draws from an existing transform or Compose owner's configured stream.
+sampling = SamplingContext.from_owner(owner, applied_overrides=overrides)
+```
+
+Inside a running sampling hook, keep the supplied view rather than constructing another one. Its streams are shared
+with that call's probability decisions and honor any explicit `invocation_seed`. There is no supported sampler access
+to processor sessions, restoration records, or other execution bookkeeping; use the hook arguments for input inspection.
+
 ## Transform Development
 
 ### Method Definitions

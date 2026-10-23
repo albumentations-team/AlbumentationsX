@@ -76,6 +76,10 @@ sampling view and replaces its override sink for each leaf; shared thread stream
 Probability-only execution resolves its streams on the invocation without allocating sampler state. If a sampler
 view is requested later, it shares the already resolved streams and generators without creating replacements.
 
+The former `SamplingContext.invocation` field and `invocation=` constructor argument are removed. Custom samplers
+that used them must migrate to the sampling properties, hook arguments, or standalone factories described in the
+[SamplingContext migration guide](../contributing/coding_guidelines.md#samplingcontext-compatibility-and-migration).
+
 Optional-channel restoration keeps the original and normalized objects throughout execution so unchanged targets
 can retain their existing identity behavior. Once a call returns or raises and its callers release input, output,
 trace/replay artifacts, and exception tracebacks, temporary contexts and their buffers are released without cyclic GC.

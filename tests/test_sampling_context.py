@@ -372,7 +372,8 @@ def test_direct_call_initializes_owner_pair_once(generator_allocations: dict) ->
 
 @pytest.mark.parametrize("observed", [False, True])
 def test_sampling_view_reuse_and_override_isolation(observed: bool) -> None:
-    visits = []
+    """Each invocation reuses one live sampling view while keeping observed leaf overrides separate."""
+    visits: list[tuple[SamplingContext, Any]] = []
     original = A.Blur.sample_parameters
 
     def sample(
@@ -387,7 +388,7 @@ def test_sampling_view_reuse_and_override_isolation(observed: bool) -> None:
             sampling.applied_overrides.update(discard_probe=value)
             del value
             assert reference() is None
-        visits.append((id(sampling), sampling.applied_overrides))
+        visits.append((sampling, sampling.applied_overrides))
         return original(transform, params, data, targets, sampling)
 
     pipeline = A.Compose([A.Blur(p=1), A.Blur(p=1)], seed=137, save_applied_params=observed)
@@ -397,8 +398,10 @@ def test_sampling_view_reuse_and_override_isolation(observed: bool) -> None:
         if observed:
             records = first["applied_transforms"].copy()
         pipeline(image=np.ones((17, 19), np.float32))
-    assert visits[0][0] == visits[1][0]
-    assert visits[2][0] == visits[3][0]
+    assert len(visits) == 4
+    assert visits[0][0] is visits[1][0]
+    assert visits[2][0] is visits[3][0]
+    assert visits[0][0] is not visits[2][0]
     if observed:
         assert all(sink is not other for index, (_, sink) in enumerate(visits) for _, other in visits[index + 1 :])
         assert first["applied_transforms"] == records

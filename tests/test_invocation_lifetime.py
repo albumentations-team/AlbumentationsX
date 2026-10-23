@@ -582,7 +582,19 @@ def test_overlapping_calls_release_independent_inputs(invocation_seed: int | Non
 @pytest.mark.usefixtures("refcount_only")
 @pytest.mark.parametrize("factory", ["seed", "owner"])
 @pytest.mark.parametrize("access", ["python", "numpy", "both"])
-def test_standalone_sampling_releases_call_context(factory: str, access: str, temporary_references: list) -> None:
+def test_standalone_sampling_avoids_invocations_and_releases_state(
+    factory: str,
+    access: str,
+    temporary_references: list,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Standalone factories must neither allocate execution contexts nor retain discarded RNG state."""
+
+    def forbid_invocation(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("Standalone sampling must not allocate an InvocationContext")
+
+    monkeypatch.setattr(invocation_module.InvocationContext, "__init__", forbid_invocation)
+
     def call() -> list:
         sampling = (
             invocation_module.SamplingContext.from_seed(137)

@@ -703,3 +703,36 @@ def test_pixel_distribution_matching_reference_preserves_floating_signal(dtype, 
     np.testing.assert_allclose(actual, original, rtol=0, atol=1 if dtype == np.uint8 else 1 / 255)
     np.testing.assert_array_equal(image, original)
     assert actual.dtype == dtype
+
+
+@pytest.mark.parametrize("operation", ["pca", "standard", "minmax", "fda"])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("source_channel", [False, True])
+@pytest.mark.parametrize("reference_channel", [False, True])
+@pytest.mark.parametrize("same_shape", [False, True])
+def test_direct_domain_adaptation_preserves_grayscale_channel_representation(
+    operation, dtype, source_channel, reference_channel, same_shape
+):
+    rng = np.random.default_rng(137)
+    source_bytes = rng.integers(0, 256, (11, 13), dtype=np.uint8)
+    reference_shape = source_bytes.shape if same_shape else (9, 17)
+    reference_bytes = rng.integers(0, 256, reference_shape, dtype=np.uint8)
+    source = source_bytes if dtype == np.uint8 else (source_bytes.astype(np.float32) / 255).astype(dtype)
+    reference = reference_bytes if dtype == np.uint8 else (reference_bytes.astype(np.float32) / 255).astype(dtype)
+    original = source.copy()
+    reference_before = reference.copy()
+
+    def apply(image, donor):
+        if operation == "fda":
+            return fourier_domain_adaptation(image, donor, beta=0.1)
+        return adapt_pixel_distribution(image, donor, transform_type=operation, weight=0.5)
+
+    expected = apply(source[..., None], reference[..., None])
+    actual = apply(
+        source[..., None] if source_channel else source, reference[..., None] if reference_channel else reference
+    )
+
+    np.testing.assert_array_equal(actual, expected if source_channel else expected[..., 0])
+    np.testing.assert_array_equal(source, original)
+    np.testing.assert_array_equal(reference, reference_before)
+    assert actual.dtype == dtype

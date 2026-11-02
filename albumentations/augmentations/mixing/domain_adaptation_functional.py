@@ -420,6 +420,12 @@ def adapt_pixel_distribution(
         ValueError: If the input image and reference image have different dtypes or numbers of channels.
 
     """
+    is_channel_less = img.ndim == 2
+    if is_channel_less:
+        img = img[..., None]
+    if ref.ndim == 2:
+        ref = ref[..., None]
+
     if img.dtype != ref.dtype:
         raise ValueError("Input image and reference image must have the same dtype.")
     img_num_channels = get_num_channels(img)
@@ -455,9 +461,8 @@ def adapt_pixel_distribution(
         image_float32 = to_float(image_uint8)
         transformed_float32 = to_float(transformed)
     result = add_weighted(image_float32, 1 - weight, transformed_float32, weight)
-    if original_dtype == np.float32:
-        return clip(result, out=result)
-    return clip(result, original_dtype)
+    output: ImageType = clip(result, out=result) if original_dtype == np.float32 else clip(result, original_dtype)
+    return output[..., 0] if is_channel_less else output
 
 
 def low_freq_mutate(amp_src: np.ndarray, amp_trg: np.ndarray, beta: float) -> np.ndarray:
@@ -528,6 +533,11 @@ def fourier_domain_adaptation(img: ImageType, target_img: ImageType, beta: float
             https://openaccess.thecvf.com/content_CVPR_2020/papers/Yang_FDA_Fourier_Domain_Adaptation_for_Semantic_Segmentation_CVPR_2020_paper.pdf
 
     """
+    is_channel_less = img.ndim == 2
+    if is_channel_less:
+        img = img[..., None]
+    if target_img.ndim == 2:
+        target_img = target_img[..., None]
     src_img = img.astype(np.float32)
     trg_img = target_img.astype(np.float32)
 
@@ -560,7 +570,8 @@ def fourier_domain_adaptation(img: ImageType, target_img: ImageType, beta: float
         # Store the result in the corresponding channel of the output image
         src_in_trg[:, :, channel_id] = np.real(src_in_trg_channel)
 
-    return clip(src_in_trg, img.dtype)
+    result = clip(src_in_trg, img.dtype)
+    return result[..., 0] if is_channel_less else result
 
 
 def apply_histogram(img: ImageType, reference_image: ImageType, blend_ratio: float) -> ImageType:

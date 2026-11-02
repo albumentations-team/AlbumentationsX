@@ -57,6 +57,9 @@ This uses the same dependency declarations as uv. Pip resolves allowed versions 
 above when reproducing the locked CI environment. In the commands below, omit `uv run` when using this activated
 pip environment.
 
+Lockfile checks and the complete pre-commit suite require uv. A pip-only environment can run tests and the mypy and
+Pyrefly hooks through its active Python interpreter.
+
 ## Enable hooks and verify the environment
 
 ```bash

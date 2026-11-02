@@ -554,6 +554,18 @@ def test_direct_leaf_rejects_optional_channel_tensor_rank() -> None:
         A.HorizontalFlip(p=1.0)(image=torch.zeros((5, 7), dtype=torch.uint8))
 
 
+@pytest.mark.parametrize(
+    "value,message",
+    [
+        (torch.zeros((3, 5, 7), requires_grad=True), "requires_grad=False"),
+        (torch.zeros((3, 5, 7), dtype=torch.bfloat16), "dtype one of"),
+    ],
+)
+def test_direct_noop_validates_tensor_inputs(value: torch.Tensor, message: str) -> None:
+    with pytest.raises((TypeError, ValueError), match=message):
+        A.NoOp(p=1.0)(image=value)
+
+
 def test_replay_compose_replays_tensor_leaf_fallback() -> None:
     image = torch.arange(3 * 5 * 7, dtype=torch.uint8).reshape(3, 5, 7)
     transform = A.ReplayCompose([A.CenterCrop(height=3, width=5, p=1.0)], strict=True)

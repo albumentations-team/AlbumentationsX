@@ -793,11 +793,14 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         **kwargs: Any,
     ) -> Any:
         """Run one applied leaf through its Tensor-aware or NumPy fallback route."""
-        single_target = next(iter(kwargs.values())) if len(kwargs) == 1 else None
-        if not (
-            isinstance(single_target, torch.Tensor)
-            or (isinstance(single_target, np.ndarray) and single_target.dtype.isnative)
-        ):
+        if type(self) is NoOp and invocation is not None and invocation.has_tensor_inputs is False:
+            return self._apply_sampled_in_route(state, collect_applied, invocation, **kwargs)
+        single_target = kwargs.get("image") if len(kwargs) == 1 else None
+        if single_target is None and len(kwargs) == 1:
+            single_target = next(iter(kwargs.values()))
+        if isinstance(single_target, np.ndarray) and single_target.dtype.isnative:
+            return self._apply_sampled_in_route(state, collect_applied, invocation, **kwargs)
+        if not isinstance(single_target, torch.Tensor):
             native_data, byte_orders, passthrough = _prepare_foreign_float_inputs(self, kwargs)
             if byte_orders:
                 result = self._apply_sampled(state, collect_applied, invocation, **native_data)
@@ -971,17 +974,23 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         """
         if not self.applied_in_replay:
             return kwargs
-        single_target = next(iter(kwargs.values())) if len(kwargs) == 1 else None
-        if not (
-            isinstance(single_target, torch.Tensor)
-            or (isinstance(single_target, np.ndarray) and single_target.dtype.isnative)
-        ):
+        if type(self) is NoOp and invocation is not None and invocation.has_tensor_inputs is False:
+            return self._apply_replay_in_route(state, **kwargs)
+        single_target = kwargs.get("image") if len(kwargs) == 1 else None
+        if single_target is None and len(kwargs) == 1:
+            single_target = next(iter(kwargs.values()))
+        if isinstance(single_target, np.ndarray) and single_target.dtype.isnative:
+            return self._apply_replay_in_route(state, **kwargs)
+        if not isinstance(single_target, torch.Tensor):
             native_data, byte_orders, passthrough = _prepare_foreign_float_inputs(self, kwargs)
             if byte_orders:
                 result = self._apply_replay(state, invocation=invocation, **native_data)
                 return _restore_foreign_float_outputs(result, kwargs, byte_orders, passthrough)
         if self._can_bypass_tensor_route(kwargs, invocation):
             return self._apply_replay_in_route(state, **kwargs)
+        return self._apply_replay_with_tensor_route(state, **kwargs)
+
+    def _apply_replay_with_tensor_route(self, state: TransformInvocationState | None, **kwargs: Any) -> Any:
         route = self._tensor_fallback_route(kwargs)
         if self._uses_tensor_fallback(route):
             result = self._apply_replay_in_route(state, **self._enter_tensor_fallback(kwargs, route))

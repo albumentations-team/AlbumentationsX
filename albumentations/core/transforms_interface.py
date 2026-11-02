@@ -793,10 +793,15 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         **kwargs: Any,
     ) -> Any:
         """Run one applied leaf through its Tensor-aware or NumPy fallback route."""
-        native_data, byte_orders, passthrough = _prepare_foreign_float_inputs(self, kwargs)
-        if byte_orders:
-            result = self._apply_sampled(state, collect_applied, invocation, **native_data)
-            return _restore_foreign_float_outputs(result, kwargs, byte_orders, passthrough)
+        single_target = next(iter(kwargs.values())) if len(kwargs) == 1 else None
+        if not (
+            isinstance(single_target, torch.Tensor)
+            or (isinstance(single_target, np.ndarray) and single_target.dtype.isnative)
+        ):
+            native_data, byte_orders, passthrough = _prepare_foreign_float_inputs(self, kwargs)
+            if byte_orders:
+                result = self._apply_sampled(state, collect_applied, invocation, **native_data)
+                return _restore_foreign_float_outputs(result, kwargs, byte_orders, passthrough)
         if self._can_bypass_tensor_route(kwargs, invocation):
             return self._apply_sampled_in_route(state, collect_applied, invocation, **kwargs)
         route = self._tensor_fallback_route(kwargs)
@@ -966,10 +971,15 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         """
         if not self.applied_in_replay:
             return kwargs
-        native_data, byte_orders, passthrough = _prepare_foreign_float_inputs(self, kwargs)
-        if byte_orders:
-            result = self._apply_replay(state, invocation=invocation, **native_data)
-            return _restore_foreign_float_outputs(result, kwargs, byte_orders, passthrough)
+        single_target = next(iter(kwargs.values())) if len(kwargs) == 1 else None
+        if not (
+            isinstance(single_target, torch.Tensor)
+            or (isinstance(single_target, np.ndarray) and single_target.dtype.isnative)
+        ):
+            native_data, byte_orders, passthrough = _prepare_foreign_float_inputs(self, kwargs)
+            if byte_orders:
+                result = self._apply_replay(state, invocation=invocation, **native_data)
+                return _restore_foreign_float_outputs(result, kwargs, byte_orders, passthrough)
         if self._can_bypass_tensor_route(kwargs, invocation):
             return self._apply_replay_in_route(state, **kwargs)
         route = self._tensor_fallback_route(kwargs)

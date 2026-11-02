@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import copy
+import importlib
 from collections import Counter
 from typing import Any
+
+import numpy as np
+import pytest
 
 from tools import benchmark_coverage
 from tools.benchmark_coverage import coverage_details, coverage_diff
@@ -24,6 +28,20 @@ def _transform_names_requiring_contract_layer(details: dict[str, Any], contract:
 
 def _case_ids_for_layer(transform: dict[str, Any], layer: str) -> set[str]:
     return {case["case_id"] for case in transform["asv_cases"] if case["layer"] == layer}
+
+
+@pytest.mark.parametrize("channels", [1, 3, 5])
+@pytest.mark.parametrize("dtype", ["uint8", "float16", "float32"])
+def test_normalize_benchmark_executes_its_declared_channel_and_dtype_routes(channels: int, dtype: str) -> None:
+    benchmark_class = importlib.import_module("benchmarks.test_family_matrix").TimePixelFullMatrix
+    benchmark = benchmark_class()
+    benchmark.setup(f"normalize|small|{channels}|{dtype}")
+
+    result = benchmark.transform(image=benchmark.image)["image"]
+
+    assert result.shape == benchmark.image.shape
+    assert result.dtype == (np.float16 if dtype == "float16" else np.float32)
+    assert np.isfinite(result).all()
 
 
 def test_benchmark_coverage_details_account_for_every_public_transform() -> None:

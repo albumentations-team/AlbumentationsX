@@ -134,7 +134,7 @@ repos:
     hooks:
       - id: mypy
         name: Mypy type check
-        entry: uv run mypy
+        entry: uv run --no-sync mypy
         language: system
         files: ^albumentations/
         pass_filenames: false
@@ -144,7 +144,7 @@ repos:
     hooks:
       - id: pyrefly-check
         name: Pyrefly type check
-        entry: uv run pyrefly check
+        entry: uv run --no-sync pyrefly check
         args:
           - --output-format=github
           - --error

@@ -145,7 +145,7 @@ jobs:
       - name: Run mypy hook
         run: pre-commit run mypy --all-files --show-diff-on-failure
       - name: Check positive and negative typing contracts
-        run: uv run python -m unittest discover -s tests/typing -p check_contracts.py
+        run: uv run --no-sync python -m unittest discover -s tests/typing -p check_contracts.py
 
   pre_commit_pyrefly:
     name: Pre-commit / Pyrefly

@@ -360,7 +360,7 @@ class DomainAdapter:
         For reconstructing after pixel-domain transform.
 
         Args:
-            pixels (np.ndarray): The flattened pixels with shape (n_pixels, n_channels).
+            pixels (np.ndarray): Normalized flattened pixels with shape (n_pixels, n_channels).
             height (int): The height of the output image.
             width (int): The width of the output image.
 
@@ -369,7 +369,7 @@ class DomainAdapter:
                 an explicit singleton channel dimension for grayscale images.
 
         """
-        pixels = clip(pixels, np.dtype(np.uint8), out=pixels if pixels.dtype == np.dtype(np.uint8) else None)
+        pixels = from_float(pixels.astype(np.float32, copy=False), np.uint8)
         return self.from_colorspace(pixels.reshape(height, width, self.num_channels))
 
     @staticmethod
@@ -446,12 +446,18 @@ def adapt_pixel_distribution(
 
     transformer = {"pca": PCA, "standard": StandardScaler, "minmax": MinMaxScaler}[transform_type]()
     adapter = DomainAdapter(transformer=transformer, ref_img=ref)
-    transformed = adapter(img).astype(np.float32)
-
-    result = add_weighted(img.astype(np.float32), 1 - weight, transformed, weight)
-
-    output = result if original_dtype == np.uint8 else to_float(result)
-    return output if output.dtype == np.uint8 else clip(output, original_dtype)
+    image_uint8 = cast("NDArray[np.uint8]", img)
+    transformed = cast("NDArray[np.uint8]", adapter(image_uint8))
+    if original_dtype == np.uint8:
+        image_float32 = image_uint8.astype(np.float32)
+        transformed_float32 = transformed.astype(np.float32)
+    else:
+        image_float32 = to_float(image_uint8)
+        transformed_float32 = to_float(transformed)
+    result = add_weighted(image_float32, 1 - weight, transformed_float32, weight)
+    if original_dtype == np.float32:
+        return clip(result, out=result)
+    return clip(result, original_dtype)
 
 
 def low_freq_mutate(amp_src: np.ndarray, amp_trg: np.ndarray, beta: float) -> np.ndarray:

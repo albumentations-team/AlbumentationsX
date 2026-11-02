@@ -144,6 +144,7 @@ ci-torch-cpu = [
     { name = "torch", version = "2.15.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
 ]
 ci-types = [
+    { name = "huggingface-hub" },
     { name = "mypy" },
     { name = "opencv-python-headless" },
     { name = "pre-commit" },
@@ -267,6 +268,7 @@ ci-test = [
 ]
 ci-torch-cpu = [{ name = "torch", specifier = ">=2.13.0", index = "https://download.pytorch.org/whl/cpu" }]
 ci-types = [
+    { name = "huggingface-hub", specifier = ">=1.27.0" },
     { name = "mypy", specifier = ">=2.3.0" },
     { name = "opencv-python-headless", specifier = ">=5.0.0.93" },
     { name = "pre-commit", specifier = ">=4.6.2" },

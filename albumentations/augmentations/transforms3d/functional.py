@@ -97,7 +97,11 @@ def _prepare_numpy_resampled_volume(
     is_channel_less = volume.ndim == NUM_VOLUME_DIMENSIONS - 1
     working_volume = volume[..., np.newaxis] if is_channel_less else volume
     original_dtype = working_volume.dtype
-    needs_mask_promotion = is_mask and original_dtype not in {np.dtype(np.uint8), np.dtype(np.float32)}
+    needs_mask_promotion = is_mask and original_dtype not in {
+        np.dtype(np.uint8),
+        np.dtype(np.float16),
+        np.dtype(np.float32),
+    }
     if needs_mask_promotion:
         working_volume = working_volume.astype(np.float32)
     return working_volume, original_dtype, is_channel_less, needs_mask_promotion
@@ -113,7 +117,7 @@ def _prepare_tensor_resampled_volume(
     is_channel_less = volume.ndim == NUM_VOLUME_DIMENSIONS - 1
     working_volume = volume.unsqueeze(0) if is_channel_less else volume
     original_dtype = working_volume.dtype
-    needs_mask_promotion = is_mask and original_dtype not in {torch.uint8, torch.float32}
+    needs_mask_promotion = is_mask and original_dtype not in {torch.uint8, torch.float16, torch.float32}
     if needs_mask_promotion:
         working_volume = working_volume.to(torch.float32)
     return working_volume, original_dtype, is_channel_less, needs_mask_promotion
@@ -206,7 +210,7 @@ def affine_3d_batch(
         is_channel_less = volumes.ndim == 4
         working_tensor = volumes.unsqueeze(1) if is_channel_less else volumes
         original_tensor_dtype = volumes.dtype
-        needs_mask_promotion = is_mask and original_tensor_dtype not in {torch.uint8, torch.float32}
+        needs_mask_promotion = is_mask and original_tensor_dtype not in {torch.uint8, torch.float16, torch.float32}
         if needs_mask_promotion:
             working_tensor = working_tensor.to(torch.float32)
         tensor_result = warp_affine3d(
@@ -224,7 +228,11 @@ def affine_3d_batch(
     is_channel_less = volumes.ndim == 4
     working_numpy = volumes[..., np.newaxis] if is_channel_less else volumes
     original_numpy_dtype = volumes.dtype
-    needs_mask_promotion = is_mask and original_numpy_dtype not in {np.dtype(np.uint8), np.dtype(np.float32)}
+    needs_mask_promotion = is_mask and original_numpy_dtype not in {
+        np.dtype(np.uint8),
+        np.dtype(np.float16),
+        np.dtype(np.float32),
+    }
     if needs_mask_promotion:
         working_numpy = working_numpy.astype(np.float32)
     numpy_result = warp_affine3d(

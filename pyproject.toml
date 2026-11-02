@@ -164,6 +164,7 @@ ci-quality = [
   "ruff>=0.16.2",
 ]
 ci-types = [
+  "huggingface-hub>=1.27.0",
   "mypy>=2.3.0",
   "opencv-python-headless>=5.0.0.93",
   "pre-commit>=4.6.2",
@@ -202,7 +203,6 @@ dev = [
   { include-group = "ci-package" },
   { include-group = "ci-benchmark" },
   { include-group = "ci-release" },
-  "huggingface-hub>=1.27.0",
 ]
 
 [project.urls]
@@ -410,10 +410,6 @@ warn_unused_ignores = true
 
 [tool.pyrefly]
 project-includes = ["albumentations"]
-ignore-missing-imports = [
-  "huggingface_hub",
-  "huggingface_hub.utils",
-]
 project-excludes = [
   "**/__pycache__",
   ".venv",

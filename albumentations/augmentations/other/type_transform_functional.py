@@ -15,9 +15,14 @@ if TYPE_CHECKING:
 
 def from_float(img: ImageType, max_value: float) -> NDArray[np.uint8]:
     """Quantize float images and retain the byte-input scalar-promotion contract."""
+    is_channel_less = img.ndim == 2
+    if is_channel_less:
+        img = img[..., None]
     if img.dtype == np.uint8:
         # Widening before this expression changes byte-input overflow and rounding.
         domain = np.arange(256, dtype=np.uint8) if img.shape[-1] <= 4 else np.arange(256, dtype=np.float32)
         table = clip(np.rint(domain * max_value), np.uint8)
-        return apply_uint8_lut(cast("NDArray[np.uint8]", img), table, out=np.empty(img.shape, dtype=np.uint8))
-    return core_from_float(cast("NDArray[np.float16] | NDArray[np.float32]", img), np.uint8, max_value)
+        result = apply_uint8_lut(cast("NDArray[np.uint8]", img), table, out=np.empty(img.shape, dtype=np.uint8))
+    else:
+        result = core_from_float(cast("NDArray[np.float16] | NDArray[np.float32]", img), np.uint8, max_value)
+    return result[..., 0] if is_channel_less else result

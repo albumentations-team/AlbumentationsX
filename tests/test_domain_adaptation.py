@@ -679,3 +679,27 @@ def test_pixel_distribution_adaptation_transform_5plus_channels(num_channels, tr
     result = transform(image=image, pda_metadata=[reference])["image"]
     assert result.shape == image.shape
     assert result.dtype == image.dtype
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("channels", [1, 3, 5])
+@pytest.mark.parametrize("transform_type", ["pca", "standard", "minmax"])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+def test_pixel_distribution_matching_reference_preserves_floating_signal(dtype, channels, transform_type, container):
+    rng = np.random.default_rng(137)
+    values = rng.integers(32, 224, (17, 23, channels), dtype=np.uint8)
+    image = values if dtype == np.uint8 else (values.astype(np.float32) / 255).astype(dtype)
+    original = image.copy()
+    source = numpy_to_tensor_spatial(image, "image") if container == "tensor" else image
+    pipeline = A.Compose(
+        [A.PixelDistributionAdaptation(blend_ratio=(0.5, 0.5), transform_type=transform_type, p=1)],
+        strict=True,
+        seed=137,
+    )
+
+    result = pipeline(image=source, pda_metadata=[original.copy()])["image"]
+    actual = tensor_to_numpy_spatial(result, "image") if container == "tensor" else result
+
+    np.testing.assert_allclose(actual, original, rtol=0, atol=1 if dtype == np.uint8 else 1 / 255)
+    np.testing.assert_array_equal(image, original)
+    assert actual.dtype == dtype

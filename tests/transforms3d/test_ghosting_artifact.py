@@ -23,11 +23,18 @@ def _full_fft_reference(volume: np.ndarray, ghosts: int, intensity: float, axis:
     return np.clip(np.abs(reconstructed), 0, 1)
 
 
+def _from_uint8(dtype: type[np.generic], raw: np.ndarray) -> np.ndarray:
+    if dtype == np.uint8:
+        return raw
+    normalized = raw.astype(np.float32) / 255
+    return normalized.astype(np.float16) if dtype == np.float16 else normalized
+
+
 @pytest.mark.parametrize("axis", [0, 1, 2])
 @pytest.mark.parametrize("shape", [(8, 12, 16, 1), (7, 9, 11, 5)])
 @pytest.mark.parametrize("ghosts", [2, 3])
 @pytest.mark.parametrize("restore", [0.0, 0.3])
-@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
 def test_public_ghosting_matches_full_3d_fft_reference(
     axis: int,
     shape: tuple[int, ...],
@@ -36,7 +43,7 @@ def test_public_ghosting_matches_full_3d_fft_reference(
     dtype: type[np.generic],
 ) -> None:
     raw = np.random.default_rng(137).integers(0, 256, (shape[0], shape[1] * 2, shape[2], shape[3]), dtype=np.uint8)
-    data = raw if dtype == np.uint8 else raw.astype(np.float32) / 255
+    data = _from_uint8(dtype, raw)
     data = data[:, ::2]
     original = data.copy()
     data.setflags(write=False)
@@ -55,8 +62,10 @@ def test_public_ghosting_matches_full_3d_fft_reference(
     )
     result = pipeline(volume=data)["volume"]
     expected = _full_fft_reference(data, ghosts, 0.6, axis, restore)
-    actual = result.astype(np.float32) / 255 if dtype == np.uint8 else result
-    np.testing.assert_allclose(actual, expected, atol=0.5 / 255 + 1e-6 if dtype == np.uint8 else 2e-6)
+    actual = result.astype(np.float32) / 255 if dtype == np.uint8 else result.astype(np.float32)
+    np.testing.assert_allclose(
+        actual, expected, atol=0.5 / 255 + 1e-6 if dtype == np.uint8 else 1 / 2048 if dtype == np.float16 else 2e-6
+    )
     assert result.dtype == dtype
     np.testing.assert_array_equal(data, original)
 
@@ -76,12 +85,12 @@ def test_impulse_ghost_spacing_matches_circular_shift_formula(axis: int) -> None
     assert result[tuple(position)] > 0.5 * intensity / volume.shape[axis]
 
 
-@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
 @pytest.mark.parametrize("policy", ["zero-strength", "restore-all", "singleton-axis", "no-affected-bin"])
 def test_identity_limits_are_exact(dtype: type[np.generic], policy: str) -> None:
     shape = (1, 9, 13, 3) if policy == "singleton-axis" else (5, 9, 13, 3)
     raw = np.random.default_rng(137).integers(0, 256, shape, dtype=np.uint8)
-    volume = raw if dtype == np.uint8 else raw.astype(np.float32) / 255
+    volume = _from_uint8(dtype, raw)
     kwargs = {"intensity_range": (0, 0)} if policy == "zero-strength" else {}
     if policy == "restore-all":
         kwargs["restore_range"] = (1, 1)
@@ -124,10 +133,10 @@ def test_replay_and_annotations_share_one_realized_acquisition() -> None:
         np.testing.assert_array_equal(result[key], replay[key])
 
 
-@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
 def test_collection_channels_and_tensor_bridge_match_scalar_volumes(dtype: type[np.generic]) -> None:
     raw = np.random.default_rng(137).integers(0, 102, (5, 9, 13, 1), dtype=np.uint8)
-    signal = raw if dtype == np.uint8 else raw.astype(np.float32) / 255
+    signal = _from_uint8(dtype, raw)
     volume = np.repeat(signal, 5, axis=-1)
     volumes = np.stack([volume, np.zeros_like(volume)])
     transforms = [A.Compose([A.GhostingArtifact(p=1)], seed=137, strict=True) for _ in range(3)]

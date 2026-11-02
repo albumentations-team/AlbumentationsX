@@ -47,6 +47,16 @@ The Tensor matrix reuses the same case inventory, applicability decisions, and `
 dedicated image-only target profiles because those transforms do not declare annotation targets; it adds no second
 transform inventory.
 
+## Numerical comparisons
+
+Input ownership, metadata, categorical masks, annotations and same-container replay remain exact. The final
+NumPy-versus-Tensor image comparison is exact by default. A case may declare `tensor_uint8_atol` for uint8 image or
+volume results; this never applies to float16/float32, masks, input snapshots or replay checks.
+
+Anisotropy3D declares two uint8 levels because its downsample/restore path contains two linear resizes, each with a
+one-level rounding allowance. NumPy and Tensor retain their released sampling policies. A literal regression vector
+captured with published Albucore 0.3.1 checks each container bitwise, independently of this cross-container allowance.
+
 ## One configuration inventory, reusable target workloads
 
 `tests/helpers/transform_cases.py` is the only shared transform/kwargs inventory. A `TransformContractCase` owns:
@@ -55,7 +65,8 @@ transform inventory.
 - the primary data and `Compose` settings used by constructor serialization and applied-configuration replay;
 - a context factory for transform-required metadata such as reference images or donor records;
 - target prerequisites such as a non-empty mask or bbox set;
-- replay strength and deterministic seeds.
+- replay strength and deterministic seeds;
+- an explicit uint8 cross-container rounding allowance, which defaults to zero.
 
 `tests/helpers/target_profiles.py` owns input workloads and output assertions. Profiles contain no transform classes and
 no transform kwargs. This separation lets one new profile cover the complete applicable registry and lets one new mode

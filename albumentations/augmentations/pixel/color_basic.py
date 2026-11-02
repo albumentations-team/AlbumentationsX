@@ -3,6 +3,9 @@
 from collections.abc import Callable, Sequence
 from typing import Annotated, Any, Literal, cast
 
+import torch
+from albucore import ImageInputT
+
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import (
     SampledParams,
@@ -87,7 +90,7 @@ class RandomToneCurve(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -229,10 +232,10 @@ class HueSaturationValue(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
-        3
+        1 or 3
 
     Note:
         - The transform first converts the input RGB image to the HSV color space.
@@ -349,7 +352,7 @@ class Solarize(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -583,7 +586,7 @@ class Equalize(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         1,3
@@ -1035,8 +1038,8 @@ class ExposureMatching(ImageOnlyTransform):
         self.gain_range = gain_range
 
     def apply(self, img: ImageType, gain: float, **params: Any) -> ImageType:
-        result = albucore.multiply(img, gain, inplace=False)
-        return fpixel.clip(result, img.dtype, inplace=True) if img.dtype == np.float32 else result
+        result = albucore.multiply(img, gain)
+        return fpixel.clip(result, out=result) if img.dtype in (np.float16, np.float32) else result
 
     def apply_to_images(self, images: ImageType, gain: float | list[float], **params: Any) -> ImageType:
         return fpixel.exposure_match_batch(images, np.asarray(gain, dtype=np.float32))
@@ -1114,7 +1117,7 @@ class CLAHE(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         1, 3
@@ -1260,7 +1263,7 @@ class RandomGamma(ImageOnlyTransform):
         super().__init__(p=p)
         self.gamma_range = gamma_range
 
-    def apply(self, img: ImageType, gamma: float, **params: Any) -> ImageType:
+    def apply(self, img: Annotated[ImageInputT, torch.Tensor], gamma: float, **params: Any) -> ImageInputT:
         return fpixel.gamma_transform(img, gamma=gamma)
 
     def apply_to_images(self, images: ImageType, gamma: float, **params: Any) -> ImageType:
@@ -1320,7 +1323,7 @@ class AutoContrast(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         - The transform processes each color channel independently

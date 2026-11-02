@@ -297,7 +297,7 @@ def to_distance_maps(
         np.square(x_distances, out=x_distances)
         np.square(y_distances, out=y_distances)
         distances = np.add(x_distances, y_distances, dtype=np.float32)
-        distances = albucore_sqrt(distances, inplace=True)
+        distances = albucore_sqrt(distances, out=distances)
 
         if inverted:
             np.add(distances, 1, out=distances)

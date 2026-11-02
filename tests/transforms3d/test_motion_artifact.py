@@ -52,13 +52,15 @@ def _reference_motion(
 @pytest.mark.parametrize("shape", [(6, 8, 10, 1), (7, 9, 11, 3)])
 @pytest.mark.parametrize("interpolation", [cv2.INTER_NEAREST, cv2.INTER_LINEAR])
 @pytest.mark.parametrize("num_events", [1, 2])
+@pytest.mark.parametrize("dtype", [np.float16, np.float32])
 def test_motion_matches_independent_resampling_and_fft(
     axis: int,
     shape: tuple[int, ...],
     interpolation: int,
     num_events: int,
+    dtype: type[np.generic],
 ) -> None:
-    volume = np.random.default_rng(137).random(shape, dtype=np.float32) * 0.4
+    volume = (np.random.default_rng(137).random(shape, dtype=np.float32) * 0.4).astype(dtype)
     first = np.eye(4, dtype=np.float32)
     first[:3, 3] = (0.75, -0.25, 0.375)
     angle = np.deg2rad(13)
@@ -73,7 +75,8 @@ def test_motion_matches_independent_resampling_and_fft(
     result = fmedical.motion_artifact(volume, matrices, boundaries, axis, interpolation)
 
     expected = _reference_motion(volume, matrices, boundaries, axis, interpolation)
-    np.testing.assert_allclose(result, expected, atol=2e-6, rtol=2e-5)
+    tolerance = 1 / 2048 if dtype == np.float16 else 2e-6
+    np.testing.assert_allclose(result.astype(np.float32), expected, atol=tolerance, rtol=2e-5)
 
 
 @pytest.mark.parametrize("shape", [(15, 257, 271, 1), (16, 256, 256, 1)])
@@ -101,11 +104,15 @@ def test_large_motion_backend_boundary_matches_independent_reconstruction(shape,
     np.testing.assert_array_equal(replayed["volume"], result["volume"])
 
 
-@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
 @pytest.mark.parametrize("num_events", [0, 2])
 def test_zero_motion_is_exact_identity(dtype: type[np.generic], num_events: int) -> None:
     source = np.random.default_rng(137).integers(0, 256, (5, 7, 9, 3), dtype=np.uint8)
-    volume = source if dtype == np.uint8 else source.astype(np.float32) / 255
+    if dtype == np.uint8:
+        volume = source
+    else:
+        normalized = source.astype(np.float32) / 255
+        volume = normalized.astype(dtype) if dtype == np.float16 else normalized
     original = volume.copy()
     volume.setflags(write=False)
     pipeline = A.Compose(
@@ -123,11 +130,15 @@ def test_zero_motion_is_exact_identity(dtype: type[np.generic], num_events: int)
     np.testing.assert_array_equal(volume, original)
 
 
-@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
 @pytest.mark.parametrize("channels", [1, 5])
 def test_public_strided_volume_matches_reference_and_preserves_input(dtype: type[np.generic], channels: int) -> None:
     source = np.random.default_rng(137).integers(0, 256, (5, 14, 9, channels), dtype=np.uint8)
-    volume = source if dtype == np.uint8 else source.astype(np.float32) / 255
+    if dtype == np.uint8:
+        volume = source
+    else:
+        normalized = source.astype(np.float32) / 255
+        volume = normalized.astype(dtype) if dtype == np.float16 else normalized
     volume = volume[:, ::2, :, :]
     original = volume.copy()
     volume.setflags(write=False)
@@ -141,7 +152,8 @@ def test_public_strided_volume_matches_reference_and_preserves_input(dtype: type
     actual = result["volume"].astype(np.float32)
     if dtype == np.uint8:
         actual /= 255
-    np.testing.assert_allclose(actual, expected, atol=1 / 255 if dtype == np.uint8 else 3e-6)
+    tolerance = 1 / 255 if dtype == np.uint8 else 1 / 2048 if dtype == np.float16 else 3e-6
+    np.testing.assert_allclose(actual, expected, atol=tolerance)
     np.testing.assert_array_equal(volume, original)
 
 
@@ -209,8 +221,10 @@ def test_channel_free_volume_matches_explicit_channel() -> None:
 
 
 @pytest.mark.parametrize("target", ["volume", "volumes"])
-def test_tensor_volume_uses_spatial_axes_only(target: str) -> None:
-    volume = np.random.default_rng(137).random((5, 7, 9, 3), dtype=np.float32)
+@pytest.mark.parametrize("dtype", [np.float16, np.float32])
+def test_tensor_volume_uses_spatial_axes_only(target: str, dtype: type[np.generic]) -> None:
+    volume_float32 = np.random.default_rng(137).random((5, 7, 9, 3), dtype=np.float32)
+    volume = volume_float32.astype(dtype)
     data = volume if target == "volume" else np.stack([volume, volume * 0.5])
     tensor_axes = (3, 0, 1, 2) if target == "volume" else (0, 4, 1, 2, 3)
     numpy_axes = (1, 2, 3, 0) if target == "volume" else (0, 2, 3, 4, 1)

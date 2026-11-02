@@ -700,7 +700,7 @@ class Mosaic(DualTransform):
 
         `keep_mask` is positional over `combined_bboxes`. `surviving_instance_ids` is the
         `_INSTANCE_ID` set extracted from `combined_bboxes[keep_mask]` when instance binding
-        is active, otherwise `None` (legacy in-bounds-only filtering kicks in).
+        is active. Without binding, bbox survival uses the existing in-bounds-only policy.
         """
         bbox_processor = cast("BboxProcessor", self.get_processor("bboxes"))
         if bbox_processor is None:
@@ -834,8 +834,7 @@ class Mosaic(DualTransform):
             fill=self.fill_mask,
         )
         # Mirror the bbox survival decision onto masks so `len(masks) == len(bboxes)` going
-        # into the next transform. Only kicks in under instance binding; without binding the
-        # legacy "one mask per per-cell input mask" semantics are preserved.
+        # into the next transform. Without instance binding, each cell keeps its input mask rows.
         if mosaic_survival is not None and mosaic_survival.get("surviving_instance_ids") is not None:
             keep_mask = mosaic_survival["keep_mask"]
             if assembled.shape[0] == keep_mask.shape[0]:

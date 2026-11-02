@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Literal
+from typing import Literal, cast
+
+from numpy.typing import NDArray
 
 from ._functional_grid import (
     swap_tiles_on_image,
@@ -293,7 +295,10 @@ def perspective_bboxes(
         polygons = polygons.copy()
         polygons[..., 0] *= width
         polygons[..., 1] *= height
-        transformed = cv2.perspectiveTransform(polygons.reshape(-1, 1, 2).astype(np.float32), matrix)
+        transformed = cast(
+            "NDArray[np.float32]",
+            cv2.perspectiveTransform(polygons.reshape(-1, 1, 2).astype(np.float32), matrix),
+        )
         transformed = transformed.reshape(polygons.shape)
 
         if keep_size:
@@ -316,9 +321,9 @@ def perspective_bboxes(
     ).transpose(2, 0, 1)
     points_reshaped = points.reshape(-1, 1, 2)
 
-    transformed_points = cv2.perspectiveTransform(
-        points_reshaped.astype(np.float32),
-        matrix,
+    transformed_points = cast(
+        "NDArray[np.float32]",
+        cv2.perspectiveTransform(points_reshaped.astype(np.float32), matrix),
     )
     transformed_points = transformed_points.reshape(-1, 4, 2)
 
@@ -1049,13 +1054,15 @@ def bboxes_grid_shuffle(
                     extra_bbox_data.append(bboxes[idx, 4:])
 
     if all_component_masks:
-        all_component_masks = np.array(all_component_masks)
-        shuffled_bboxes = bboxes_from_masks(all_component_masks)
+        component_masks_array = np.array(all_component_masks)
+        del all_component_masks
+        shuffled_bboxes = bboxes_from_masks(component_masks_array)
 
         # Add back additional bbox data if present
         if extra_bbox_data:
-            extra_bbox_data = np.array(extra_bbox_data)
-            return np.column_stack([shuffled_bboxes, extra_bbox_data])
+            bbox_data_array = np.array(extra_bbox_data)
+            del extra_bbox_data
+            return np.column_stack([shuffled_bboxes, bbox_data_array])
     else:
         # Handle case where no valid components were found
         return np.zeros((0, bboxes.shape[1]), dtype=bboxes.dtype)

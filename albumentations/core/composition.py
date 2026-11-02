@@ -245,9 +245,7 @@ class _CompiledChild:
 
 
 class ComposeTransformNotFoundError(ArithmeticError, ValueError):
-    """Raised when compose subtraction cannot find a requested transform class, preserving ValueError
-    compatibility while satisfying operator semantics.
-    """
+    """Raised when compose subtraction cannot find a requested transform class."""
 
 
 AVAILABLE_KEYS = (

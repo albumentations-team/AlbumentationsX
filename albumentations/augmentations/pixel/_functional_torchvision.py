@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from ._functional_color import (
     channel_shuffle,
@@ -12,16 +12,19 @@ from ._functional_color import (
     to_gray_weighted_average,
 )
 from ._functional_noise import get_safe_brightness_contrast_params
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
     ImageType,
     ImageUInt8,
     add_weighted,
+    apply_uint8_lut,
     clip,
-    clipped,
     cv2,
     fgeometric,
-    float32_io,
+    from_float,
     get_num_channels,
     is_grayscale_image,
     is_rgb_image,
@@ -29,10 +32,10 @@ from ._functional_shared import (
     multiply,
     multiply_add,
     np,
-    preserve_channel_dim,
+    restore_uint8_working_image,
     std,
-    sz_lut,
-    uint8_io,
+    to_float,
+    to_uint8_working_image,
 )
 
 
@@ -113,12 +116,9 @@ def _replace_segments_with_mean(
     return result
 
 
-@float32_io
-@clipped
-@preserve_channel_dim
 def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
     """Fancy PCA color augmentation: add noise along principal components. alpha_vector; any channel
-    count. float32 I/O, clipped.
+    count. Float32 working arithmetic with output restored to the input dtype.
 
     Args:
         img (ImageType): Input image
@@ -129,7 +129,7 @@ def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
         ImageType: Augmented image of the same shape, type, and range as the input.
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -148,6 +148,12 @@ def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
             & Hinton, G. E. (2012): In Advances in neural information processing systems (pp. 1097-1105).
 
     """
+    input_dtype = img.dtype
+    if input_dtype.type is np.uint8:
+        img = to_float(img)
+    elif input_dtype.type is np.float16:
+        img = img.astype(np.float32)
+
     orig_shape = img.shape
     num_channels = get_num_channels(img)
 
@@ -181,16 +187,13 @@ def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
 
     img_pca = img_pca.reshape(orig_shape)
 
-    # Clip values to [0, 1] range
-    return np.clip(img_pca, 0, 1, out=img_pca)
+    np.clip(img_pca, 0, 1, out=img_pca)
+    return from_float(img_pca.astype(np.float32, copy=False), target_dtype=input_dtype)
 
 
-@clipped
-@preserve_channel_dim
 def adjust_saturation_torchvision(
     img: ImageType,
     factor: float,
-    gamma: float = 0,
 ) -> ImageType:
     """Adjust saturation by blending with grayscale. Factor in [0, inf]; uses
     to_gray (weighted_average for RGB). Torchvision-compatible.
@@ -201,19 +204,18 @@ def adjust_saturation_torchvision(
     Args:
         img (ImageType): Input image as a numpy array.
         factor (float): The factor to adjust the saturation by.
-        gamma (float): Unused, kept for API compatibility.
 
     Returns:
         ImageType: The adjusted image.
 
     """
     if factor == 1 or is_grayscale_image(img):
-        return img
+        return img if img.dtype == np.uint8 else clip(img)
 
     gray = to_gray_weighted_average(img) if is_rgb_image(img) else to_gray_average(img)
     gray_expanded = grayscale_to_multichannel(gray, img.shape[-1])
-
-    return gray_expanded if factor == 0 else add_weighted(img, factor, gray_expanded, 1 - factor)
+    result = gray_expanded if factor == 0 else add_weighted(img, factor, gray_expanded, 1 - factor)
+    return result if result.dtype == np.uint8 else cast("ImageType", clip(result))
 
 
 def _adjust_hue_torchvision_uint8(img: ImageUInt8, factor: float) -> ImageUInt8:
@@ -221,7 +223,7 @@ def _adjust_hue_torchvision_uint8(img: ImageUInt8, factor: float) -> ImageUInt8:
 
     lut = np.arange(0, 256, dtype=np.int16)
     lut = np.mod(lut + 180 * factor, 180).astype(np.uint8)
-    img[..., 0] = sz_lut(img[..., 0], lut, inplace=False)
+    img[..., 0] = apply_uint8_lut(img[..., 0], lut)
 
     return cast("ImageUInt8", cv2.cvtColor(img, cv2.COLOR_HSV2RGB))
 
@@ -246,9 +248,13 @@ def adjust_hue_torchvision(img: ImageType, factor: float) -> ImageType:
     if img.dtype == np.uint8:
         return _adjust_hue_torchvision_uint8(cast("ImageUInt8", img), factor)
 
+    input_dtype = img.dtype
+    if input_dtype.type is np.float16:
+        img = img.astype(np.float32)
     img = cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2HSV))
     img[..., 0] = np.mod(img[..., 0] + factor * 360, 360)
-    return cast("ImageType", cv2.cvtColor(img, cv2.COLOR_HSV2RGB))
+    result = cast("NDArray[np.float32]", cv2.cvtColor(img, cv2.COLOR_HSV2RGB))
+    return from_float(result, target_dtype=input_dtype)
 
 
 def _apply_brightness_only_torchvision(img: ImageType, brightness_factor: float) -> ImageType:
@@ -257,7 +263,9 @@ def _apply_brightness_only_torchvision(img: ImageType, brightness_factor: float)
     if brightness_factor == 1:
         return img
 
-    result = multiply(img, brightness_factor, inplace=False)
+    result = multiply(img, brightness_factor)
+    if result.dtype == np.float16:
+        return clip(result, out=result)
     return np.clip(result, 0.0, 1.0, out=result) if result.dtype == np.float32 else result
 
 
@@ -265,11 +273,13 @@ def _apply_contrast_only_torchvision(img: ImageType, contrast_factor: float) -> 
     gray_img = img if is_grayscale_image(img) else to_gray_weighted_average(img)
     img_mean = float(mean(gray_img))
     if contrast_factor == 0:
-        if img.dtype != np.float32:
+        if img.dtype == np.uint8:
             img_mean = int(img_mean + 0.5)
         return cast("ImageType", np.full_like(img, img_mean, dtype=img.dtype))
 
-    result = multiply_add(img, contrast_factor, img_mean * (1 - contrast_factor), inplace=False)
+    result = multiply_add(img, contrast_factor, img_mean * (1 - contrast_factor))
+    if result.dtype == np.float16:
+        return clip(result, out=result)
     return np.clip(result, 0.0, 1.0, out=result) if result.dtype == np.float32 else result
 
 
@@ -289,7 +299,7 @@ def _apply_brightness_contrast_uint8(
         # Values are non-negative after clipping, so floor matches the uint8 cast between torchvision operations.
         np.floor(lut, out=lut)
         lut = np.clip(lut * brightness_factor, 0.0, 255.0)
-    return sz_lut(cast("ImageUInt8", img), lut.astype(np.uint8), inplace=False)
+    return apply_uint8_lut(cast("ImageUInt8", img), lut.astype(np.uint8))
 
 
 def _apply_brightness_contrast_float32(
@@ -465,8 +475,11 @@ def apply_random_brightness_contrast(
         beta *= max_value
     if ensure_safe_output:
         alpha, beta = get_safe_brightness_contrast_params(alpha, beta, max_value)
-    result = multiply_add(img, alpha, beta, inplace=False)
-    return clip(result, img.dtype, inplace=True) if img.dtype == np.float32 else result
+    result = multiply_add(img, alpha, beta)
+    if img.dtype not in (np.float16, np.float32):
+        return result
+    destination = result if result.flags.writeable and not np.shares_memory(result, img) else None
+    return clip(result, out=destination)
 
 
 def _batch_brightness_contrast_coefficients(
@@ -566,18 +579,16 @@ def apply_brightness_contrast_torchvision_batch(
         result = np.multiply(images, gains.reshape(broadcast_shape), dtype=np.float32)
         np.add(result, offsets.reshape(broadcast_shape), out=result)
         np.clip(result, 0.0, 1.0, out=result)
-        return cast("ImageType", result)
+        return from_float(result, target_dtype=images.dtype)
 
     result = np.multiply(images, contrast_factor, dtype=np.float32)
     np.add(result, offsets.reshape(broadcast_shape), out=result)
     np.clip(result, 0.0, 1.0, out=result)
     np.multiply(result, brightness_factor, out=result)
     np.clip(result, 0.0, 1.0, out=result)
-    return cast("ImageType", result)
+    return from_float(result, target_dtype=images.dtype)
 
 
-@uint8_io
-@preserve_channel_dim
 def superpixels(
     image: np.ndarray,
     n_segments: int,
@@ -586,7 +597,7 @@ def superpixels(
     interpolation: int,
 ) -> np.ndarray:
     """Apply superpixels using SLIC: replace pixels with segment mean. n_segments, replace_samples,
-    max_size, interpolation. uint8 I/O.
+    max_size, interpolation. Floating inputs are quantized to uint8 and restored.
 
     This function applies superpixels to an image using the SLIC algorithm.
     The superpixels are applied by replacing the pixels in the image with the mean intensity of the superpixel.
@@ -602,8 +613,9 @@ def superpixels(
         np.ndarray: The superpixels applied to the image.
 
     """
+    image, input_dtype = to_uint8_working_image(image)
     if not np.any(replace_samples):
-        return image
+        return restore_uint8_working_image(image, input_dtype)
 
     orig_shape = image.shape
     if max_size is not None:
@@ -622,7 +634,8 @@ def superpixels(
 
     image = _replace_segments_with_mean(image, segments, replace_samples)
 
-    return fgeometric.resize(image, orig_shape[:2], interpolation) if orig_shape != image.shape else image
+    result = fgeometric.resize(image, orig_shape[:2], interpolation) if orig_shape != image.shape else image
+    return restore_uint8_working_image(result, input_dtype)
 
 
 def slic(

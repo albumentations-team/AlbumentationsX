@@ -8,6 +8,7 @@ from typing import Any, Literal, cast
 
 import torch
 from albucore import flip_volume, rot90_volume, transpose_volume
+from numpy.typing import NDArray
 
 from ._functional_shared import (
     NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS,
@@ -21,7 +22,6 @@ from ._functional_shared import (
     hflip,
     math,
     np,
-    preserve_channel_dim,
     vflip,
     warp_perspective,
 )
@@ -65,7 +65,6 @@ def resize(
     return albucore_resize(img, (width, height), interpolation=interpolation)
 
 
-@preserve_channel_dim
 def scale(img: ImageType, scale: float, interpolation: int) -> ImageType:
     """Scale an image by a factor while preserving aspect ratio. scale > 1
     enlarges, scale < 1 shrinks. interpolation: cv2 flag. Calls resize internally.
@@ -84,7 +83,6 @@ def scale(img: ImageType, scale: float, interpolation: int) -> ImageType:
     return scale_xy(img, scale, scale, interpolation)
 
 
-@preserve_channel_dim
 def scale_xy(img: ImageType, scale_x: float, scale_y: float, interpolation: int) -> ImageType:
     """Scale an image by independent X and Y factors. scale_x > 1 widens,
     scale_y > 1 heightens. Useful for anisotropic / non-uniform scaling.
@@ -104,7 +102,6 @@ def scale_xy(img: ImageType, scale_x: float, scale_y: float, interpolation: int)
     return resize(img, new_size, interpolation)
 
 
-@preserve_channel_dim
 def perspective(
     img: ImageType,
     matrix: np.ndarray,
@@ -287,7 +284,7 @@ def perspective_keypoints(
 
     keypoint_vector = np.column_stack((x, y)).astype(np.float32).reshape(-1, 1, 2)
 
-    transformed_points = cv2.perspectiveTransform(keypoint_vector, matrix).squeeze()
+    transformed_points = cast("NDArray[np.float32]", cv2.perspectiveTransform(keypoint_vector, matrix)).squeeze()
 
     # Unsqueeze if we have a single keypoint
     if transformed_points.ndim == 1:
@@ -470,7 +467,7 @@ def transpose(img: ImageType) -> ImageType:
     return img.transpose(new_axes)
 
 
-D4_TRANSFORMATIONS = {
+D4_TRANSFORMATIONS: dict[str, Callable[[ImageType], ImageType]] = {
     "e": lambda x: x,  # Identity transformation
     "r90": lambda x: rot90(x, "r90"),  # Rotate 90 degrees
     "r180": lambda x: rot90(x, "r180"),  # Rotate 180 degrees
@@ -562,7 +559,6 @@ def rot90_images(images: ImageType, group_element: Literal["e", "r90", "r180", "
     return cast("ImageType", cast("Any", np.rot90(images, k=rot90_count, axes=(1, 2))))
 
 
-@preserve_channel_dim
 def pad(
     img: ImageType,
     min_height: int,
@@ -621,7 +617,6 @@ def pad(
     return img
 
 
-@preserve_channel_dim
 def pad_with_params(
     img: ImageType,
     h_pad_top: int,
@@ -779,7 +774,6 @@ def get_pad_grid_dimensions(
     }
 
 
-@preserve_channel_dim
 def distort_image(
     image: np.ndarray,
     generated_mesh: np.ndarray,
@@ -1057,7 +1051,6 @@ def vflip_images(volume: np.ndarray) -> np.ndarray:
 transpose_tensor = attrgetter("mT")
 
 
-@preserve_channel_dim
 def erode(img: ImageType, kernel: np.ndarray) -> ImageType:
     """One iteration of morphological erosion. Shrinks bright regions. Use for mask/bbox
     morphology. Same shape and channel count.
@@ -1072,10 +1065,16 @@ def erode(img: ImageType, kernel: np.ndarray) -> ImageType:
         ImageType: The eroded image.
 
     """
+    if img.dtype.type is np.float16:
+        working = img.astype(np.float32, order="C")
+        cv2.erode(working, kernel, dst=working, iterations=1)
+        return working.astype(cast("np.dtype[np.float16]", img.dtype))
+    if img.ndim == 3 and img.shape[-1] == 1:
+        destination = np.empty_like(img, order="C")
+        return cast("ImageType", cv2.erode(img, kernel, dst=destination, iterations=1))
     return cast("ImageType", cv2.erode(img, kernel, iterations=1))
 
 
-@preserve_channel_dim
 def dilate(img: ImageType, kernel: np.ndarray) -> ImageType:
     """One iteration of morphological dilation. Expands bright regions. Use for mask/bbox
     morphology. Same shape and channel count.
@@ -1090,6 +1089,13 @@ def dilate(img: ImageType, kernel: np.ndarray) -> ImageType:
         ImageType: The dilated image.
 
     """
+    if img.dtype.type is np.float16:
+        working = img.astype(np.float32, order="C")
+        cv2.dilate(working, kernel, dst=working, iterations=1)
+        return working.astype(cast("np.dtype[np.float16]", img.dtype))
+    if img.ndim == 3 and img.shape[-1] == 1:
+        destination = np.empty_like(img, order="C")
+        return cast("ImageType", cv2.dilate(img, kernel, dst=destination, iterations=1))
     return cast("ImageType", cv2.dilate(img, kernel, iterations=1))
 
 

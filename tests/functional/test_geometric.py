@@ -729,6 +729,36 @@ def test_pad_with_params_zero_channels():
     assert result.size == 0
 
 
+def test_geometry_functionals_keep_explicit_grayscale_channel() -> None:
+    height, width = 9, 13
+    image = np.random.default_rng(137).random((height, width, 1), dtype=np.float32)
+    identity = np.eye(3, dtype=np.float32)
+    mesh = np.array(
+        [[0, 0, width - 1, height - 1, 0, 0, width - 1, 0, width - 1, height - 1, 0, height - 1]],
+        dtype=np.float32,
+    )
+
+    results = (
+        fgeometric.scale(image, 1.0, cv2.INTER_NEAREST),
+        fgeometric.scale_xy(image, 1.5, 0.5, cv2.INTER_NEAREST),
+        fgeometric.perspective(image, identity, width, height, 0, cv2.BORDER_CONSTANT, True, cv2.INTER_NEAREST),
+        fgeometric.pad(image, height + 2, width + 4, cv2.BORDER_CONSTANT, 0),
+        fgeometric.pad_with_params(image, 1, 2, 3, 4, cv2.BORDER_CONSTANT, 0),
+        fgeometric.distort_image(image, mesh, cv2.INTER_NEAREST),
+    )
+    expected_shapes = (
+        (height, width, 1),
+        (4, 19, 1),
+        (height, width, 1),
+        (height + 2, width + 4, 1),
+        (height + 3, width + 7, 1),
+        (height, width, 1),
+    )
+
+    assert tuple(result.shape for result in results) == expected_shapes
+    assert all(result.dtype == image.dtype for result in results)
+
+
 class TestPiecewiseAffineNumericalAccuracy:
     """Verify vectorized IDW interpolation matches reference per-pixel computation."""
 

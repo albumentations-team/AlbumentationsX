@@ -176,7 +176,7 @@ class BiasField(_FullVolumeNoiseTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -286,8 +286,8 @@ class BiasField(_FullVolumeNoiseTransform):
         *,
         is_batch: bool,
     ) -> ImageType:
-        if img.dtype not in (np.uint8, np.float32):
-            raise ValueError("BiasField supports uint8 or float32 image/volume targets")
+        if img.dtype not in (np.uint8, np.float16, np.float32):
+            raise ValueError("BiasField supports uint8, float16 or float32 image/volume targets")
         if coarse_field is None:
             return img
         return fmedical.bias_field(img, coarse_field, is_batch=is_batch)
@@ -329,7 +329,7 @@ class GhostingArtifact(VolumeOnlyTransform):
         volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -426,8 +426,8 @@ class GhostingArtifact(VolumeOnlyTransform):
         restore: float,
         **params: Any,
     ) -> ImageType:
-        if volume.dtype not in (np.uint8, np.float32):
-            raise ValueError("GhostingArtifact supports uint8 or float32 real magnitude volumes")
+        if volume.dtype not in (np.uint8, np.float16, np.float32):
+            raise ValueError("GhostingArtifact supports uint8, float16 or float32 real magnitude volumes")
         if intensity == 0 or restore == 1:
             return volume
         return fmedical.ghosting_artifact(volume, num_ghosts, intensity, self.axis, restore)
@@ -451,7 +451,7 @@ class GibbsRinging(_FullVolumeNoiseTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -468,8 +468,8 @@ class GibbsRinging(_FullVolumeNoiseTransform):
           bandwidth along each axis, not the fraction of all Fourier coefficients or physical voxel spacing.
         - FFT normalization is backward. The symmetric mask gives a real inverse reconstruction;
           no magnitude operation is applied. Fourier boundaries are periodic, so image-border jumps can ring.
-        - Inputs must be finite real uint8 or float32 arrays; float32 inputs are expected in `[0, 1]`.
-          Float32 reconstruction is clipped to `[0, 1]`; uint8 is processed in float32 and rounded back
+        - Inputs must be finite real uint8, float16 or float32 arrays; floating inputs are expected in `[0, 1]`.
+          Floating reconstruction is clipped to `[0, 1]`; uint8 is processed in float32 and rounded back
           into `[0, 255]`. Clipping can change the mean.
         - Cutoffs are discrete. Nearby fractions can select the same bins, and sufficiently small arrays can
           retain their entire spectrum. Removing more frequencies does not guarantee a larger local overshoot.
@@ -521,9 +521,9 @@ class GibbsRinging(_FullVolumeNoiseTransform):
         return SampledParams(params={"retained_fraction": retained_fraction})
 
     def apply(self, img: ImageType, retained_fraction: float, **params: Any) -> ImageType:
-        if img.dtype not in (np.uint8, np.float32):
-            raise ValueError("GibbsRinging supports uint8 or float32 real inputs")
-        if img.dtype == np.float32 and not np.isfinite(img).all():
+        if img.dtype not in (np.uint8, np.float16, np.float32):
+            raise ValueError("GibbsRinging supports uint8, float16 or float32 real inputs")
+        if img.dtype in (np.float16, np.float32) and not np.isfinite(img).all():
             raise ValueError("GibbsRinging requires finite inputs")
         if retained_fraction == 1:
             return img
@@ -589,7 +589,7 @@ class HEStain(ImageOnlyTransform):
         3
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         - Let `M` be the stain matrix and `C` the per-pixel concentrations. `"project"` solves
@@ -927,7 +927,7 @@ class KSpaceSpikeNoise(_FullVolumeNoiseTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -1115,7 +1115,7 @@ class MotionArtifact(VolumeOnlyTransform):
         volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Notes:
         - Inputs are real magnitude volumes `(D, H, W)` or `(D, H, W, C)`. Every spatial axis must have at least
@@ -1221,8 +1221,8 @@ class MotionArtifact(VolumeOnlyTransform):
         boundaries: tuple[int, ...],
         **params: Any,
     ) -> VolumeType:
-        if volume.dtype not in (np.uint8, np.float32):
-            raise ValueError("MotionArtifact supports uint8 or float32 real magnitude volumes")
+        if volume.dtype not in (np.uint8, np.float16, np.float32):
+            raise ValueError("MotionArtifact supports uint8, float16 or float32 real magnitude volumes")
         return fmedical.motion_artifact(volume, matrices, boundaries, self.axis, self.interpolation)
 
 
@@ -1244,7 +1244,7 @@ class RicianNoise(_FullVolumeNoiseTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any

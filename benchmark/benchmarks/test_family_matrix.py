@@ -171,7 +171,7 @@ PIXEL_TRANSFORMS: Mapping[str, PixelSpec] = {
             p=1.0,
         ),
     ),
-    "normalize": PixelSpec(lambda: albumentations.Normalize(p=1.0)),
+    "normalize": PixelSpec(lambda: albumentations.Normalize(mean=0.5, std=0.5, p=1.0)),
     "photometric_distort": PixelSpec(lambda: albumentations.PhotoMetricDistort(p=1.0), channels=(1, 3)),
     "pixel_dropout": PixelSpec(lambda: albumentations.PixelDropout(dropout_prob=0.05, p=1.0)),
     "planckian_jitter": PixelSpec(lambda: albumentations.PlanckianJitter(p=1.0), channels=(3,)),
@@ -428,6 +428,7 @@ class TimeGeometryFullMatrix:
 class TimePixelFullMatrix:
     """Benchmark hot pixel transforms over valid size, channel, and dtype matrices."""
 
+    version = "2"
     params = (PIXEL_CASES,)
     param_names = ("case_id",)
 

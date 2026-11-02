@@ -86,6 +86,11 @@ class _TensorSubclass(torch.Tensor):
     [
         ("image", torch.zeros((11, 13), dtype=torch.float32)),
         ("image", torch.zeros((3, 11, 13), dtype=torch.uint8)),
+        ("image", torch.zeros((11, 13), dtype=torch.float16)),
+        ("image", torch.zeros((3, 11, 13), dtype=torch.float16)),
+        ("images", torch.zeros((2, 3, 11, 13), dtype=torch.float16)),
+        ("volume", torch.zeros((3, 5, 11, 13), dtype=torch.float16)),
+        ("volumes", torch.zeros((2, 3, 5, 11, 13), dtype=torch.float16)),
         ("images", torch.zeros((2, 3, 11, 13), dtype=torch.float32)),
         ("volume", torch.zeros((3, 5, 11, 13), dtype=torch.uint8)),
         ("volumes", torch.zeros((2, 3, 5, 11, 13), dtype=torch.uint8)),
@@ -114,7 +119,7 @@ def test_noop_preserves_supported_tensor_object(target: str, value: torch.Tensor
         ("masks3d", (2, 5, 11, 13)),
     ],
 )
-@pytest.mark.parametrize("dtype", [torch.uint8, torch.int16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.uint8, torch.int16, torch.float16, torch.float32])
 def test_tensor_masks_accept_all_declared_public_dtypes(
     target: str,
     shape: tuple[int, ...],
@@ -127,7 +132,7 @@ def test_tensor_masks_accept_all_declared_public_dtypes(
 
 @pytest.mark.parametrize(
     "dtype",
-    [torch.uint8, torch.int16, torch.float32],
+    [torch.uint8, torch.int16, torch.float16, torch.float32],
 )
 @pytest.mark.parametrize("target", ["mask", "masks", "mask3d"])
 def test_tensor_mask_crop_fallback_preserves_every_accepted_dtype_exactly(target: str, dtype: torch.dtype) -> None:
@@ -174,6 +179,8 @@ def test_tensor_mask_crop_fallback_preserves_every_accepted_dtype_exactly(target
         ("mask", torch.zeros((11, 13), dtype=torch.uint64), "dtype one of"),
         ("mask", torch.zeros((11, 13), dtype=torch.float64), "dtype one of"),
         ("bboxes", torch.zeros((1, 4), dtype=torch.int64), "dtype one of"),
+        ("bboxes", torch.zeros((1, 4), dtype=torch.float16), "dtype one of"),
+        ("keypoints", torch.zeros((1, 2), dtype=torch.float16), "dtype one of"),
         ("keypoints", torch.zeros((1, 2, 1), dtype=torch.float32), "must have shape"),
         ("image", torch.zeros((3, 11, 13), dtype=torch.float32, requires_grad=True), "requires_grad=False"),
         ("image", torch.zeros((3, 11, 13), dtype=torch.uint8).to_sparse(), "torch.strided"),
@@ -545,6 +552,18 @@ def test_direct_container_uses_tensor_fallback_without_a_compose_root() -> None:
 def test_direct_leaf_rejects_optional_channel_tensor_rank() -> None:
     with pytest.raises(TypeError, match="pass optional-channel inputs through Compose"):
         A.HorizontalFlip(p=1.0)(image=torch.zeros((5, 7), dtype=torch.uint8))
+
+
+@pytest.mark.parametrize(
+    "value,message",
+    [
+        (torch.zeros((3, 5, 7), requires_grad=True), "requires_grad=False"),
+        (torch.zeros((3, 5, 7), dtype=torch.bfloat16), "dtype one of"),
+    ],
+)
+def test_direct_noop_validates_tensor_inputs(value: torch.Tensor, message: str) -> None:
+    with pytest.raises((TypeError, ValueError), match=message):
+        A.NoOp(p=1.0)(image=value)
 
 
 def test_replay_compose_replays_tensor_leaf_fallback() -> None:

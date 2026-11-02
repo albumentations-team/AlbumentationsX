@@ -5,8 +5,11 @@ from typing import Any, Literal
 
 import cv2
 import numpy as np
-from albucore import preserve_channel_dim, uint8_io
 
+from albumentations.augmentations.pixel._functional_shared import (
+    restore_uint8_working_image,
+    to_uint8_working_image,
+)
 from albumentations.core.type_definitions import ImageType
 
 LineStyle = Literal["solid", "dashed", "dotted"]
@@ -289,8 +292,6 @@ def _draw_callout(
         _draw_styled_line(image, start, end, artifact["color"], artifact["thickness"], artifact["style"])
 
 
-@uint8_io
-@preserve_channel_dim
 def draw_annotation_artifacts(image: ImageType, artifacts: list[dict[str, Any]]) -> ImageType:
     """Draw generated annotation commands with OpenCV primitives. Used by markup-style
     augmentations that add text, arrows, boxes, lines, or callouts.
@@ -303,6 +304,7 @@ def draw_annotation_artifacts(image: ImageType, artifacts: list[dict[str, Any]])
         ImageType: Image with annotation artifacts drawn.
 
     """
+    image, input_dtype = to_uint8_working_image(image)
     result = image.copy()
     draw_fns = {
         "text": _draw_text,
@@ -315,4 +317,4 @@ def draw_annotation_artifacts(image: ImageType, artifacts: list[dict[str, Any]])
     for artifact in artifacts:
         draw_fns[artifact["type"]](result, artifact)
 
-    return result
+    return restore_uint8_working_image(result, input_dtype)

@@ -36,7 +36,6 @@ DEDICATED_TENSOR_BENCHMARK_TRANSFORMS = {
 
 EXPECTED_INIT_WARNINGS = (
     "FrequencyMasking is a specialized version of XYMasking.*",
-    "ShiftScaleRotate is a special case of Affine transform.*",
     "TimeMasking is a specialized version of XYMasking.*",
     "TimeReverse is an alias for HorizontalFlip transform.*",
 )

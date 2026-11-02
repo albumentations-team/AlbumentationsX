@@ -33,6 +33,14 @@ use narrower risk-based profiles. The complete matrix also runs nightly and
 before a release. Moving a supported combination out of the runtime PR profile
 requires an update to this document and the matrix validator.
 
+## Acceptance Environment
+
+Final Core/AX correctness, performance, and memory acceptance uses Python 3.11 with the newest stable dependency
+releases that support Python 3.11 and the target platform. The profile recorded on 2026-10-31 used PyTorch 2.15.0
+(`2.15.0+cpu` on Linux), NumPy 2.4.6, OpenCV 5.0.0.93, NumKong 7.8.6, and StringZilla 5.3.2. Keep the lockfile
+profile and declared runtime minimums distinct: verify the resolved packages and source paths before accepting a run.
+Python 3.12–3.14 remain compatibility checks and do not replace the Python 3.11 acceptance profile.
+
 ## Dependency Sets
 
 | Dependency Set | Purpose | Initial Gate |

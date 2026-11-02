@@ -7,7 +7,6 @@ transformations like grid shuffling and thin plate splines.
 
 import random
 from typing import Annotated, Any, ClassVar, Literal, Self, TypeVar, cast
-from warnings import warn
 
 import cv2
 import numpy as np
@@ -213,7 +212,7 @@ class Perspective(DualTransform):
             self.keep_size,
             self.interpolation,
         )
-        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
+        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation, source=img)
 
     def apply_to_images(
         self,
@@ -233,7 +232,7 @@ class Perspective(DualTransform):
             self.keep_size,
             self.interpolation,
         )
-        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
+        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation, source=images)
 
     def apply_to_mask(
         self,
@@ -619,7 +618,7 @@ class Affine(DualTransform):
             border_mode=self.border_mode,
             border_value=self.fill,
         )
-        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
+        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation, source=img)
 
     def apply_to_images(
         self,
@@ -639,7 +638,9 @@ class Affine(DualTransform):
                 border_mode=self.border_mode,
                 border_value=self.fill,
             )
-        return fgeometric.clip_if_interpolation_can_overshoot(cast("ImageType", result), self.interpolation)
+        return fgeometric.clip_if_interpolation_can_overshoot(
+            cast("ImageType", result), self.interpolation, source=images
+        )
 
     def apply_to_mask(
         self,
@@ -1003,11 +1004,6 @@ class ShiftScaleRotate(Affine):
             rotate_method=rotate_method,
             p=p,
         )
-        warn(
-            "ShiftScaleRotate is a special case of Affine transform. Please use Affine transform instead.",
-            UserWarning,
-            stacklevel=2,
-        )
         self.shift_range_x = shift_range_x
         self.shift_range_y = shift_range_y
 
@@ -1189,7 +1185,7 @@ class GridElasticDeform(DualTransform):
         if not is_rgb_image(img) and not is_grayscale_image(img):
             raise ValueError("GridElasticDeform transform is only supported for RGB and grayscale images.")
         result = fgeometric.distort_image(img, generated_mesh, self.interpolation)
-        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
+        return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation, source=img)
 
     def apply_to_mask(
         self,

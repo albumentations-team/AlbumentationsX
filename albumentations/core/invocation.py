@@ -74,9 +74,7 @@ class _ReservedRandomStreams:
 
 @dataclass(slots=True)
 class _InvocationRandomState:
-    """Resolve lazy random streams independently of execution state, so retained sampler views cannot keep
-    input buffers, processor sessions, or a completed invocation alive.
-    """
+    """Share lazy RNG streams with sampling views without retaining an invocation."""
 
     seed: int | None = None
     random_stream_reserver: Callable[[], _ReservedRandomStreams] | None = None
@@ -85,9 +83,6 @@ class _InvocationRandomState:
     _reserved_random_streams: _ReservedRandomStreams | None = None
 
     def random_streams(self) -> _ReservedRandomStreams:
-        """Return the shared lazy stream lease so root and sampling access reuse generator materialization without
-        copying streams or retaining execution state.
-        """
         if self._reserved_random_streams is None:
             seed = self.seed
             self._reserved_random_streams = (
@@ -102,18 +97,12 @@ class _InvocationRandomState:
 
     @property
     def random_generator(self) -> np.random.Generator:
-        """Return the shared NumPy stream, materializing its generator only when array-valued sampling requests it
-        and retaining no execution context.
-        """
         if self._random_generator is None:
             self._random_generator = self.random_streams().get_random_generator()
         return self._random_generator
 
     @property
     def py_random(self) -> random.Random:
-        """Return the shared Python stream, materializing its generator only when probability or scalar sampling
-        requests it and retaining no execution context.
-        """
         if self._py_random is None:
             self._py_random = self.random_streams().get_py_random()
         return self._py_random
@@ -545,9 +534,7 @@ class InvocationContext:
     _activation_token: Token[InvocationContext | None] | None = None
 
     def _random_streams(self) -> _ReservedRandomStreams:
-        """Resolve root-only randomness without allocating a sampler view's state, sharing its streams if a view
-        already exists and capturing only seed values in isolated factories.
-        """
+        """Keep root-only probability checks free of sampling-state allocation."""
         if self._reserved_random_streams is None:
             if self._random_state is not None:
                 self._reserved_random_streams = self._random_state.random_streams()
@@ -564,9 +551,7 @@ class InvocationContext:
         return self._reserved_random_streams
 
     def _get_random_state(self) -> _InvocationRandomState:
-        """Share lazy RNG access with sampler views without giving them a reference to execution state, preserving
-        stream reservations and primed root probability draws.
-        """
+        """Share streams already used by the root probability check."""
         if self._random_state is None:
             self._random_state = _InvocationRandomState(
                 seed=self.seed,

@@ -83,8 +83,6 @@ def test_declaring_an_unsupported_sampling_hook_fails_without_an_invocation(hook
 
 
 class _DrawProbe(A.ImageOnlyTransform):
-    """Expose draws to an independent generator oracle without storing input data."""
-
     def __init__(self) -> None:
         super().__init__(p=1)
         self.draws: list[tuple[float, float]] = []
@@ -213,20 +211,13 @@ def test_standalone_generators_keep_initialization_boundaries(
     before = generator_allocations.copy()
     sampling = SamplingContext.from_seed(137) if factory == "seed" else SamplingContext.from_owner(owner)
     assert generator_allocations == before
+    expected_deltas = {"python": 2, "numpy": 1} if factory == "owner_cold" else {"python": 0, "numpy": 0}
     for access in access_order:
         generator = sampling.py_random if access == "python" else sampling.random_generator
         assert generator is (sampling.py_random if access == "python" else sampling.random_generator)
-        expected = (
-            {
-                "python": int("python" in access_order[: access_order.index(access) + 1]),
-                "numpy": int("numpy" in access_order[: access_order.index(access) + 1]),
-            }
-            if factory == "seed"
-            else {"python": 2, "numpy": 1}
-            if factory == "owner_cold"
-            else {"python": 0, "numpy": 0}
-        )
-        assert generator_allocations == {key: before[key] + expected[key] for key in before}
+        if factory == "seed":
+            expected_deltas[access] += 1
+        assert generator_allocations == {key: before[key] + expected_deltas[key] for key in before}
     if factory != "seed":
         again = SamplingContext.from_owner(owner)
         after = generator_allocations.copy()
@@ -319,7 +310,7 @@ def test_probability_only_calls_do_not_allocate_sampler_state(
     def unexpected_state(*args: Any, **kwargs: Any) -> None:
         pytest.fail("probability-only execution allocated sampler state")
 
-    monkeypatch.setattr(invocation_module, "_InvocationRandomState", unexpected_state, raising=False)
+    monkeypatch.setattr(invocation_module, "_InvocationRandomState", unexpected_state)
     pipeline = A.Compose([A.NoOp(p=0.5)], p=probability, seed=137)
     image = np.ones((17, 19), np.float32)
     for _ in range(100):
@@ -372,7 +363,6 @@ def test_direct_call_initializes_owner_pair_once(generator_allocations: dict) ->
 
 @pytest.mark.parametrize("observed", [False, True])
 def test_sampling_view_reuse_and_override_isolation(observed: bool) -> None:
-    """Each invocation reuses one live sampling view while keeping observed leaf overrides separate."""
     visits: list[tuple[SamplingContext, Any]] = []
     original = A.Blur.sample_parameters
 

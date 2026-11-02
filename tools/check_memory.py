@@ -71,7 +71,12 @@ def classify_samples(samples: list[dict[str, Any]], mode: str, repeats: int) -> 
             continue
         peak = statistics.median(sample["working_peak_bytes"] for sample in records)
         budget = 8 * MIB + 2 * output_bytes
-        matches_output = all(all(sample[key] == value for key, value in layout.items()) for sample in records)
+        matches_output = all(
+            sample["output_shape"] == layout["output_shape"]
+            and sample["output_dtype"] == layout["output_dtype"]
+            and sample["output_bytes"] == output_bytes
+            for sample in records
+        )
         passed = peak <= budget and matches_output
         cases.append(
             {"mode": "peak", "case": case, "working_peak_bytes": peak, "budget_bytes": budget, "passed": passed}

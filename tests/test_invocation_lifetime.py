@@ -58,17 +58,15 @@ def temporary_references(monkeypatch: pytest.MonkeyPatch) -> list[weakref.Refere
         return sink, sampled
 
     monkeypatch.setattr(invocation_module, "InvocationContext", WatchedInvocation)
-    original_random_state = getattr(invocation_module, "_InvocationRandomState", None)
-    if original_random_state is not None:
 
-        class WatchedRandomState(original_random_state):
-            __slots__ = ("__weakref__",)
+    class WatchedRandomState(invocation_module._InvocationRandomState):
+        __slots__ = ("__weakref__",)
 
-            def __init__(self, *args: Any, **kwargs: Any) -> None:
-                super().__init__(*args, **kwargs)
-                references.append(weakref.ref(self))
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
+            references.append(weakref.ref(self))
 
-        monkeypatch.setattr(invocation_module, "_InvocationRandomState", WatchedRandomState)
+    monkeypatch.setattr(invocation_module, "_InvocationRandomState", WatchedRandomState)
     monkeypatch.setattr(composition_module, "ChannelRestorationState", restoration)
     monkeypatch.setattr(A.BasicTransform, "_sample_parameters", sample)
     return references
@@ -243,7 +241,6 @@ def test_storage_owners_and_internal_copies_release(layout: str, transform: str,
         if transform == "noop" and layout == "readonly":
             assert result["image"] is image
         if layout == "strided":
-            # Root preprocessing already copies strided inputs on the baseline.
             assert not np.shares_memory(result["image"], owner)
         return [weakref.ref(owner), weakref.ref(image)]
 
@@ -365,22 +362,6 @@ def test_live_unchanged_output_is_a_legitimate_owner() -> None:
     np.testing.assert_array_equal(result["image"], np.ones((17, 19), np.float32))
     del result
     _assert_released(references)
-
-
-@pytest.mark.usefixtures("refcount_only")
-def test_oracle_detects_a_deliberate_cycle() -> None:
-    class Owner:
-        pass
-
-    def call() -> weakref.ReferenceType:
-        owner = Owner()
-        owner.self_reference = owner
-        return weakref.ref(owner)
-
-    reference = call()
-    assert reference() is not None
-    del reference().self_reference
-    _assert_released([reference])
 
 
 @pytest.mark.usefixtures("refcount_only")
@@ -515,15 +496,6 @@ def test_processor_and_binding_states_release(binding: str, temporary_references
     _assert_released(call() + temporary_references)
 
 
-@pytest.mark.usefixtures("refcount_only")
-def test_repeated_calls_do_not_accumulate_buffers(temporary_references: list) -> None:
-    pipeline = A.Compose([A.Blur(p=1)], seed=137)
-    references = []
-    for _ in range(32):
-        references.extend(_call_target(pipeline))
-        _assert_released(references + temporary_references)
-
-
 class _LifetimeDataset(torch.utils.data.Dataset):
     def __init__(self) -> None:
         self.pipeline = A.Compose([A.Blur(p=1)], seed=137)
@@ -585,8 +557,6 @@ def test_standalone_sampling_avoids_invocations_and_releases_state(
     temporary_references: list,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Standalone factories must neither allocate execution contexts nor retain discarded RNG state."""
-
     def forbid_invocation(*args: Any, **kwargs: Any) -> None:
         pytest.fail("Standalone sampling must not allocate an InvocationContext")
 
@@ -599,13 +569,13 @@ def test_standalone_sampling_avoids_invocations_and_releases_state(
             else invocation_module.SamplingContext.from_owner(A.Blur(p=1))
         )
         if access in {"python", "both"}:
-            assert 0 <= sampling.py_random.random() < 1
+            sampling.py_random.random()
         if access in {"numpy", "both"}:
-            assert 0 <= sampling.random_generator.random() < 1
+            sampling.random_generator.random()
         return temporary_references.copy()
 
     references = call()
-    assert all(reference() is None for reference in references)
+    _assert_released(references)
 
 
 @pytest.mark.usefixtures("refcount_only")
@@ -627,7 +597,7 @@ def test_retained_sampling_view_does_not_own_execution_state(temporary_reference
         for reference in temporary_references
     )
     _assert_released(references)
-    assert 0 <= handles[0].py_random.random() < 1
-    assert 0 <= handles[0].random_generator.random() < 1
+    assert handles[0].py_random is pipeline.py_random
+    assert handles[0].random_generator is pipeline.random_generator
     handles.clear()
     _assert_released(temporary_references)

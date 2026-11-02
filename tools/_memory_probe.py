@@ -105,12 +105,10 @@ else:
 
 def report_measurement() -> None:
     """Import reporting code after allocator-sensitive measurement."""
-    # Setup and per-call observation can change allocator retention in the RSS reproducer.
     import hashlib
     import importlib.metadata
     import json
     import platform
-    from pathlib import Path
 
     import albucore
     from threadpoolctl import threadpool_info

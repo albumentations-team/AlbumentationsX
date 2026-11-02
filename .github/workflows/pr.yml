@@ -139,10 +139,13 @@ jobs:
       - name: Set up quality environment
         uses: ./.github/actions/setup-ci
         with:
-          python-version: "3.12"
-          dependency-group: ci-quality
+          python-version: "3.11"
+          dependency-group: ci-types
+          runtime-profile: torch-cpu
       - name: Run mypy hook
         run: pre-commit run mypy --all-files --show-diff-on-failure
+      - name: Check positive and negative typing contracts
+        run: uv run --no-sync python -m unittest discover -s tests/typing -p check_contracts.py
 
   pre_commit_pyrefly:
     name: Pre-commit / Pyrefly
@@ -156,6 +159,7 @@ jobs:
         with:
           python-version: "3.11"
           dependency-group: ci-types
+          runtime-profile: torch-cpu
       - name: Run Pyrefly hook
         run: pre-commit run pyrefly-check --all-files --show-diff-on-failure
 

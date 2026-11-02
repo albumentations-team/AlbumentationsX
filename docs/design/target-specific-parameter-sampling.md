@@ -509,9 +509,6 @@ The release containing the cutover must include a migration guide with these cas
 - use a transform-defined `group_by` key when compatible aliases should share parameters; and
 - update deterministic and replay assertions to the structured payload.
 
-No deprecation shim will accept both return types. A clear boundary error is safer than silently routing a partially migrated
-custom transform through the old semantics.
-
 ## Transform Inventory and Migration Classes
 
 The implementation begins with an AST-assisted inventory of every `sample_parameters` override and every application method

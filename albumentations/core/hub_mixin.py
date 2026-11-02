@@ -6,6 +6,7 @@ import functools
 import logging
 from collections.abc import Callable
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 from albumentations.core.serialization import Serializable
@@ -14,7 +15,7 @@ from albumentations.core.serialization import save as save_transform
 
 try:
     from huggingface_hub import HfApi, hf_hub_download
-    from huggingface_hub.utils import HfHubHTTPError, SoftTemporaryDirectory
+    from huggingface_hub.errors import HfHubHTTPError
 
     is_huggingface_hub_available = True
 except ImportError:
@@ -295,7 +296,7 @@ class HubMixin:
         repo_id = api.create_repo(repo_id=repo_id, private=private, exist_ok=True).repo_id
 
         # Push the files to the repo in a single commit
-        with SoftTemporaryDirectory() as tmp:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             save_directory = Path(tmp) / repo_id
             filename = self._CONFIG_FILE_NAME_TEMPLATE.format(key)
             save_path = self._save_pretrained(save_directory, filename=filename)

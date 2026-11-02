@@ -8,7 +8,7 @@ import albumentations as A
 from albumentations.core.transform_params import SampledParams
 
 
-@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
 @pytest.mark.parametrize(
     ("num_channels", "channels_to_drop", "dropout_ratio", "expected_count"),
     [

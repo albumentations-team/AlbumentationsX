@@ -26,20 +26,13 @@ __all__ = ["ToTensor3D", "ToTensorV2"]
 
 
 class BaseTensorTransform(BasicTransform):
-    """Bridge for tensor-producing terminal transforms that keep public methods typed as torch.Tensor while isolating
-    the core array-return contract.
-    """
+    """Mark terminal transforms that accept NumPy targets and return Tensors."""
 
     _is_tensor_terminal = True
 
-    def apply(self, img: ImageType, *args: Any, **params: Any) -> Any:
-        raise NotImplementedError
 
-    def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> Any:
-        raise NotImplementedError
-
-    def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> Any:
-        raise NotImplementedError
+def _native_contiguous_array(array: np.ndarray) -> np.ndarray:
+    return np.ascontiguousarray(array, dtype=array.dtype.newbyteorder("="))
 
 
 class ToTensorV2(BaseTensorTransform):
@@ -74,25 +67,23 @@ class ToTensorV2(BaseTensorTransform):
             msg = "Albumentations only supports images in HW or HWC format"
             raise ValueError(msg)
 
-        image = img
-        if img.ndim == MONO_CHANNEL_DIMENSIONS:
-            image = np.expand_dims(img, 2)
+        image = np.expand_dims(img, 2) if img.ndim == MONO_CHANNEL_DIMENSIONS else img
 
-        return torch.from_numpy(np.ascontiguousarray(image.transpose(2, 0, 1)))
+        return torch.from_numpy(_native_contiguous_array(image.transpose(2, 0, 1)))
 
     def apply_to_mask(self, mask: ImageType, **params: Any) -> torch.Tensor:
         if self.transpose_mask and mask.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
             mask = mask.transpose(2, 0, 1)
-        return torch.from_numpy(np.ascontiguousarray(mask))
+        return torch.from_numpy(_native_contiguous_array(mask))
 
     def apply_to_masks(self, masks: StackedMasks4D, **params: Any) -> torch.Tensor:
         arr: np.ndarray = masks
         if self.transpose_mask and arr.ndim == NUM_VOLUME_DIMENSIONS:  # (N, H, W, C)
             arr = np.transpose(arr, (0, 3, 1, 2))  # -> (N, C, H, W)
-        return torch.from_numpy(np.ascontiguousarray(arr))
+        return torch.from_numpy(_native_contiguous_array(arr))
 
     def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> torch.Tensor:
-        return torch.from_numpy(np.ascontiguousarray(images.transpose(0, 3, 1, 2)))  # -> (N,C,H,W)
+        return torch.from_numpy(_native_contiguous_array(images.transpose(0, 3, 1, 2)))  # -> (N,C,H,W)
 
 
 class ToTensor3D(BaseTensorTransform):
@@ -130,9 +121,9 @@ class ToTensor3D(BaseTensorTransform):
 
     def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> torch.Tensor:
         if volume.ndim == NUM_VOLUME_DIMENSIONS:  # D,H,W,C
-            return torch.from_numpy(np.ascontiguousarray(volume.transpose(3, 0, 1, 2)))
+            return torch.from_numpy(_native_contiguous_array(volume.transpose(3, 0, 1, 2)))
         if volume.ndim == NUM_VOLUME_DIMENSIONS - 1:  # D,H,W
-            return torch.from_numpy(np.ascontiguousarray(volume[np.newaxis, ...]))
+            return torch.from_numpy(_native_contiguous_array(volume[np.newaxis, ...]))
         raise TypeError(f"volume must be 3D or 4D array (D,H,W) or (D,H,W,C), got {volume.ndim}D array")
 
     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> torch.Tensor:
@@ -140,9 +131,9 @@ class ToTensor3D(BaseTensorTransform):
 
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> torch.Tensor:
         if volumes.ndim == NUM_VOLUME_DIMENSIONS + 1:  # N,D,H,W,C
-            return torch.from_numpy(np.ascontiguousarray(volumes.transpose(0, 4, 1, 2, 3)))
+            return torch.from_numpy(_native_contiguous_array(volumes.transpose(0, 4, 1, 2, 3)))
         if volumes.ndim == NUM_VOLUME_DIMENSIONS:  # N,D,H,W
-            return torch.from_numpy(np.ascontiguousarray(volumes[:, np.newaxis, ...]))
+            return torch.from_numpy(_native_contiguous_array(volumes[:, np.newaxis, ...]))
         raise TypeError(f"volumes must be a 4D or 5D array (N,D,H,W) or (N,D,H,W,C), got {volumes.ndim}D array")
 
     def apply_to_masks3d(self, masks3d: np.ndarray, **params: Any) -> torch.Tensor:

@@ -32,11 +32,11 @@ def _reference_bias_field(img: np.ndarray, coarse: np.ndarray) -> np.ndarray:
     if img.dtype == np.uint8:
         signal /= 255
     result = np.clip(signal * _reference_bias_gain(coarse, spatial_shape), 0, 1)
-    return np.rint(result * 255).astype(np.uint8) if img.dtype == np.uint8 else result.astype(np.float32)
+    return np.rint(result * 255).astype(np.uint8) if img.dtype == np.uint8 else result.astype(img.dtype)
 
 
 @pytest.mark.parametrize("shape", [(9, 13, 1), (8, 12, 5), (5, 9, 13, 3), (1, 9, 13, 1), (5, 1, 13, 3)])
-@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
 @pytest.mark.parametrize("per_channel", [False, True])
 def test_bias_field_matches_independent_half_pixel_interpolation(
     shape: tuple[int, ...],
@@ -45,7 +45,7 @@ def test_bias_field_matches_independent_half_pixel_interpolation(
 ) -> None:
     rng = np.random.default_rng(137)
     raw = rng.integers(0, 256, shape, dtype=np.uint8)
-    img = raw if dtype == np.uint8 else raw.astype(np.float32) / 255
+    img = raw if dtype == np.uint8 else (raw.astype(np.float32) / 255).astype(dtype)
     coarse_shape = (*[min(size, 2) for size in shape[:-1]], shape[-1] if per_channel else 1)
     coarse = rng.standard_normal(coarse_shape, dtype=np.float32) * 0.3
     original, original_coarse = img.copy(), coarse.copy()
@@ -54,7 +54,10 @@ def test_bias_field_matches_independent_half_pixel_interpolation(
     result = fmedical.bias_field(img, coarse)
 
     expected = _reference_bias_field(img, coarse)
-    np.testing.assert_allclose(result, expected, atol=1 if dtype == np.uint8 else 2e-6, rtol=1e-5)
+    if dtype == np.float16:
+        np.testing.assert_array_max_ulp(result, expected, maxulp=1)
+    else:
+        np.testing.assert_allclose(result, expected, atol=1 if dtype == np.uint8 else 2e-6, rtol=1e-5)
     assert result.dtype == dtype
     np.testing.assert_array_equal(img, original)
     np.testing.assert_array_equal(coarse, original_coarse)
@@ -231,7 +234,7 @@ def test_extreme_strength_clips_and_zero_signal_remains_zero(dtype: type[np.gene
 
 @pytest.mark.parametrize("dtype", [np.float64, np.int16, np.complex64])
 def test_unsupported_dtype_is_rejected(dtype: type[np.generic]) -> None:
-    with pytest.raises(ValueError, match="uint8 or float32"):
+    with pytest.raises(ValueError, match="uint8, float16 or float32"):
         A.BiasField(p=1)(image=np.ones((9, 13, 1), dtype=dtype))
 
 

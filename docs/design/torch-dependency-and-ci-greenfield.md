@@ -100,13 +100,21 @@ who wants the CI runtime adds `--group ci-torch-cpu` explicitly.
 
 | Job class | Tool group | Runtime profile |
 | --- | --- | --- |
-| Link-only Markdown, lint, typing, package, audit, legal, and static docs | matching tool group | `none` |
+| Link-only Markdown, lint, package, audit, legal, and static docs | matching tool group | `none` |
+| Runtime API typing | `ci-types` | `torch-cpu` |
 | Repository contracts | `ci-quality` | `torch-cpu` |
 | Compatibility, targeted, and Tensor tests | `ci-test` | `torch-cpu` |
 | ASV evidence and timing | `ci-benchmark` | `torch-cpu` |
 | Release correctness | `ci-release` | `torch-cpu` |
 | Lower-bound test environment | explicit lower bounds | CPU runtime tool |
 | Autodoc, doctests, executed examples, and notebooks | docs tool group | `torch-cpu` |
+
+Both type-checking jobs select `torch-cpu` so Tensor annotations resolve to the installed stubs. Mypy runs from the
+project environment, and both checkers derive their Python target from its interpreter. Positive and negative
+consumer fixtures guard against checks that pass only because missing imports become `Any`.
+
+Import-capable PR jobs use the published Albucore version pinned in the lockfile. Runtime tests, dependency audits,
+typing checks and package-build jobs therefore exercise the same dependency release.
 
 The `Pre-commit / Other hooks` partition runs the generated transform-table
 check, which imports package code and therefore selects `torch-cpu`. Link-only

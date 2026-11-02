@@ -10,6 +10,7 @@ from PIL import Image, ImageFilter
 import albumentations as A
 from albumentations.augmentations.blur import functional as fblur
 from albumentations.augmentations.pixel import functional as fpixel
+from albumentations.core.tensor import numpy_to_tensor_spatial, tensor_to_numpy_spatial
 from albumentations.core.transforms_interface import BasicTransform
 from tests.conftest import UINT8_IMAGES
 
@@ -30,6 +31,23 @@ def test_blur_kernel_generation(
 
     assert aug.blur_range == blur_range_used
     aug(image=image)["image"]
+
+
+@pytest.mark.parametrize(
+    ("dtype", "value"),
+    [(np.uint8, 137), (np.float16, 0.375), (np.float32, 0.375)],
+)
+def test_box_blur_compose_preserves_singleton_channel(dtype: np.dtype, value: float) -> None:
+    image = np.full((17, 13, 1), value, dtype=dtype)
+    original = image.copy()
+    transform = A.Compose([A.Blur(blur_range=(3, 3), p=1.0)], seed=137)
+
+    result = transform(image=image)["image"]
+
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+    np.testing.assert_array_equal(result, image)
+    np.testing.assert_array_equal(image, original)
 
 
 @pytest.mark.parametrize("val_uint8", [0, 1, 128, 255])
@@ -53,6 +71,33 @@ def test_glass_blur_float_uint8_diff_less_than_two(val_uint8: list[int]) -> None
 
     # The difference between the results of float32 and uint8 will be at most 2.
     assert np.all(diff <= 2.0)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("mode", ["fast", "exact"])
+def test_glass_blur_compose_preserves_singleton_channel(dtype: np.dtype, mode: str) -> None:
+    rng = np.random.default_rng(137)
+    if dtype is np.uint8:
+        image = rng.integers(0, 256, (17, 13, 1), dtype=np.uint8)
+    else:
+        image = rng.random((17, 13, 1), dtype=np.float32).astype(dtype)
+    original = image.copy()
+    transform = A.Compose(
+        [A.GlassBlur(sigma=0.7, max_delta=1, iterations=2, mode=mode, p=1.0)],
+        seed=137,
+    )
+    repeated = A.Compose(
+        [A.GlassBlur(sigma=0.7, max_delta=1, iterations=2, mode=mode, p=1.0)],
+        seed=137,
+    )
+
+    result = transform(image=image)["image"]
+
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+    assert np.isfinite(result).all()
+    np.testing.assert_array_equal(result, repeated(image=image)["image"])
+    np.testing.assert_array_equal(image, original)
 
 
 @pytest.mark.parametrize("val_uint8", [0, 1, 128, 255])
@@ -242,6 +287,30 @@ def test_gaussian_blur_auto_kernel_preserves_float32_contract() -> None:
     assert result.max() <= 1
 
 
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+def test_pillow_gaussian_blur_compose_preserves_singleton_channel(dtype: np.dtype) -> None:
+    rng = np.random.default_rng(137)
+    if dtype is np.uint8:
+        image = rng.integers(0, 256, (17, 13, 1), dtype=np.uint8)
+    else:
+        image = rng.random((17, 13, 1), dtype=np.float32).astype(dtype)
+    original = image.copy()
+    sigma = 1.0
+    kernel = fblur.create_pillow_gaussian_kernel(sigma)
+    expected = fblur.pillow_gaussian_blur(image, kernel)
+    transform = A.Compose(
+        [A.GaussianBlur(blur_range=(0, 0), sigma_range=(sigma, sigma), p=1.0)],
+        seed=137,
+    )
+
+    result = transform(image=image)["image"]
+
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+    np.testing.assert_array_equal(result, expected)
+    np.testing.assert_array_equal(image, original)
+
+
 def test_gaussian_blur_explicit_kernel_uses_discrete_gaussian() -> None:
     rng = np.random.default_rng(137)
     image = rng.integers(0, 256, (17, 13, 3), dtype=np.uint8)
@@ -257,6 +326,26 @@ def test_gaussian_blur_explicit_kernel_uses_discrete_gaussian() -> None:
     result = transform(image=image)["image"]
 
     np.testing.assert_array_equal(result, expected)
+
+
+@pytest.mark.parametrize(
+    ("dtype", "value"),
+    [(np.uint8, 137), (np.float16, 0.375), (np.float32, 0.375)],
+)
+def test_gaussian_blur_compose_preserves_singleton_channel(dtype: np.dtype, value: float) -> None:
+    image = np.full((17, 13, 1), value, dtype=dtype)
+    original = image.copy()
+    transform = A.Compose(
+        [A.GaussianBlur(blur_range=(3, 3), sigma_range=(1.0, 1.0), p=1.0)],
+        seed=137,
+    )
+
+    result = transform(image=image)["image"]
+
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+    np.testing.assert_array_equal(result, image)
+    np.testing.assert_array_equal(image, original)
 
 
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
@@ -407,22 +496,39 @@ def test_gaussian_blur_true_3d_applied_config_replays_after_json_transport() -> 
     np.testing.assert_array_equal(replay_result["volume"], original_result["volume"])
 
 
-@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
 @pytest.mark.parametrize("num_channels", [1, 3, 5])
 @pytest.mark.parametrize("kernel_size", [3, 5, 7])
-def test_mode_filter_output_shape_and_dtype(dtype: np.dtype, num_channels: int, kernel_size: int) -> None:
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+def test_mode_filter_output_shape_and_dtype(
+    dtype: np.dtype, num_channels: int, kernel_size: int, container: str
+) -> None:
     rng = np.random.default_rng(137)
     shape = (64, 64, num_channels)
     if dtype == np.uint8:
         image = rng.integers(0, 256, shape, dtype=np.uint8)
     else:
-        image = rng.random(shape, dtype=np.float32)
+        image = rng.random(shape, dtype=np.float32).astype(dtype)
+    source = numpy_to_tensor_spatial(image.copy(), "image") if container == "tensor" else image.copy()
+    original = image.copy()
+    if container == "numpy":
+        source.flags.writeable = False
 
-    transform = A.Compose([A.ModeFilter(kernel_range=(kernel_size, kernel_size), p=1.0)])
-    result = transform(image=image)["image"]
+    transform = A.Compose([A.ModeFilter(kernel_range=(kernel_size, kernel_size), p=1.0)], seed=137)
+    result = transform(image=source)["image"]
+    actual = tensor_to_numpy_spatial(result, "image") if container == "tensor" else result
+    preserved = tensor_to_numpy_spatial(source, "image") if container == "tensor" else source
 
-    assert result.shape == image.shape
-    assert result.dtype == dtype
+    assert actual.shape == image.shape
+    assert actual.dtype == dtype
+    np.testing.assert_array_equal(preserved, original)
+    if dtype == np.float16:
+        float32_image = image.astype(np.float32)
+        float32_source = numpy_to_tensor_spatial(float32_image, "image") if container == "tensor" else float32_image
+        float32_result = transform(image=float32_source)["image"]
+        if container == "tensor":
+            float32_result = tensor_to_numpy_spatial(float32_result, "image")
+        np.testing.assert_array_equal(actual, float32_result.astype(np.float16))
 
 
 def test_mode_filter_constant_image_passes_through() -> None:
@@ -437,8 +543,23 @@ def test_mode_filter_constant_image_float32_passes_through() -> None:
     image = np.full((32, 32, 3), fill_value=0.5, dtype=np.float32)
     transform = A.Compose([A.ModeFilter(kernel_range=(5, 5), p=1.0)])
     result = transform(image=image)["image"]
-    # After uint8_io round-trip (0.5 → 127 → ~0.498), check within quantisation tolerance
+    # Quantizing 0.5 to uint8 and restoring it yields about 0.498.
     np.testing.assert_allclose(result, image, atol=1.0 / 255)
+
+
+@pytest.mark.parametrize("num_channels", [1, 3, 5])
+def test_mode_filter_float16_matches_float32_reference(num_channels: int) -> None:
+    rng = np.random.default_rng(137)
+    half_image = rng.random((64, 61, num_channels), dtype=np.float32).astype(np.float16)
+    float_image = half_image.astype(np.float32)
+    transform = A.Compose([A.ModeFilter(kernel_range=(3, 3), p=1.0)], seed=137)
+
+    half_result = transform(image=half_image)["image"]
+    float_result = transform(image=float_image)["image"]
+
+    assert half_result.shape == half_image.shape
+    assert half_result.dtype == np.float16
+    np.testing.assert_allclose(half_result.astype(np.float32), float_result, rtol=0, atol=1 / 2048)
 
 
 @pytest.mark.parametrize("kernel_size", [3, 5])
@@ -504,3 +625,38 @@ def test_mode_filter_kernel_range_stored(
         warnings.simplefilter("ignore", UserWarning)
         aug = A.ModeFilter(kernel_range=kernel_range_input, p=1.0)
     assert aug.kernel_range == kernel_range_stored
+
+
+@pytest.mark.parametrize("dtype", [np.dtype(np.float16), np.dtype(np.float32)], ids=["float16", "float32"])
+@pytest.mark.parametrize(
+    "target_name,shape,volume_mode,blur_range",
+    [
+        ("image", (17, 23, 3), "slice", (0, 0)),
+        ("images", (2, 17, 23, 3), "slice", (3, 3)),
+        ("volume", (4, 17, 23, 3), "slice", (0, 0)),
+        ("volume", (4, 17, 23, 3), "3d", (3, 3)),
+        ("volumes", (2, 4, 17, 23, 3), "3d", (3, 3)),
+    ],
+)
+def test_gaussian_blur_accepts_foreign_byte_order_and_float16(target_name, shape, volume_mode, blur_range, dtype):
+    native = np.random.default_rng(137).random(shape, dtype=np.float32).astype(dtype)
+    foreign = native.astype(dtype.newbyteorder("S"))
+    foreign.setflags(write=False)
+    original = foreign.copy()
+    kwargs = {"sigma_range": (1.0, 1.0), "blur_range": blur_range, "volume_mode": volume_mode, "p": 1.0}
+    if volume_mode == "3d":
+        kwargs.update(sigma_z_range=(1.0, 1.0), blur_z_range=(3, 3))
+    pipeline = A.Compose([A.GaussianBlur(**kwargs)], strict=True, telemetry=False, seed=137)
+    reference_input = native.astype(np.float32) if dtype == np.dtype(np.float16) else native
+
+    expected = pipeline(**{target_name: reference_input})[target_name]
+    actual = pipeline(**{target_name: foreign})[target_name]
+
+    assert actual.dtype == foreign.dtype
+    assert actual.flags.writeable
+    assert not np.shares_memory(actual, foreign)
+    if dtype == np.dtype(np.float16):
+        np.testing.assert_array_max_ulp(actual.astype(np.float16), expected.astype(np.float16), maxulp=1)
+    else:
+        np.testing.assert_array_equal(actual.astype(np.float32), expected)
+    np.testing.assert_array_equal(foreign, original)

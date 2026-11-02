@@ -65,7 +65,14 @@ def find_contract_difference(actual: Any, expected: Any, path: str = "value") ->
     return f"{path} changed from {expected!r} to {actual!r}" if actual != expected else None
 
 
-def assert_contract_values_equal(actual: Any, expected: Any, path: str = "value") -> None:
-    """Assert exact structural equality and identify the first mismatching path."""
+def assert_contract_values_equal(actual: Any, expected: Any, path: str = "value", *, uint8_atol: int = 0) -> None:
+    """Assert exact structure and values, with an explicitly requested uint8 rounding allowance."""
+    if uint8_atol and isinstance(expected, np.ndarray) and expected.dtype == np.uint8:
+        assert isinstance(actual, np.ndarray), f"{path} changed container"
+        assert actual.shape == expected.shape, f"{path} changed shape"
+        assert actual.dtype == expected.dtype, f"{path} changed dtype"
+        delta = np.abs(actual.astype(np.int16) - expected.astype(np.int16))
+        assert delta.max(initial=0) <= uint8_atol, f"{path} exceeds uint8 tolerance {uint8_atol}"
+        return
     difference = find_contract_difference(actual, expected, path)
     assert difference is None, difference

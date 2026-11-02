@@ -6,6 +6,7 @@ from typing import Any, cast
 
 from albucore import exp as albucore_exp
 from albucore import sqrt as albucore_sqrt
+from numpy.typing import NDArray
 
 from ._functional_color import (
     equalize,
@@ -18,17 +19,15 @@ from ._functional_shared import (
     add,
     add_weighted,
     clip,
-    clipped,
     cv2,
-    float32_io,
     from_float,
     maybe_process_in_chunks,
     non_rgb_error,
     np,
-    preserve_channel_dim,
     reduce_sum,
+    restore_uint8_working_image,
     to_float,
-    uint8_io,
+    to_uint8_working_image,
 )
 from ._functional_sharpness import (
     convolve,
@@ -92,6 +91,9 @@ def add_snow_bleach(
         - Original implementation: https://github.com/UjjwalSaxena/Automold--Road-Augmentation-Library
 
     """
+    input_dtype = img.dtype
+    if input_dtype.type is np.float16:
+        img = img.astype(np.float32)
     max_value = MAX_VALUES_BY_DTYPE[np.dtype(img.dtype)]
 
     snow_point = (snow_point * max_value / 2) + (max_value / 3)
@@ -102,11 +104,16 @@ def add_snow_bleach(
     mask = lightness_channel < snow_point
     lightness_channel[mask] *= brightness_coeff
 
-    lightness_channel = clip(lightness_channel, img.dtype, inplace=True)
+    image_hls[:, :, 1] = (
+        clip(lightness_channel, out=lightness_channel)
+        if img.dtype == np.float32
+        else clip(lightness_channel, img.dtype)
+    )
 
-    image_hls[:, :, 1] = lightness_channel
-
-    return cast("ImageType", cv2.cvtColor(image_hls, cv2.COLOR_HLS2RGB))
+    result = cast("ImageType", cv2.cvtColor(image_hls, cv2.COLOR_HLS2RGB))
+    if input_dtype.type is np.float16:
+        return result.astype(cast("np.dtype[np.float16]", input_dtype))
+    return result
 
 
 def generate_snow_textures(
@@ -126,7 +133,7 @@ def generate_snow_textures(
     """
     # Generate base snow texture
     snow_texture = random_generator.normal(size=img_shape[:2], loc=0.5, scale=0.3).astype(np.float32)
-    snow_texture = cv2.GaussianBlur(snow_texture, (0, 0), sigmaX=1, sigmaY=1)
+    snow_texture = cast("NDArray[np.float32]", cv2.GaussianBlur(snow_texture, (0, 0), sigmaX=1, sigmaY=1))
 
     # Generate sparkle mask
     sparkle_mask = random_generator.random(img_shape[:2]) > 0.99
@@ -193,6 +200,9 @@ def add_snow_texture(
         - HSV Color Space: https://en.wikipedia.org/wiki/HSL_and_HSV
 
     """
+    input_dtype = img.dtype
+    if input_dtype.type is np.float16:
+        img = img.astype(np.float32)
     max_value = MAX_VALUES_BY_DTYPE[np.dtype(img.dtype)]
 
     img_hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV).astype(np.float32)
@@ -202,7 +212,7 @@ def add_snow_texture(
     np.clip(img_hsv[:, :, 2], 0, max_value, out=img_hsv[:, :, 2])
 
     # Generate snow texture
-    snow_texture = cv2.GaussianBlur(snow_texture, (0, 0), sigmaX=1, sigmaY=1)
+    snow_texture = cast("NDArray[np.float32]", cv2.GaussianBlur(snow_texture, (0, 0), sigmaX=1, sigmaY=1))
 
     # Create depth effect for snow simulation
     # More snow accumulates at the top of the image, gradually decreasing towards the bottom
@@ -236,16 +246,17 @@ def add_snow_texture(
 
     # Convert back to RGB - cast to original dtype before cvtColor
     # to avoid OpenCV misinterpreting float ranges for uint8 inputs
-    img_with_snow = cast("ImageType", cv2.cvtColor(img_with_snow.astype(img.dtype), cv2.COLOR_HSV2RGB))
+    rgb_snow = cast("ImageType", cv2.cvtColor(img_with_snow.astype(img.dtype), cv2.COLOR_HSV2RGB))
+    del img_with_snow
 
     # Add some sparkle effects for snow glitter
-    img_with_snow[sparkle_mask] = [max_value, max_value, max_value]
+    rgb_snow[sparkle_mask] = [max_value, max_value, max_value]
 
-    return img_with_snow
+    if input_dtype.type is np.float16:
+        return rgb_snow.astype(cast("np.dtype[np.float16]", input_dtype))
+    return rgb_snow
 
 
-@uint8_io
-@preserve_channel_dim
 def add_rain(
     img: ImageType,
     slant: float,
@@ -257,7 +268,7 @@ def add_rain(
     rain_drops: np.ndarray,
 ) -> ImageType:
     """Add rain streaks. slant, drop_length, drop_width, drop_color, blur_value,
-    brightness_coefficient, rain_drops. Polylines; optional blur. uint8 I/O.
+    brightness_coefficient, rain_drops. Polylines; optional blur. Floating inputs are quantized to uint8 and restored.
 
     This function adds rain to an image by drawing rain drops on the image.
     The rain drops are drawn using the OpenCV function cv2.polylines.
@@ -276,10 +287,11 @@ def add_rain(
         ImageType: The image with rain added.
 
     """
+    img, input_dtype = to_uint8_working_image(img)
     if not rain_drops.size:
-        return img.copy()
+        return restore_uint8_working_image(img.copy(), input_dtype)
 
-    img = cast("ImageUInt8", img.copy())
+    img = img.copy()
 
     # Pre-allocate rain layer
     rain_layer = np.zeros_like(img, dtype=np.uint8)
@@ -307,7 +319,7 @@ def add_rain(
         multiply = cast("Any", cv2.multiply)
         multiply(img, brightness_coefficient, dst=img, dtype=cv2.CV_8U)
 
-    return img
+    return restore_uint8_working_image(img, input_dtype)
 
 
 def get_fog_particle_radiuses(
@@ -336,9 +348,6 @@ def get_fog_particle_radiuses(
     return [int(random_generator.integers(min_radius, max_fog_radius)) for _ in range(num_particles)]
 
 
-@uint8_io
-@clipped
-@preserve_channel_dim
 def add_fog(
     img: ImageType,
     fog_intensity: float,
@@ -347,7 +356,7 @@ def add_fog(
     fog_particle_radiuses: list[int],
 ) -> ImageType:
     """Add fog with circular particles and alpha blending. fog_intensity, alpha_coef, positions,
-    radiuses (lists from get_fog_particle_radiuses). uint8 I/O, clipped.
+    radiuses (lists from get_fog_particle_radiuses). Floating inputs are quantized to uint8 and restored.
 
     This function adds fog to an image by drawing fog particles on the image.
     The fog particles are drawn using the OpenCV function cv2.circle.
@@ -363,6 +372,7 @@ def add_fog(
         ImageType: The image with fog added.
 
     """
+    img, input_dtype = to_uint8_working_image(img)
     result = img.copy()
 
     for (x, y), radius in zip(fog_particle_positions, fog_particle_radiuses, strict=True):
@@ -384,13 +394,12 @@ def add_fog(
     if blur_size % 2 == 0:
         blur_size += 1
 
-    result = cast("ImageType", cv2.GaussianBlur(result, (blur_size, blur_size), 0))
+    blur_view = result[..., 0] if result.ndim == 3 and result.shape[-1] == 1 else result
+    cv2.GaussianBlur(blur_view, (blur_size, blur_size), 0, dst=blur_view)
 
-    return clip(result, np.dtype(np.uint8), inplace=True)
+    return restore_uint8_working_image(clip(result, out=result), input_dtype)
 
 
-@uint8_io
-@preserve_channel_dim
 @_maybe_process_in_chunks
 def add_sun_flare_overlay(
     img: ImageType,
@@ -455,6 +464,7 @@ def add_sun_flare_overlay(
         - Lens flare: https://en.wikipedia.org/wiki/Lens_flare
 
     """
+    img, input_dtype = to_uint8_working_image(img)
     overlay = img.copy()
     output = img.copy()
 
@@ -485,16 +495,14 @@ def add_sun_flare_overlay(
         alp = alpha[num_times - i - 1] * alpha[num_times - i - 1] * alpha[num_times - i - 1]
         output = add_weighted(overlay, alp, output, 1 - alp)
 
-    return output
+    return restore_uint8_working_image(output, input_dtype)
 
 
-@uint8_io
-@clipped
 def add_sun_flare_physics_based(
     img: ImageType,
     flare_center: tuple[int, int],
     src_radius: int,
-    src_color: tuple[int, int, int],
+    src_color: tuple[int, ...],
     circles: list[Any],
 ) -> ImageType:
     """Physics-based sun flare: circle, spikes, ghosts, chromatic aberration, screen blend.
@@ -508,7 +516,7 @@ def add_sun_flare_physics_based(
         img (ImageType): Input image.
         flare_center (tuple[int, int]): (x, y) coordinates of the sun's center in pixels.
         src_radius (int): Radius of the main sun circle in pixels.
-        src_color (tuple[int, int, int]): Color of the sun in RGB format.
+        src_color (tuple[int, ...]): Color of the sun in RGB format.
         circles (list[Any]): List of tuples, each representing a flare circle with parameters:
             (alpha, center, size, color)
             - alpha (float): Transparency of the circle (0.0 to 1.0).
@@ -559,6 +567,7 @@ def add_sun_flare_physics_based(
         - Screen blending: https://en.wikipedia.org/wiki/Blend_modes#Screen
 
     """
+    img, input_dtype = to_uint8_working_image(img)
     output = img.copy()
     height, width = img.shape[:2]
 
@@ -579,12 +588,12 @@ def add_sun_flare_physics_based(
     for _, center, size, color in circles:
         cv2.circle(flare_layer, center, int(size**0.33), color, -1)
 
-    flare_layer = cv2.GaussianBlur(flare_layer, (0, 0), sigmaX=15, sigmaY=15)
+    flare_layer = cast("NDArray[np.float32]", cv2.GaussianBlur(flare_layer, (0, 0), sigmaX=15, sigmaY=15))
 
     y = np.arange(height, dtype=np.float32)[:, np.newaxis] - flare_center[1]
     x = np.arange(width, dtype=np.float32)[np.newaxis, :] - flare_center[0]
     mask = x * x + y * y
-    mask = albucore_sqrt(mask, inplace=True)
+    mask = albucore_sqrt(mask, out=mask)
     mask *= np.float32(1 / (max(width, height) * 0.7))
     np.clip(mask, 0, 1, out=mask)
     np.subtract(1, mask, out=mask)
@@ -605,21 +614,20 @@ def add_sun_flare_physics_based(
         sigmaX=5,
         sigmaY=5,
     )  # Red channel
-    flare_layer = cv2.merge(channels)
+    flare_layer = cast("NDArray[np.float32]", cv2.merge(channels))
 
     # Blend the flare with the original image using screen blending
-    return cast("ImageType", 255 - ((255 - output) * (255 - flare_layer) / 255))
+    result = 255 - ((255 - output) * (255 - flare_layer) / 255)
+    return restore_uint8_working_image(clip(result, np.dtype(np.uint8)), input_dtype)
 
 
-@uint8_io
-@preserve_channel_dim
 def add_shadow(
     img: ImageType,
     vertices_list: list[np.ndarray],
     intensities: np.ndarray,
 ) -> ImageType:
     """Darken polygonal regions to simulate shadows. vertices_list and intensities per polygon.
-    Use for outdoor or synthetic shadow augmentation. uint8 I/O.
+    Use for outdoor or synthetic shadow augmentation. Floating inputs are quantized to uint8 and restored.
 
     Args:
         img (ImageType): Input image. Multichannel images are supported.
@@ -633,6 +641,7 @@ def add_shadow(
         Automold--Road-Augmentation-Library: https://github.com/UjjwalSaxena/Automold--Road-Augmentation-Library
 
     """
+    img, input_dtype = to_uint8_working_image(img)
     max_value = MAX_VALUES_BY_DTYPE[np.uint8]
 
     img_shadowed = img.copy()
@@ -644,13 +653,9 @@ def add_shadow(
 
         shadowed_indices = poly_mask[:, :, 0] == max_value
         darkness = 1 - shadow_intensity
-        img_shadowed[shadowed_indices] = clip(
-            img_shadowed[shadowed_indices] * darkness,
-            np.dtype(np.uint8),
-            inplace=True,
-        )
+        img_shadowed[shadowed_indices] = clip(img_shadowed[shadowed_indices] * darkness, np.dtype(np.uint8))
 
-    return img_shadowed
+    return restore_uint8_working_image(img_shadowed, input_dtype)
 
 
 def add_shadow_batch(
@@ -719,15 +724,17 @@ def add_shadow_batch(
             casting="unsafe",
         )
 
-    return to_float(cast("ImageUInt8", result)) if input_dtype != np.uint8 else cast("ImageUInt8", result)
+    if input_dtype == np.uint8:
+        return cast("ImageUInt8", result)
+    floating_result = to_float(cast("ImageUInt8", result))
+    if input_dtype.type is np.float16:
+        return floating_result.astype(cast("np.dtype[np.float16]", input_dtype))
+    return floating_result.astype(cast("np.dtype[np.float32]", input_dtype), copy=False)
 
 
-@uint8_io
-@clipped
-@preserve_channel_dim
 def add_gravel(img: ImageType, gravels: list[Any]) -> ImageType:
     """Add gravel: write HLS saturation in rectangular regions. gravels: list of
-    (min_y, max_y, min_x, max_x, sat). RGB only; uint8 I/O.
+    (min_y, max_y, min_x, max_x, sat). RGB only. Floating inputs are quantized to uint8 and restored.
 
     This function adds gravel to an image by drawing gravel particles on the image.
     The gravel particles are drawn using the OpenCV function cv2.circle.
@@ -740,6 +747,7 @@ def add_gravel(img: ImageType, gravels: list[Any]) -> ImageType:
         ImageType: The image with gravel added.
 
     """
+    img, input_dtype = to_uint8_working_image(img)
     non_rgb_error(img)
     image_hls = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
 
@@ -747,15 +755,26 @@ def add_gravel(img: ImageType, gravels: list[Any]) -> ImageType:
         min_y, max_y, min_x, max_x, sat = gravel
         image_hls[min_y:max_y, min_x:max_x, 1] = sat
 
-    return cast("ImageType", cv2.cvtColor(image_hls, cv2.COLOR_HLS2RGB))
+    result = cast("ImageUInt8", cv2.cvtColor(image_hls, cv2.COLOR_HLS2RGB))
+    return restore_uint8_working_image(result, input_dtype)
 
 
-@float32_io
-@clipped
-@preserve_channel_dim
+def _spatter_working_image(img: ImageType) -> tuple[np.ndarray, np.dtype]:
+    if img.dtype.type is np.uint8:
+        return to_float(img), img.dtype
+    if img.dtype.type is np.float16:
+        return img.astype(np.float32), img.dtype
+    return img, img.dtype
+
+
+def _spatter_restore_dtype(img: np.ndarray, dtype: np.dtype) -> ImageType:
+    clip(img, out=img)
+    return from_float(img, target_dtype=dtype)
+
+
 def spatter_rain(img: ImageType, rain: np.ndarray) -> ImageType:
     """Add rain layer using precomputed pattern from get_rain_params. Simulates wet surfaces.
-    Used by Spatter. float32 I/O, clipped.
+    Used by Spatter. Float32 working arithmetic with output restored to the input dtype.
 
     This function applies spatter rain to an image by adding the rain to the image.
 
@@ -767,15 +786,13 @@ def spatter_rain(img: ImageType, rain: np.ndarray) -> ImageType:
         ImageType: The spatter rain applied to the image.
 
     """
-    return add(img, rain, inplace=False)
+    img, input_dtype = _spatter_working_image(img)
+    return _spatter_restore_dtype(add(img, rain), input_dtype)
 
 
-@float32_io
-@clipped
-@preserve_channel_dim
 def spatter_mud(img: ImageType, non_mud: np.ndarray, mud: np.ndarray) -> ImageType:
     """Spatter mud: blend non_mud and mud layers. non_mud, mud from get_mud_params. Simulates dirt on
-    lens/surface. float32 I/O, clipped.
+    lens/surface. Float32 working arithmetic with output restored to the input dtype.
 
     This function applies spatter mud to an image by adding the mud to the image.
 
@@ -788,15 +805,20 @@ def spatter_mud(img: ImageType, non_mud: np.ndarray, mud: np.ndarray) -> ImageTy
         ImageType: The spatter mud applied to the image.
 
     """
-    return add(img * non_mud, mud, inplace=False)
+    img, input_dtype = _spatter_working_image(img)
+    return _spatter_restore_dtype(add(img * non_mud, mud), input_dtype)
 
 
-def _prepare_spatter_batch(images: ImageType) -> ImageFloat32:
-    return to_float(images) if images.dtype == np.uint8 else cast("ImageFloat32", images.copy(order="C"))
+def _prepare_spatter_batch(images: ImageType) -> NDArray[np.float16] | NDArray[np.float32]:
+    return (
+        to_float(cast("NDArray[np.uint8]", images))
+        if images.dtype == np.uint8
+        else cast("NDArray[np.float16] | NDArray[np.float32]", images.copy(order="C"))
+    )
 
 
 def spatter_rain_batch(images: ImageType, rain: np.ndarray) -> ImageType:
-    """Apply a shared rain pattern to an RGB image batch using one vectorized float32 buffer for faster multi-image
+    """Apply a shared rain pattern to an RGB image batch using one owned floating buffer for multi-image
     processing while preserving the original dtype.
 
     Args:
@@ -815,7 +837,7 @@ def spatter_rain_batch(images: ImageType, rain: np.ndarray) -> ImageType:
 
 
 def spatter_mud_batch(images: ImageType, non_mud: np.ndarray, mud: np.ndarray) -> ImageType:
-    """Apply shared mud layers to an RGB image batch using one vectorized float32 buffer for faster multi-image
+    """Apply shared mud layers to an RGB image batch using one owned floating buffer for multi-image
     processing while preserving the original dtype.
 
     Args:
@@ -854,7 +876,7 @@ def get_rain_params(
         dict[str, Any]: Parameters for the rain effect.
 
     """
-    liquid_layer = clip(liquid_layer * 255, np.dtype(np.uint8), inplace=False)
+    liquid_layer = clip(liquid_layer * 255, np.dtype(np.uint8))
 
     # Generate distance transform with more defined edges
     dist = 255 - cv2.Canny(liquid_layer, 50, 150)
@@ -872,7 +894,7 @@ def get_rain_params(
             borderType=cv2.BORDER_REPLICATE,
         ),
     )
-    dist = clip(dist, np.dtype(np.uint8), inplace=True)
+    dist = clip(dist, np.dtype(np.uint8))
 
     dist = dist[..., np.newaxis]
 
@@ -952,12 +974,15 @@ def get_mud_params(
         mask.flat[flat_indices] = 1.0
 
     if sigma > 0:
-        mask = cv2.GaussianBlur(
-            mask,
-            ksize=(0, 0),
-            sigmaX=sigma,
-            sigmaY=sigma,
-            borderType=cv2.BORDER_REPLICATE,
+        mask = cast(
+            "NDArray[np.float32]",
+            cv2.GaussianBlur(
+                mask,
+                ksize=(0, 0),
+                sigmaX=sigma,
+                sigmaY=sigma,
+                borderType=cv2.BORDER_REPLICATE,
+            ),
         )
 
     # Safe normalization (avoid division by zero)
@@ -1012,7 +1037,7 @@ def apply_atmospheric_fog(
     """
     num_channels = img.shape[-1]
     transmission = np.multiply(depth_map, np.float32(-density), dtype=np.float32)
-    transmission = albucore_exp(transmission, inplace=True)[:, :, np.newaxis]
+    transmission = albucore_exp(transmission, out=transmission)[:, :, np.newaxis]
 
     fog_array = np.array(fog_color, dtype=np.float32)
     if len(fog_array) < num_channels:

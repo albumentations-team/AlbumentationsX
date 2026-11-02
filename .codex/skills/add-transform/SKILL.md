@@ -30,7 +30,8 @@ Implement the operation in the corresponding functional module, without transfor
 
 - Keep the functional layer deterministic; define stochastic behavior at the transform sampling boundary.
 - Use the performance workflow to compare kernels, remove redundant work, and check Albucore ownership.
-- Use `@uint8_io` / `@float32_io` on the owning functional operation when dtype conversion is needed.
+- Use a concrete Albucore router when its semantics match; otherwise keep working dtype, scaling, rounding, clipping,
+  and output restoration explicit in the operation owner.
 
 ## 3. Write the transform class
 

@@ -202,7 +202,7 @@ original constructor value is not sufficient.
 
 ### Aliases replay through canonical classes
 
-`BasicTransform.get_applied_replay_class()` defaults to the concrete class. Convenience or deprecated aliases declare
+`BasicTransform.get_applied_replay_class()` defaults to the concrete class. Convenience aliases declare
 `_applied_replay_class` when their realized configuration belongs to a canonical implementation:
 
 - `TimeReverse` replays as `HorizontalFlip`;

@@ -15,6 +15,7 @@ from albucore import (
     normalize_per_image,
     reduce_sum,
 )
+from numpy.typing import NDArray
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 from pydantic.functional_validators import AfterValidator
 from scipy import special
@@ -93,7 +94,7 @@ class Normalize(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         - For "standard" normalization, `mean`, `std`, and `max_pixel_value` must be provided.
@@ -223,7 +224,7 @@ class Normalize(ImageOnlyTransform):
         if self.clip_range is None:
             return normalized
         if normalized is img:
-            return np.clip(normalized, *self.clip_range)
+            return normalized.clip(*self.clip_range)
         return np.clip(normalized, *self.clip_range, out=normalized)
 
     def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
@@ -314,7 +315,7 @@ class Sharpen(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -754,7 +755,7 @@ class Superpixels(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -765,7 +766,7 @@ class Superpixels(ImageOnlyTransform):
         If performance is a concern, consider using `max_size` to limit the image size.
         - The effect of this transform can vary greatly depending on the `p_replace` and `n_segments` parameters.
         - When `p_replace` is high, the image can become highly abstracted, resembling a voronoi diagram.
-        - The transform preserves the original image type (uint8 or float32).
+        - The transform preserves the original image type (uint8, float16, or float32).
 
     Mathematical Formulation:
         1. The image is segmented into approximately `n_segments` superpixels using the SLIC algorithm.
@@ -1217,7 +1218,7 @@ class Dithering(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -1377,6 +1378,7 @@ class Dithering(ImageOnlyTransform):
                 dtype=True,
                 sampling_topology=True,
             )
+            random_noise: NDArray[np.int16] | NDArray[np.float64]
             if view.descriptor.value_scale == 255:
                 random_noise = sampling.random_generator.uniform(
                     self.noise_range[0] * 255,
@@ -1431,7 +1433,7 @@ class Halftone(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any

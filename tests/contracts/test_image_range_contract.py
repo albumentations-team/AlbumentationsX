@@ -53,7 +53,7 @@ def _range_reference_images(value: Any, dtype: np.dtype[Any]) -> Any:
 
 def _range_init_kwargs(case: TransformContractCase, dtype: np.dtype[Any]) -> dict[str, Any]:
     init_kwargs = copy.deepcopy(dict(case.init_kwargs))
-    if dtype == np.float32:
+    if dtype in (np.float16, np.float32):
         for parameter_name in _FLOAT32_FILL_PARAMETERS & init_kwargs.keys():
             init_kwargs[parameter_name] = 0
     interpolation_field = case.transform_cls.InitSchema.model_fields.get("interpolation")
@@ -65,7 +65,7 @@ def _range_init_kwargs(case: TransformContractCase, dtype: np.dtype[Any]) -> dic
     return init_kwargs
 
 
-@pytest.mark.parametrize("dtype", [np.uint8, np.float32], ids=["uint8", "float32"])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32], ids=["uint8", "float16", "float32"])
 @pytest.mark.parametrize("case", TRANSFORM_CONTRACT_CASES, ids=lambda case: case.case_id)
 def test_range_preserving_transforms_keep_normalized_image_targets_in_range(
     case: TransformContractCase,
@@ -90,7 +90,7 @@ def test_range_preserving_transforms_keep_normalized_image_targets_in_range(
             continue
         image = result[target]
         max_value = np.iinfo(image.dtype).max if image.dtype == np.uint8 else 1.0
-        assert image.dtype in (np.uint8, np.float32), f"{case.case_id}: {target} returned {image.dtype}"
+        assert image.dtype in (np.uint8, np.float16, np.float32), f"{case.case_id}: {target} returned {image.dtype}"
         assert np.isfinite(image).all(), f"{case.case_id}: {target} contains non-finite values"
         assert image.min() >= 0, f"{case.case_id}: {target} has values below zero"
         assert image.max() <= max_value, f"{case.case_id}: {target} exceeds {max_value}"

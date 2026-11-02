@@ -6,15 +6,17 @@ from collections.abc import Callable
 from typing import Literal, cast
 
 from albucore import exp as albucore_exp
+from numpy.typing import NDArray
 
 from albumentations.augmentations.pixel._functional_shared import (
     MAX_VALUES_BY_DTYPE,
     ImageType,
-    clipped,
+    clip,
     cv2,
-    float32_io,
+    from_float,
     np,
     reduce_sum,
+    to_float,
 )
 
 _Cv2InPlaceOp = Callable[..., np.ndarray]
@@ -22,7 +24,7 @@ _SPARSE_TISSUE_MAX_FRACTION = 0.4
 
 
 def rgb_to_optical_density(img: ImageType, eps: float = 1e-6) -> np.ndarray:
-    """Convert RGB image to optical density (-log). eps avoids log(0). Expects uint8 or float32 in
+    """Convert RGB image to optical density (-log). eps avoids log(0). Expects uint8, float16, or float32 in
     [0,1]. Returns (N*H*W, 3) float32. For stain normalization.
 
 
@@ -416,9 +418,12 @@ def _build_stain_affine_matrix(
 
 
 def _apply_stain_affine(optical_density: np.ndarray, affine_matrix: np.ndarray) -> np.ndarray:
-    result = cv2.transform(optical_density.reshape(-1, 1, 3), affine_matrix)
+    result = cast(
+        "NDArray[np.float32]",
+        cv2.transform(optical_density.reshape(-1, 1, 3), affine_matrix),
+    )
     result *= -1.0
-    return albucore_exp(result, inplace=True).reshape(-1, 3)
+    return albucore_exp(result, out=result).reshape(-1, 3)
 
 
 def _validate_stain_augmentation_inputs(
@@ -539,8 +544,6 @@ def _apply_residual_stain_affine(
     return result
 
 
-@clipped
-@float32_io
 def apply_he_stain_augmentation(
     img: ImageType,
     stain_matrix: np.ndarray,
@@ -598,6 +601,12 @@ def apply_he_stain_augmentation(
         ... )
 
     """
+    input_dtype = img.dtype
+    img = (
+        from_float(cast("NDArray[np.float16]", img), target_dtype=np.float32)
+        if input_dtype == np.float16
+        else to_float(img)
+    )
     stain_matrix, scale_factors, shift_values = _validate_stain_augmentation_inputs(
         stain_matrix,
         scale_factors,
@@ -636,7 +645,9 @@ def apply_he_stain_augmentation(
                 augment_background,
             )
 
-    return rgb_result.reshape(img.shape)
+    result = rgb_result.reshape(img.shape)
+    result = result if input_dtype == np.float32 else from_float(result, target_dtype=input_dtype)
+    return result if input_dtype == np.uint8 else clip(result, input_dtype)
 
 
 __all__ = [

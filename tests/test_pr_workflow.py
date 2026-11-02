@@ -109,6 +109,8 @@ def test_pre_commit_hooks_are_partitioned_without_direct_tool_bypasses() -> None
 
 def test_every_importing_pr_job_explicitly_selects_cpu_torch() -> None:
     expected_groups = {
+        "pre_commit_mypy": "ci-types",
+        "pre_commit_pyrefly": "ci-types",
         "pre_commit_other": "ci-quality",
         "compatibility": "ci-test",
         "targeted": "ci-test",

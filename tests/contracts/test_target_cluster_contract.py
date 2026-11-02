@@ -2,18 +2,25 @@ import numpy as np
 import pytest
 
 import albumentations as A
+from tests.helpers.contract_assertions import assert_contract_values_equal
 from tests.helpers.target_contracts import (
     CORE_TARGET_CONTRACT_PAIRS,
     EXTENDED_TARGET_CONTRACT_PAIRS,
+    IMAGE_TARGET_NAMES,
     TENSOR_IMAGE_ONLY_TARGET_CONTRACT_PAIRS,
     TENSOR_TARGET_CONTRACT_PAIRS,
+    VOLUME_ONLY_TARGET_CONTRACT_PAIRS,
     TargetContractPair,
     make_target_contract_data,
     run_target_cluster_contract,
     run_tensor_target_cluster_contract,
 )
 from tests.helpers.target_profiles import TARGET_PROFILES_BY_ID
-from tests.helpers.transform_cases import ALL_DUAL_TRANSFORM_CONTRACT_CASES, PRIMARY_IMAGE_ONLY_TRANSFORM_CONTRACT_CASES
+from tests.helpers.transform_cases import (
+    ALL_DUAL_TRANSFORM_CONTRACT_CASES,
+    PRIMARY_IMAGE_ONLY_TRANSFORM_CONTRACT_CASES,
+    PRIMARY_TRANSFORM_CONTRACT_CASES,
+)
 
 
 @pytest.mark.parametrize("pair", CORE_TARGET_CONTRACT_PAIRS, ids=lambda pair: pair.pair_id)
@@ -22,14 +29,41 @@ def test_core_target_cluster_contract(pair: TargetContractPair) -> None:
         run_target_cluster_contract(pair.case, pair.profile, seed)
 
 
-@pytest.mark.parametrize("pair", EXTENDED_TARGET_CONTRACT_PAIRS, ids=lambda pair: pair.pair_id)
-def test_extended_target_cluster_contract(pair: TargetContractPair) -> None:
-    run_target_cluster_contract(pair.case, pair.profile, seed=137)
+@pytest.mark.parametrize(
+    "pair,image_dtype",
+    [(pair, None) for pair in EXTENDED_TARGET_CONTRACT_PAIRS]
+    + [
+        (pair, np.dtype(np.float16))
+        for pair in EXTENDED_TARGET_CONTRACT_PAIRS
+        if pair.profile.required_targets & IMAGE_TARGET_NAMES
+    ],
+    ids=lambda value: value.pair_id if isinstance(value, TargetContractPair) else str(value),
+)
+def test_extended_target_cluster_contract(pair: TargetContractPair, image_dtype: np.dtype[np.float16] | None) -> None:
+    run_target_cluster_contract(pair.case, pair.profile, seed=137, image_dtype=image_dtype)
 
 
-@pytest.mark.parametrize("pair", TENSOR_TARGET_CONTRACT_PAIRS, ids=lambda pair: f"tensor-{pair.pair_id}")
-def test_tensor_target_cluster_contract(pair: TargetContractPair) -> None:
-    run_tensor_target_cluster_contract(pair.case, pair.profile, seed=137)
+@pytest.mark.parametrize(
+    "pair,image_dtype",
+    [(pair, None) for pair in TENSOR_TARGET_CONTRACT_PAIRS]
+    + [
+        (pair, np.dtype(np.float16))
+        for pair in TENSOR_TARGET_CONTRACT_PAIRS
+        if pair.profile.required_targets & IMAGE_TARGET_NAMES
+    ],
+    ids=lambda value: value.pair_id if isinstance(value, TargetContractPair) else str(value),
+)
+def test_tensor_target_cluster_contract(pair: TargetContractPair, image_dtype: np.dtype[np.float16] | None) -> None:
+    run_tensor_target_cluster_contract(pair.case, pair.profile, seed=137, image_dtype=image_dtype)
+
+
+@pytest.mark.parametrize(
+    "pair",
+    (*TENSOR_IMAGE_ONLY_TARGET_CONTRACT_PAIRS, *VOLUME_ONLY_TARGET_CONTRACT_PAIRS),
+    ids=lambda pair: pair.pair_id,
+)
+def test_float16_primary_target_cluster_contract(pair: TargetContractPair) -> None:
+    run_target_cluster_contract(pair.case, pair.profile, seed=137, image_dtype=np.dtype(np.float16))
 
 
 def test_target_contract_ids_are_unique() -> None:
@@ -71,6 +105,18 @@ def test_image_only_tensor_profiles_preserve_primary_image_data(pair: TargetCont
 
     assert image.dtype == expected_image.dtype
     np.testing.assert_array_equal(image, expected_image)
+
+
+def test_every_primary_volume_only_case_has_target_coverage() -> None:
+    cases = {
+        case.case_id
+        for case in PRIMARY_TRANSFORM_CONTRACT_CASES
+        if issubclass(case.transform_cls, A.VolumeOnlyTransform)
+    }
+    expected = {(case_id, profile_id) for case_id in cases for profile_id in ("volume", "volumes-batch")}
+    covered = {(pair.case.case_id, pair.profile.profile_id) for pair in VOLUME_ONLY_TARGET_CONTRACT_PAIRS}
+
+    assert covered == expected
 
 
 def test_every_target_profile_is_collected() -> None:
@@ -120,3 +166,27 @@ def test_bbox_profile_rejects_misaligned_label_fields(profile_id: str) -> None:
 
     with pytest.raises(AssertionError):
         profile.assert_result(case, source, result)
+
+
+@pytest.mark.parametrize(
+    "actual,expected,atol",
+    [
+        (np.array([3], dtype=np.uint8), np.array([0], dtype=np.uint8), 2),
+        (np.array([255], dtype=np.uint8), np.array([0], dtype=np.uint8), 2),
+        (np.array([1], dtype=np.uint8), np.array([0], dtype=np.uint8), 0),
+        (np.array([0.5], dtype=np.float16), np.array([0.25], dtype=np.float16), 2),
+        (np.array([0.5], dtype=np.float32), np.array([0.25], dtype=np.float32), 2),
+        (np.array([0], dtype=np.float32), np.array([0], dtype=np.uint8), 2),
+        (np.array([[0]], dtype=np.uint8), np.array([0], dtype=np.uint8), 2),
+    ],
+)
+def test_uint8_rounding_allowance_keeps_other_contract_checks(actual, expected, atol):
+    with pytest.raises(AssertionError):
+        assert_contract_values_equal(actual, expected, uint8_atol=atol)
+
+
+def test_uint8_rounding_allowance_accepts_only_the_declared_bound():
+    expected = np.array([0, 127, 255], dtype=np.uint8)
+    actual = np.array([2, 125, 253], dtype=np.uint8)
+
+    assert_contract_values_equal(actual, expected, uint8_atol=2)

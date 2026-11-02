@@ -1,11 +1,13 @@
 """Tests for the HubMixin class."""
 
+import json
 import platform
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+import albumentations as A
 from albumentations.core.hub_mixin import HubMixin, is_huggingface_hub_available
 
 # Skip tests if huggingface_hub is not available
@@ -76,3 +78,33 @@ def test_real_windows_paths():
             repo_id = mock_download.call_args[1]["repo_id"]
             assert "\\" not in repo_id, f"Backslash found in repo_id: {repo_id}"
             assert repo_id == "C:/Users/test/models/my_model"
+
+
+@pytest.mark.parametrize("upload_fails", [False, True])
+def test_push_to_hub_cleans_staged_configuration(upload_fails):
+    transform = A.Compose([A.NoOp()], telemetry=False)
+    staged_paths = []
+
+    def upload_file(**kwargs):
+        path = Path(kwargs["path_or_fileobj"])
+        staged_paths.append(path)
+        assert json.loads(path.read_text()) == A.to_dict(transform)
+        if upload_fails:
+            raise RuntimeError("upload failed")
+        return "https://huggingface.co/test-owner/test-transform/commit/137"
+
+    with patch("albumentations.core.hub_mixin.HfApi") as api_type:
+        api = api_type.return_value
+        api.create_repo.return_value.repo_id = "test-owner/test-transform"
+        api.upload_file.side_effect = upload_file
+
+        if upload_fails:
+            with pytest.raises(RuntimeError, match="upload failed"):
+                transform.push_to_hub("test-owner/test-transform")
+        else:
+            assert transform.push_to_hub("test-owner/test-transform") == (
+                "https://huggingface.co/test-owner/test-transform/commit/137"
+            )
+
+    assert len(staged_paths) == 1
+    assert not staged_paths[0].parent.exists()

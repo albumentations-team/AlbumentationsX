@@ -15,6 +15,23 @@ def test_rician_noise_has_the_expected_low_signal_noise_floor() -> None:
     np.testing.assert_allclose(result.mean(), std * np.sqrt(np.pi / 2), rtol=0.025)
 
 
+@pytest.mark.parametrize("channels", [1, 3, 5])
+def test_rician_noise_float16_matches_float32_reference(channels: int) -> None:
+    half_image = np.random.default_rng(137).random((32, 35, channels), dtype=np.float32).astype(np.float16)
+    original = half_image.copy()
+    transform_params = {"std_range": (0.1, 0.1), "per_channel": True, "p": 1.0}
+
+    half_result = A.Compose([A.RicianNoise(**transform_params)], seed=137)(image=half_image)["image"]
+    float_result = A.Compose([A.RicianNoise(**transform_params)], seed=137)(image=half_image.astype(np.float32))[
+        "image"
+    ]
+
+    assert half_result.shape == half_image.shape
+    assert half_result.dtype == np.float16
+    np.testing.assert_array_equal(half_result, float_result.astype(np.float16))
+    np.testing.assert_array_equal(half_image, original)
+
+
 def test_rician_noise_per_channel_mode_controls_field_sharing() -> None:
     image = np.zeros((64, 64, 3), dtype=np.float32)
 

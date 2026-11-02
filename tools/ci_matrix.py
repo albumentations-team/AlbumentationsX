@@ -109,6 +109,8 @@ CI_DEPENDENCY_GROUPS = {
 CI_RUNTIME_PROFILES = frozenset({"none", "torch-cpu"})
 TORCH_RUNTIME_JOBS = {
     PR_WORKFLOW: {
+        "pre_commit_mypy": "ci-types",
+        "pre_commit_pyrefly": "ci-types",
         "pre_commit_other": "ci-quality",
         "compatibility": "ci-test",
         "targeted": "ci-test",

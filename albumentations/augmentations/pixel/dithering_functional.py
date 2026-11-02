@@ -4,7 +4,7 @@ import functools
 from typing import Any, cast
 
 import numpy as np
-from albucore import apply_uint8_lut, float32_io
+from albucore import apply_uint8_lut, from_float, to_float
 
 from albumentations.augmentations.pixel._functional_shared import (
     MULTICHANNEL_LUT_LARGE_IMAGE_PIXELS,
@@ -330,8 +330,7 @@ def random_dither_uint8(
         lut_binary[128:] = 255
         return apply_uint8_lut(noisy, lut_binary)
 
-    lut = np.round(np.arange(256) * (n_colors - 1) / 255) / (n_colors - 1) * 255
-    lut = lut.astype(np.uint8)
+    lut = (np.round(np.arange(256) * (n_colors - 1) / 255) / (n_colors - 1) * 255).astype(np.uint8)
 
     return apply_uint8_lut(noisy, lut)
 
@@ -510,12 +509,28 @@ def ordered_dither(
     np.clip(dithered, 0, 1, out=dithered)
 
     # Quantize to n_colors levels using vectorized numpy operations
-    # Since @float32_io guarantees float32 input, use direct numpy operations
+    # Float32 working input keeps quantization arithmetic in one dtype.
     quantized = np.floor(dithered * n_colors) / n_colors
     return np.clip(quantized, 0, (n_colors - 1) / n_colors).astype(np.float32)
 
 
-@float32_io
+def _float32_working_image(img: ImageType) -> tuple[ImageFloat32, np.dtype]:
+    input_dtype = img.dtype
+    if input_dtype.type is np.uint8:
+        return to_float(cast("ImageUInt8", img)), input_dtype
+    if input_dtype.type is np.float16:
+        return img.astype(np.float32), input_dtype
+    return cast("ImageFloat32", img), input_dtype
+
+
+def _restore_dither_dtype(img: ImageFloat32, input_dtype: np.dtype) -> ImageType:
+    if input_dtype.type is np.uint8:
+        return from_float(img, np.uint8)
+    if input_dtype.type is np.float16:
+        return from_float(img, np.float16)
+    return img
+
+
 def error_diffusion_dither(
     img: ImageType,
     n_colors: int,
@@ -538,6 +553,8 @@ def error_diffusion_dither(
     if algorithm not in ERROR_DIFFUSION_KERNELS:
         msg = f"Unknown error diffusion algorithm: {algorithm}"
         raise ValueError(msg)
+
+    img, input_dtype = _float32_working_image(img)
 
     kernel = ERROR_DIFFUSION_KERNELS[algorithm]
     offsets: list[tuple[int, int]] = cast("list[tuple[int, int]]", kernel["offsets"])
@@ -583,7 +600,7 @@ def error_diffusion_dither(
         np.clip(channel, 0, 1, out=channel)
         result[:, :, channel_idx] = channel
 
-    return result
+    return _restore_dither_dtype(result, input_dtype)
 
 
 def _apply_dithering_to_grayscale(
@@ -693,8 +710,14 @@ def apply_dithering(
     Returns:
         ImageType: Dithered image in [0, 1] range with shape (H, W, C).
 
-    """
-    if color_mode == "grayscale":
-        return _apply_dithering_to_grayscale(img, method, n_colors, **kwargs)
+    Float16 inputs use float32 working values and return float16.
 
-    return _apply_single_dithering_method(img, method, n_colors, **kwargs)
+    """
+    input_dtype = img.dtype
+    working_img = img.astype(np.float32) if input_dtype == np.float16 else img
+    if color_mode == "grayscale":
+        result = _apply_dithering_to_grayscale(working_img, method, n_colors, **kwargs)
+    else:
+        result = _apply_single_dithering_method(working_img, method, n_colors, **kwargs)
+
+    return result.astype(np.float16, copy=False) if input_dtype == np.float16 else result

@@ -26,9 +26,7 @@ from ._functional_shared import (
     add_weighted,
     apply_uint8_lut,
     clip,
-    clipped,
     cv2,
-    float32_io,
     from_float,
     get_num_channels,
     math,
@@ -36,8 +34,9 @@ from ._functional_shared import (
     multiply,
     np,
     reduce_sum,
+    restore_uint8_working_image,
     to_float,
-    uint8_io,
+    to_uint8_working_image,
 )
 
 _PLASMA_FLOAT32_DEDICATED_MAX_BATCH_SIZE = 4
@@ -126,7 +125,6 @@ def generate_plasma_pattern(
     )
 
 
-@clipped
 def apply_plasma_brightness_contrast(
     img: ImageType,
     brightness_factor: float,
@@ -155,7 +153,8 @@ def apply_plasma_brightness_contrast(
         else to_float(cast("NDArray[np.uint8] | NDArray[np.float32]", img))
     )
     if brightness_factor == 0 and contrast_factor == 0:
-        return img if input_dtype == np.float32 else from_float(img, target_dtype=input_dtype)
+        result = img if input_dtype == np.float32 else from_float(img, target_dtype=input_dtype)
+        return result if input_dtype == np.uint8 else clip(result, input_dtype)
 
     if img.ndim > MONO_CHANNEL_DIMENSIONS:
         plasma_pattern = np.tile(plasma_pattern[..., np.newaxis], (1, 1, img.shape[-1]))
@@ -173,7 +172,8 @@ def apply_plasma_brightness_contrast(
         mean_factor = img_mean * (1.0 - contrast_weights)
         img = add(img, mean_factor, out=img)
 
-    return img if input_dtype == np.float32 else from_float(img, target_dtype=input_dtype)
+    result = img if input_dtype == np.float32 else from_float(img, target_dtype=input_dtype)
+    return result if input_dtype == np.uint8 else clip(result, input_dtype)
 
 
 def _plasma_pattern_for_batch(images: ImageType, plasma_pattern: np.ndarray) -> np.ndarray:
@@ -402,7 +402,6 @@ def apply_plasma_brightness_contrast_batch(
     return result
 
 
-@clipped
 def apply_plasma_shadow(
     img: ImageType,
     intensity: float,
@@ -427,8 +426,9 @@ def apply_plasma_shadow(
     if img.ndim > MONO_CHANNEL_DIMENSIONS:
         scaled_pattern = scaled_pattern[..., np.newaxis]
 
-    # Single multiply operation
-    return cast("ImageType", img * (1 - scaled_pattern))
+    result = cast("ImageType", img * (1 - scaled_pattern))
+    output_dtype = img.dtype if isinstance(img, np.ndarray) else np.dtype(str(img.dtype).removeprefix("torch."))
+    return clip(result, output_dtype)
 
 
 def create_directional_gradient(height: int, width: int, angle: float) -> np.ndarray:
@@ -620,10 +620,9 @@ def create_gaussian_illumination_gradient_from_spots(
     return gradient
 
 
-@float32_io
 def apply_linear_illumination(img: ImageType, intensity: float, angle: float) -> ImageType:
     """Apply linear illumination gradient to the image. Adds a signed gradient; intensity and angle
-    control direction and strength. float32 I/O.
+    control direction and strength. Uses float32 working arithmetic and restores the input dtype.
 
     Args:
         img (ImageType): Input image
@@ -634,6 +633,14 @@ def apply_linear_illumination(img: ImageType, intensity: float, angle: float) ->
         ImageType: Image with linear illumination
 
     """
+    input_dtype = img.dtype
+    if input_dtype.type is np.uint8:
+        img = to_float(img)
+    elif input_dtype.type is np.float16:
+        img = img.astype(np.float32)
+    else:
+        img = cast("ImageFloat32", img)
+
     height, width = img.shape[:2]
     gradient = create_directional_gradient(height, width, angle)
     _multiply_scalar_inplace(gradient, intensity)
@@ -643,28 +650,43 @@ def apply_linear_illumination(img: ImageType, intensity: float, angle: float) ->
         num_channels = img.shape[2]
         if num_channels > 1:
             gradient = cv2.merge([gradient] * num_channels)
-            result = cast("ImageType", cv2.add(img, gradient))
-            np.clip(result, 0, 1, out=result)
-            return result
+            result = cast("ImageFloat32", cv2.add(img, gradient))
+            clip(result, out=result)
+            return _restore_linear_illumination_dtype(result, input_dtype)
         gradient = gradient[..., np.newaxis]
 
     result = img + gradient
-    np.clip(result, 0, 1, out=result)
-    return result
+    clip(result, out=result)
+    return _restore_linear_illumination_dtype(cast("ImageFloat32", result), input_dtype)
 
 
-@float32_io
 def apply_linear_illumination_batch(images: ImageType, intensity: float, angle: float, **params: Any) -> ImageType:
     """Applies one sampled linear gradient to every `(N, H, W, C)` image, matching the single-image kernel's
     normalization, clipping, and dtype-conversion semantics.
     """
+    input_dtype = images.dtype
+    if input_dtype.type is np.uint8:
+        images = to_float(images)
+    elif input_dtype.type is np.float16:
+        images = images.astype(np.float32)
+    else:
+        images = cast("ImageFloat32", images)
+
     height, width = images.shape[1:3]
     gradient = create_directional_gradient(height, width, angle)
     _multiply_scalar_inplace(gradient, intensity)
     batch_gradient = gradient if images.ndim == NUM_MULTI_CHANNEL_DIMENSIONS else gradient[..., np.newaxis]
     result = images + batch_gradient
-    np.clip(result, 0, 1, out=result)
-    return result
+    clip(result, out=result)
+    return _restore_linear_illumination_dtype(cast("ImageFloat32", result), input_dtype)
+
+
+def _restore_linear_illumination_dtype(img: ImageFloat32, input_dtype: np.dtype) -> ImageType:
+    if input_dtype.type is np.uint8:
+        return from_float(img, np.uint8)
+    if input_dtype.type is np.float16:
+        return from_float(img, np.float16)
+    return img
 
 
 def _apply_clipped_illumination_batch(
@@ -752,14 +774,13 @@ def apply_illumination_batch(
     return result
 
 
-@clipped
 def apply_corner_illumination(
     img: ImageType,
     intensity: float,
     corner: Literal[0, 1, 2, 3],
 ) -> ImageType:
     """Apply corner illumination (darkened corners) to the image. Gradient from center; intensity and
-    corner (0-3) control strength and which corner. Clipped.
+    corner (0-3) control strength and which corner. Floating results are clipped to the input dtype range.
 
     Args:
         img (ImageType): Input image
@@ -771,20 +792,19 @@ def apply_corner_illumination(
 
     """
     if intensity == 0:
-        return img.copy()
+        result = img.copy()
+    else:
+        height, width = img.shape[:2]
+        pattern = create_corner_illumination_gradient(height, width, intensity, corner)
 
-    height, width = img.shape[:2]
+        if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
+            num_channels = img.shape[2]
+            pattern = pattern[..., np.newaxis] if num_channels == 1 else cv2.merge([pattern] * num_channels)
 
-    pattern = create_corner_illumination_gradient(height, width, intensity, corner)
-
-    if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
-        num_channels = img.shape[2]
-        pattern = pattern[..., np.newaxis] if num_channels == 1 else cv2.merge([pattern] * num_channels)
-
-    return multiply(img, pattern)
+        result = multiply(img, pattern)
+    return result if img.dtype == np.uint8 else clip(result, img.dtype)
 
 
-@clipped
 def apply_gaussian_illumination(
     img: ImageType,
     intensity: float,
@@ -792,7 +812,7 @@ def apply_gaussian_illumination(
     sigma: float,
 ) -> ImageType:
     """Add a Gaussian-shaped bright or dark spot; intensity, center, and sigma define the falloff.
-    Use for spotlight or vignette effects. Clipped. Same channel count.
+    Use for spotlight or vignette effects. Same channel count; floating results are clipped to the input range.
 
     Args:
         img (ImageType): Input image
@@ -802,19 +822,19 @@ def apply_gaussian_illumination(
 
     """
     if intensity == 0:
-        return img.copy()
+        result = img.copy()
+    else:
+        height, width = img.shape[:2]
+        x = create_gaussian_illumination_gradient(height, width, intensity, center, sigma)
 
-    height, width = img.shape[:2]
-    x = create_gaussian_illumination_gradient(height, width, intensity, center, sigma)
+        if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
+            num_channels = img.shape[2]
+            x = x[..., np.newaxis] if num_channels == 1 else cv2.merge([x] * num_channels)
 
-    if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
-        num_channels = img.shape[2]
-        x = x[..., np.newaxis] if num_channels == 1 else cv2.merge([x] * num_channels)
-
-    return multiply(img, x)
+        result = multiply(img, x)
+    return result if img.dtype == np.uint8 else clip(result, img.dtype)
 
 
-@clipped
 def apply_gaussian_illumination_spots(
     img: ImageType,
     spots: Sequence[tuple[float, float, float, float]],
@@ -823,16 +843,17 @@ def apply_gaussian_illumination_spots(
     its input dtype.
     """
     if all(spot[3] == 0 for spot in spots):
-        return img.copy()
+        result = img.copy()
+    else:
+        height, width = img.shape[:2]
+        x = create_gaussian_illumination_gradient_from_spots(height, width, spots)
 
-    height, width = img.shape[:2]
-    x = create_gaussian_illumination_gradient_from_spots(height, width, spots)
+        if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
+            num_channels = img.shape[2]
+            x = x[..., np.newaxis] if num_channels == 1 else cv2.merge([x] * num_channels)
 
-    if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
-        num_channels = img.shape[2]
-        x = x[..., np.newaxis] if num_channels == 1 else cv2.merge([x] * num_channels)
-
-    return multiply(img, x)
+        result = multiply(img, x)
+    return result if img.dtype == np.uint8 else clip(result, img.dtype)
 
 
 def _auto_contrast_single_channel(
@@ -908,11 +929,11 @@ def _auto_contrast_multichannel_hist(
         if ignore is not None and channel_idx == ignore:
             continue
 
-        hist = hists[channel_idx]
-        if hist is None:
+        channel_hist = hists[channel_idx]
+        if channel_hist is None:
             continue
 
-        lut = _create_auto_contrast_lut(hist, cutoff, ignore, method, max_value)
+        lut = _create_auto_contrast_lut(channel_hist, cutoff, ignore, method, max_value)
         if lut is None:
             continue
         result[..., channel_idx] = apply_uint8_lut(cast("ImageUInt8", channel), lut, out=cast("ImageUInt8", channel))
@@ -950,7 +971,6 @@ def _should_use_auto_contrast_multichannel_lut(
     )
 
 
-@uint8_io
 def auto_contrast(
     img: ImageType,
     cutoff: float,
@@ -970,20 +990,24 @@ def auto_contrast(
         ImageType: Image with enhanced contrast
 
     """
+    img, input_dtype = to_uint8_working_image(img)
     num_channels = get_num_channels(img)
-    img = cast("ImageUInt8", img)
     max_value = int(MAX_VALUES_BY_DTYPE[img.dtype])
 
     if method == "pil" and cutoff == 0 and ignore is None and num_channels == 1:
-        return _auto_contrast_pil_zero_cutoff(img, max_value)
+        result = _auto_contrast_pil_zero_cutoff(img, max_value)
+        return restore_uint8_working_image(result, input_dtype)
 
     if img.ndim == MONO_CHANNEL_DIMENSIONS:
-        return _auto_contrast_single_channel(img, cutoff, ignore, method, max_value)
+        result = _auto_contrast_single_channel(img, cutoff, ignore, method, max_value)
+        return restore_uint8_working_image(result, input_dtype)
 
     if _should_use_auto_contrast_multichannel_lut(img, ignore, method, num_channels):
-        return _auto_contrast_multichannel_lut(img, cutoff, method, max_value)
+        result = _auto_contrast_multichannel_lut(img, cutoff, method, max_value)
+        return restore_uint8_working_image(result, input_dtype)
 
-    return _auto_contrast_multichannel_hist(img, cutoff, ignore, method, max_value)
+    result = _auto_contrast_multichannel_hist(img, cutoff, ignore, method, max_value)
+    return restore_uint8_working_image(result, input_dtype)
 
 
 def create_contrast_lut(
@@ -1309,7 +1333,6 @@ def apply_film_grain(
     return clip(result, out=result) if img.dtype in (np.float16, np.float32) else result
 
 
-@uint8_io
 def apply_halftone(
     img: ImageType,
     dot_size: int,
@@ -1327,7 +1350,8 @@ def apply_halftone(
         ImageType: Image with halftone effect applied.
 
     """
-    img = cast("ImageType", np.ascontiguousarray(img))
+    img, input_dtype = to_uint8_working_image(img)
+    img = np.ascontiguousarray(img)
     height, width = img.shape[:2]
     num_channels = img.shape[-1]
 
@@ -1384,9 +1408,10 @@ def apply_halftone(
                 cv2.circle(canvas, (cx, cy), radius, color, -1, lineType=cv2.LINE_AA)
 
     if blend > 0:
-        return add_weighted(img, blend, canvas, 1.0 - blend)
+        result = add_weighted(img, blend, canvas, 1.0 - blend)
+        return restore_uint8_working_image(result, input_dtype)
 
-    return canvas
+    return restore_uint8_working_image(canvas, input_dtype)
 
 
 def apply_lens_flare(
@@ -1429,14 +1454,14 @@ def apply_lens_flare(
 
     if bloom_radius > 0:
         ksize = bloom_radius * 2 + 1
-        flare_layer = cv2.GaussianBlur(flare_layer, (ksize, ksize), 0)
+        flare_layer = cast("NDArray[np.float32]", cv2.GaussianBlur(flare_layer, (ksize, ksize), 0))
 
     for gx, gy, gradius, galpha in ghosts:
         ghost = np.zeros((height, width), dtype=np.float32)
         cv2.circle(ghost, (gx, gy), gradius, 1.0, -1, lineType=cv2.LINE_AA)
         if gradius > 2:
             gk = max(3, gradius | 1)
-            ghost = cv2.GaussianBlur(ghost, (gk, gk), 0)
+            ghost = cast("NDArray[np.float32]", cv2.GaussianBlur(ghost, (gk, gk), 0))
         flare_layer += ghost * galpha
 
     np.clip(flare_layer, 0, 1, out=flare_layer)

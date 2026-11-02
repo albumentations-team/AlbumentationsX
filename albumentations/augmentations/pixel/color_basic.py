@@ -90,7 +90,7 @@ class RandomToneCurve(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -232,10 +232,10 @@ class HueSaturationValue(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
-        3
+        1 or 3
 
     Note:
         - The transform first converts the input RGB image to the HSV color space.
@@ -352,7 +352,7 @@ class Solarize(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -586,7 +586,7 @@ class Equalize(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         1,3
@@ -1117,7 +1117,7 @@ class CLAHE(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         1, 3
@@ -1323,7 +1323,7 @@ class AutoContrast(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         - The transform processes each color channel independently

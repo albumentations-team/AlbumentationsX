@@ -1,6 +1,7 @@
 """Half morphology storage and precision contracts."""
 
 from collections.abc import Callable
+from typing import Any
 
 import cv2
 import numpy as np
@@ -40,3 +41,34 @@ def test_half_morphology_matches_float32_and_preserves_source(
     assert result.shape == source.shape
     np.testing.assert_array_equal(result, expected)
     np.testing.assert_array_equal(source, original)
+
+
+@pytest.mark.parametrize("dtype", [np.dtype(np.uint8), np.dtype(np.float16), np.dtype(np.float32)])
+@pytest.mark.parametrize("operation_name", ["erode", "dilate"])
+def test_morphology_single_channel_uses_explicit_destination(
+    dtype: np.dtype,
+    operation_name: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operation = getattr(fgeometric, operation_name)
+    image = np.random.default_rng(137).random((13, 17, 1), dtype=np.float32).astype(dtype)
+    original = image.copy()
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 5))
+    backend = getattr(cv2, operation_name)
+    destinations: list[np.ndarray] = []
+
+    def run_backend(src: np.ndarray, kernel_arg: np.ndarray, **kwargs: Any) -> np.ndarray:
+        destination = kwargs.get("dst")
+        assert isinstance(destination, np.ndarray)
+        assert destination.shape == src.shape
+        assert destination.dtype == src.dtype
+        destinations.append(destination)
+        return backend(src, kernel_arg, **kwargs)
+
+    monkeypatch.setattr(cv2, operation_name, run_backend)
+    result = operation(image, kernel)
+
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+    assert len(destinations) == 1
+    np.testing.assert_array_equal(image, original)

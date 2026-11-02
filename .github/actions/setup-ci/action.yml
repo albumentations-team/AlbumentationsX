@@ -9,7 +9,7 @@ inputs:
     description: Locked PEP 735 tool group to install.
     required: true
   runtime-profile:
-    description: Runtime selected by the job. Use none for static work and torch-cpu for package imports.
+    description: Runtime selected by the job. Use torch-cpu for package imports and runtime API typing.
     required: false
     default: none
 

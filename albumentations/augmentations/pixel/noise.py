@@ -418,7 +418,7 @@ class ISONoise(_FullVolumeNoiseTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         3
@@ -713,7 +713,7 @@ class ShotNoise(_FullVolumeNoiseTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -1000,7 +1000,7 @@ class AdditiveNoise(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any

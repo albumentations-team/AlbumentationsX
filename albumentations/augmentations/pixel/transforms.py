@@ -94,7 +94,7 @@ class Normalize(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         - For "standard" normalization, `mean`, `std`, and `max_pixel_value` must be provided.
@@ -315,7 +315,7 @@ class Sharpen(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -755,7 +755,7 @@ class Superpixels(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -766,7 +766,7 @@ class Superpixels(ImageOnlyTransform):
         If performance is a concern, consider using `max_size` to limit the image size.
         - The effect of this transform can vary greatly depending on the `p_replace` and `n_segments` parameters.
         - When `p_replace` is high, the image can become highly abstracted, resembling a voronoi diagram.
-        - The transform preserves the original image type (uint8 or float32).
+        - The transform preserves the original image type (uint8, float16, or float32).
 
     Mathematical Formulation:
         1. The image is segmented into approximately `n_segments` superpixels using the SLIC algorithm.
@@ -1218,7 +1218,7 @@ class Dithering(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -1433,7 +1433,7 @@ class Halftone(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any

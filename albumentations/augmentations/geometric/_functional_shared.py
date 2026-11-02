@@ -15,7 +15,6 @@ import numpy as np
 from albucore import (
     clip,
     from_float,
-    preserve_channel_dim,
     reduce_sum,
     remap,
     to_float,
@@ -88,7 +87,6 @@ __all__ = [
     "obb_to_polygons",
     "os",
     "polygons_to_obb",
-    "preserve_channel_dim",
     "reduce_sum",
     "remap",
     "to_float",

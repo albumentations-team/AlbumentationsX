@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Literal
+from typing import Literal, cast
+
+from numpy.typing import NDArray
 
 from ._functional_grid import (
     swap_tiles_on_image,
@@ -293,7 +295,10 @@ def perspective_bboxes(
         polygons = polygons.copy()
         polygons[..., 0] *= width
         polygons[..., 1] *= height
-        transformed = cv2.perspectiveTransform(polygons.reshape(-1, 1, 2).astype(np.float32), matrix)
+        transformed = cast(
+            "NDArray[np.float32]",
+            cv2.perspectiveTransform(polygons.reshape(-1, 1, 2).astype(np.float32), matrix),
+        )
         transformed = transformed.reshape(polygons.shape)
 
         if keep_size:
@@ -316,9 +321,9 @@ def perspective_bboxes(
     ).transpose(2, 0, 1)
     points_reshaped = points.reshape(-1, 1, 2)
 
-    transformed_points = cv2.perspectiveTransform(
-        points_reshaped.astype(np.float32),
-        matrix,
+    transformed_points = cast(
+        "NDArray[np.float32]",
+        cv2.perspectiveTransform(points_reshaped.astype(np.float32), matrix),
     )
     transformed_points = transformed_points.reshape(-1, 4, 2)
 

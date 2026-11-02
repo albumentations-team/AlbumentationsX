@@ -1,18 +1,26 @@
 # Float16 support for transforms and Compose
 
-**Status:** coordinated Core/AX implementation in progress; full float16 coverage and two-platform acceptance remain open.
+**Status:** current-source full suites pass on macOS ARM64. Linux full suites pass only for the October 30 source snapshot; current-source Linux correctness remains open. Performance and working-memory acceptance remain open on both platforms.
 **Decisions recorded:** 2026-10-12 through 2026-10-17.
 **Initial baseline:** AlbumentationsX `1ab3d3d944a2ddad361a13bd34c447824e78f221`, albucore 0.3.0.
-**Current dependency target:** albucore 0.3.1 plus the coordinated API migration. The final published pin must contain every consumed API.
+**Published dependency:** [Albucore 0.3.2](https://pypi.org/project/albucore/0.3.2/) provides the explicit output API used by this branch. AX pins this release in Python and Conda metadata; CI installs the published wheel.
 
 Support NumPy `float16` and eager CPU Torch `float16` throughout public transforms and composition. Cover 2D images,
 3D volumes, collections, masks, additional targets, and reference/donor data. Preserve float16 outputs, including
 `Normalize` and `ToFloat`. Compare old and new implementations at the same dtype through the full public `Compose`
-call. Float16 versus float32 is mandatory diagnostic evidence, not a migration gate.
+call. Same-dtype results determine acceptance; float16 versus float32 is mandatory diagnostic evidence.
 
-Deliver the dependency upgrade, new Albucore API and AX float16 integration together. Preserve frozen baseline
-snapshots so a failure can still be attributed to its source and dependency change. Published 0.3.1 and the current
-unpublished `out` API are distinct artifacts: release a compatible Core/AX pair before declaring the final pin ready.
+Preserve frozen baseline snapshots so a failure can still be attributed to its source and dependency change.
+The coordinated Core/AX pair now uses the published Albucore 0.3.2 wheel.
+
+## Acceptance environment
+
+Run final correctness, performance, and memory acceptance on Python 3.11, the lowest supported Python minor shared
+with Albucore. Resolve the newest stable third-party dependencies that support Python 3.11 and each target platform.
+The profile recorded on 2026-10-31 used NumPy 2.4.6, OpenCV 5.0.0.93, PyTorch 2.15.0 on macOS ARM64 and
+`2.15.0+cpu` on Linux x86-64, NumKong 7.8.6, and StringZilla 5.3.2. Re-resolve before future acceptance runs and
+record the complete package inventory and imported Core/AX source paths. A newer Python or stale project lock does not
+replace this profile. The full compatibility matrix on Python 3.12–3.14 remains additional evidence.
 
 Preserve the relationship between input and output types:
 
@@ -88,29 +96,24 @@ represented labels, and use the configured mask interpolation. A mask's channels
 
 ## What the dependency provides and what AX still owns
 
-The published [albucore 0.3.0 package](https://pypi.org/project/albucore/0.3.0/) supplies float16-aware arithmetic,
-normalization, conversion, geometry, and NumPy/CPU Tensor routes. Its `float32_io` and `uint8_io` decorators restore
-the input dtype. These routes establish reusable primitives; they do not prove every AX transform's correctness or
-the Compose performance requirement.
+Each AX functional owner keeps transform-specific conversion, rounding, clipping, and dtype restoration explicit.
+Core primitives alone do not prove per-transform Compose correctness or performance. Current local test runs and CI
+use the published Albucore wheel.
 
-The accompanying dependency change pins albucore 0.3.1 in Python and Conda metadata. The resolved graph upgrades
-NumKong from 7.8.4 to the required 7.8.5 and keeps the other locked package versions. Review the changed distributions
-with `tools/update_dependency_licenses.py` and update the existing license registry. Torch remains an externally
-selected runtime; use the existing `ci-torch-cpu` profile for validation.
+The development branch records Albucore 0.3.2 in Python and Conda metadata. Its lock selects NumKong 7.8.7 and
+StringZilla 5.3.2. Changed distributions are reviewed through `tools/update_dependency_licenses.py` and the existing
+license registry. Torch remains an externally selected runtime; the `ci-torch-cpu` validation profile selects 2.15.0.
 
 The source currently has these integration boundaries:
 
-| Boundary | Owning files | Required work |
+| Boundary | Current implementation | Remaining acceptance |
 | --- | --- | --- |
-| NumPy image types | `albumentations/core/type_definitions.py` | Include `NDArray[np.float16]` in shared image/volume types and correct affected return annotations. |
-| Tensor acceptance | `albumentations/core/tensor.py` | Add float16 to image and mask dtype sets; keep annotation dtypes unchanged. |
-| Root preparation and restoration | `albumentations/core/composition.py` | Verify float16 validation, channel repair, metadata, binding, and skip paths. Change only a demonstrated gap. |
-| Leaf execution and bridging | `albumentations/core/transforms_interface.py` | Preserve dtype through native and NumPy fallback handlers, including target-dependent sampling. |
-| Pixel operations | `albumentations/augmentations/pixel/`, `blur/`, `medical/`, `spectrogram/` | Remove float32-only input assumptions, fix output promotion, and route reusable atoms to albucore. |
-| Spatial operations | `albumentations/augmentations/geometric/`, `crops/`, `transforms3d/` | Audit direct OpenCV/SciPy calls and image/mask precision independently. |
-| Conversion and terminal transforms | `albumentations/augmentations/other/type_transform.py`, `albumentations/pytorch/transforms.py` | Implement the explicit dtype behavior above without adding constructor options. |
-| Mixing and auxiliary inputs | `albumentations/augmentations/mixing/`, `dropout/` | Audit domain adaptation, references, donors, fill values, data-dependent statistics, and output dtype. |
-| Coverage | `tests/helpers/transform_cases.py`, `tests/helpers/target_profiles.py`, `tests/contracts/` | Extend the shared inventory and workloads; avoid a second transform registry. |
+| NumPy and CPU Tensor image types | Shared image/volume aliases and Tensor dtype acceptance include float16; annotations retain their existing precision. | Keep the full supported target/dtype matrix green on both platforms. |
+| Compose preparation and restoration | Root Compose owns optional-channel adaptation, container preservation and output restoration. | Complete old/new timing and strict memory checks through full Compose. |
+| Pixel, medical, conversion and terminal operations | Current functional owners preserve or explicitly restore the declared output dtype. | Finish same-dtype speed and memory matrices for the affected families. |
+| Geometry, crops and volume routes | Current source retains explicit ranks/layouts, coordinate precision and route-specific kernels. | Complete coordinate, border, batch and volume timing/memory acceptance on both platforms. |
+| Mixing, references and annotations | AX keeps sampling, donor/reference policy and annotation precision. | Finish the affected target, auxiliary-input and full-path acceptance cases. |
+| Shared test inventory | The existing transform registry and target profiles cover the public transform set. | Keep its dtype-sensitive constructor modes and Compose routes current. |
 
 Keep augmentation policy, sampling, target dispatch, and annotation processing in AX. Keep reusable array kernels and
 backend selection in albucore. Read [NumPy/Tensor routing](numpy-tensor-routing.md) and
@@ -129,21 +132,11 @@ acceptable when the full AX route passes correctness, same-dtype performance and
 native accelerated route only after the required dependency release exists. Continue independent operation families;
 do not disable required dtype support or claim completion while required routes remain blocked.
 
-### Upgrade compatibility findings
+### Initial package findings
 
-The initial albucore 0.3.0 validation on macOS arm64 / Python 3.12 found two blockers before float16 implementation.
-These findings describe that baseline; recheck them against published 0.3.1 before closing the upgrade stage:
-
-- Eleven existing tests fail because albucore 0.3.0's NumPy flips index channel-last arrays. AX still forwards some
-  bare `(H, W)` inputs from D4 helpers and composition nodes such as `Sequential`. Horizontal flip uses the wrong
-  axis; vertical flip raises `IndexError`. Apply the channel rule above to preserve AX's existing two-dimensional
-  image and mask behavior while satisfying albucore's explicit-channel input contract.
-- The repository's Pyrefly hook reports 212 errors after the upgrade. Albucore's wider float16/Tensor signatures
-  conflict with AX's narrower image types, return annotations, and decorated NumPy helpers. Preserve container and
-  dtype relationships in the owning type definitions; do not resolve these errors with suppressions or blanket casts.
-
-These are upgrade blockers, not evidence that the planned float16 routes are implemented. The wheel/sdist and source
-license checks pass. Resolve both blockers before treating the dependency upgrade as ready.
+The first Albucore 0.3.0 integration exposed grayscale-channel and type-consumer issues. The current local Core/AX
+source pair now passes the full ARM64 and Linux suites plus actual-stub mypy and Pyrefly checks. These results apply to
+the local source pair; they do not establish compatibility with the published 0.3.1 wheel.
 
 ## Estimate memory traffic before choosing a route
 
@@ -237,9 +230,8 @@ that use half working buffers. Production replay keeps its existing materializat
 guarantee that a record captured in one dtype can be replayed in another.
 
 When a dtype-preserving operation on float16 input needs float32 computation, restore float16 before returning.
-Reuse an existing albucore decorator or primitive when it owns that conversion. Add a helper only when it owns a real
-shared operation. No dtype flag, second traversal, global precision decorator, or parallel backend registry is needed
-for this contract.
+Reuse a concrete Albucore operation when it owns that conversion. Add a helper only when it owns a real shared
+operation. No dtype flag, second traversal, or parallel backend registry is needed for this contract.
 
 ## Prove correctness through the shared test inventory
 
@@ -270,6 +262,8 @@ Required evidence:
   normalized signed outputs. Keep indexing, reflections, copying, and categorical mask results exact. Test constant
   inputs, near-zero variance, reductions large enough to overflow half accumulation, and values near clipping or
   rounding boundaries.
+- Float32 `Sharpen(method="kernel")` uses `rtol=0`, `atol=1e-7` for the singleton-channel constant-image reference;
+  Linux OpenCV differed from direct scalar multiplication by `5.96e-8`. Uint8 and float16 cases remain exact.
 - For an existing uint8-to-float32-to-uint8 route, require a confirmed full-route speedup and a maximum absolute
   uint8 image error of one intensity level per element against the previous implementation. Compute differences in
   a signed or wider dtype so uint8 subtraction cannot wrap. The allowance never applies to categorical masks,
@@ -304,10 +298,9 @@ provide controlled kernel/dispatch evidence separately; they do not replace the 
 
 Use one CPU thread per process, OpenCV internal threading disabled, and Torch intra/inter-op threads set to one.
 Set BLAS/OpenMP thread controls before imports. Record effective settings, CPU/OS, package versions, source SHAs,
-shape, dtype, mode, parameters, warmup, repetitions, median, and timing dispersion. The required performance platforms
-are native macOS ARM64 and Linux x86_64. Fix and record the exact CPU models and dependency versions before measuring;
-performance completion requires passing both platforms. Windows participates in correctness and compatibility
-validation, including float16 coverage, but has no performance acceptance gate in this plan.
+shape, dtype, mode, parameters, warmup, repetitions, median, and timing dispersion. The required acceptance platforms
+are native macOS ARM64 and Linux x86_64. Speed, memory, and correctness must pass independently on each. Fix and
+record the exact CPU models and dependency versions before measuring.
 
 The migration gate applies independently on each platform to old/new implementations at the same dtype. An individual
 operation may regress by up to 5% only with substantial code simplification, preserved accuracy, no working-memory
@@ -325,15 +318,13 @@ solely from half-sized input or output arrays.
 
 ## Completion conditions
 
-- [ ] A published compatible albucore release, starting from 0.3.1, is pinned; the lock, Conda recipe, reviewed
-  versions, and install/artifact checks agree, including any released corrections needed by this work.
+- [x] A compatible Albucore 0.3.2 wheel is published and selected by the AX exact pin, lock and Conda recipe.
 - [ ] Every applicable built-in transform, constructor mode, target family, and composition node has float16 coverage.
 - [ ] NumPy and CPU Torch outputs satisfy the agreed dtype, precision, mask, layout, ownership, and replay contracts.
 - [ ] Float32 regression expectations remain valid; accelerated uint8 float round trips satisfy the agreed maximum
   pixel error of one. Other uint8 routes and categorical masks remain exact; bbox/keypoint precision stays unchanged.
 - [ ] Same-dtype old/new full AX paths pass on macOS ARM64 and Linux x86_64; half/float32 diagnostics are recorded.
 - [ ] Old/new working memory does not grow at the same dtype; fixed code pages and half/float32 diagnostics are reported separately.
-- [ ] Windows correctness and compatibility checks pass, including applicable float16 contracts.
 - [ ] Sampling is reproducible and parameter replay is exact within each dtype; existing uint8/float32 random
   sequences remain unchanged. Numerical comparisons use identical recorded parameters across dtypes.
 - [ ] Documentation describes supported routes accurately; known upstream gaps remain explicit until resolved.

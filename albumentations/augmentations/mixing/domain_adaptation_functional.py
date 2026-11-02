@@ -14,19 +14,20 @@ import numpy as np
 from albucore import (
     add_weighted,
     clip,
-    clipped,
     from_float,
     get_num_channels,
     mean_std,
-    preserve_channel_dim,
     to_float,
-    uint8_io,
 )
 from numpy.typing import NDArray
 
 import albumentations.augmentations.geometric.functional as fgeometric
+from albumentations.augmentations.pixel._functional_shared import (
+    restore_uint8_working_image,
+    to_uint8_working_image,
+)
 from albumentations.augmentations.utils import PCA
-from albumentations.core.type_definitions import MONO_CHANNEL_DIMENSIONS, ImageType
+from albumentations.core.type_definitions import ImageType
 
 __all__ = [
     "adapt_pixel_distribution",
@@ -394,8 +395,6 @@ class DomainAdapter:
         return self.reconstruct(result, height, width)
 
 
-@clipped
-@preserve_channel_dim
 def adapt_pixel_distribution(
     img: ImageType,
     ref: np.ndarray,
@@ -429,14 +428,21 @@ def adapt_pixel_distribution(
     if img_num_channels != ref_num_channels:
         raise ValueError("Input image and reference image must have the same number of channels.")
 
+    original_dtype = img.dtype
+    half_reference_aligned = original_dtype == np.float16 and img.shape == ref.shape
+    if half_reference_aligned:
+        img = from_float(cast("NDArray[np.float16]", img), np.dtype(np.uint8))
+        ref = from_float(cast("NDArray[np.float16]", ref), np.dtype(np.uint8))
+    elif original_dtype == np.float16:
+        img = img.astype(np.float32)
+        ref = ref.astype(np.float32)
+
     if img.shape != ref.shape:
         ref = fgeometric.resize(ref, cast("tuple[int, int]", img.shape[:2]), cv2.INTER_AREA)
 
-    original_dtype = img.dtype
-
-    if original_dtype == np.float32:
-        img = from_float(cast("np.ndarray", img), np.dtype(np.uint8))
-        ref = from_float(ref, np.dtype(np.uint8))
+    if original_dtype == np.float32 or (original_dtype == np.float16 and not half_reference_aligned):
+        img = from_float(cast("NDArray[np.float16] | NDArray[np.float32]", img), np.dtype(np.uint8))
+        ref = from_float(cast("NDArray[np.float16] | NDArray[np.float32]", ref), np.dtype(np.uint8))
 
     transformer = {"pca": PCA, "standard": StandardScaler, "minmax": MinMaxScaler}[transform_type]()
     adapter = DomainAdapter(transformer=transformer, ref_img=ref)
@@ -444,7 +450,8 @@ def adapt_pixel_distribution(
 
     result = add_weighted(img.astype(np.float32), 1 - weight, transformed, weight)
 
-    return result if original_dtype == np.uint8 else to_float(result)
+    output = result if original_dtype == np.uint8 else to_float(result)
+    return output if output.dtype == np.uint8 else clip(output, original_dtype)
 
 
 def low_freq_mutate(amp_src: np.ndarray, amp_trg: np.ndarray, beta: float) -> np.ndarray:
@@ -462,8 +469,6 @@ def low_freq_mutate(amp_src: np.ndarray, amp_trg: np.ndarray, beta: float) -> np
     return amp_src
 
 
-@clipped
-@preserve_channel_dim
 def fourier_domain_adaptation(img: ImageType, target_img: ImageType, beta: float) -> ImageType:
     """Fourier Domain Adaptation: swap low-frequency amplitude with target, keep phase. beta
     controls strength. Same shape as input.
@@ -489,7 +494,7 @@ def fourier_domain_adaptation(img: ImageType, target_img: ImageType, beta: float
     Note:
         - Both input images are converted to float32 for processing.
         - The function handles both grayscale (2D) and color (3D) images.
-        - For grayscale images, an extra dimension is added to facilitate uniform processing.
+        - Grayscale inputs use an explicit singleton channel dimension.
         - The adaptation is performed channel-wise for color images.
         - The output is clipped to the valid range and preserves the original number of channels.
 
@@ -520,11 +525,6 @@ def fourier_domain_adaptation(img: ImageType, target_img: ImageType, beta: float
     src_img = img.astype(np.float32)
     trg_img = target_img.astype(np.float32)
 
-    if src_img.ndim == MONO_CHANNEL_DIMENSIONS:
-        src_img = np.expand_dims(src_img, axis=-1)
-    if trg_img.ndim == MONO_CHANNEL_DIMENSIONS:
-        trg_img = np.expand_dims(trg_img, axis=-1)
-
     num_channels = src_img.shape[-1]
 
     # Prepare container for the output image
@@ -554,11 +554,9 @@ def fourier_domain_adaptation(img: ImageType, target_img: ImageType, beta: float
         # Store the result in the corresponding channel of the output image
         src_in_trg[:, :, channel_id] = np.real(src_in_trg_channel)
 
-    return src_in_trg
+    return clip(src_in_trg, img.dtype)
 
 
-@clipped
-@preserve_channel_dim
 def apply_histogram(img: ImageType, reference_image: ImageType, blend_ratio: float) -> ImageType:
     """Match input histogram to a reference, then blend with original. blend_ratio in [0,1]
     controls strength. Same shape and dtype as input.
@@ -568,10 +566,10 @@ def apply_histogram(img: ImageType, reference_image: ImageType, blend_ratio: flo
 
     Args:
         img (ImageType): The input image to be transformed. Can be either grayscale or RGB.
-            Supported dtypes: uint8, float32 (values should be in [0, 1] range).
+            Supported dtypes: uint8, float16, float32 (floating values are in [0, 1]).
         reference_image (ImageType): The reference image used for histogram matching.
             Should have the same number of channels as the input image.
-            Supported dtypes: uint8, float32 (values should be in [0, 1] range).
+            Supported dtypes: uint8, float16, float32 (floating values are in [0, 1]).
         blend_ratio (float): The ratio for blending the matched image with the original image.
             Should be in the range [0, 1], where 0 means no change and 1 means full histogram matching.
 
@@ -580,19 +578,31 @@ def apply_histogram(img: ImageType, reference_image: ImageType, blend_ratio: flo
             The output will have the same shape and dtype as the input image.
 
     Supported image types:
-        - Grayscale images: 2D arrays
-        - RGB images: 3D arrays with 3 channels
-        - Multispectral images: 3D arrays with more than 3 channels
+        - Grayscale images: `(H, W, 1)` arrays
+        - RGB images: `(H, W, 3)` arrays
+        - Multispectral images: `(H, W, C)` arrays with C greater than 3
 
     Note:
         - If the input and reference images have different sizes, the reference image
           will be resized to match the input image's dimensions.
         - The function uses a custom implementation of histogram matching based on OpenCV and NumPy.
-        - The @clipped and @preserve_channel_dim decorators ensure the output is within
-          the valid range and maintains the original number of dimensions.
+        - The function clips its output to the valid range and retains the input shape.
 
     """
-    # Resize reference image only if necessary
+    original_dtype = img.dtype
+    if original_dtype == np.float16 and reference_image.dtype == np.float16:
+        image_float32 = img.astype(np.float32)
+        if img.shape == reference_image.shape:
+            image_uint8 = from_float(cast("NDArray[np.float16]", img), np.dtype(np.uint8))
+            reference_uint8 = from_float(cast("NDArray[np.float16]", reference_image), np.dtype(np.uint8))
+            matched_uint8 = match_histograms(image_uint8, reference_uint8)
+            del image_uint8, reference_uint8
+            matched_float32 = to_float(matched_uint8)
+            half_result = add_weighted(matched_float32, blend_ratio, image_float32, 1 - blend_ratio)
+            return clip(half_result, original_dtype)
+        img = image_float32
+        reference_image = reference_image.astype(np.float32)
+
     if img.shape[:2] != reference_image.shape[:2]:
         reference_image = fgeometric.resize(reference_image, cast("tuple[int, int]", img.shape[:2]), cv2.INTER_LINEAR)
 
@@ -602,13 +612,13 @@ def apply_histogram(img: ImageType, reference_image: ImageType, blend_ratio: flo
     matched = match_histograms(img, reference_image)
 
     # Blend the original image and the matched image
-    return add_weighted(matched, blend_ratio, img, 1 - blend_ratio)
+    result = add_weighted(matched, blend_ratio, img, 1 - blend_ratio)
+    return result if result.dtype == np.uint8 else clip(result, original_dtype)
 
 
-@uint8_io
 def match_histograms(image: ImageType, reference: ImageType) -> ImageType:
-    """Adjust image so its CDF matches the reference, per channel. uint8 I/O; reference resized
-    if needed. Per-channel CDF matching.
+    """Adjust image so its CDF matches the reference, per channel. Uses uint8 CDFs and restores
+    the input dtype; the reference is quantized separately. Reference may be resized.
 
     The adjustment is applied separately for each channel.
 
@@ -625,8 +635,9 @@ def match_histograms(image: ImageType, reference: ImageType) -> ImageType:
         ValueError: Thrown when the number of channels in the input image and the reference differ.
 
     """
-    if reference.dtype != np.uint8:
-        reference = from_float(cast("np.ndarray", reference), np.dtype(np.uint8))
+    image, input_dtype = to_uint8_working_image(image)
+    if reference.dtype.type is not np.uint8:
+        reference = from_float(cast("NDArray[np.float16] | NDArray[np.float32]", reference), np.uint8)
 
     matched = np.empty(image.shape, dtype=np.uint8)
 
@@ -636,7 +647,7 @@ def match_histograms(image: ImageType, reference: ImageType) -> ImageType:
         matched_channel = _match_cumulative_cdf(image[..., channel], reference[..., channel]).astype(np.uint8)
         matched[..., channel] = matched_channel
 
-    return matched
+    return restore_uint8_working_image(matched, input_dtype)
 
 
 def _match_cumulative_cdf(source: np.ndarray, template: np.ndarray) -> np.ndarray:

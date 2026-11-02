@@ -589,7 +589,7 @@ class HEStain(ImageOnlyTransform):
         3
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         - Let `M` be the stain matrix and `C` the per-pixel concentrations. `"project"` solves
@@ -927,7 +927,7 @@ class KSpaceSpikeNoise(_FullVolumeNoiseTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -1244,7 +1244,7 @@ class RicianNoise(_FullVolumeNoiseTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any

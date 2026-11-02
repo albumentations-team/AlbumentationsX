@@ -1,6 +1,5 @@
 import numpy as np
 import pytest
-from albucore import to_float
 from skimage.exposure import match_histograms as skimage_match_histograms
 from skimage.metrics import structural_similarity as ssim
 
@@ -11,8 +10,10 @@ from albumentations.augmentations.mixing.domain_adaptation_functional import (
     StandardScaler,
     adapt_pixel_distribution,
     apply_histogram,
+    fourier_domain_adaptation,
 )
 from albumentations.augmentations.mixing.domain_adaptation_functional import match_histograms as our_match_histograms
+from albumentations.core.tensor import numpy_to_tensor_spatial, tensor_to_numpy_spatial
 
 
 @pytest.mark.parametrize(
@@ -495,29 +496,116 @@ def test_adapt_pixel_distribution_5plus_channels(num_channels, transform_type):
 
 
 @pytest.mark.parametrize("transform_type", ["pca", "standard", "minmax"])
-@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
-def test_pixel_distribution_adaptation_single_channel(transform_type, dtype):
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+@pytest.mark.parametrize("same_shape", [False, True])
+def test_pixel_distribution_adaptation_single_channel(transform_type, dtype, container, same_shape):
     rng = np.random.default_rng(137)
     image_uint8 = rng.integers(0, 256, (17, 23, 1), dtype=np.uint8)
-    reference_uint8 = rng.integers(0, 256, (13, 19, 1), dtype=np.uint8)
-    image = image_uint8 if dtype == np.uint8 else to_float(image_uint8)
-    reference = reference_uint8 if dtype == np.uint8 else to_float(reference_uint8)
-    transform = A.Compose(
-        [
-            A.PixelDistributionAdaptation(
-                blend_ratio=(0.5, 0.5),
-                transform_type=transform_type,
-                metadata_key="pda_metadata",
-                p=1.0,
-            ),
-        ],
-        seed=137,
+    reference_shape = image_uint8.shape if same_shape else (13, 19, 1)
+    reference_uint8 = rng.integers(0, 256, reference_shape, dtype=np.uint8)
+    image_half = (image_uint8.astype(np.float32) / 255).astype(np.float16)
+    reference_half = (reference_uint8.astype(np.float32) / 255).astype(np.float16)
+    image = image_uint8 if dtype == np.uint8 else image_half if dtype == np.float16 else image_half.astype(np.float32)
+    reference = (
+        reference_uint8
+        if dtype == np.uint8
+        else reference_half
+        if dtype == np.float16
+        else reference_half.astype(np.float32)
     )
+    original = image.copy()
+    reference_before = reference.copy()
+    source = numpy_to_tensor_spatial(image.copy(), "image") if container == "tensor" else image.copy()
+    if container == "numpy":
+        source.flags.writeable = False
 
-    result = transform(image=image, pda_metadata=[reference])["image"]
+    def make_pipeline():
+        return A.Compose(
+            [
+                A.PixelDistributionAdaptation(
+                    blend_ratio=(0.5, 0.5),
+                    transform_type=transform_type,
+                    metadata_key="pda_metadata",
+                    p=1.0,
+                ),
+            ],
+            seed=137,
+            strict=True,
+        )
 
-    assert result.shape == image.shape
-    assert result.dtype == image.dtype
+    result = make_pipeline()(image=source, pda_metadata=[reference])["image"]
+    actual = tensor_to_numpy_spatial(result, "image") if container == "tensor" else result
+    preserved = tensor_to_numpy_spatial(source, "image") if container == "tensor" else source
+
+    assert actual.shape == image.shape
+    assert actual.dtype == dtype
+    np.testing.assert_array_equal(preserved, original)
+    np.testing.assert_array_equal(reference, reference_before)
+    if dtype == np.float16:
+        float32_image = image.astype(np.float32)
+        float32_reference = reference.astype(np.float32)
+        float32_source = numpy_to_tensor_spatial(float32_image, "image") if container == "tensor" else float32_image
+        float32_result = make_pipeline()(image=float32_source, pda_metadata=[float32_reference])["image"]
+        if container == "tensor":
+            float32_result = tensor_to_numpy_spatial(float32_result, "image")
+        np.testing.assert_array_equal(actual, float32_result.astype(np.float16))
+
+
+@pytest.mark.parametrize("operation", ["histogram", "fda"])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+def test_single_channel_domain_adaptation_compose(operation, dtype, container):
+    rng = np.random.default_rng(137)
+    image_uint8 = rng.integers(0, 256, (32, 40, 1), dtype=np.uint8)
+    reference_uint8 = rng.integers(0, 256, (32, 40, 1), dtype=np.uint8)
+    image_half = (image_uint8.astype(np.float32) / 255).astype(np.float16)
+    reference_half = (reference_uint8.astype(np.float32) / 255).astype(np.float16)
+    image = image_uint8 if dtype == np.uint8 else image_half if dtype == np.float16 else image_half.astype(np.float32)
+    reference = (
+        reference_uint8
+        if dtype == np.uint8
+        else reference_half
+        if dtype == np.float16
+        else reference_half.astype(np.float32)
+    )
+    original = image.copy()
+    reference_before = reference.copy()
+    source = numpy_to_tensor_spatial(image.copy(), "image") if container == "tensor" else image.copy()
+    if container == "numpy":
+        source.flags.writeable = False
+
+    if operation == "histogram":
+        key = "hm_metadata"
+        expected = apply_histogram(image, reference, 0.5)
+    else:
+        key = "fda_metadata"
+        expected = fourier_domain_adaptation(image, reference, 0.1)
+
+    def make_pipeline():
+        if operation == "histogram":
+            current_transform = A.HistogramMatching(blend_ratio=(0.5, 0.5), metadata_key=key, p=1.0)
+        else:
+            current_transform = A.FDA(beta_range=(0.1, 0.1), metadata_key=key, p=1.0)
+        return A.Compose([current_transform], seed=137, strict=True)
+
+    result = make_pipeline()(image=source, **{key: [reference]})["image"]
+    actual = tensor_to_numpy_spatial(result, "image") if container == "tensor" else result
+    preserved = tensor_to_numpy_spatial(source, "image") if container == "tensor" else source
+
+    assert actual.shape == image.shape
+    assert actual.dtype == dtype
+    np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(preserved, original)
+    np.testing.assert_array_equal(reference, reference_before)
+    if dtype == np.float16:
+        float32_image = image.astype(np.float32)
+        float32_reference = reference.astype(np.float32)
+        float32_source = numpy_to_tensor_spatial(float32_image, "image") if container == "tensor" else float32_image
+        float32_result = make_pipeline()(image=float32_source, **{key: [float32_reference]})["image"]
+        if container == "tensor":
+            float32_result = tensor_to_numpy_spatial(float32_result, "image")
+        np.testing.assert_array_equal(actual, float32_result.astype(np.float16))
 
 
 @pytest.mark.parametrize("num_channels", [5, 6])

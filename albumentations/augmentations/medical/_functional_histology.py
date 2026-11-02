@@ -11,7 +11,7 @@ from numpy.typing import NDArray
 from albumentations.augmentations.pixel._functional_shared import (
     MAX_VALUES_BY_DTYPE,
     ImageType,
-    clipped,
+    clip,
     cv2,
     from_float,
     np,
@@ -24,7 +24,7 @@ _SPARSE_TISSUE_MAX_FRACTION = 0.4
 
 
 def rgb_to_optical_density(img: ImageType, eps: float = 1e-6) -> np.ndarray:
-    """Convert RGB image to optical density (-log). eps avoids log(0). Expects uint8 or float32 in
+    """Convert RGB image to optical density (-log). eps avoids log(0). Expects uint8, float16, or float32 in
     [0,1]. Returns (N*H*W, 3) float32. For stain normalization.
 
 
@@ -418,7 +418,10 @@ def _build_stain_affine_matrix(
 
 
 def _apply_stain_affine(optical_density: np.ndarray, affine_matrix: np.ndarray) -> np.ndarray:
-    result = cv2.transform(optical_density.reshape(-1, 1, 3), affine_matrix)
+    result = cast(
+        "NDArray[np.float32]",
+        cv2.transform(optical_density.reshape(-1, 1, 3), affine_matrix),
+    )
     result *= -1.0
     return albucore_exp(result, out=result).reshape(-1, 3)
 
@@ -541,7 +544,6 @@ def _apply_residual_stain_affine(
     return result
 
 
-@clipped
 def apply_he_stain_augmentation(
     img: ImageType,
     stain_matrix: np.ndarray,
@@ -644,7 +646,8 @@ def apply_he_stain_augmentation(
             )
 
     result = rgb_result.reshape(img.shape)
-    return result if input_dtype == np.float32 else from_float(result, target_dtype=input_dtype)
+    result = result if input_dtype == np.float32 else from_float(result, target_dtype=input_dtype)
+    return result if input_dtype == np.uint8 else clip(result, input_dtype)
 
 
 __all__ = [

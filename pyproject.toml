@@ -110,8 +110,9 @@ classifiers = [
 ]
 
 dependencies = [
-  "albucore==0.3.1",
-  "numkong>=7.8.0",
+  "albucore==0.3.2",
+  "numkong>=7.8.7",
+  "stringzilla>=5.3.2",
   "numpy>=2.2.6",
   "pydantic>=2.12.4",
   "pyyaml>=6.0.3",
@@ -373,7 +374,6 @@ lint.per-file-ignores."tests/*" = [
 [tool.mypy]
 plugins = [ "pydantic.mypy" ]
 
-python_version = "3.11"
 ignore_missing_imports = true
 follow_imports = "silent"
 warn_redundant_casts = true
@@ -384,6 +384,10 @@ no_implicit_reexport = true
 disable_error_code = [ "valid-type" ]
 
 disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["albucore", "albucore.*", "torch", "torch.*", "numpy", "numpy.*", "cv2", "cv2.*", "numkong", "numkong.*"]
+ignore_missing_imports = false
 
 # Strict checking for the instance-binding boundary modules so the StackedMasks4D NewType brand
 # (and other structural contracts in Compose's transform loop / mixing transforms) keep being
@@ -405,13 +409,10 @@ strict_equality = true
 warn_unused_ignores = true
 
 [tool.pyrefly]
-python-version = "3.11"
 project-includes = ["albumentations"]
 ignore-missing-imports = [
   "huggingface_hub",
   "huggingface_hub.utils",
-  "torch",
-  "torch.utils.data",
 ]
 project-excludes = [
   "**/__pycache__",

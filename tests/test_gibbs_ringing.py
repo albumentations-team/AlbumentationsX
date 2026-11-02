@@ -27,15 +27,22 @@ def _full_fft_reference(data: np.ndarray, retained_fraction: float) -> np.ndarra
     return np.clip(reconstructed.real, 0, 1)
 
 
+def _from_uint8(dtype: type[np.generic], raw: np.ndarray) -> np.ndarray:
+    if dtype == np.uint8:
+        return raw
+    normalized = raw.astype(np.float32) / 255
+    return normalized.astype(np.float16) if dtype == np.float16 else normalized
+
+
 @pytest.mark.parametrize("shape", [(8, 12, 1), (7, 11, 5), (8, 12, 16, 3), (7, 9, 11, 5), (1, 9, 13, 1)])
-@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
 @pytest.mark.parametrize("fraction", [0.0, 0.35, 0.8])
 def test_matches_full_spatial_fft_without_mutating_strided_input(
     shape: tuple[int, ...], dtype: type[np.generic], fraction: float
 ) -> None:
     raw_shape = (shape[0], shape[1] * 2, *shape[2:])
     raw = np.random.default_rng(137).integers(0, 256, raw_shape, dtype=np.uint8)
-    data = raw if dtype == np.uint8 else raw.astype(np.float32) / 255
+    data = _from_uint8(dtype, raw)
     data = data[:, ::2]
     original = data.copy()
     data.setflags(write=False)
@@ -44,8 +51,10 @@ def test_matches_full_spatial_fft_without_mutating_strided_input(
         **{target: data}
     )[target]
     expected = _full_fft_reference(data, fraction)
-    normalized = result.astype(np.float32) / 255 if dtype == np.uint8 else result
-    np.testing.assert_allclose(normalized, expected, atol=0.5 / 255 + 1e-6 if dtype == np.uint8 else 2e-6)
+    normalized = result.astype(np.float32) / 255 if dtype == np.uint8 else result.astype(np.float32)
+    np.testing.assert_allclose(
+        normalized, expected, atol=0.5 / 255 + 1e-6 if dtype == np.uint8 else 1 / 2048 if dtype == np.float16 else 2e-6
+    )
     assert result.dtype == dtype
     assert np.isfinite(result).all()
     np.testing.assert_array_equal(data, original)
@@ -103,10 +112,10 @@ def test_lower_retention_removes_more_signal_energy() -> None:
 
 
 @pytest.mark.parametrize("shape", [(7, 9, 5), (7, 9, 11, 5), (1, 1, 1, 3)])
-@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
 def test_full_retention_is_bitwise_identity(shape: tuple[int, ...], dtype: type[np.generic]) -> None:
     raw = np.random.default_rng(137).integers(0, 256, shape, dtype=np.uint8)
-    data = raw if dtype == np.uint8 else raw.astype(np.float32) / 255
+    data = _from_uint8(dtype, raw)
     target = "image" if len(shape) == 3 else "volume"
     result = A.Compose([A.GibbsRinging(retained_fraction_range=(1, 1), p=1)], strict=True)(**{target: data})[target]
     np.testing.assert_array_equal(result, data)
@@ -122,16 +131,18 @@ def test_constant_channels_and_singleton_depth_match_image(fraction: float) -> N
 
 
 @pytest.mark.parametrize("target,shape", [("image", (9, 13)), ("volume", (7, 9, 13))])
-@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
 def test_compose_normalizes_channel_free_inputs_before_spatial_fft(
     target: str, shape: tuple[int, ...], dtype: type[np.generic]
 ) -> None:
     raw = np.random.default_rng(137).integers(0, 256, shape, dtype=np.uint8)
-    data = raw if dtype == np.uint8 else raw.astype(np.float32) / 255
+    data = _from_uint8(dtype, raw)
     result = A.Compose([A.GibbsRinging(retained_fraction_range=(0.5, 0.5), p=1)], strict=True)(**{target: data})[target]
     expected = _full_fft_reference(data[..., None], 0.5)[..., 0]
-    normalized = result.astype(np.float32) / 255 if dtype == np.uint8 else result
-    np.testing.assert_allclose(normalized, expected, atol=0.5 / 255 + 1e-6 if dtype == np.uint8 else 2e-6)
+    normalized = result.astype(np.float32) / 255 if dtype == np.uint8 else result.astype(np.float32)
+    np.testing.assert_allclose(
+        normalized, expected, atol=0.5 / 255 + 1e-6 if dtype == np.uint8 else 1 / 2048 if dtype == np.float16 else 2e-6
+    )
     assert result.shape == data.shape
 
 
@@ -185,12 +196,12 @@ def test_mixed_image_volume_aliases_share_cutoff_and_preserve_volume_labels() ->
 
 
 @pytest.mark.parametrize("target,shape", [("images", (9, 13, 5)), ("volumes", (7, 9, 13, 5))])
-@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
 def test_collection_and_tensor_routes_keep_items_and_channels_independent(
     target: str, shape: tuple[int, ...], dtype: type[np.generic]
 ) -> None:
     raw = np.random.default_rng(137).integers(0, 102, (*shape[:-1], 1), dtype=np.uint8)
-    data = raw if dtype == np.uint8 else raw.astype(np.float32) / 255
+    data = _from_uint8(dtype, raw)
     item = np.repeat(data, shape[-1], axis=-1)
     batch = np.stack([item, np.zeros_like(item)])
     tensor = torch.from_numpy(batch).movedim(-1, 1)
@@ -202,9 +213,13 @@ def test_collection_and_tensor_routes_keep_items_and_channels_independent(
     )
     result = pipeline(**{target: batch, "other": tensor})
     np.testing.assert_array_equal(result["other"].movedim(1, -1).numpy(), result[target])
-    normalized = result[target][0].astype(np.float32) / 255 if dtype == np.uint8 else result[target][0]
+    normalized = (
+        result[target][0].astype(np.float32) / 255 if dtype == np.uint8 else result[target][0].astype(np.float32)
+    )
     np.testing.assert_allclose(
-        normalized, _full_fft_reference(item, 0.5), atol=0.5 / 255 + 1e-6 if dtype == np.uint8 else 2e-6
+        normalized,
+        _full_fft_reference(item, 0.5),
+        atol=0.5 / 255 + 1e-6 if dtype == np.uint8 else 1 / 2048 if dtype == np.float16 else 2e-6,
     )
     np.testing.assert_array_equal(result[target][1], 0)
     np.testing.assert_allclose(result[target][0, ..., 0], result[target][0, ..., -1], atol=1e-7)

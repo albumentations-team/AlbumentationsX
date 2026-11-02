@@ -42,17 +42,6 @@ def make_separator(width: int, align_center: bool) -> str:
     return "-" * width
 
 
-def is_deprecated(cls) -> bool:
-    """Check if a given class is deprecated by looking for deprecation notices at the start of the docstring,
-    not in the Args section.
-    """
-    if not cls.__doc__:
-        return False
-
-    main_desc = cls.__doc__.split("Args:")[0]
-    return any("deprecated" in line.lower() for line in main_desc.split("\n") if line.strip())
-
-
 def is_medical_transform(cls: type) -> bool:
     return cls.__module__.startswith("albumentations.augmentations.medical.")
 
@@ -67,7 +56,7 @@ def get_image_only_transforms_info():
             and not issubclass(cls, albumentations.Transform3D)
             and name not in IGNORED_CLASSES
             and not is_medical_transform(cls)
-        ) and not is_deprecated(cls):
+        ):
             image_only_info[name] = {
                 "docs_link": make_augmentation_docs_link(cls),
             }
@@ -84,7 +73,7 @@ def get_dual_transforms_info():
             and not issubclass(cls, albumentations.Transform3D)  # Exclude 3D transforms
             and name not in IGNORED_CLASSES
             and not is_medical_transform(cls)
-        ) and not is_deprecated(cls):
+        ):
             supported_bbox_types = getattr(cls, "_supported_bbox_types", frozenset({"hbb"}))
 
             dual_transforms_info[name] = {
@@ -104,7 +93,7 @@ def get_3d_transforms_info():
             and issubclass(cls, (albumentations.Transform3D, albumentations.VolumeOnlyTransform))
             and name not in IGNORED_CLASSES
             and not is_medical_transform(cls)
-        ) and not is_deprecated(cls):
+        ):
             targets = cls._targets if hasattr(cls, "_targets") else albumentations.Transform3D._targets
 
             transforms_3d_info[name] = {
@@ -118,10 +107,7 @@ def get_medical_transforms_info():
     return {
         name: {"targets": cls._targets, "docs_link": make_augmentation_docs_link(cls)}
         for name, cls in inspect.getmembers(albumentations)
-        if inspect.isclass(cls)
-        and issubclass(cls, albumentations.BasicTransform)
-        and is_medical_transform(cls)
-        and not is_deprecated(cls)
+        if inspect.isclass(cls) and issubclass(cls, albumentations.BasicTransform) and is_medical_transform(cls)
     }
 
 

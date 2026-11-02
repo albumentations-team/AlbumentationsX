@@ -32,6 +32,52 @@ def test_annotation_artifacts_each_element_type_changes_image(element_type: str)
     assert not np.array_equal(result, image)
 
 
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+def test_annotation_artifacts_compose_preserves_singleton_channel(dtype: np.dtype) -> None:
+    rng = np.random.default_rng(137)
+    image = (
+        rng.integers(0, 256, (64, 64, 1), dtype=np.uint8)
+        if dtype is np.uint8
+        else rng.random((64, 64, 1), dtype=np.float32).astype(dtype)
+    )
+    original = image.copy()
+    transform = A.Compose(
+        [
+            A.AnnotationArtifacts(
+                element_types=("line",),
+                element_probabilities=(1.0,),
+                count_range=(1, 1),
+                p=1.0,
+            ),
+        ],
+        seed=137,
+        strict=True,
+    )
+
+    result = transform(image=image)["image"]
+
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+    assert np.isfinite(result).all()
+    np.testing.assert_array_equal(image, original)
+
+
+def test_annotation_artifacts_float16_matches_float32_reference() -> None:
+    half_image = np.random.default_rng(137).random((64, 64, 1), dtype=np.float32).astype(np.float16)
+    float_image = half_image.astype(np.float32)
+    params = {
+        "element_types": ("line",),
+        "element_probabilities": (1.0,),
+        "count_range": (1, 1),
+        "p": 1.0,
+    }
+
+    half_result = A.Compose([A.AnnotationArtifacts(**params)], seed=137)(image=half_image)["image"]
+    float_result = A.Compose([A.AnnotationArtifacts(**params)], seed=137)(image=float_image)["image"]
+
+    np.testing.assert_array_equal(half_result, float_result.astype(np.float16))
+
+
 def test_annotation_artifacts_deterministic_with_compose_seed() -> None:
     image = TestDataFactory.create_image((160, 160, 3), dtype=np.uint8, seed=137)
     transform = A.Compose([A.AnnotationArtifacts(count_range=(5, 5), p=1)], seed=137, strict=True)

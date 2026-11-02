@@ -16,12 +16,12 @@ from warnings import warn
 import cv2
 import numpy as np
 from albucore import (
-    clipped,
-    float32_io,
-    preserve_channel_dim,
+    clip,
+    from_float,
     reduce_sum,
-    uint8_io,
+    to_float,
 )
+from numpy.typing import NDArray
 from pydantic import ValidationInfo
 
 from albumentations.augmentations.geometric.functional import scale
@@ -41,7 +41,6 @@ _PILLOW_F32_SIX = np.float32(6.0)
 _PILLOW_F32_TWELVE = np.float32(12.0)
 
 
-@preserve_channel_dim
 def box_blur(img: ImageType, ksize: int) -> ImageType:
     """Smooth image with uniform rectangular kernel (moving average). ksize sets size. Use for
     mild noise reduction or downscale prep.
@@ -63,7 +62,6 @@ def box_blur(img: ImageType, ksize: int) -> ImageType:
     return result
 
 
-@preserve_channel_dim
 def glass_blur(
     img: ImageType,
     sigma: float,
@@ -90,7 +88,15 @@ def glass_blur(
 
     """
     working_dtype = np.float32 if img.dtype.type is np.float16 else img.dtype
-    x = cv2.GaussianBlur(np.array(img, dtype=working_dtype), sigmaX=sigma, ksize=(0, 0))
+    working = cast("ImageType", np.array(img, dtype=working_dtype))
+    single_channel = img.shape[-1] == 1
+    if single_channel:
+        x = np.empty_like(working)
+        cv2.GaussianBlur(working, sigmaX=sigma, ksize=(0, 0), dst=x)
+        swap_image = x[..., 0]
+    else:
+        x = cast("ImageType", cv2.GaussianBlur(working, sigmaX=sigma, ksize=(0, 0)))
+        swap_image = x
 
     if mode == "fast":
         hs = np.arange(img.shape[0] - max_delta, max_delta, -1)
@@ -101,7 +107,7 @@ def glass_blur(
         for i in range(iterations):
             dy = dxy[:, i, 0]
             dx = dxy[:, i, 1]
-            x[h, w], x[h + dy, w + dx] = x[h + dy, w + dx], x[h, w]
+            swap_image[h, w], swap_image[h + dy, w + dx] = swap_image[h + dy, w + dx], swap_image[h, w]
 
     elif mode == "exact":
         for ind, (i, h, w) in enumerate(
@@ -114,11 +120,15 @@ def glass_blur(
             idx = ind if ind < len(dxy) else ind % len(dxy)
             dy = dxy[idx, i, 0]
             dx = dxy[idx, i, 1]
-            x[h, w], x[h + dy, w + dx] = x[h + dy, w + dx], x[h, w]
+            swap_image[h, w], swap_image[h + dy, w + dx] = swap_image[h + dy, w + dx], swap_image[h, w]
     else:
         raise ValueError(f"Unsupported mode `{mode}`. Supports only `fast` and `exact`.")
 
-    result = cast("ImageType", cv2.GaussianBlur(x, sigmaX=sigma, ksize=(0, 0)))
+    if single_channel:
+        result = np.empty_like(x)
+        cv2.GaussianBlur(x, sigmaX=sigma, ksize=(0, 0), dst=result)
+    else:
+        result = cast("ImageType", cv2.GaussianBlur(x, sigmaX=sigma, ksize=(0, 0)))
     if img.dtype.type is np.float16:
         return result.astype(cast("np.dtype[np.float16]", img.dtype))
     return result
@@ -173,11 +183,9 @@ def central_zoom(img: ImageType, zoom_factor: int) -> ImageType:
     return img[h_trim_top : h_trim_top + height, w_trim_top : w_trim_top + width]
 
 
-@float32_io
-@clipped
 def zoom_blur(img: ImageType, zoom_factors: np.ndarray | Sequence[int]) -> ImageType:
     """Radial zoom blur: blend image with center-zoomed copies. zoom_factors; normalized result.
-    Use for motion or out-of-focus style. Float32 I/O, clipped.
+    Use for motion or out-of-focus style. Float32 working arithmetic with output clipped to [0, 1].
 
     This function zooms and blurs an image.
 
@@ -189,28 +197,42 @@ def zoom_blur(img: ImageType, zoom_factors: np.ndarray | Sequence[int]) -> Image
         ImageType: Zoomed and blurred image.
 
     """
+    input_dtype = img.dtype
+    if input_dtype.type is np.uint8:
+        img = to_float(img)
+    elif input_dtype.type is np.float16:
+        img = img.astype(np.float32)
+
     out = np.zeros_like(img, dtype=np.float32)
 
     for zoom_factor in zoom_factors:
         out += central_zoom(img, zoom_factor)
 
-    return (img + out) * np.float32(1.0 / (len(zoom_factors) + 1))
+    np.add(img, out, out=out)
+    np.multiply(out, np.float32(1.0 / (len(zoom_factors) + 1)), out=out)
+    clip(out, out=out)
+    return from_float(out, target_dtype=input_dtype)
 
 
-@preserve_channel_dim
-@uint8_io
 def mode_filter(img: ImageType, kernel_size: int) -> ImageType:
-    """Replace each pixel with the most frequent value (mode) in its local square neighborhood,
-    computed per channel; ties broken by smallest value (scipy default).
+    """Replace each pixel with the most frequent value in its local square neighborhood.
 
-    Args:
-        img (ImageType): Input image (uint8 after @uint8_io conversion).
-        kernel_size (int): Side length of the square neighborhood (must be odd, ≥ 3).
-
-    Returns:
-        ImageType: Filtered image with the same shape and dtype as the input.
-
+    Float inputs are quantized to uint8 for the discrete mode operation, then restored to the
+    input dtype. Ties choose the smallest value and borders use reflect padding.
     """
+    input_dtype = img.dtype
+    uint8_img = (
+        cast("ImageUInt8", img)
+        if input_dtype == np.uint8
+        else from_float(cast("NDArray[np.float16] | ImageFloat32", img), np.uint8)
+    )
+    result = _mode_filter_uint8(uint8_img, kernel_size)
+    if input_dtype == np.uint8:
+        return result
+    return from_float(to_float(result), input_dtype)
+
+
+def _mode_filter_uint8(img: ImageUInt8, kernel_size: int) -> ImageUInt8:
     pad = kernel_size // 2
     padded = np.pad(img, ((pad, pad), (pad, pad), (0, 0)), mode="reflect")
     windows = np.lib.stride_tricks.sliding_window_view(padded, (kernel_size, kernel_size, 1))
@@ -231,7 +253,7 @@ def mode_filter(img: ImageType, kernel_size: int) -> ImageType:
         best_counts = np.where(better_run, current_counts, best_counts)
         best_values = np.where(better_run, current_values, best_values)
 
-    return cast("ImageType", best_values.astype(img.dtype, copy=False))
+    return best_values.astype(img.dtype, copy=False)
 
 
 def _ensure_min_value(result: tuple[int, int], min_value: int, field_name: str | None) -> tuple[int, int]:
@@ -519,13 +541,14 @@ def _pillow_gaussian_blur_uint8(
 
 
 def _pillow_gaussian_blur_float32(
-    img: ImageFloat32,
+    img: NDArray[np.float16] | ImageFloat32,
     kernel: np.ndarray,
-) -> ImageFloat32:
+) -> NDArray[np.float16] | ImageFloat32:
+    input_dtype = img.dtype
     normalized_kernel = kernel.astype(np.float32) / _PILLOW_FIXED_POINT_SCALE_F32
     horizontal_kernel = normalized_kernel[np.newaxis, :]
     vertical_kernel = normalized_kernel[:, np.newaxis]
-    result = np.array(img, copy=True, order="C")
+    result = np.array(img, dtype=np.float32, copy=True, order="C")
     output = np.empty_like(result)
 
     for filter_kernel in (
@@ -545,15 +568,28 @@ def _pillow_gaussian_blur_float32(
         )
         result, output = output, result
 
-    return result
+    if input_dtype.type is np.float16:
+        del output
+        half_result = result.astype(np.dtype(np.float16))
+        if not input_dtype.isnative:
+            half_result.byteswap(inplace=True)
+            return cast("NDArray[np.float16]", half_result.view(input_dtype))
+        return half_result
+    if input_dtype.isnative:
+        return result
+
+    del output
+    result.byteswap(inplace=True)
+    return cast("ImageFloat32", result.view(input_dtype))
 
 
-@preserve_channel_dim
 def pillow_gaussian_blur(img: ImageType, kernel: np.ndarray) -> ImageType:
     """Blur an image with Pillow's three-pass extended-box Gaussian approximation, reproducing
     uint8 rounding without importing Pillow at runtime.
 
-    Float32 inputs use the same normalized kernel and replicated borders without uint8 quantization.
+    Float16 and float32 inputs use the same normalized kernel and replicated borders without uint8 quantization.
+    Floating work uses float32; float16 is rounded once on output. Non-native NumPy byte order is restored after
+    filtering.
 
     Args:
         img (ImageType): Input image.
@@ -569,7 +605,7 @@ def pillow_gaussian_blur(img: ImageType, kernel: np.ndarray) -> ImageType:
         return cast("ImageType", np.array(img, copy=True, order="C"))
     if img.dtype == np.uint8:
         return _pillow_gaussian_blur_uint8(cast("ImageUInt8", img), kernel)
-    return _pillow_gaussian_blur_float32(cast("ImageFloat32", img), kernel)
+    return _pillow_gaussian_blur_float32(cast("NDArray[np.float16] | ImageFloat32", img), kernel)
 
 
 def create_gaussian_kernel_input_array(size: int) -> np.ndarray:

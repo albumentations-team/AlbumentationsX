@@ -1238,7 +1238,6 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
             "fill_mask": 3,
         },
     ),
-    ("gaussian-kernel", A.Sharpen, {"method": "gaussian", "kernel_size": 7, "sigma": 1.5}),
     (
         "ellipse-linear-mask",
         A.ShiftScaleRotate,
@@ -1249,6 +1248,7 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
             "fill_mask": 3,
         },
     ),
+    ("gaussian-kernel", A.Sharpen, {"method": "gaussian", "kernel_size": 7, "sigma": 1.5}),
     ("stronger", A.ShotNoise, {"scale_range": (0.2, 0.4)}),
     ("stronger", A.RicianNoise, {"std_range": (0.1, 0.3)}),
     ("per-channel", A.RicianNoise, {"std_range": (0.05, 0.15), "per_channel": True}),
@@ -1348,6 +1348,7 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
 
 _VARIANT_NAMES: dict[type[A.BasicTransform], tuple[str, ...]] = {
     A.Affine: ("percent-translation", "pixel-translation"),
+    A.ShiftScaleRotate: ("shared-shift", "axis-shift"),
     A.AtLeastOneBBoxRandomCrop: ("default-erosion", "nonzero-erosion"),
     A.AutoContrast: ("cdf", "pil"),
     A.CoarseDropout: ("pixel-holes", "relative-holes"),
@@ -1359,7 +1360,6 @@ _VARIANT_NAMES: dict[type[A.BasicTransform], tuple[str, ...]] = {
     A.CropAndPad: ("px", "px-choices", "percent-choices"),
     A.PixelDropout: ("random-fill", "fixed-fill"),
     A.RandomToneCurve: ("shared", "per-channel"),
-    A.ShiftScaleRotate: ("shared-shift", "axis-shift"),
     A.Spatter: ("rain", "mud"),
 }
 

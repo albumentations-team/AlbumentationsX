@@ -260,3 +260,29 @@ def test_to_tensor_v2_images_masks():
     assert transformed["mask"].shape == (100, 100)  # (H, W)
     assert transformed["masks"].shape == (2, 100, 100)  # (N, H, W)
     assert transformed["images"].shape == (2, 3, 100, 100)  # (N, C, H, W)
+
+
+@pytest.mark.parametrize(
+    "target_name,shape,transform_cls,axes",
+    [
+        ("image", (9, 13, 3), A.ToTensorV2, (2, 0, 1)),
+        ("images", (2, 9, 13, 3), A.ToTensorV2, (0, 3, 1, 2)),
+        ("volume", (4, 9, 13, 3), A.ToTensor3D, (3, 0, 1, 2)),
+        ("volumes", (2, 4, 9, 13, 3), A.ToTensor3D, (0, 4, 1, 2, 3)),
+    ],
+)
+@pytest.mark.parametrize("dtype", [np.dtype(np.float16), np.dtype(np.float32)], ids=["float16", "float32"])
+def test_tensor_transforms_accept_foreign_byte_order_float_images(target_name, shape, transform_cls, axes, dtype):
+    native = np.random.default_rng(137).random(shape, dtype=np.float32).astype(dtype)
+    foreign = native.astype(dtype.newbyteorder("S"))
+    foreign.setflags(write=False)
+    original = foreign.copy()
+    pipeline = A.Compose([transform_cls(p=1.0)], strict=True, telemetry=False, seed=137)
+
+    result = pipeline(**{target_name: foreign})[target_name]
+    expected = torch.from_numpy(np.ascontiguousarray(native.transpose(axes)))
+
+    assert result.dtype == expected.dtype
+    assert result.is_contiguous()
+    torch.testing.assert_close(result, expected, rtol=0, atol=0)
+    np.testing.assert_array_equal(foreign, original)

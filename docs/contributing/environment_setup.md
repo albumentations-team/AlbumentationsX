@@ -32,7 +32,8 @@ uv sync --locked --no-default-groups --group ci-test --group ci-torch-cpu --inex
 ```
 
 The tool groups are `ci-test`, `ci-quality`, `ci-types`, `ci-security`, `ci-package`, `ci-benchmark`, and `ci-release`.
-Import-capable jobs add `ci-torch-cpu`; static jobs do not need it.
+Import-capable jobs and runtime API type checks add `ci-torch-cpu`. Link-only, formatting, packaging, and audit jobs
+can use the tool group alone.
 
 ### pip fallback
 
@@ -71,6 +72,21 @@ failure modes. Use `uv run pytest -n auto` when the change requires the full sui
 If imports fail, check which interpreter is running with `uv run python -c "import sys; print(sys.executable)"` and
 confirm that the selected environment contains PyTorch and an OpenCV variant. Re-run the appropriate sync command
 above if dependencies are missing. Installation should use the virtual environment without administrator privileges.
+
+## Check types against installed dependencies
+
+Run both checkers in the project environment so they see the installed NumPy, OpenCV, Albucore, NumKong and Torch
+types. Their Python target follows that environment; Ruff and the runtime matrix continue to enforce Python 3.11
+compatibility. An isolated checker without backend stubs can silently treat array operations as `Any`.
+
+```bash
+uv run mypy albumentations
+uv run pyrefly check
+uv run python -m unittest discover -s tests/typing -p check_contracts.py
+```
+
+The last command verifies that valid container/output calls pass and incorrect return types, destinations and Tensor
+layouts fail in both checkers. CI runs it in `ci-types` with `ci-torch-cpu`; it does not require the full pytest profile.
 
 ## Maintenance checks
 

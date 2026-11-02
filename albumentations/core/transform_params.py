@@ -378,7 +378,7 @@ class SampledParams:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> SampledParams:
         if payload.get("parameter_schema") != _PARAMETER_SCHEMA or set(payload) != _PARAMETER_PAYLOAD_KEYS:
-            raise SampledParamsError("unsupported or legacy transform parameter schema")
+            raise SampledParamsError("unsupported transform parameter schema")
         raw_target_params = payload.get("target_params", ())
         if not isinstance(raw_target_params, list):
             raise SampledParamsError("target parameters must be a list")

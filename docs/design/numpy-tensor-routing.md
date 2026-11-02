@@ -116,6 +116,9 @@ implementation and preserves the accepted dtype unless that transform's public c
 
 Complex, quantized, and floating Tensor dtypes other than `float16`/`float32` are rejected during root validation.
 Full float16 transform coverage remains in progress; boundary acceptance does not establish every kernel's dtype support.
+The Compose-level float16 matrix runs `tests/contracts/test_target_cluster_contract.py` and
+`tests/contracts/test_image_range_contract.py` for NumPy and Tensor routes. These check target/dtype preservation and
+range contracts; operation-specific numerical references and two-platform speed/memory acceptance remain separate.
 
 ## Execution model
 
@@ -176,7 +179,7 @@ A skipped leaf performs no conversion. Two consecutive fallback leaves may each 
 for Tensor input when its primary data argument includes `torch.Tensor`:
 
 ```python
-def apply(self, image: ImageType | torch.Tensor, **params: Any) -> ImageType: ...
+def apply(self, image: ImageType | torch.Tensor, **params: Any) -> ImageType | torch.Tensor: ...
 ```
 
 A helper that preserves image dtype and container can use Albucore `ImageInputT`. A native handler can declare
@@ -211,7 +214,10 @@ The fallback restores the original metadata container after the leaf invocation.
 
 ### `ToTensorV2` and `ToTensor3D`
 
-`ToTensorV2` and `ToTensor3D` are NumPy-to-Tensor terminal transforms. They accept NumPy inputs only.
+`ToTensorV2` and `ToTensor3D` are NumPy-to-Tensor terminal transforms. They accept NumPy inputs only. The base target
+interface permits NumPy or Tensor outputs; concrete terminal handlers declare Tensor returns without untyped
+intermediate overrides. Default NumPy batch handlers require array-producing callbacks. Collection identity handlers preserve
+the caller's container and NumPy dtype in their return types.
 
 When a Compose call contains any Tensor target, the presence of either terminal transform anywhere in the selectable
 graph raises an error before probability or parameter sampling. Mixed-container calls follow the same rule.

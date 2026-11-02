@@ -17,6 +17,7 @@ from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
 from albumentations.core.type_definitions import (
     ALL_TARGETS,
+    CV2_INTER_AREA,
     CV2_INTER_LINEAR,
     CV2_INTER_NEAREST,
     FullInterpolationType,
@@ -230,7 +231,7 @@ class RandomScale(DualTransform):
         is_downscale = scale_x < 1.0 or scale_y < 1.0
         interpolation = self.interpolation
         if self.area_for_downscale in ["image", "image_mask"] and is_downscale:
-            interpolation = cv2.INTER_AREA
+            interpolation = CV2_INTER_AREA
 
         result = fgeometric.scale_xy(img, scale_x, scale_y, interpolation)
         return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation, source=img)
@@ -245,7 +246,7 @@ class RandomScale(DualTransform):
         is_downscale = scale_x < 1.0 or scale_y < 1.0
         interpolation = self.mask_interpolation
         if self.area_for_downscale == "image_mask" and is_downscale:
-            interpolation = cv2.INTER_AREA
+            interpolation = CV2_INTER_AREA
 
         return fgeometric.scale_xy(mask, scale_x, scale_y, interpolation)
 
@@ -429,7 +430,7 @@ class BaseMaxSizeTransform(DualTransform):
 
         interpolation = self.interpolation
         if self.area_for_downscale in ["image", "image_mask"] and scale < 1.0:
-            interpolation = cv2.INTER_AREA
+            interpolation = CV2_INTER_AREA
 
         result = fgeometric.resize(img, (new_height, new_width), interpolation=interpolation)
         return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation, source=img)
@@ -445,7 +446,7 @@ class BaseMaxSizeTransform(DualTransform):
 
         interpolation = self.mask_interpolation
         if self.area_for_downscale == "image_mask" and scale < 1.0:
-            interpolation = cv2.INTER_AREA
+            interpolation = CV2_INTER_AREA
 
         return fgeometric.resize(mask, (new_height, new_width), interpolation=interpolation)
 
@@ -839,7 +840,7 @@ class Resize(DualTransform):
 
         interpolation = self.interpolation
         if self.area_for_downscale in ["image", "image_mask"] and is_downscale:
-            interpolation = cv2.INTER_AREA
+            interpolation = CV2_INTER_AREA
 
         result = fgeometric.resize(img, (self.height, self.width), interpolation=interpolation)
         return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation, source=img)
@@ -850,7 +851,7 @@ class Resize(DualTransform):
 
         interpolation = self.mask_interpolation
         if self.area_for_downscale == "image_mask" and is_downscale:
-            interpolation = cv2.INTER_AREA
+            interpolation = CV2_INTER_AREA
 
         return fgeometric.resize(mask, (self.height, self.width), interpolation=interpolation)
 

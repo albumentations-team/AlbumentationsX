@@ -16,6 +16,7 @@ IMAGE_PARAMS = ([*SIZES], CHANNELS)
 RELEASE_CORE_IMAGE_PARAMS = (("small",), (3,))
 DTYPES = {
     "uint8": np.uint8,
+    "float16": np.float16,
     "float32": np.float32,
 }
 MEDIAN_BLUR_CASES = (
@@ -43,8 +44,8 @@ def make_image(size_name: str, channels: int, dtype: type[np.generic] = np.uint8
     shape = (height, width, channels)
     if dtype == np.uint8:
         return rng.integers(0, 256, shape, dtype=np.uint8)
-    if dtype == np.float32:
-        return rng.uniform(0, 1, shape).astype(np.float32)
+    if dtype in (np.float16, np.float32):
+        return rng.uniform(0, 1, shape).astype(np.float32).astype(dtype, copy=False)
     msg = f"Unsupported benchmark dtype: {dtype}"
     raise ValueError(msg)
 
@@ -171,8 +172,8 @@ def make_volume(
     shape = (depth, height, width, channels)
     if dtype == np.uint8:
         return rng.integers(0, 256, shape, dtype=np.uint8)
-    if dtype == np.float32:
-        return rng.uniform(0, 1, shape).astype(np.float32)
+    if dtype in (np.float16, np.float32):
+        return rng.uniform(0, 1, shape).astype(np.float32).astype(dtype, copy=False)
     msg = f"Unsupported benchmark dtype: {dtype}"
     raise ValueError(msg)
 

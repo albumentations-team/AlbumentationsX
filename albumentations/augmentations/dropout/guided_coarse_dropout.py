@@ -50,7 +50,7 @@ class GuidedCoarseDropout(BaseDropout):
         image, images, mask, masks, bboxes, keypoints
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Supported bboxes:
         hbb

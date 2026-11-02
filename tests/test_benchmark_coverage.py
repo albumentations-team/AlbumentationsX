@@ -71,7 +71,7 @@ def test_benchmark_coverage_details_expose_deep_hot_path_layers() -> None:
     }.issubset({(case["layer"], case["case_id"]) for case in resize["asv_cases"]})
     assert resize["scenario_contract"]["sizes"] == ["small", "medium", "large"]
     assert resize["scenario_contract"]["channels"] == [1, 3, 5]
-    assert resize["scenario_contract"]["dtypes"] == ["uint8", "float32"]
+    assert resize["scenario_contract"]["dtypes"] == ["uint8", "float16", "float32"]
     assert resize["scenario_contract"]["annotation_counts"] == [10, 100, 1000]
     assert resize["scenario_contract"]["batch_sizes"] == [4, 8]
     assert resize["scenario_axis_contracts"]["family_matrix"]["skipped"] == {}
@@ -118,7 +118,7 @@ def test_benchmark_coverage_details_map_spatter_modes_to_batch_matrix() -> None:
 
     assert spatter["performance_contract"]["batch"]["status"] == "covered"
     assert spatter["scenario_contract"]["channels"] == [3]
-    assert spatter["scenario_contract"]["dtypes"] == ["uint8", "float32"]
+    assert spatter["scenario_contract"]["dtypes"] == ["uint8", "float16", "float32"]
     assert spatter["scenario_contract"]["batch_sizes"] == [2, 4, 8, 16]
     assert spatter["scenario_contract"]["sizes"] == ["small", "medium", "large"]
     assert {"compose_batch", "direct_batch"}.issubset(spatter["scenario_contract"]["scopes"])
@@ -146,7 +146,7 @@ def test_benchmark_coverage_details_map_illumination_modes_to_batch_matrix() -> 
 
     assert illumination["performance_contract"]["batch"]["status"] == "covered"
     assert illumination["scenario_contract"]["channels"] == [1, 3, 5]
-    assert illumination["scenario_contract"]["dtypes"] == ["uint8", "float32"]
+    assert illumination["scenario_contract"]["dtypes"] == ["uint8", "float16", "float32"]
     assert illumination["scenario_contract"]["batch_sizes"] == [2, 4, 8, 16]
     assert illumination["scenario_contract"]["sizes"] == ["small", "medium", "large"]
     assert {"compose_batch", "direct_batch"}.issubset(illumination["scenario_contract"]["scopes"])
@@ -166,27 +166,27 @@ def test_benchmark_coverage_details_map_plasma_brightness_contrast_issue_matrix(
 
     assert plasma["performance_contract"]["batch"]["status"] == "covered"
     assert plasma["scenario_contract"]["channels"] == [1, 3, 5]
-    assert plasma["scenario_contract"]["dtypes"] == ["uint8", "float32"]
+    assert plasma["scenario_contract"]["dtypes"] == ["uint8", "float16", "float32"]
     assert plasma["scenario_contract"]["batch_sizes"] == [1, 2, 4, 5, 8, 16, 3]
     assert plasma["scenario_contract"]["sizes"] == ["small", "medium", "large"]
     assert {"compose_batch", "compose_volume", "direct_batch"}.issubset(plasma["scenario_contract"]["scopes"])
     assert {"images", "volume"}.issubset(plasma["scenario_contract"]["targets"])
-    assert len(batch_cases) == len(batch_case_ids) == len(expected_batch_case_ids) == 544
+    assert len(batch_cases) == len(batch_case_ids) == len(expected_batch_case_ids) == 816
     assert batch_case_ids == expected_batch_case_ids
     assert Counter(case_id.split("|")[1] for case_id in batch_case_ids) == {
-        "direct_images": 252,
-        "images": 252,
-        "volume": 40,
+        "direct_images": 378,
+        "images": 378,
+        "volume": 60,
     }
     assert Counter((case_id.split("|")[0], case_id.split("|")[1]) for case_id in batch_case_ids) == {
-        ("plasma_brightness_contrast", "direct_images"): 108,
-        ("plasma_brightness_contrast", "images"): 108,
-        ("plasma_brightness_contrast", "volume"): 18,
-        ("plasma_brightness_contrast_brightness_only", "direct_images"): 72,
-        ("plasma_brightness_contrast_brightness_only", "images"): 72,
-        ("plasma_brightness_contrast_zero", "direct_images"): 72,
-        ("plasma_brightness_contrast_zero", "images"): 72,
-        ("plasma_brightness_contrast_zero", "volume"): 22,
+        ("plasma_brightness_contrast", "direct_images"): 162,
+        ("plasma_brightness_contrast", "images"): 162,
+        ("plasma_brightness_contrast", "volume"): 27,
+        ("plasma_brightness_contrast_brightness_only", "direct_images"): 108,
+        ("plasma_brightness_contrast_brightness_only", "images"): 108,
+        ("plasma_brightness_contrast_zero", "direct_images"): 108,
+        ("plasma_brightness_contrast_zero", "images"): 108,
+        ("plasma_brightness_contrast_zero", "volume"): 33,
     }
     assert {
         "plasma_brightness_contrast|direct_images|large|5|float32|16",
@@ -204,7 +204,7 @@ def test_benchmark_coverage_details_map_plasma_brightness_contrast_issue_matrix(
         "plasma_brightness_contrast_zero|volume|medium|3|float32|1",
         "plasma_brightness_contrast_zero|volume|large|5|float32|16",
     }.issubset(batch_case_ids)
-    assert len(memory_cases) == 12
+    assert len(memory_cases) == 18
     assert {case["case_id"] for case in memory_cases} == set(
         benchmark_coverage.PLASMA_BRIGHTNESS_CONTRAST_PEAK_MEMORY_CASES,
     )
@@ -223,7 +223,7 @@ def test_benchmark_coverage_details_map_random_shadow_issue_matrix() -> None:
 
     assert random_shadow["performance_contract"]["batch"]["status"] == "covered"
     assert random_shadow["scenario_contract"]["channels"] == [1, 3, 5]
-    assert random_shadow["scenario_contract"]["dtypes"] == ["uint8", "float32"]
+    assert random_shadow["scenario_contract"]["dtypes"] == ["uint8", "float16", "float32"]
     assert random_shadow["scenario_contract"]["batch_sizes"] == [2, 4, 8, 16]
     assert random_shadow["scenario_contract"]["sizes"] == ["small", "medium", "large"]
     assert {"compose_batch", "compose_volume", "direct_batch"}.issubset(
@@ -231,11 +231,11 @@ def test_benchmark_coverage_details_map_random_shadow_issue_matrix() -> None:
     )
     assert {"images", "volume"}.issubset(random_shadow["scenario_contract"]["targets"])
     assert "peakmem_random_shadow_batch_large_multichannel" in random_shadow["scenario_contract"]["memory_cases"]
-    assert len(batch_cases) == len(batch_case_ids) == 216
+    assert len(batch_cases) == len(batch_case_ids) == 324
     assert Counter(case_id.split("|")[1] for case_id in batch_case_ids) == {
-        "direct_images": 72,
-        "images": 72,
-        "volume": 72,
+        "direct_images": 108,
+        "images": 108,
+        "volume": 108,
     }
     assert {
         "random_shadow|direct_images|large|5|float32|16",
@@ -271,9 +271,10 @@ def test_benchmark_coverage_details_map_parameter_sensitivity_to_public_transfor
     assert set(blur["scenario_contract"]["parameter_scenarios"]) == {"kernel_3", "kernel_15"}
     assert blur["scenario_contract"]["sizes"] == ["small", "medium", "large"]
     assert blur["scenario_contract"]["channels"] == [1, 3, 5]
-    assert blur["scenario_contract"]["dtypes"] == ["uint8", "float32"]
+    assert blur["scenario_contract"]["dtypes"] == ["uint8", "float16", "float32"]
     assert blur["scenario_axis_contracts"]["parameter_sensitivity"]["skipped"] == {
         "channels": [1, 5],
+        "dtypes": ["float16"],
         "sizes": ["large"],
     }
     assert ("parameter_sensitivity", "blur_kernel_15|kernel_15|medium|3|float32") in {
@@ -290,7 +291,7 @@ def test_benchmark_coverage_details_map_parameter_sensitivity_to_public_transfor
     assert superpixels["scenario_contract"]["dtypes"] == ["uint8"]
     assert superpixels["scenario_axis_contracts"]["family_matrix"]["skipped"] == {
         "channels": [1, 5],
-        "dtypes": ["float32"],
+        "dtypes": ["float16", "float32"],
     }
 
 
@@ -316,16 +317,16 @@ def test_benchmark_coverage_details_map_both_random_tone_curve_modes() -> None:
         "move_tone_curve_shared",
         "move_tone_curve_per_channel",
     }
-    assert len(family_case_ids) == 36
-    assert len(direct_case_ids) == 36
+    assert len(family_case_ids) == 54
+    assert len(direct_case_ids) == 54
     assert {case_id.split("|", maxsplit=1)[0] for case_id in batch_case_ids} == {
         "random_tone_curve",
         "random_tone_curve_per_channel",
     }
-    assert len(batch_cases) == len(batch_case_ids) == 96
+    assert len(batch_cases) == len(batch_case_ids) == 144
     assert Counter(case_id.split("|")[1] for case_id in batch_case_ids) == {
-        "direct_images": 48,
-        "images": 48,
+        "direct_images": 72,
+        "images": 72,
     }
     assert {
         "random_tone_curve|images|small|1|uint8|4",
@@ -337,7 +338,7 @@ def test_benchmark_coverage_details_map_both_random_tone_curve_modes() -> None:
     assert random_tone_curve["scenario_axis_contracts"]["batch_matrix"] == {
         "covered": {
             "channels": [1, 3, 5],
-            "dtypes": ["uint8", "float32"],
+            "dtypes": ["uint8", "float16", "float32"],
             "sizes": ["small", "medium"],
         },
         "skip_reason": "batch matrix omits large image batches to keep CI evidence stable and affordable",
@@ -380,29 +381,13 @@ def test_benchmark_coverage_details_map_special_target_matrix_to_public_transfor
     assert "target_matrix" in mask_dropout["layers"]
 
 
-def test_benchmark_coverage_details_explain_warning_aliases() -> None:
-    shift_scale_rotate = _coverage_for("ShiftScaleRotate")
+def test_benchmark_coverage_details_explain_transform_aliases() -> None:
+    alias = _coverage_for("ShiftScaleRotate")
 
-    assert shift_scale_rotate["smoke_only"] is False
-    assert shift_scale_rotate["covered_by"] == "Affine"
-    assert shift_scale_rotate["families"] == ["alias", "alias_coverage"]
-    assert "alias_coverage" in shift_scale_rotate["layers"]
-    assert shift_scale_rotate["asv_cases"] == [
-        {
-            "benchmark": "benchmarks.test_catalog_smoke.TimeCatalogTransformSmoke.time_transform_compose",
-            "case_id": "ShiftScaleRotate",
-            "config": "default",
-            "layer": "catalog_smoke",
-            "scenario": {
-                "layer": "catalog_smoke",
-                "scope": "compose",
-                "targets": ["image"],
-            },
-        },
-    ]
-    assert shift_scale_rotate["scenario_contract"]["case_count"] == 1
-    assert shift_scale_rotate["scenario_contract"]["targets"] == ["image"]
-    assert shift_scale_rotate["performance_contract"]["direct_kernel"]["status"] == "not_required"
+    assert alias["smoke_only"] is False
+    assert alias["covered_by"] == "Affine"
+    assert alias["families"] == ["alias", "alias_coverage"]
+    assert "alias_coverage" in alias["layers"]
 
 
 def test_benchmark_coverage_details_keep_dedicated_tensor_transforms_explicit() -> None:
@@ -438,18 +423,10 @@ def test_benchmark_coverage_details_keep_native_tensor_capabilities_beside_numpy
     assert transpose["coverage_contract"]["required_layers"] == ["catalog_smoke", "family_matrix", "pytorch_tensor"]
     tensor_cases = [case for case in transpose["asv_cases"] if case["layer"] == "pytorch_tensor"]
     assert {case["case_id"] for case in tensor_cases} == {
-        "small|1|uint8",
-        "small|1|float32",
-        "small|3|uint8",
-        "small|3|float32",
-        "medium|1|uint8",
-        "medium|1|float32",
-        "medium|3|uint8",
-        "medium|3|float32",
-        "large|1|uint8",
-        "large|1|float32",
-        "large|3|uint8",
-        "large|3|float32",
+        f"{size}|{channels}|{dtype}"
+        for size in ("small", "medium", "large")
+        for channels in (1, 3)
+        for dtype in ("uint8", "float16", "float32")
     }
     assert all(case["scenario"]["scope"] == "tensor_native_compose" for case in tensor_cases)
     assert all(case["scenario"]["targets"] == ["image"] for case in tensor_cases)

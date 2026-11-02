@@ -11,6 +11,13 @@ Documentation and mechanical refactors with no plausible runtime effect need no 
 Read [Performance Optimization](../performance-optimization/SKILL.md) and its required reference before selecting
 candidates. Define the changed route and the workload dimension that could falsify the proposed speedup.
 
+Use Python 3.11 and the newest stable third-party releases that support Python 3.11 and the target platform for
+final acceptance benchmarks. The recorded profile uses PyTorch 2.15.0 (`2.15.0+cpu` on Linux), NumPy 2.4.6,
+OpenCV 5.0.0.93, NumKong 7.8.6, and StringZilla 5.3.2. Re-resolve and record package versions and imported
+Albucore/AX paths before a new acceptance run. A run from a stale lock or environment is not acceptance evidence.
+
+On macOS ARM64, run NumKong benchmarks outside the Codex sandbox with `sandbox_permissions="require_escalated"` and verify `nk.get_capabilities()["neon"]` is true in the same process. The Albucore router harness refuses native timing when NEON detection fails; `--allow-restricted-isa` is diagnostic only. Never force capabilities to hide a failed hardware probe.
+
 ## Select the workload
 
 For pixel arithmetic, dtype conversion, layout, or backend routing, use the nine combinations of square sizes

@@ -7,7 +7,6 @@ transformations like grid shuffling and thin plate splines.
 
 import random
 from typing import Annotated, Any, ClassVar, Literal, Self, TypeVar, cast
-from warnings import warn
 
 import cv2
 import numpy as np
@@ -1004,11 +1003,6 @@ class ShiftScaleRotate(Affine):
             keep_ratio=True,
             rotate_method=rotate_method,
             p=p,
-        )
-        warn(
-            "ShiftScaleRotate is a special case of Affine transform. Please use Affine transform instead.",
-            UserWarning,
-            stacklevel=2,
         )
         self.shift_range_x = shift_range_x
         self.shift_range_y = shift_range_y

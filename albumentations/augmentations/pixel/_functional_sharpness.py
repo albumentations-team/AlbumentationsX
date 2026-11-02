@@ -7,17 +7,17 @@ from typing import Literal, cast
 
 from ._functional_shared import (
     NUM_MULTI_CHANNEL_DIMENSIONS,
+    ImageFloat32,
     ImageType,
     ImageUInt8,
     clip,
-    clipped,
     cv2,
     lru_cache,
     multiply,
     np,
-    preserve_channel_dim,
     remap,
-    uint8_io,
+    restore_uint8_working_image,
+    to_uint8_working_image,
 )
 
 _Cv2Compare = Callable[..., np.ndarray]
@@ -96,8 +96,8 @@ def unsharp_mask(
     diff = cast("np.ndarray", cv2.absdiff(image, blurred))
     threshold_value = threshold / 255.0 if image.dtype == np.float32 else threshold
     if image.ndim == NUM_MULTI_CHANNEL_DIMENSIONS and image.shape[2] not in {1, 3, 4}:
-        mask = diff > threshold_value
-        return np.where(mask, sharpened, image).astype(input_dtype, copy=False)
+        multichannel_mask = diff > threshold_value
+        return np.where(multichannel_mask, sharpened, image).astype(input_dtype, copy=False)
 
     compare = cast("_Cv2Compare", cv2.compare)
     mask = compare(diff, threshold_value, cv2.CMP_GT)
@@ -106,7 +106,6 @@ def unsharp_mask(
     return result.astype(input_dtype, copy=False)
 
 
-@preserve_channel_dim
 def pixel_dropout(
     image: np.ndarray,
     drop_mask: np.ndarray,
@@ -146,22 +145,21 @@ def pixel_dropout(
     return np.where(drop_mask, drop_values, image)
 
 
-@uint8_io
 def chromatic_aberration(
-    img: ImageUInt8,
+    img: ImageType,
     primary_distortion_red: float,
     secondary_distortion_red: float,
     primary_distortion_blue: float,
     secondary_distortion_blue: float,
     interpolation: int,
-) -> ImageUInt8:
+) -> ImageType:
     """Chromatic aberration: shift R/B channels. primary/secondary_distortion_red/blue, interpolation.
-    Simulates lens R/B shift. uint8 I/O, clipped.
+    Simulates lens R/B shift. Floating inputs are quantized to uint8 and restored.
 
     This function applies chromatic aberration to an image by distorting the red and blue channels.
 
     Args:
-        img (ImageUInt8): Uint8 working image. Float32 input is converted automatically.
+        img (ImageType): Input image with three color channels.
         primary_distortion_red (float): The primary distortion of the red channel.
         secondary_distortion_red (float): The secondary distortion of the red channel.
         primary_distortion_blue (float): The primary distortion of the blue channel.
@@ -169,9 +167,10 @@ def chromatic_aberration(
         interpolation (int): The interpolation method to use.
 
     Returns:
-        ImageUInt8: Uint8 kernel output. Float32 calls are restored to their original dtype.
+        ImageType: Output with the input shape and dtype.
 
     """
+    img, input_dtype = to_uint8_working_image(img)
     height, width = img.shape[:2]
 
     # Build camera matrix
@@ -209,7 +208,8 @@ def chromatic_aberration(
         interpolation,
     )
 
-    return np.dstack([red_distorted, img[..., 1], blue_distorted])
+    result = np.dstack([red_distorted, img[..., 1], blue_distorted])
+    return restore_uint8_working_image(result, input_dtype)
 
 
 def _distort_channel(
@@ -321,7 +321,6 @@ def _get_planckian_coeffs(
     return coeffs[0] / coeffs[1], coeffs[2] / coeffs[1]
 
 
-@clipped
 def planckian_jitter(
     img: ImageType,
     temperature: int,
@@ -342,6 +341,7 @@ def planckian_jitter(
         ImageType: The Planckian jitter applied to the image.
 
     """
+    input_dtype = img.dtype
     img = img.copy()
     red_multiplier, blue_multiplier = _get_planckian_coeffs(mode, temperature)
 
@@ -354,10 +354,9 @@ def planckian_jitter(
         multiply(red, red_multiplier, out=red)
         multiply(blue, blue_multiplier, out=blue)
 
-    return img
+    return img if input_dtype == np.uint8 else clip(img, input_dtype)
 
 
-@preserve_channel_dim
 def convolve(
     img: ImageType,
     kernel: np.ndarray,
@@ -441,7 +440,6 @@ def create_stochastic_convolution_kernel(
     return kernel
 
 
-@preserve_channel_dim
 def separable_convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
     """Convolve with separable 1D kernel in two passes. Faster than full 2D for large kernels.
     Use for Gaussian-like blur or custom separable filters. Clipped.
@@ -457,12 +455,23 @@ def separable_convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
 
     """
     input_dtype = img.dtype
-    working_dtype = np.float32 if input_dtype.type is np.float16 else input_dtype
-    img = cast("ImageType", np.array(img, dtype=working_dtype, copy=True, order="C"))
-    cv2.sepFilter2D(img, ddepth=-1, kernelX=kernel, kernelY=kernel, dst=img)
-    if input_dtype.type is np.float16:
-        return clip(img, dtype=cast("np.dtype[np.float16]", input_dtype))
-    return clip(img, out=img)
+    is_half = input_dtype.type is np.float16
+    working_dtype = np.dtype(np.float32) if is_half else input_dtype.newbyteorder("=")
+    working = cast("ImageType", np.array(img, dtype=working_dtype, copy=True, order="C"))
+    cv2.sepFilter2D(working, ddepth=-1, kernelX=kernel, kernelY=kernel, dst=working)
+    result: ImageType
+    if input_dtype.type is np.uint8:
+        uint8_working = cast("ImageUInt8", working)
+        result = clip(uint8_working, out=uint8_working)
+    elif is_half:
+        result = clip(working, dtype=np.dtype(np.float16))
+    else:
+        float32_working = cast("ImageFloat32", working)
+        result = clip(float32_working, out=float32_working)
+    if not input_dtype.isnative:
+        result.byteswap(inplace=True)
+        return cast("ImageType", result.view(input_dtype))
+    return result
 
 
 __all__ = [

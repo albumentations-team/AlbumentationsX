@@ -58,7 +58,7 @@ class CoarseDropout(BaseDropout):
         image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Supported bboxes:
         hbb
@@ -67,7 +67,6 @@ class CoarseDropout(BaseDropout):
         - The actual number and size of dropout regions are randomly chosen within the specified ranges for each
             application.
         - When using float values for hole_height_range and hole_width_range, ensure they are between 0 and 1.
-        - This implementation includes deprecation warnings for older parameter names (min_holes, max_holes, etc.).
         - Inpainting methods ('inpaint_telea', 'inpaint_ns') work only with grayscale or RGB images.
         - When using `fill="grayscale"`, `fill_mask` must be None.
         - For 'random_uniform' fill, each hole gets a single random color, unlike 'random' where each pixel
@@ -238,7 +237,7 @@ class Erasing(BaseDropout):
         image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Supported bboxes:
         hbb
@@ -412,7 +411,7 @@ class ConstrainedCoarseDropout(BaseDropout):
         image, mask, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Supported bboxes:
         hbb

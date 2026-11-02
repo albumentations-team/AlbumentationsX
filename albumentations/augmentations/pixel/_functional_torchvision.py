@@ -22,10 +22,8 @@ from ._functional_shared import (
     add_weighted,
     apply_uint8_lut,
     clip,
-    clipped,
     cv2,
     fgeometric,
-    float32_io,
     from_float,
     get_num_channels,
     is_grayscale_image,
@@ -34,9 +32,10 @@ from ._functional_shared import (
     multiply,
     multiply_add,
     np,
-    preserve_channel_dim,
+    restore_uint8_working_image,
     std,
-    uint8_io,
+    to_float,
+    to_uint8_working_image,
 )
 
 
@@ -117,12 +116,9 @@ def _replace_segments_with_mean(
     return result
 
 
-@float32_io
-@clipped
-@preserve_channel_dim
 def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
     """Fancy PCA color augmentation: add noise along principal components. alpha_vector; any channel
-    count. float32 I/O, clipped.
+    count. Float32 working arithmetic with output restored to the input dtype.
 
     Args:
         img (ImageType): Input image
@@ -133,7 +129,7 @@ def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
         ImageType: Augmented image of the same shape, type, and range as the input.
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -152,6 +148,12 @@ def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
             & Hinton, G. E. (2012): In Advances in neural information processing systems (pp. 1097-1105).
 
     """
+    input_dtype = img.dtype
+    if input_dtype.type is np.uint8:
+        img = to_float(img)
+    elif input_dtype.type is np.float16:
+        img = img.astype(np.float32)
+
     orig_shape = img.shape
     num_channels = get_num_channels(img)
 
@@ -185,16 +187,13 @@ def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
 
     img_pca = img_pca.reshape(orig_shape)
 
-    # Clip values to [0, 1] range
-    return np.clip(img_pca, 0, 1, out=img_pca)
+    np.clip(img_pca, 0, 1, out=img_pca)
+    return from_float(img_pca.astype(np.float32, copy=False), target_dtype=input_dtype)
 
 
-@clipped
-@preserve_channel_dim
 def adjust_saturation_torchvision(
     img: ImageType,
     factor: float,
-    gamma: float = 0,
 ) -> ImageType:
     """Adjust saturation by blending with grayscale. Factor in [0, inf]; uses
     to_gray (weighted_average for RGB). Torchvision-compatible.
@@ -205,19 +204,18 @@ def adjust_saturation_torchvision(
     Args:
         img (ImageType): Input image as a numpy array.
         factor (float): The factor to adjust the saturation by.
-        gamma (float): Unused, kept for API compatibility.
 
     Returns:
         ImageType: The adjusted image.
 
     """
     if factor == 1 or is_grayscale_image(img):
-        return img
+        return img if img.dtype == np.uint8 else clip(img)
 
     gray = to_gray_weighted_average(img) if is_rgb_image(img) else to_gray_average(img)
     gray_expanded = grayscale_to_multichannel(gray, img.shape[-1])
-
-    return gray_expanded if factor == 0 else add_weighted(img, factor, gray_expanded, 1 - factor)
+    result = gray_expanded if factor == 0 else add_weighted(img, factor, gray_expanded, 1 - factor)
+    return result if result.dtype == np.uint8 else cast("ImageType", clip(result))
 
 
 def _adjust_hue_torchvision_uint8(img: ImageUInt8, factor: float) -> ImageUInt8:
@@ -591,8 +589,6 @@ def apply_brightness_contrast_torchvision_batch(
     return from_float(result, target_dtype=images.dtype)
 
 
-@uint8_io
-@preserve_channel_dim
 def superpixels(
     image: np.ndarray,
     n_segments: int,
@@ -601,7 +597,7 @@ def superpixels(
     interpolation: int,
 ) -> np.ndarray:
     """Apply superpixels using SLIC: replace pixels with segment mean. n_segments, replace_samples,
-    max_size, interpolation. uint8 I/O.
+    max_size, interpolation. Floating inputs are quantized to uint8 and restored.
 
     This function applies superpixels to an image using the SLIC algorithm.
     The superpixels are applied by replacing the pixels in the image with the mean intensity of the superpixel.
@@ -617,8 +613,9 @@ def superpixels(
         np.ndarray: The superpixels applied to the image.
 
     """
+    image, input_dtype = to_uint8_working_image(image)
     if not np.any(replace_samples):
-        return image
+        return restore_uint8_working_image(image, input_dtype)
 
     orig_shape = image.shape
     if max_size is not None:
@@ -637,7 +634,8 @@ def superpixels(
 
     image = _replace_segments_with_mean(image, segments, replace_samples)
 
-    return fgeometric.resize(image, orig_shape[:2], interpolation) if orig_shape != image.shape else image
+    result = fgeometric.resize(image, orig_shape[:2], interpolation) if orig_shape != image.shape else image
+    return restore_uint8_working_image(result, input_dtype)
 
 
 def slic(

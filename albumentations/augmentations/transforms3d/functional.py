@@ -135,6 +135,7 @@ def affine_3d(
     Albucore owns CPU Torch sampling and its matrix, interpolation, and border semantics. This adapter adds or removes
     the implicit channel required by channel-less masks and temporarily promotes non-native integer masks when needed.
     """
+    working_volume: VolumeType | torch.Tensor
     if isinstance(volume, np.ndarray):
         (
             working_volume,
@@ -419,6 +420,7 @@ def remap_3d(
         VolumeType | torch.Tensor: Sampled volume or mask with the caller's public representation.
 
     """
+    working_volume: VolumeType | torch.Tensor
     if isinstance(volume, np.ndarray):
         working_volume, original_numpy_dtype, is_channel_less_numpy, needs_mask_promotion = (
             _prepare_numpy_resampled_volume(volume, is_mask)

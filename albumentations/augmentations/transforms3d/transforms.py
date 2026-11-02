@@ -1827,7 +1827,7 @@ class CoarseDropout3D(Transform3D):
         volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         - The actual number and size of dropout regions are randomly chosen within the specified ranges.

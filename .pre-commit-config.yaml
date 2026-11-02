@@ -103,7 +103,7 @@ repos:
         language: system
         files: ^(pyproject\.toml|conda\.recipe/meta\.yaml|tools/check_conda_dependencies\.py)$
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.17.1
+    rev: v0.17.3
     hooks:
       - id: ruff
         exclude: '__pycache__/'
@@ -130,18 +130,15 @@ repos:
     rev: v2.4.3
     hooks:
       - id: codespell
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v2.4.0
+  - repo: local
     hooks:
       - id: mypy
+        name: Mypy type check
+        entry: uv run mypy
+        language: system
         files: ^albumentations/
-        additional_dependencies:
-          - numpy==2.4.6
-          - types-PyYAML>=6.0.12.20260518
-          - types-setuptools>=83.0.0.20260706
-          - pydantic>=2.13.4
-        args:
-          [ --config-file=pyproject.toml ]
+        pass_filenames: false
+        args: [ --config-file=pyproject.toml, albumentations ]
   - repo: https://github.com/facebook/pyrefly-pre-commit
     rev: 1.4.0
     hooks:

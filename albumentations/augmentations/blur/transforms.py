@@ -92,7 +92,7 @@ class Blur(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Examples:
         >>> import numpy as np
@@ -604,8 +604,8 @@ class ModeFilter(ImageOnlyTransform):
     preserves and expands dominant flat regions while suppressing isolated outliers, making
     it well-suited for palette-like, synthetic, or segmentation-style imagery.
 
-    For float32 images the operation is performed in uint8 space (via @uint8_io); quantisation
-    is intentional — mode is meaningless for continuous-valued signals.
+    Float inputs are quantized to uint8 before filtering and restored to their original dtype afterward.
+    This quantization is intentional because mode filtering models discrete-valued signals.
 
     Tie-breaking: when multiple values share the highest frequency, the smallest is chosen
     (deterministic, scipy.stats.mode default). Border pixels use reflect padding.
@@ -620,7 +620,7 @@ class ModeFilter(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -732,7 +732,7 @@ class GaussianBlur(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -740,7 +740,10 @@ class GaussianBlur(ImageOnlyTransform):
     Note:
         - For uint8 images, `blur_range=(0, 0)` matches Pillow's `GaussianBlur` pixel for
           pixel, including its fixed-point rounding and replicated border handling.
-        - Float32 images use the same extended-box approximation without uint8 quantization.
+        - Float16 and float32 images use the same extended-box approximation without uint8 quantization. Float16 is
+          computed in float32 and rounded to half on output.
+        - NumPy arrays with non-native float16 or float32 byte order use native working storage and return in the
+          original dtype. The input is not modified.
         - Positive `blur_range` values select a discrete Gaussian kernel independently of
           sigma, so some size and sigma combinations can truncate the blur substantially.
         - `volume_mode="3d"` uses `BORDER_REFLECT_101` along all spatial axes. It does not blur
@@ -931,12 +934,14 @@ class GaussianBlur(ImageOnlyTransform):
         **params: Any,
     ) -> VolumeType:
         if self.volume_mode == "slice":
-            return super().apply_to_volume(volume, kernel=kernel, **params)
-        return gaussian_blur3d(
-            volume,
-            sigma=sigma,
-            kernel_size=kernel_size,
-        )
+            return cast("ImageType", super().apply_to_volume(volume, kernel=kernel, **params))
+        if volume.dtype.isnative:
+            return gaussian_blur3d(volume, sigma=sigma, kernel_size=kernel_size)
+        input_dtype = volume.dtype
+        native_volume = cast("VolumeType", np.ascontiguousarray(volume, dtype=input_dtype.newbyteorder("=")))
+        result = gaussian_blur3d(native_volume, sigma=sigma, kernel_size=kernel_size)
+        result.byteswap(inplace=True)
+        return cast("VolumeType", result.view(input_dtype))
 
     def _sample_3d_kernel_size(self, blur_range: tuple[int, int], sampling: SamplingContext) -> int:
         lower_bound, upper_bound = blur_range
@@ -1033,7 +1038,7 @@ class GlassBlur(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -1704,7 +1709,7 @@ class ZoomBlur(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Examples:
         >>> import numpy as np

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import statistics
 import subprocess
@@ -15,23 +16,28 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MIB = 1024**2
 RSS_CASES = ("varying", "explicit", "fixed", "image_mask", "hwc1", "direct")
-PEAK_OUTPUT_BYTES = {
-    "blur": 1024 * 1024 * 4,
-    "blur_float16": 1024 * 1024 * 2,
-    "normalize": 1024 * 1024 * 3 * 4,
-    "batch_normalize": 4 * 512 * 512 * 3 * 4,
-    "tensor_normalize": 1024 * 1024 * 3 * 4,
-    "volume_pad": 24 * 288 * 288 * 4,
+PEAK_OUTPUTS = {
+    "blur": ((1024, 1024), "float32", 4),
+    "blur_float16": ((1024, 1024), "float16", 2),
+    "normalize": ((1024, 1024, 3), "float32", 4),
+    "batch_normalize": ((4, 512, 512, 3), "float32", 4),
+    "tensor_normalize": ((3, 1024, 1024), "torch.float32", 4),
+    "volume_pad": ((24, 288, 288, 1), "float32", 4),
 }
+
+
+def expected_output(case: str) -> dict[str, Any]:
+    shape, dtype, itemsize = PEAK_OUTPUTS[case]
+    return {"output_shape": list(shape), "output_dtype": dtype, "output_bytes": math.prod(shape) * itemsize}
 
 
 def classify_samples(samples: list[dict[str, Any]], mode: str, repeats: int) -> dict[str, Any]:
     """Reject incomplete evidence, bound post-GC growth, and cap native working peaks."""
     cases: list[dict[str, Any]] = []
     failures: list[str] = []
-    expected = dict.fromkeys(selected_cases(mode), repeats)
+    expected_counts = dict.fromkeys(selected_cases(mode), repeats)
     counts = Counter((sample["mode"], sample["case"]) for sample in samples)
-    if counts != expected:
+    if counts != expected_counts:
         failures.append("Memory samples must cover every selected case with the requested repeat count")
     rss = {
         case: [sample["growth_bytes"] for sample in samples if sample["mode"] == "rss" and sample["case"] == case]
@@ -57,25 +63,28 @@ def classify_samples(samples: list[dict[str, Any]], mode: str, repeats: int) -> 
         )
         if not passed:
             failures.append(f"rss/{case}: median growth {growth:.0f} exceeds {budget} bytes")
-    for case, output_bytes in PEAK_OUTPUT_BYTES.items():
+    for case in PEAK_OUTPUTS:
+        layout = expected_output(case)
+        output_bytes = layout["output_bytes"]
         records = [sample for sample in samples if sample["mode"] == "peak" and sample["case"] == case]
         if not records:
             continue
         peak = statistics.median(sample["working_peak_bytes"] for sample in records)
         budget = 8 * MIB + 2 * output_bytes
-        passed = peak <= budget and all(sample["output_bytes"] == output_bytes for sample in records)
+        matches_output = all(all(sample[key] == value for key, value in layout.items()) for sample in records)
+        passed = peak <= budget and matches_output
         cases.append(
             {"mode": "peak", "case": case, "working_peak_bytes": peak, "budget_bytes": budget, "passed": passed}
         )
         if not passed:
-            failures.append(f"peak/{case}: working peak or output storage exceeds its budget")
+            failures.append(f"peak/{case}: working peak exceeds its budget or output shape/dtype/storage differs")
     return {"status": "failed" if failures else "passed", "cases": cases, "failures": failures}
 
 
 def selected_cases(mode: str) -> list[tuple[str, str]]:
     cases = [("rss", case) for case in RSS_CASES] if mode != "peak" else []
     if mode != "rss":
-        cases.extend(("peak", case) for case in PEAK_OUTPUT_BYTES)
+        cases.extend(("peak", case) for case in PEAK_OUTPUTS)
     return cases
 
 

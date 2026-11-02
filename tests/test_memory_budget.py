@@ -8,14 +8,19 @@ from pathlib import Path
 import pytest
 import yaml
 
-from tools.check_memory import MIB, PEAK_OUTPUT_BYTES, RSS_CASES, classify_samples
+from tools.check_memory import MIB, PEAK_OUTPUTS, RSS_CASES, classify_samples, expected_output
 from tools.ci_plan import classify_path
 
 
 def _samples() -> list[dict]:
     return [{"mode": "rss", "case": case, "growth_bytes": MIB} for case in RSS_CASES for _ in range(3)] + [
-        {"mode": "peak", "case": case, "working_peak_bytes": output_bytes, "output_bytes": output_bytes}
-        for case, output_bytes in PEAK_OUTPUT_BYTES.items()
+        {
+            "mode": "peak",
+            "case": case,
+            "working_peak_bytes": expected_output(case)["output_bytes"],
+            **expected_output(case),
+        }
+        for case in PEAK_OUTPUTS
         for _ in range(3)
     ]
 
@@ -34,12 +39,12 @@ def test_memory_budget_rejects_retained_full_image_buffers(case: str) -> None:
     assert f"rss/{case}" in report["failures"][0]
 
 
-@pytest.mark.parametrize("case", PEAK_OUTPUT_BYTES)
+@pytest.mark.parametrize("case", PEAK_OUTPUTS)
 def test_memory_budget_rejects_excess_native_workspace(case: str) -> None:
     samples = _samples()
     for sample in samples:
         if sample["mode"] == "peak" and sample["case"] == case:
-            sample["working_peak_bytes"] = 9 * MIB + 2 * PEAK_OUTPUT_BYTES[case]
+            sample["working_peak_bytes"] = 9 * MIB + 2 * expected_output(case)["output_bytes"]
 
     report = classify_samples(samples, "all", 3)
 
@@ -73,6 +78,19 @@ def test_memory_budget_preserves_raw_samples_and_handles_allocator_noise() -> No
 def test_memory_budget_rejects_wrong_output_storage() -> None:
     samples = _samples()
     next(sample for sample in samples if sample["mode"] == "peak")["output_bytes"] = 0
+
+    report = classify_samples(samples, "all", 3)
+
+    assert report["status"] == "failed"
+    assert "peak/blur" in report["failures"][0]
+
+
+@pytest.mark.parametrize(("field", "value"), [("output_shape", [1024 * 1024]), ("output_dtype", "int32")])
+def test_memory_budget_rejects_same_byte_count_with_wrong_layout(field: str, value: object) -> None:
+    samples = _samples()
+    sample = next(sample for sample in samples if sample["mode"] == "peak")
+    sample[field] = value
+    assert sample["output_bytes"] == 1024 * 1024 * 4
 
     report = classify_samples(samples, "all", 3)
 

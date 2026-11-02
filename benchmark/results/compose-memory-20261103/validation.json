@@ -15,16 +15,16 @@
       "skipped": 23
     },
     "focused_lifetime_and_tooling": {
-      "passed": 492
+      "passed": 494
     },
     "ci_policy_suites": {
-      "passed": 85
+      "passed": 87
     },
     "pre_commit": "All hooks passed, including mypy and Pyrefly; see PR checks for hosted evidence.",
     "combined_latest_runtime": {
-      "passed": 8817,
+      "passed": 8819,
       "skipped": 23,
-      "seconds": 34.03,
+      "seconds": 50.4,
       "profile": "Freshly resolved Python 3.11 runtime, including filelock 4.2.6; all selected runtime, lifetime, memory-tooling, and CI-policy suites together."
     }
   },
@@ -768,7 +768,7 @@
         }
       ],
       "failures": [
-        "peak/blur: working peak or output storage exceeds its budget"
+        "peak/blur: working peak exceeds its budget or output shape/dtype/storage differs"
       ],
       "samples": [
         {
@@ -1995,7 +1995,9 @@
     "ci_matrix": "passed",
     "ci_shard": "passed",
     "zizmor": "passed, no medium/high findings",
-    "unslop": "Reviewed runtime diff and new test/tooling code; no unresolved findings."
+    "unslop": "Reviewed runtime diff and new test/tooling code; no unresolved findings.",
+    "output_layout": "Shape, dtype and storage size are enforced; same-byte-count shape/dtype mutations fail.",
+    "minimal_ci_environment": "threadpoolctl is a direct CI dependency in ci-test and ci-benchmark; the CI matrix contract enforces both declarations."
   },
   "capability_reporting": "Native metadata lists enabled CPU capabilities only. The base Scalable Matrix Extension name is expanded; other names match NumKong flags."
 }

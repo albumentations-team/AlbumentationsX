@@ -97,8 +97,8 @@ inputs before measurement. The worker resets its Linux RSS high-water mark after
 imports and input setup, then reads the kernel peak after one public Compose call.
 This uses the documented
 [clear_refs reset](https://www.kernel.org/doc/html/v6.12/filesystems/proc.html).
-The budget is two expected output buffers plus 8 MiB of fixed backend allowance;
-output storage must also match the case's expected shape/dtype byte count.
+The budget is two expected output buffers plus 8 MiB of fixed backend allowance.
+Output shape, dtype and byte count must also match the case's expected result.
 This captures native allocations that Python-only allocation tracing can miss.
 
 These are bounds for the registered workloads. Add a case when a new allocation

@@ -88,7 +88,7 @@ FORBIDDEN_WORKFLOWS = (
 MAX_WORKFLOW_TIMEOUT_MINUTES = 90
 
 CI_DEPENDENCY_GROUPS = {
-    "ci-benchmark": {"asv", "opencv-python-headless"},
+    "ci-benchmark": {"asv", "opencv-python-headless", "threadpoolctl"},
     "ci-package": {"pytest", "twine"},
     "ci-quality": {
         "defusedxml",
@@ -102,7 +102,7 @@ CI_DEPENDENCY_GROUPS = {
     },
     "ci-release": {"asv", "cyclonedx-bom"},
     "ci-security": {"packaging", "pip-audit", "zizmor"},
-    "ci-test": {"defusedxml", "opencv-python-headless", "pytest", "pytest-xdist"},
+    "ci-test": {"defusedxml", "opencv-python-headless", "pytest", "pytest-xdist", "threadpoolctl"},
     "ci-torch-cpu": {"torch"},
     "ci-types": {"mypy", "opencv-python-headless", "pre-commit", "pyrefly"},
 }

@@ -75,7 +75,7 @@ class ToGray(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Returns:
         np.ndarray: Grayscale image with the specified number of channels.
@@ -233,7 +233,7 @@ class ToRGB(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         1
@@ -570,7 +570,7 @@ class FancyPCA(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         any

@@ -107,14 +107,18 @@ may materialize contiguous or writable storage when its kernel requires it.
 
 | Target family | Accepted Tensor dtypes |
 | --- | --- |
-| `image`, `images`, `volume`, `volumes` | `torch.uint8`, `torch.float32` |
-| `mask`, `masks`, `mask3d`, `masks3d` | `torch.uint8`, `torch.int16`, `torch.float32` |
+| `image`, `images`, `volume`, `volumes` | `torch.uint8`, `torch.float16`, `torch.float32` |
+| `mask`, `masks`, `mask3d`, `masks3d` | `torch.uint8`, `torch.int16`, `torch.float16`, `torch.float32` |
 | `bboxes`, `keypoints` | `torch.float32` |
 
 This table describes validation at the `Compose` boundary. An applied fallback uses the transform's existing NumPy
 implementation and preserves the accepted dtype unless that transform's public contract intentionally changes it.
 
-Complex, quantized, and floating Tensor dtypes other than `float32` are rejected during root validation.
+Complex, quantized, and floating Tensor dtypes other than `float16`/`float32` are rejected during root validation.
+Full float16 transform coverage remains in progress; boundary acceptance does not establish every kernel's dtype support.
+The Compose-level float16 matrix runs `tests/contracts/test_target_cluster_contract.py` and
+`tests/contracts/test_image_range_contract.py` for NumPy and Tensor routes. These check target/dtype preservation and
+range contracts; operation-specific numerical references and two-platform speed/memory acceptance remain separate.
 
 ## Execution model
 
@@ -175,8 +179,12 @@ A skipped leaf performs no conversion. Two consecutive fallback leaves may each 
 for Tensor input when its primary data argument includes `torch.Tensor`:
 
 ```python
-def apply(self, image: ImageType | torch.Tensor, **params: Any) -> ImageType: ...
+def apply(self, image: ImageType | torch.Tensor, **params: Any) -> ImageType | torch.Tensor: ...
 ```
+
+A helper that preserves image dtype and container can use Albucore `ImageInputT`. A native handler can declare
+`Annotated[ImageInputT, torch.Tensor]` so its generic signature retains the explicit Tensor capability marker.
+`RandomGamma.apply` uses this image-only route; its other handlers keep their declared routes.
 
 Handlers without a Tensor input annotation use the leaf-local NumPy fallback. This keeps the declaration with the code
 that receives the value: no transform-level Tensor flags, target lists, channel lists, or adapters are needed. Tensor
@@ -206,16 +214,20 @@ The fallback restores the original metadata container after the leaf invocation.
 
 ### `ToTensorV2` and `ToTensor3D`
 
-`ToTensorV2` and `ToTensor3D` are NumPy-to-Tensor terminal transforms. They accept NumPy inputs only.
+`ToTensorV2` and `ToTensor3D` are NumPy-to-Tensor terminal transforms. They accept NumPy inputs only. The base target
+interface permits NumPy or Tensor outputs; concrete terminal handlers declare Tensor returns without untyped
+intermediate overrides. Default NumPy batch handlers require array-producing callbacks. Collection identity handlers preserve
+the caller's container and NumPy dtype in their return types.
 
 When a Compose call contains any Tensor target, the presence of either terminal transform anywhere in the selectable
 graph raises an error before probability or parameter sampling. Mixed-container calls follow the same rule.
 
 ### Conversion and storage
 
-Fallback uses `Tensor.numpy()` and `torch.from_numpy()` views when the dtype and strides permit them. Axis changes such
-as `C,H,W` to `H,W,C` are views when possible. A helper materializes data when the selected kernel requires contiguous
-or writable input, or when a NumPy result has negative strides that Torch cannot represent.
+Fallback uses `Tensor.numpy()` and `torch.from_numpy()` views when the dtype, strides, and writability permit them.
+Axis changes such as `C,H,W` to `H,W,C` are views when possible. A helper materializes data when a kernel requires contiguous
+or writable input. Before wrapping a NumPy result as a Tensor, the bridge copies readonly storage and arrays with
+negative strides, including negative strides on singleton axes. Compatible writable results retain zero-copy conversion.
 
 Transforms must not modify caller input values in place. Applied outputs carry no public storage-sharing guarantee.
 

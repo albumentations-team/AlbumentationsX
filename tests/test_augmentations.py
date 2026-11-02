@@ -8,6 +8,7 @@ from albumentations.augmentations.pixel import _functional_weather as fweather
 from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.augmentations.pixel import weather
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.tensor import numpy_to_tensor_spatial, tensor_to_numpy_spatial
 from albumentations.core.transforms_interface import ImageOnlyTransform
 from tests.conftest import (
     IMAGES,
@@ -968,15 +969,12 @@ def test_solarize_apply_to_images(dtype):
     np.testing.assert_array_equal(transformed, expected)
 
 
-@pytest.mark.parametrize(
-    "dtype",
-    [np.uint8, np.float32],
-)
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
 def test_zoom_blur_apply_to_images(dtype):
     if dtype == np.uint8:
         images = np.random.RandomState(137).randint(0, 256, (2, 100, 100, 3), dtype=np.uint8)
     else:
-        images = np.random.RandomState(137).random((2, 100, 100, 3)).astype(np.float32)
+        images = np.random.RandomState(137).random((2, 100, 100, 3)).astype(dtype)
 
     # Use fixed parameters so parameter generation produces deterministic zoom_factors
     transform = A.ZoomBlur(max_factor_range=(1.1, 1.1), step_factor_range=(0.01, 0.01), p=1.0)
@@ -988,6 +986,72 @@ def test_zoom_blur_apply_to_images(dtype):
 
     expected = np.stack([transform(image=images[i])["image"] for i in range(images.shape[0])])
     np.testing.assert_array_equal(transformed, expected)
+
+
+@pytest.mark.parametrize("channels", [1, 3])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+def test_zoom_blur_float16_matches_float32_reference(channels, container):
+    half_image = np.random.default_rng(137).random((32, 40, channels), dtype=np.float32).astype(np.float16)
+    float32_image = half_image.astype(np.float32)
+    half_source = numpy_to_tensor_spatial(half_image.copy(), "image") if container == "tensor" else half_image.copy()
+    float32_source = (
+        numpy_to_tensor_spatial(float32_image.copy(), "image") if container == "tensor" else float32_image.copy()
+    )
+    if container == "numpy":
+        half_source.flags.writeable = False
+        float32_source.flags.writeable = False
+
+    def make_pipeline():
+        return A.Compose(
+            [A.ZoomBlur(max_factor_range=(1.1, 1.1), step_factor_range=(0.01, 0.01), p=1.0)],
+            seed=137,
+            strict=True,
+        )
+
+    half_result = make_pipeline()(image=half_source)["image"]
+    float32_result = make_pipeline()(image=float32_source)["image"]
+    if container == "tensor":
+        half_result = tensor_to_numpy_spatial(half_result, "image")
+        float32_result = tensor_to_numpy_spatial(float32_result, "image")
+        half_source = tensor_to_numpy_spatial(half_source, "image")
+        float32_source = tensor_to_numpy_spatial(float32_source, "image")
+
+    assert half_result.shape == half_image.shape
+    assert half_result.dtype == np.float16
+    np.testing.assert_array_equal(half_result, float32_result.astype(np.float16))
+    np.testing.assert_array_equal(half_source, half_image)
+    np.testing.assert_array_equal(float32_source, float32_image)
+
+
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+def test_planckian_jitter_float16_compose_clips_and_matches_float32(container):
+    image = np.broadcast_to(np.array([0.05, 0.95, 0.5], dtype=np.float16), (16, 17, 3)).copy()
+    original = image.copy()
+    source = numpy_to_tensor_spatial(image.copy(), "image") if container == "tensor" else image.copy()
+    if container == "numpy":
+        source.flags.writeable = False
+
+    def make_pipeline():
+        return A.Compose(
+            [A.PlanckianJitter(mode="blackbody", temperature_range=(3000, 6500), sampling_method="uniform", p=1.0)],
+            seed=137,
+            strict=True,
+        )
+
+    half_result = make_pipeline()(image=source)["image"]
+    actual = tensor_to_numpy_spatial(half_result, "image") if container == "tensor" else half_result
+    preserved = tensor_to_numpy_spatial(source, "image") if container == "tensor" else source
+    float32_image = image.astype(np.float32)
+    float32_source = numpy_to_tensor_spatial(float32_image.copy(), "image") if container == "tensor" else float32_image
+    float32_result = make_pipeline()(image=float32_source)["image"]
+    if container == "tensor":
+        float32_result = tensor_to_numpy_spatial(float32_result, "image")
+
+    assert actual.shape == image.shape
+    assert actual.dtype == np.float16
+    assert np.all((actual >= 0) & (actual <= 1))
+    np.testing.assert_allclose(actual, float32_result.astype(np.float16), rtol=0, atol=1 / 2048)
+    np.testing.assert_array_equal(preserved, original)
 
 
 @pytest.mark.parametrize(
@@ -1147,6 +1211,454 @@ def test_constrained_coarse_dropout_with_bboxes(bbox_labels, bboxes, expected_nu
                 overlaps_any = True
                 break
         assert overlaps_any, f"Hole {hole} doesn't overlap with any target box"
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("compression_type", ["jpeg", "webp"])
+def test_image_compression_compose_preserves_singleton_channel(dtype, compression_type):
+    rng = np.random.default_rng(137)
+    image = (
+        rng.integers(0, 256, (33, 29, 1), dtype=np.uint8)
+        if dtype is np.uint8
+        else rng.random((33, 29, 1), dtype=np.float32).astype(dtype)
+    )
+    original = image.copy()
+    image_type = ".jpg" if compression_type == "jpeg" else ".webp"
+    transform = A.Compose(
+        [A.ImageCompression(quality_range=(75, 75), compression_type=compression_type, p=1.0)],
+        seed=137,
+    )
+
+    result = transform(image=image)["image"]
+    expected = fpixel.image_compression(image, 75, image_type)
+
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+    np.testing.assert_array_equal(result, expected)
+    np.testing.assert_array_equal(image, original)
+
+
+@pytest.mark.parametrize("target", ["image", "images", "volume", "volumes"])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+@pytest.mark.parametrize("channels", [1, 3])
+@pytest.mark.parametrize("compression_type", ["jpeg", "webp"])
+def test_image_compression_float16_matches_float32_reference(target, container, channels, compression_type):
+    shapes = {
+        "image": (33, 29, channels),
+        "images": (2, 33, 29, channels),
+        "volume": (3, 33, 29, channels),
+        "volumes": (2, 3, 33, 29, channels),
+    }
+    half_image = np.random.default_rng(137).random(shapes[target], dtype=np.float32).astype(np.float16)
+    original = half_image.copy()
+    params = {"quality_range": (75, 75), "compression_type": compression_type, "p": 1.0}
+
+    def make_source(image):
+        source = image.copy()
+        if container == "tensor":
+            return numpy_to_tensor_spatial(source, target)
+        source.flags.writeable = False
+        return source
+
+    def run(image):
+        source = make_source(image)
+        pipeline = A.Compose([A.ImageCompression(**params)], seed=137, strict=True)
+        return pipeline(**{target: source})[target], source
+
+    half_result, half_source = run(half_image)
+    float32_result, _ = run(half_image.astype(np.float32))
+    if container == "tensor":
+        half_result = tensor_to_numpy_spatial(half_result, target)
+        float32_result = tensor_to_numpy_spatial(float32_result, target)
+        half_source = tensor_to_numpy_spatial(half_source, target)
+
+    assert half_result.shape == half_image.shape
+    assert half_result.dtype == np.float16
+    np.testing.assert_array_equal(half_result, float32_result.astype(np.float16))
+    np.testing.assert_array_equal(half_source, original)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+def test_superpixels_compose_preserves_singleton_channel(dtype):
+    rng = np.random.default_rng(137)
+    image = (
+        rng.integers(0, 256, (32, 29, 1), dtype=np.uint8)
+        if dtype is np.uint8
+        else rng.random((32, 29, 1), dtype=np.float32).astype(dtype)
+    )
+    original = image.copy()
+    transform = A.Compose(
+        [
+            A.Superpixels(
+                p_replace_range=(1.0, 1.0),
+                n_segments_range=(8, 8),
+                max_size=24,
+                interpolation=cv2.INTER_NEAREST,
+                p=1.0,
+            ),
+        ],
+        seed=137,
+    )
+
+    result = transform(image=image)["image"]
+
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+    assert np.isfinite(result).all()
+    np.testing.assert_array_equal(image, original)
+
+
+@pytest.mark.parametrize("target", ["image", "images", "volume", "volumes"])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+@pytest.mark.parametrize("channels", [1, 3])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+def test_superpixels_compose_supports_all_targets_and_dtypes(target, container, channels, dtype):
+    shapes = {
+        "image": (32, 29, channels),
+        "images": (2, 32, 29, channels),
+        "volume": (3, 32, 29, channels),
+        "volumes": (2, 3, 32, 29, channels),
+    }
+    rng = np.random.default_rng(137)
+    if dtype is np.uint8:
+        image = rng.integers(0, 256, shapes[target], dtype=np.uint8)
+    else:
+        half = rng.random(shapes[target], dtype=np.float32).astype(np.float16)
+        image = half if dtype is np.float16 else half.astype(np.float32)
+    original = image.copy()
+    params = {"p_replace_range": (1.0, 1.0), "n_segments_range": (8, 8), "max_size": 24, "p": 1.0}
+
+    def make_source(value):
+        source = value.copy()
+        if container == "tensor":
+            return numpy_to_tensor_spatial(source, target)
+        source.flags.writeable = False
+        return source
+
+    def run(value):
+        source = make_source(value)
+        pipeline = A.Compose([A.Superpixels(**params)], seed=137, strict=True)
+        return pipeline(**{target: source})[target], source
+
+    result, source = run(image)
+    actual = tensor_to_numpy_spatial(result, target) if container == "tensor" else result
+    preserved = tensor_to_numpy_spatial(source, target) if container == "tensor" else source
+    assert type(result) is type(source)
+    assert actual.shape == image.shape
+    assert actual.dtype == dtype
+    assert np.isfinite(actual).all()
+    np.testing.assert_array_equal(preserved, original)
+
+    if dtype is np.float16:
+        float32_result, _ = run(image.astype(np.float32))
+        expected = tensor_to_numpy_spatial(float32_result, target) if container == "tensor" else float32_result
+        np.testing.assert_array_equal(actual, expected.astype(np.float16))
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+def test_fancy_pca_compose_preserves_singleton_channel(dtype):
+    rng = np.random.default_rng(137)
+    image = (
+        rng.integers(0, 256, (31, 29, 1), dtype=np.uint8)
+        if dtype is np.uint8
+        else rng.random((31, 29, 1), dtype=np.float32).astype(dtype)
+    )
+    original = image.copy()
+    result = A.Compose([A.FancyPCA(alpha=0.1, p=1.0)], seed=137)(image=image)["image"]
+
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+    assert np.isfinite(result).all()
+    np.testing.assert_array_equal(image, original)
+
+
+@pytest.mark.parametrize("target", ["image", "images", "volume", "volumes"])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+@pytest.mark.parametrize("channels", [1, 3])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+def test_fancy_pca_compose_supports_all_targets_and_dtypes(target, container, channels, dtype):
+    shapes = {
+        "image": (31, 29, channels),
+        "images": (2, 31, 29, channels),
+        "volume": (3, 31, 29, channels),
+        "volumes": (2, 3, 31, 29, channels),
+    }
+    rng = np.random.default_rng(137)
+    if dtype is np.uint8:
+        image = rng.integers(0, 256, shapes[target], dtype=np.uint8)
+    else:
+        half_image = rng.random(shapes[target], dtype=np.float32).astype(np.float16)
+        image = half_image if dtype is np.float16 else half_image.astype(np.float32)
+    original = image.copy()
+
+    def make_source(value):
+        source = value.copy()
+        if container == "tensor":
+            return numpy_to_tensor_spatial(source, target)
+        source.flags.writeable = False
+        return source
+
+    def run(value):
+        source = make_source(value)
+        pipeline = A.Compose([A.FancyPCA(alpha=0.1, p=1.0)], seed=137, strict=True)
+        return pipeline(**{target: source})[target], source
+
+    result, source = run(image)
+    actual = tensor_to_numpy_spatial(result, target) if container == "tensor" else result
+    preserved = tensor_to_numpy_spatial(source, target) if container == "tensor" else source
+
+    assert type(result) is type(source)
+    assert actual.shape == image.shape
+    assert actual.dtype == dtype
+    assert np.isfinite(actual).all()
+    if dtype is np.uint8:
+        assert np.all((actual >= 0) & (actual <= 255))
+    else:
+        assert np.all((actual >= 0) & (actual <= 1))
+    np.testing.assert_array_equal(preserved, original)
+
+    if dtype is np.float16:
+        float32_result, _ = run(image.astype(np.float32))
+        expected = tensor_to_numpy_spatial(float32_result, target) if container == "tensor" else float32_result
+        np.testing.assert_array_equal(actual, expected.astype(np.float16))
+
+
+@pytest.mark.parametrize("target", ["image", "images", "volume", "volumes"])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+@pytest.mark.parametrize("channels", [1, 3])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+def test_error_diffusion_dither_compose_supports_all_targets_and_dtypes(target, container, channels, dtype):
+    shapes = {
+        "image": (19, 23, channels),
+        "images": (2, 19, 23, channels),
+        "volume": (3, 19, 23, channels),
+        "volumes": (2, 3, 19, 23, channels),
+    }
+    rng = np.random.default_rng(137)
+    if dtype is np.uint8:
+        image = rng.integers(0, 256, shapes[target], dtype=np.uint8)
+    else:
+        half_image = rng.random(shapes[target], dtype=np.float32).astype(np.float16)
+        image = half_image if dtype is np.float16 else half_image.astype(np.float32)
+    original = image.copy()
+
+    def make_source(value):
+        source = value.copy()
+        if container == "tensor":
+            return numpy_to_tensor_spatial(source, target)
+        source.flags.writeable = False
+        return source
+
+    def run(value):
+        source = make_source(value)
+        pipeline = A.Compose(
+            [
+                A.Dithering(
+                    method="error_diffusion",
+                    n_colors=4,
+                    color_mode="per_channel",
+                    p=1.0,
+                ),
+            ],
+            seed=137,
+            strict=True,
+        )
+        return pipeline(**{target: source})[target], source
+
+    result, source = run(image)
+    actual = tensor_to_numpy_spatial(result, target) if container == "tensor" else result
+    preserved = tensor_to_numpy_spatial(source, target) if container == "tensor" else source
+
+    assert type(result) is type(source)
+    assert actual.shape == image.shape
+    assert actual.dtype == dtype
+    assert np.isfinite(actual).all()
+    if dtype is np.uint8:
+        assert np.all((actual >= 0) & (actual <= 255))
+    else:
+        assert np.all((actual >= 0) & (actual <= 1))
+    np.testing.assert_array_equal(preserved, original)
+
+    if dtype is np.float16:
+        float32_result, _ = run(image.astype(np.float32))
+        expected = tensor_to_numpy_spatial(float32_result, target) if container == "tensor" else float32_result
+        np.testing.assert_array_equal(actual, expected.astype(np.float16))
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+def test_hue_saturation_value_compose_preserves_grayscale_channel(dtype):
+    rng = np.random.default_rng(137)
+    image = (
+        rng.integers(0, 256, (31, 29, 1), dtype=np.uint8)
+        if dtype is np.uint8
+        else rng.random((31, 29, 1), dtype=np.float32).astype(dtype)
+    )
+    original = image.copy()
+    transform = A.Compose(
+        [
+            A.HueSaturationValue(
+                hue_shift_range=(0, 0),
+                sat_shift_range=(0, 0),
+                val_shift_range=(12, 12),
+                p=1.0,
+            ),
+        ],
+        seed=137,
+    )
+
+    result = transform(image=image)["image"]
+    expected = fpixel.shift_hsv(image, hue_shift=0, sat_shift=0, val_shift=12)
+
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+    np.testing.assert_array_equal(result, expected)
+    np.testing.assert_array_equal(image, original)
+
+
+@pytest.mark.parametrize("target", ["image", "images", "volume", "volumes"])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+@pytest.mark.parametrize("channels", [1, 3])
+@pytest.mark.parametrize("val_shift", [0, 12])
+def test_hue_saturation_value_float16_matches_float32_reference(target, container, channels, val_shift):
+    shapes = {
+        "image": (31, 29, channels),
+        "images": (2, 31, 29, channels),
+        "volume": (3, 31, 29, channels),
+        "volumes": (2, 3, 31, 29, channels),
+    }
+    half_image = np.random.default_rng(137).random(shapes[target], dtype=np.float32).astype(np.float16)
+    original = half_image.copy()
+    params = {
+        "hue_shift_range": (0, 0),
+        "sat_shift_range": (0, 0),
+        "val_shift_range": (val_shift, val_shift),
+        "p": 1.0,
+    }
+
+    def run(image):
+        source = image.copy()
+        if container == "tensor":
+            source = numpy_to_tensor_spatial(source, target)
+        else:
+            source.flags.writeable = False
+        pipeline = A.Compose([A.HueSaturationValue(**params)], seed=137, strict=True)
+        return pipeline(**{target: source})[target], source
+
+    half_result, half_source = run(half_image)
+    float_result, _ = run(half_image.astype(np.float32))
+    if container == "tensor":
+        half_result = tensor_to_numpy_spatial(half_result, target)
+        float_result = tensor_to_numpy_spatial(float_result, target)
+        half_source = tensor_to_numpy_spatial(half_source, target)
+
+    assert half_result.shape == half_image.shape
+    assert half_result.dtype == np.float16
+    np.testing.assert_array_equal(half_result, float_result.astype(np.float16))
+    np.testing.assert_array_equal(half_source, original)
+
+
+@pytest.mark.parametrize("target", ["image", "images", "volume", "volumes"])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+def test_to_gray_from_lab_float16_compose_matches_float32(target, container):
+    shapes = {
+        "image": (31, 29, 3),
+        "images": (2, 31, 29, 3),
+        "volume": (3, 31, 29, 3),
+        "volumes": (2, 3, 31, 29, 3),
+    }
+    half_image = np.random.default_rng(137).random(shapes[target], dtype=np.float32).astype(np.float16)
+    original = half_image.copy()
+
+    def make_source(image):
+        source = image.copy()
+        if container == "tensor":
+            return numpy_to_tensor_spatial(source, target)
+        source.flags.writeable = False
+        return source
+
+    def run(image):
+        source = make_source(image)
+        pipeline = A.Compose([A.ToGray(method="from_lab", num_output_channels=1, p=1.0)], seed=137, strict=True)
+        return pipeline(**{target: source})[target], source
+
+    half_result, half_source = run(half_image)
+    float32_result, _ = run(half_image.astype(np.float32))
+    if container == "tensor":
+        half_result = tensor_to_numpy_spatial(half_result, target)
+        float32_result = tensor_to_numpy_spatial(float32_result, target)
+        half_source = tensor_to_numpy_spatial(half_source, target)
+
+    assert half_result.shape == (*half_image.shape[:-1], 1)
+    assert half_result.dtype == np.float16
+    np.testing.assert_array_equal(half_result, float32_result.astype(np.float16))
+    np.testing.assert_array_equal(half_source, original)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("operation", ["equalize_cv", "equalize_pil", "clahe"])
+def test_equalize_and_clahe_compose_preserve_singleton_channel(dtype, operation):
+    rng = np.random.default_rng(137)
+    image = (
+        rng.integers(0, 256, (31, 29, 1), dtype=np.uint8)
+        if dtype is np.uint8
+        else rng.random((31, 29, 1), dtype=np.float32).astype(dtype)
+    )
+    original = image.copy()
+    if operation == "clahe":
+        transform = A.CLAHE(clip_range=(2.0, 2.0), tile_grid_size=(8, 8), p=1.0)
+        expected = fpixel.clahe(image, 2.0, (8, 8))
+    else:
+        mode = operation.removeprefix("equalize_")
+        transform = A.Equalize(mode=mode, p=1.0)
+        expected = fpixel.equalize(image, mode=mode)
+
+    result = A.Compose([transform], seed=137)(image=image)["image"]
+
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+    np.testing.assert_array_equal(result, expected)
+    np.testing.assert_array_equal(image, original)
+
+
+@pytest.mark.parametrize("operation", ["equalize_cv", "equalize_pil", "clahe"])
+def test_equalize_and_clahe_float16_match_float32_reference(operation):
+    half_image = np.random.default_rng(137).random((31, 29, 1), dtype=np.float32).astype(np.float16)
+    float_image = half_image.astype(np.float32)
+    if operation == "clahe":
+        half_transform = A.CLAHE(clip_range=(2.0, 2.0), tile_grid_size=(8, 8), p=1.0)
+        float_transform = A.CLAHE(clip_range=(2.0, 2.0), tile_grid_size=(8, 8), p=1.0)
+    else:
+        mode = operation.removeprefix("equalize_")
+        half_transform = A.Equalize(mode=mode, p=1.0)
+        float_transform = A.Equalize(mode=mode, p=1.0)
+
+    half_result = A.Compose([half_transform], seed=137)(image=half_image)["image"]
+    float_result = A.Compose([float_transform], seed=137)(image=float_image)["image"]
+
+    assert half_result.shape == half_image.shape
+    assert half_result.dtype == np.float16
+    np.testing.assert_array_equal(half_result, float_result.astype(np.float16))
+
+
+@pytest.mark.parametrize(
+    ("dtype", "drop_value", "source_value"),
+    [
+        (np.uint8, 137, 201),
+        (np.float16, 0.125, 0.75),
+        (np.float32, 0.125, 0.75),
+    ],
+)
+def test_pixel_dropout_compose_preserves_singleton_channel(dtype, drop_value, source_value):
+    image = np.full((3, 4, 1), source_value, dtype=dtype)
+    original = image.copy()
+    transform = A.Compose([A.PixelDropout(dropout_prob=1.0, drop_value=drop_value, p=1.0)])
+
+    result = transform(image=image)["image"]
+
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+    np.testing.assert_array_equal(result, np.full_like(image, drop_value))
+    np.testing.assert_array_equal(image, original)
 
 
 @pytest.mark.parametrize(
@@ -1593,6 +2105,57 @@ def test_random_rain_slant(slant_range, expected_slant_range):
         assert has_lower and has_upper, f"Slant values {slants} don't cover both halves of range {expected_slant_range}"
 
 
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+def test_random_rain_compose_preserves_rgb_shape_dtype_and_input(dtype):
+    rng = np.random.default_rng(137)
+    image = (
+        rng.integers(0, 256, (64, 64, 3), dtype=np.uint8)
+        if dtype is np.uint8
+        else rng.random((64, 64, 3), dtype=np.float32).astype(dtype)
+    )
+    original = image.copy()
+    transform = A.Compose(
+        [
+            A.RandomRain(
+                slant_range=(0, 0),
+                drop_length=12,
+                drop_width=1,
+                blur_value=1,
+                brightness_coefficient=1.0,
+                rain_type="heavy",
+                p=1.0,
+            ),
+        ],
+        seed=137,
+    )
+
+    result = transform(image=image)["image"]
+
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+    assert np.isfinite(result).all()
+    np.testing.assert_array_equal(image, original)
+
+
+def test_random_rain_float16_matches_float32_reference() -> None:
+    half_image = np.random.default_rng(137).random((64, 64, 3), dtype=np.float32).astype(np.float16)
+    float_image = half_image.astype(np.float32)
+    params = {
+        "slant_range": (0, 0),
+        "drop_length": 12,
+        "drop_width": 1,
+        "blur_value": 1,
+        "brightness_coefficient": 1.0,
+        "rain_type": "heavy",
+        "p": 1.0,
+    }
+
+    half_result = A.Compose([A.RandomRain(**params)], seed=137)(image=half_image)["image"]
+    float_result = A.Compose([A.RandomRain(**params)], seed=137)(image=float_image)["image"]
+
+    np.testing.assert_array_equal(half_result, float_result.astype(np.float16))
+
+
 @pytest.mark.parametrize("slant", [-10, 0, 10])
 def test_random_rain_visual_effect(slant):
     image = np.full((100, 100, 3), 255, dtype=np.uint8)
@@ -1797,6 +2360,103 @@ def test_unsharp_mask_apply_to_images(dtype):
 
 
 @pytest.mark.parametrize(
+    ("dtype", "value"),
+    [(np.uint8, 137), (np.float16, 0.375), (np.float32, 0.375)],
+)
+def test_sharpen_compose_preserves_singleton_channel(dtype, value):
+    image = np.full((17, 13, 1), value, dtype=dtype)
+    transform = A.Compose(
+        [A.Sharpen(alpha_range=(0.3, 0.3), lightness_range=(0.7, 0.7), method="kernel", p=1.0)],
+        seed=137,
+    )
+
+    result = transform(image=image)["image"]
+
+    expected = image.astype(np.float32) * np.float32(0.91)
+    if dtype is np.uint8:
+        expected = np.rint(expected).astype(np.uint8)
+    elif dtype is np.float16:
+        expected = expected.astype(np.float16)
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+    if dtype is np.float32:
+        # CV_32F convolution may differ from scalar multiplication by a few ULPs across CPUs.
+        np.testing.assert_allclose(result, expected, rtol=0, atol=1e-7)
+    else:
+        np.testing.assert_array_equal(result, expected)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+def test_sharpen_gaussian_compose_preserves_singleton_channel(dtype):
+    rng = np.random.default_rng(137)
+    single = (
+        rng.integers(0, 256, (17, 13, 1), dtype=np.uint8)
+        if dtype is np.uint8
+        else rng.random((17, 13, 1), dtype=np.float32).astype(dtype)
+    )
+    original = single.copy()
+    rgb = np.repeat(single, 3, axis=-1)
+    transform = A.Sharpen(
+        alpha_range=(0.3, 0.3),
+        method="gaussian",
+        kernel_size=5,
+        sigma=1.0,
+        p=1.0,
+    )
+
+    single_result = A.Compose([transform], seed=137)(image=single)["image"]
+    rgb_result = A.Compose(
+        [A.Sharpen(alpha_range=(0.3, 0.3), method="gaussian", kernel_size=5, sigma=1.0, p=1.0)],
+        seed=137,
+    )(image=rgb)["image"]
+
+    assert single_result.shape == single.shape
+    assert single_result.dtype == single.dtype
+    np.testing.assert_allclose(
+        single_result[..., 0],
+        rgb_result[..., 0],
+        rtol=0,
+        atol=1e-7 if dtype is np.float32 else 0,
+    )
+    np.testing.assert_array_equal(single, original)
+
+
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+def test_sharpen_gaussian_half_clipping_matches_float32(container):
+    image = np.zeros((15, 15, 1), dtype=np.float16)
+    image[7, 7, 0] = 1
+    original = image.copy()
+    source = numpy_to_tensor_spatial(image.copy(), "image") if container == "tensor" else image.copy()
+    if container == "numpy":
+        source.flags.writeable = False
+
+    def pipeline():
+        return A.Compose(
+            [A.Sharpen(alpha_range=(1.0, 1.0), method="gaussian", kernel_size=5, sigma=1.0, p=1.0)],
+            seed=137,
+            strict=True,
+        )
+
+    half_result = pipeline()(image=source)["image"]
+    actual = tensor_to_numpy_spatial(half_result, "image") if container == "tensor" else half_result
+    preserved = tensor_to_numpy_spatial(source, "image") if container == "tensor" else source
+    float32_source = (
+        numpy_to_tensor_spatial(image.astype(np.float32), "image")
+        if container == "tensor"
+        else image.astype(np.float32)
+    )
+    float32_result = pipeline()(image=float32_source)["image"]
+    if container == "tensor":
+        float32_result = tensor_to_numpy_spatial(float32_result, "image")
+
+    assert actual.dtype == np.float16
+    assert actual.shape == image.shape
+    assert np.all((actual >= 0) & (actual <= 1))
+    np.testing.assert_array_equal(actual, float32_result.astype(np.float16))
+    np.testing.assert_array_equal(preserved, original)
+
+
+@pytest.mark.parametrize(
     ["dtype", "method"],
     [
         (np.uint8, "kernel"),
@@ -1989,12 +2649,85 @@ def test_plasma_brightness_contrast_zero_effect_clips_floating_input(target_name
     np.testing.assert_array_equal(data, before)
 
 
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+def test_random_gravel_compose_preserves_dtype_and_input(dtype, container):
+    rng = np.random.default_rng(137)
+    uint8_image = rng.integers(0, 256, (64, 64, 3), dtype=np.uint8)
+    image = uint8_image if dtype is np.uint8 else (uint8_image.astype(np.float32) / 255).astype(dtype)
+    original = image.copy()
+    source = numpy_to_tensor_spatial(image.copy(), "image") if container == "tensor" else image.copy()
+    if container == "numpy":
+        source.flags.writeable = False
+
+    def make_pipeline():
+        return A.Compose(
+            [A.RandomGravel(gravel_roi=(0, 0, 1, 1), number_of_patches=2, p=1.0)],
+            seed=137,
+            strict=True,
+        )
+
+    result = make_pipeline()(image=source)["image"]
+
+    assert type(result) is type(source)
+    actual = tensor_to_numpy_spatial(result, "image") if container == "tensor" else result
+    preserved = tensor_to_numpy_spatial(source, "image") if container == "tensor" else source
+    assert actual.shape == image.shape
+    assert actual.dtype == dtype
+    assert np.any(actual != image)
+    np.testing.assert_array_equal(preserved, original)
+    if dtype is np.float16:
+        float32_source = image.astype(np.float32)
+        if container == "tensor":
+            float32_source = numpy_to_tensor_spatial(float32_source, "image")
+        float32_result = make_pipeline()(image=float32_source)["image"]
+        if container == "tensor":
+            float32_result = tensor_to_numpy_spatial(float32_result, "image")
+        np.testing.assert_array_equal(actual, float32_result.astype(np.float16))
+
+
 def _overlapping_shadow_params() -> tuple[list[np.ndarray], np.ndarray]:
     vertices_list = [
         np.array([[1, 1], [5, 1], [5, 5], [1, 5]], dtype=np.int32),
         np.array([[3, 3], [7, 3], [7, 7], [3, 7]], dtype=np.int32),
     ]
     return vertices_list, np.array([0.5, 0.25], dtype=np.float64)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+def test_random_shadow_grayscale_compose_preserves_channel(dtype, container):
+    expected = np.full((17, 19, 1), 127 if dtype is np.uint8 else 0.5, dtype=dtype)
+    source = numpy_to_tensor_spatial(expected.copy(), "image") if container == "tensor" else expected.copy()
+    if container == "numpy":
+        source.flags.writeable = False
+
+    def make_pipeline():
+        return A.Compose(
+            [A.RandomShadow(num_shadows_range=(1, 1), shadow_intensity_range=(0.5, 0.5), p=1.0)],
+            seed=137,
+            strict=True,
+        )
+
+    result = make_pipeline()(image=source)["image"]
+
+    assert type(result) is type(source)
+    actual = tensor_to_numpy_spatial(result, "image") if container == "tensor" else result
+    original = tensor_to_numpy_spatial(source, "image") if container == "tensor" else source
+    assert actual.shape == expected.shape
+    assert actual.dtype == expected.dtype
+    assert np.any(actual != expected)
+    max_value = 255 if dtype is np.uint8 else 1
+    assert np.all((actual >= 0) & (actual <= max_value))
+    np.testing.assert_array_equal(original, expected)
+    if dtype is np.float16:
+        float32_source = np.full(expected.shape, 0.5, dtype=np.float32)
+        if container == "tensor":
+            float32_source = numpy_to_tensor_spatial(float32_source, "image")
+        float32_result = make_pipeline()(image=float32_source)["image"]
+        if container == "tensor":
+            float32_result = tensor_to_numpy_spatial(float32_result, "image")
+        np.testing.assert_array_equal(actual, float32_result.astype(np.float16))
 
 
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
@@ -2207,6 +2940,512 @@ def test_spatter_apply_to_images_matches_inherited_fallback(mode, dtype, seed, b
     else:
         np.testing.assert_allclose(direct_result, expected, rtol=1e-6, atol=1e-6)
         np.testing.assert_allclose(compose_result, expected, rtol=1e-6, atol=1e-6)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+def test_random_sun_flare_physics_compose_preserves_dtype_and_input(dtype, container):
+    rng = np.random.default_rng(137)
+    uint8_image = rng.integers(0, 256, (64, 80, 3), dtype=np.uint8)
+    image = uint8_image if dtype is np.uint8 else (uint8_image.astype(np.float32) / 255).astype(dtype)
+    original = image.copy()
+    source = numpy_to_tensor_spatial(image.copy(), "image") if container == "tensor" else image.copy()
+    if container == "numpy":
+        source.flags.writeable = False
+
+    transform = A.RandomSunFlare(
+        flare_roi=(0, 0, 1, 1),
+        angle_range=(0, 0),
+        num_flare_circles_range=(2, 2),
+        src_radius=15,
+        src_color=(255, 255, 210),
+        method="physics_based",
+        p=1.0,
+    )
+    pipeline = A.Compose([transform], seed=137, strict=True, save_applied_params=True)
+    result = pipeline(image=source)["image"]
+    params = get_resolved_applied_params(transform, target="image")
+    expected = transform.apply(image, **params)
+
+    assert type(result) is type(source)
+    actual = tensor_to_numpy_spatial(result, "image") if container == "tensor" else result
+    preserved = tensor_to_numpy_spatial(source, "image") if container == "tensor" else source
+    assert actual.shape == image.shape
+    assert actual.dtype == dtype
+    assert np.all(np.isfinite(actual))
+    np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(preserved, original)
+    if dtype is np.float16:
+        float32_image = image.astype(np.float32)
+        if container == "tensor":
+            float32_image = numpy_to_tensor_spatial(float32_image, "image")
+        float32_result = A.Compose(
+            [
+                A.RandomSunFlare(
+                    flare_roi=(0, 0, 1, 1),
+                    angle_range=(0, 0),
+                    num_flare_circles_range=(2, 2),
+                    src_radius=15,
+                    src_color=(255, 255, 210),
+                    method="physics_based",
+                    p=1.0,
+                ),
+            ],
+            seed=137,
+            strict=True,
+        )(image=float32_image)["image"]
+        if container == "tensor":
+            float32_result = tensor_to_numpy_spatial(float32_result, "image")
+        np.testing.assert_array_equal(actual, float32_result.astype(np.float16))
+
+
+@pytest.mark.parametrize("target", ["image", "images", "volume", "volumes"])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+def test_iso_noise_float16_compose_matches_float32_reference(target, container):
+    rng = np.random.default_rng(137)
+    shapes = {
+        "image": (19, 23, 3),
+        "images": (2, 19, 23, 3),
+        "volume": (3, 19, 23, 3),
+        "volumes": (2, 3, 19, 23, 3),
+    }
+    half_image = rng.random(shapes[target], dtype=np.float32).astype(np.float16)
+    original = half_image.copy()
+
+    def make_source(image):
+        source = image.copy()
+        if container == "tensor":
+            return numpy_to_tensor_spatial(source, target)
+        source.flags.writeable = False
+        return source
+
+    def run(image):
+        source = make_source(image)
+        pipeline = A.Compose(
+            [A.ISONoise(color_shift_range=(0.03, 0.03), intensity_range=(0.7, 0.7), p=1.0)],
+            seed=137,
+            strict=True,
+        )
+        return pipeline(**{target: source})[target], source
+
+    half_result, half_source = run(half_image)
+    float32_result, _ = run(half_image.astype(np.float32))
+    actual = tensor_to_numpy_spatial(half_result, target) if container == "tensor" else half_result
+    expected = tensor_to_numpy_spatial(float32_result, target) if container == "tensor" else float32_result
+    preserved = tensor_to_numpy_spatial(half_source, target) if container == "tensor" else half_source
+
+    assert actual.shape == original.shape
+    assert actual.dtype == np.float16
+    assert np.all((actual >= 0) & (actual <= 1))
+    np.testing.assert_array_equal(actual, expected.astype(np.float16))
+    np.testing.assert_array_equal(preserved, original)
+
+
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+def test_color_jitter_saturation_float16_compose_clips_and_matches_float32(container):
+    half_image = np.broadcast_to(np.array([1.0, 0.05, 0.2], dtype=np.float16), (19, 23, 3)).copy()
+    original = half_image.copy()
+
+    def make_source(image):
+        source = image.copy()
+        if container == "tensor":
+            return numpy_to_tensor_spatial(source, "image")
+        source.flags.writeable = False
+        return source
+
+    def run(image):
+        source = make_source(image)
+        pipeline = A.Compose(
+            [
+                A.ColorJitter(
+                    brightness_range=(1.0, 1.0),
+                    contrast_range=(1.0, 1.0),
+                    saturation_range=(1.7, 1.7),
+                    hue_range=(0.0, 0.0),
+                    p=1.0,
+                ),
+            ],
+            seed=137,
+            strict=True,
+        )
+        return pipeline(image=source)["image"], source
+
+    half_result, half_source = run(half_image)
+    float32_result, _ = run(half_image.astype(np.float32))
+    actual = tensor_to_numpy_spatial(half_result, "image") if container == "tensor" else half_result
+    expected = tensor_to_numpy_spatial(float32_result, "image") if container == "tensor" else float32_result
+    preserved = tensor_to_numpy_spatial(half_source, "image") if container == "tensor" else half_source
+
+    assert actual.shape == original.shape
+    assert actual.dtype == np.float16
+    assert np.all((actual >= 0) & (actual <= 1))
+    assert np.any(actual == 1)
+    np.testing.assert_allclose(actual, expected.astype(np.float16), rtol=0, atol=1 / 2048)
+    np.testing.assert_array_equal(preserved, original)
+
+
+@pytest.mark.parametrize("target", ["image", "images", "volume", "volumes"])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+def test_linear_illumination_compose_preserves_dtype_for_all_targets(target, container, dtype):
+    shapes = {
+        "image": (19, 23, 3),
+        "images": (2, 19, 23, 3),
+        "volume": (3, 19, 23, 3),
+        "volumes": (2, 3, 19, 23, 3),
+    }
+    rng = np.random.default_rng(137)
+    if dtype is np.uint8:
+        image = rng.integers(0, 256, shapes[target], dtype=np.uint8)
+    else:
+        half_image = rng.random(shapes[target], dtype=np.float32).astype(np.float16)
+        image = half_image if dtype is np.float16 else half_image.astype(np.float32)
+    original = image.copy()
+
+    def make_source(value):
+        source = value.copy()
+        if container == "tensor":
+            return numpy_to_tensor_spatial(source, target)
+        source.flags.writeable = False
+        return source
+
+    def run(value):
+        source = make_source(value)
+        pipeline = A.Compose(
+            [
+                A.Illumination(
+                    mode="linear",
+                    intensity_range=(0.1, 0.1),
+                    effect_type="brighten",
+                    angle_range=(45, 45),
+                    p=1.0,
+                ),
+            ],
+            seed=137,
+            strict=True,
+        )
+        return pipeline(**{target: source})[target], source
+
+    result, source = run(image)
+    actual = tensor_to_numpy_spatial(result, target) if container == "tensor" else result
+    preserved = tensor_to_numpy_spatial(source, target) if container == "tensor" else source
+
+    assert type(result) is type(source)
+    assert actual.shape == image.shape
+    assert actual.dtype == dtype
+    assert np.isfinite(actual).all()
+    if dtype is np.uint8:
+        assert np.all((actual >= 0) & (actual <= 255))
+    else:
+        assert np.all((actual >= 0) & (actual <= 1))
+    np.testing.assert_array_equal(preserved, original)
+
+    if dtype is np.float16:
+        float32_result, _ = run(image.astype(np.float32))
+        expected = tensor_to_numpy_spatial(float32_result, target) if container == "tensor" else float32_result
+        np.testing.assert_array_equal(actual, expected.astype(np.float16))
+
+
+@pytest.mark.parametrize("channels", [1, 3])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+def test_plasma_shadow_compose_preserves_dtype_and_input(channels, dtype, container):
+    rng = np.random.default_rng(137)
+    uint8_image = rng.integers(0, 256, (64, 80, channels), dtype=np.uint8)
+    if dtype is np.uint8:
+        image = uint8_image
+    else:
+        half_image = (uint8_image.astype(np.float32) / 255).astype(np.float16)
+        image = half_image if dtype is np.float16 else half_image.astype(np.float32)
+    original = image.copy()
+    source = numpy_to_tensor_spatial(image.copy(), "image") if container == "tensor" else image.copy()
+    if container == "numpy":
+        source.flags.writeable = False
+
+    transform = A.PlasmaShadow(shadow_intensity_range=(0.4, 0.4), roughness=1.0, p=1.0)
+    pipeline = A.Compose([transform], seed=137, strict=True, save_applied_params=True)
+    result = pipeline(image=source)["image"]
+    params = get_resolved_applied_params(transform, target="image")
+    expected = transform.apply(image, **params)
+
+    assert type(result) is type(source)
+    actual = tensor_to_numpy_spatial(result, "image") if container == "tensor" else result
+    preserved = tensor_to_numpy_spatial(source, "image") if container == "tensor" else source
+    assert actual.shape == image.shape
+    assert actual.dtype == dtype
+    assert np.all(np.isfinite(actual))
+    assert np.all(actual <= image)
+    np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(preserved, original)
+    if dtype is np.float16:
+        float32_image = image.astype(np.float32)
+        float32_source = numpy_to_tensor_spatial(float32_image, "image") if container == "tensor" else float32_image
+        float32_result = A.Compose(
+            [A.PlasmaShadow(shadow_intensity_range=(0.4, 0.4), roughness=1.0, p=1.0)],
+            seed=137,
+            strict=True,
+        )(image=float32_source)["image"]
+        if container == "tensor":
+            float32_result = tensor_to_numpy_spatial(float32_result, "image")
+        np.testing.assert_array_equal(actual, float32_result.astype(np.float16))
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+def test_add_fog_direct_grayscale_keeps_singleton_channel(dtype):
+    rng = np.random.default_rng(137)
+    uint8_image = rng.integers(0, 256, (64, 80, 1), dtype=np.uint8)
+    image = uint8_image if dtype is np.uint8 else (uint8_image.astype(np.float32) / 255).astype(dtype)
+    original = image.copy()
+
+    result = fpixel.add_fog(
+        image,
+        fog_intensity=0.7,
+        alpha_coef=0.4,
+        fog_particle_positions=[(18, 24), (48, 56)],
+        fog_particle_radiuses=[12, 9],
+    )
+
+    assert result.shape == image.shape
+    assert result.dtype == dtype
+    assert np.any(result != image)
+    assert np.all(np.isfinite(result))
+    if dtype is np.uint8:
+        assert np.all((result >= 0) & (result <= 255))
+    else:
+        assert np.all((result >= 0) & (result <= 1))
+    np.testing.assert_array_equal(image, original)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+def test_random_fog_compose_preserves_dtype_and_matches_reference(dtype, container):
+    rng = np.random.default_rng(137)
+    uint8_image = rng.integers(0, 256, (64, 80, 3), dtype=np.uint8)
+    image = uint8_image if dtype is np.uint8 else (uint8_image.astype(np.float32) / 255).astype(dtype)
+    original = image.copy()
+    source = numpy_to_tensor_spatial(image.copy(), "image") if container == "tensor" else image.copy()
+    if container == "numpy":
+        source.flags.writeable = False
+
+    transform = A.RandomFog(alpha_coef=0.2, fog_coef_range=(0.6, 0.6), p=1.0)
+    pipeline = A.Compose([transform], seed=137, strict=True, save_applied_params=True)
+    result = pipeline(image=source)["image"]
+    params = get_resolved_applied_params(transform, target="image")
+    expected = transform.apply(image, **params)
+
+    assert type(result) is type(source)
+    actual = tensor_to_numpy_spatial(result, "image") if container == "tensor" else result
+    preserved = tensor_to_numpy_spatial(source, "image") if container == "tensor" else source
+    assert actual.shape == image.shape
+    assert actual.dtype == dtype
+    assert np.all(np.isfinite(actual))
+    np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(preserved, original)
+    if dtype is np.float16:
+        float32_image = image.astype(np.float32)
+        if container == "tensor":
+            float32_image = numpy_to_tensor_spatial(float32_image, "image")
+        float32_result = A.Compose(
+            [A.RandomFog(alpha_coef=0.2, fog_coef_range=(0.6, 0.6), p=1.0)],
+            seed=137,
+            strict=True,
+        )(image=float32_image)["image"]
+        if container == "tensor":
+            float32_result = tensor_to_numpy_spatial(float32_result, "image")
+        np.testing.assert_array_equal(actual, float32_result.astype(np.float16))
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+def test_random_sun_flare_overlay_compose_preserves_dtype_and_input(dtype, container):
+    rng = np.random.default_rng(137)
+    uint8_image = rng.integers(0, 256, (64, 80, 3), dtype=np.uint8)
+    image = uint8_image if dtype is np.uint8 else (uint8_image.astype(np.float32) / 255).astype(dtype)
+    original = image.copy()
+    source = numpy_to_tensor_spatial(image.copy(), "image") if container == "tensor" else image.copy()
+    if container == "numpy":
+        source.flags.writeable = False
+
+    transform = A.RandomSunFlare(
+        flare_roi=(0, 0, 1, 1),
+        angle_range=(0, 0),
+        num_flare_circles_range=(2, 2),
+        src_radius=15,
+        src_color=(255, 255, 255),
+        method="overlay",
+        p=1.0,
+    )
+    pipeline = A.Compose([transform], seed=137, strict=True, save_applied_params=True)
+    result = pipeline(image=source)["image"]
+    params = get_resolved_applied_params(transform, target="image")
+    expected = transform.apply(image, **params)
+
+    assert type(result) is type(source)
+    actual = tensor_to_numpy_spatial(result, "image") if container == "tensor" else result
+    preserved = tensor_to_numpy_spatial(source, "image") if container == "tensor" else source
+    assert actual.shape == image.shape
+    assert actual.dtype == dtype
+    assert np.all(np.isfinite(actual))
+    np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(preserved, original)
+    if dtype is np.float16:
+        float32_image = image.astype(np.float32)
+        if container == "tensor":
+            float32_image = numpy_to_tensor_spatial(float32_image, "image")
+        float32_result = A.Compose(
+            [
+                A.RandomSunFlare(
+                    flare_roi=(0, 0, 1, 1),
+                    angle_range=(0, 0),
+                    num_flare_circles_range=(2, 2),
+                    src_radius=15,
+                    src_color=(255, 255, 255),
+                    method="overlay",
+                    p=1.0,
+                ),
+            ],
+            seed=137,
+            strict=True,
+        )(image=float32_image)["image"]
+        if container == "tensor":
+            float32_result = tensor_to_numpy_spatial(float32_result, "image")
+        np.testing.assert_array_equal(actual, float32_result.astype(np.float16))
+
+
+@pytest.mark.parametrize("mode", ["rain", "mud"])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+def test_spatter_single_image_compose_preserves_dtype_and_matches_reference(mode, dtype, container):
+    rng = np.random.default_rng(137)
+    uint8_image = rng.integers(0, 256, (64, 64, 3), dtype=np.uint8)
+    image = uint8_image if dtype is np.uint8 else (uint8_image.astype(np.float32) / 255).astype(dtype)
+    original = image.copy()
+    source = numpy_to_tensor_spatial(image.copy(), "image") if container == "tensor" else image.copy()
+    if container == "numpy":
+        source.flags.writeable = False
+
+    def make_pipeline():
+        transform = A.Spatter(mode=mode, color=(137, 89, 211), p=1.0)
+        return transform, A.Compose([transform], seed=137, strict=True, save_applied_params=True)
+
+    transform, pipeline = make_pipeline()
+    result = pipeline(image=source)["image"]
+    params = get_resolved_applied_params(transform, target="image")
+    expected = transform.apply(image, **params)
+
+    assert type(result) is type(source)
+    actual = tensor_to_numpy_spatial(result, "image") if container == "tensor" else result
+    preserved = tensor_to_numpy_spatial(source, "image") if container == "tensor" else source
+    assert actual.shape == image.shape
+    assert actual.dtype == dtype
+    assert np.all(np.isfinite(actual))
+    np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(preserved, original)
+    if dtype is np.float16:
+        _, float32_pipeline = make_pipeline()
+        float32_source = image.astype(np.float32)
+        if container == "tensor":
+            float32_source = numpy_to_tensor_spatial(float32_source, "image")
+        float32_result = float32_pipeline(image=float32_source)["image"]
+        if container == "tensor":
+            float32_result = tensor_to_numpy_spatial(float32_result, "image")
+        np.testing.assert_array_equal(actual, float32_result.astype(np.float16))
+
+
+@pytest.mark.parametrize("mode", ["rain", "mud"])
+@pytest.mark.parametrize("target", ["image", "images", "volume", "volumes"])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+def test_spatter_float16_compose_matches_float32_for_all_targets(mode, target, container):
+    shapes = {
+        "image": (24, 31, 3),
+        "images": (2, 24, 31, 3),
+        "volume": (3, 24, 31, 3),
+        "volumes": (2, 3, 24, 31, 3),
+    }
+    rng = np.random.default_rng(137)
+    half_image = rng.random(shapes[target], dtype=np.float32).astype(np.float16)
+    original = half_image.copy()
+
+    def make_source(image):
+        source = image.copy()
+        if container == "tensor":
+            return numpy_to_tensor_spatial(source, target)
+        source.flags.writeable = False
+        return source
+
+    def run(image):
+        source = make_source(image)
+        pipeline = A.Compose(
+            [A.Spatter(mode=mode, color=(137, 89, 211), p=1.0)],
+            seed=137,
+            strict=True,
+        )
+        return pipeline(**{target: source})[target], source
+
+    half_result, half_source = run(half_image)
+    float32_result, _ = run(half_image.astype(np.float32))
+    if container == "tensor":
+        half_result = tensor_to_numpy_spatial(half_result, target)
+        float32_result = tensor_to_numpy_spatial(float32_result, target)
+        half_source = tensor_to_numpy_spatial(half_source, target)
+
+    assert half_result.shape == half_image.shape
+    assert half_result.dtype == np.float16
+    assert np.all((half_result >= 0) & (half_result <= 1))
+    np.testing.assert_allclose(half_result, float32_result.astype(np.float16), rtol=0, atol=1 / 2048)
+    np.testing.assert_array_equal(half_source, original)
+
+
+@pytest.mark.parametrize("target", ["image", "images", "volume", "volumes"])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+def test_chromatic_aberration_compose_supports_all_targets(target, container, dtype):
+    shapes = {
+        "image": (31, 37, 3),
+        "images": (2, 31, 37, 3),
+        "volume": (3, 31, 37, 3),
+        "volumes": (2, 3, 31, 37, 3),
+    }
+    rng = np.random.default_rng(137)
+    raw = rng.integers(0, 256, shapes[target], dtype=np.uint8)
+    image = raw if dtype is np.uint8 else (raw.astype(np.float32) / 255).astype(dtype)
+    original = image.copy()
+
+    def make_source(value):
+        source = value.copy()
+        if container == "tensor":
+            return numpy_to_tensor_spatial(source, target)
+        source.flags.writeable = False
+        return source
+
+    def run(value):
+        source = make_source(value)
+        pipeline = A.Compose(
+            [
+                A.ChromaticAberration(
+                    primary_distortion_range=(0.02, 0.02),
+                    secondary_distortion_range=(0.03, 0.03),
+                    mode="red_blue",
+                    interpolation=cv2.INTER_LINEAR,
+                    p=1.0,
+                ),
+            ],
+            seed=137,
+            strict=True,
+        )
+        return pipeline(**{target: source})[target], source
+
+    result, source = run(image)
+    actual = tensor_to_numpy_spatial(result, target) if container == "tensor" else result
+    preserved = tensor_to_numpy_spatial(source, target) if container == "tensor" else source
+    assert type(result) is type(source)
+    assert actual.shape == image.shape
+    assert actual.dtype == dtype
+    np.testing.assert_array_equal(preserved, original)
+    if dtype is np.float16:
+        float32_result, _ = run(image.astype(np.float32))
+        expected = tensor_to_numpy_spatial(float32_result, target) if container == "tensor" else float32_result
+        np.testing.assert_array_equal(actual, expected.astype(np.float16))
 
 
 @pytest.mark.parametrize(
@@ -2484,3 +3723,91 @@ def test_enhance_matches_pillow_interior(mode, alpha, pil_filter_name):
     assert diff.max() <= 1, f"max abs diff {diff.max()} exceeds 1 LSB tolerance vs PIL {pil_filter_name}"
     if pil_filter_name == "EDGE_ENHANCE_MORE":
         np.testing.assert_array_equal(pil_interior, ours_interior)
+
+
+@pytest.mark.parametrize("target", ["image", "images", "volume", "volumes"])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+@pytest.mark.parametrize("channels", [1, 3, 5])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+def test_auto_contrast_compose_supports_all_targets_and_dtypes(target, container, channels, dtype):
+    shapes = {
+        "image": (19, 23, channels),
+        "images": (2, 19, 23, channels),
+        "volume": (3, 19, 23, channels),
+        "volumes": (2, 3, 19, 23, channels),
+    }
+    rng = np.random.default_rng(137)
+    if dtype is np.uint8:
+        image = rng.integers(0, 256, shapes[target], dtype=np.uint8)
+    else:
+        half = rng.random(shapes[target], dtype=np.float32).astype(np.float16)
+        image = half if dtype is np.float16 else half.astype(np.float32)
+    original = image.copy()
+
+    def make_source(value):
+        source = value.copy()
+        if container == "tensor":
+            return numpy_to_tensor_spatial(source, target)
+        source.flags.writeable = False
+        return source
+
+    def run(value):
+        source = make_source(value)
+        pipeline = A.Compose([A.AutoContrast(cutoff=0, method="cdf", p=1.0)], seed=137, strict=True)
+        return pipeline(**{target: source})[target], source
+
+    result, source = run(image)
+    actual = tensor_to_numpy_spatial(result, target) if container == "tensor" else result
+    preserved = tensor_to_numpy_spatial(source, target) if container == "tensor" else source
+    assert type(result) is type(source)
+    assert actual.shape == image.shape
+    assert actual.dtype == dtype
+    np.testing.assert_array_equal(preserved, original)
+    if dtype is np.float16:
+        float32_result, _ = run(image.astype(np.float32))
+        expected = tensor_to_numpy_spatial(float32_result, target) if container == "tensor" else float32_result
+        np.testing.assert_array_equal(actual, expected.astype(np.float16))
+
+
+@pytest.mark.parametrize("target", ["image", "images", "volume", "volumes"])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+@pytest.mark.parametrize("channels", [1, 3, 5])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+def test_halftone_compose_supports_all_targets_and_dtypes(target, container, channels, dtype):
+    shapes = {
+        "image": (19, 23, channels),
+        "images": (2, 19, 23, channels),
+        "volume": (3, 19, 23, channels),
+        "volumes": (2, 3, 19, 23, channels),
+    }
+    rng = np.random.default_rng(137)
+    if dtype is np.uint8:
+        image = rng.integers(0, 256, shapes[target], dtype=np.uint8)
+    else:
+        half = rng.random(shapes[target], dtype=np.float32).astype(np.float16)
+        image = half if dtype is np.float16 else half.astype(np.float32)
+    original = image.copy()
+
+    def make_source(value):
+        source = value.copy()
+        if container == "tensor":
+            return numpy_to_tensor_spatial(source, target)
+        source.flags.writeable = False
+        return source
+
+    def run(value):
+        source = make_source(value)
+        pipeline = A.Compose([A.Halftone(dot_size_range=(4, 4), blend_range=(0, 0), p=1.0)], seed=137, strict=True)
+        return pipeline(**{target: source})[target], source
+
+    result, source = run(image)
+    actual = tensor_to_numpy_spatial(result, target) if container == "tensor" else result
+    preserved = tensor_to_numpy_spatial(source, target) if container == "tensor" else source
+    assert type(result) is type(source)
+    assert actual.shape == image.shape
+    assert actual.dtype == dtype
+    np.testing.assert_array_equal(preserved, original)
+    if dtype is np.float16:
+        float32_result, _ = run(image.astype(np.float32))
+        expected = tensor_to_numpy_spatial(float32_result, target) if container == "tensor" else float32_result
+        np.testing.assert_array_equal(actual, expected.astype(np.float16))

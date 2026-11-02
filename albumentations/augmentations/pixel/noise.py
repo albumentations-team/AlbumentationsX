@@ -418,7 +418,7 @@ class ISONoise(_FullVolumeNoiseTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         3
@@ -620,7 +620,7 @@ class MultiplicativeNoise(ImageOnlyTransform):
         **kwargs: Any,
     ) -> ImageType:
         result = multiply(img, multiplier)
-        return clip(result, img.dtype, inplace=True) if img.dtype == np.float32 else result
+        return clip(result, out=result) if img.dtype in (np.float16, np.float32) else result
 
     def apply_to_images(self, images: ImageType, multiplier: float | np.ndarray, **kwargs: Any) -> ImageType:
         return self.apply(images, multiplier, **kwargs)
@@ -713,7 +713,7 @@ class ShotNoise(_FullVolumeNoiseTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -1000,7 +1000,7 @@ class AdditiveNoise(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any

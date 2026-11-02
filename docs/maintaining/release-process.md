@@ -16,6 +16,9 @@ The maintainer performs three actions:
 3. Select that existing tag, prepare the GitHub Release notes, and select
    **Publish release**.
 
+Include the applicable [unreleased notes](../release-notes/unreleased.md), especially
+custom-transform migration requirements, when preparing the release text.
+
 Later merges into `main` do not change the release tag or its verified bundle.
 No draft release, Release Candidate run, artifact ID, or manual promotion
 approval is required.

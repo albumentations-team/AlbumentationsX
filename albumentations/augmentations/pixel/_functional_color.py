@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numkong as nk
+import torch
+
+if TYPE_CHECKING:
+    from albucore import ImageInputT
+    from numpy.typing import NDArray
 
 from albumentations.core.utils import get_volume_shape
 
@@ -18,14 +23,11 @@ from ._functional_shared import (
     ImageFloat32,
     ImageType,
     ImageUInt8,
-    add_array,
-    add_constant,
+    add,
     apply_uint8_lut,
     clip,
-    clipped,
     cv2,
     fgeometric,
-    float32_io,
     from_float,
     get_num_channels,
     is_grayscale_image,
@@ -35,10 +37,10 @@ from ._functional_shared import (
     normalize_per_image,
     np,
     power,
-    preserve_channel_dim,
     reduce_sum,
-    sz_lut,
-    uint8_io,
+    restore_uint8_working_image,
+    to_float,
+    to_uint8_working_image,
     warn,
 )
 
@@ -53,8 +55,6 @@ def _restore_xhwc_from_opencv(data: np.ndarray, original_shape: tuple[int, ...])
     return data.reshape(original_shape[0], original_shape[1], data.shape[1], original_shape[3])
 
 
-@uint8_io
-@preserve_channel_dim
 def shift_hsv(
     img: ImageType,
     hue_shift: float,
@@ -62,7 +62,7 @@ def shift_hsv(
     val_shift: float,
 ) -> ImageType:
     """Shift hue, saturation, and value in HSV space. hue_shift, sat_shift, val_shift control
-    amount; grayscale gets value only. uint8 I/O.
+    amount; grayscale gets value only. Floating inputs are quantized to uint8 and restored.
 
     Args:
         img (ImageType): The image to shift.
@@ -74,10 +74,12 @@ def shift_hsv(
         ImageType: The shifted image.
 
     """
+    img, input_dtype = to_uint8_working_image(img)
     if hue_shift == 0 and sat_shift == 0 and val_shift == 0:
-        return img
+        return restore_uint8_working_image(img, input_dtype)
 
     is_gray = is_grayscale_image(img)
+    has_explicit_gray_channel = img.ndim == 3 and img.shape[-1] == 1
 
     if is_gray:
         if hue_shift != 0 or sat_shift != 0:
@@ -91,29 +93,36 @@ def shift_hsv(
         img = cast("ImageType", cv2.cvtColor(img, cv2.COLOR_GRAY2RGB))
 
     img = cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2HSV))
-    hue, sat, val = (cast("ImageType", channel) for channel in cv2.split(img))
+    hue, sat, val = (cast("ImageUInt8", channel) for channel in cv2.split(img))
 
     if hue_shift != 0:
         lut_hue = np.arange(0, 256, dtype=np.int16)
         lut_hue = np.mod(lut_hue + hue_shift, 180).astype(np.uint8)
-        hue = sz_lut(cast("ImageUInt8", hue), lut_hue, inplace=False)
+        hue = apply_uint8_lut(hue, lut_hue)
 
     if sat_shift != 0:
         # These should remain grayscale regardless of saturation change
         grayscale_mask = sat == 0
 
-        sat = add_constant(sat, sat_shift, inplace=True)
+        saturation = sat[..., np.newaxis]
+        add(saturation, sat_shift, out=saturation)
 
         # Reset saturation for white pixels
         sat[grayscale_mask] = 0
 
     if val_shift != 0:
-        val = add_constant(val, val_shift, inplace=True)
+        value_channel = val[..., np.newaxis]
+        add(value_channel, val_shift, out=value_channel)
 
     img = cast("ImageType", cv2.merge((hue, sat, val)))
     img = cast("ImageType", cv2.cvtColor(img, cv2.COLOR_HSV2RGB))
 
-    return cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)) if is_gray else img
+    if is_gray:
+        result = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        if has_explicit_gray_channel:
+            result = result[..., np.newaxis]
+        return restore_uint8_working_image(cast("ImageUInt8", result), input_dtype)
+    return restore_uint8_working_image(cast("ImageUInt8", img), input_dtype)
 
 
 def shift_hsv_images(
@@ -139,13 +148,12 @@ def shift_hsv_images(
     return res
 
 
-@clipped
 def solarize(img: ImageType, threshold: float) -> ImageType:
     """Invert pixel values above a normalized threshold (solarization). threshold in [0, 1];
-    works for uint8 and float32; pixels below threshold unchanged.
+    supports uint8, float16, and float32; pixels below threshold unchanged.
 
     Args:
-        img (ImageType): The image to solarize. Can be uint8 or float32.
+        img (ImageType): The image to solarize.
         threshold (float): Normalized threshold value in range [0, 1].
             For uint8 images: pixels above threshold * 255 are inverted
             For float32 images: pixels above threshold are inverted
@@ -163,20 +171,19 @@ def solarize(img: ImageType, threshold: float) -> ImageType:
 
     if dtype == np.uint8:
         uint8_img = cast("ImageUInt8", img)
-        indices = np.arange(int(max_val) + 1, dtype=dtype)
+        indices = np.arange(int(max_val) + 1, dtype=np.uint8)
         thresh_val = threshold * max_val
         lut = cast("ImageUInt8", np.where(indices >= thresh_val, max_val - indices, indices).astype(dtype))
         prev_shape = img.shape
-        result = sz_lut(uint8_img, lut, inplace=False)
+        result = apply_uint8_lut(uint8_img, lut)
         return result if len(prev_shape) == result.ndim else cast("ImageType", np.expand_dims(result, -1))
-    return cast("ImageType", np.where(img >= threshold, max_val - img, img))
+    result = np.where(img >= threshold, max_val - img, img)
+    return clip(result, dtype)
 
 
-@uint8_io
-@clipped
 def posterize(img: ImageType, bits: Literal[1, 2, 3, 4, 5, 6, 7] | list[Literal[1, 2, 3, 4, 5, 6, 7]]) -> ImageType:
     """Reduce bit depth by keeping only the highest N bits per channel. bits: 1-7 or list per
-    channel; implemented via bitwise masking on uint8. uint8 I/O, clipped.
+    channel; quantizes to uint8 for bit masking, then restores the input dtype.
 
     Args:
         img (ImageType): Input image. Can be single or multi-channel.
@@ -207,19 +214,21 @@ def posterize(img: ImageType, bits: Literal[1, 2, 3, 4, 5, 6, 7] | list[Literal[
         >>> result = posterize(image, bits=[3, 4, 5])  # RGB channels
 
     """
+    uint8_img, input_dtype = to_uint8_working_image(img)
     bits_array = np.asarray(bits, dtype=np.uint8)
-    uint8_img = cast("ImageUInt8", img)
 
     if bits_array.ndim == 0 or bits_array.size == 1:
         mask = ~np.uint8(2 ** (8 - bits_array.item()) - 1)
-        return cast("ImageType", uint8_img & mask)
+        result = cast("ImageType", uint8_img & mask)
+        return restore_uint8_working_image(cast("ImageUInt8", result), input_dtype)
 
     result_img = np.empty_like(uint8_img)
     for i, channel_bits in enumerate(bits_array):
         mask = ~np.uint8(2 ** (8 - int(channel_bits)) - 1)
         np.bitwise_and(uint8_img[..., i], mask, out=result_img[..., i])
 
-    return cast("ImageType", result_img)
+    result = cast("ImageType", result_img)
+    return restore_uint8_working_image(cast("ImageUInt8", result), input_dtype)
 
 
 def _equalize_pil(img: ImageType, mask: np.ndarray | None = None) -> ImageType:
@@ -239,11 +248,16 @@ def _equalize_pil(img: ImageType, mask: np.ndarray | None = None) -> ImageType:
     np.cumsum(histogram[:-1], dtype=np.int64, out=cumulative[1:])
     lut = np.minimum((cumulative + step // 2) // step, 255).astype(np.uint8)
 
-    return sz_lut(cast("ImageUInt8", img.copy()), lut, inplace=True)
+    result = cast("ImageUInt8", img.copy())
+    return apply_uint8_lut(result, lut, out=result)
 
 
 def _equalize_cv(img: ImageType, mask: np.ndarray | None = None) -> ImageType:
     if mask is None:
+        if img.ndim == 3 and img.shape[-1] == 1:
+            result = np.empty_like(img)
+            cv2.equalizeHist(img, dst=result)
+            return result
         return cast("ImageType", cv2.equalizeHist(img))
 
     histogram = cv2.calcHist([img], [0], mask, [256], (0, 256)).ravel()
@@ -251,7 +265,8 @@ def _equalize_cv(img: ImageType, mask: np.ndarray | None = None) -> ImageType:
     if lut is None:
         return img
 
-    return sz_lut(cast("ImageUInt8", img.copy()), lut, inplace=True)
+    result = cast("ImageUInt8", img.copy())
+    return apply_uint8_lut(result, lut, out=result)
 
 
 def _create_equalize_cv_lut(histogram: np.ndarray) -> np.ndarray | None:
@@ -317,8 +332,6 @@ def _handle_mask(
     return mask
 
 
-@uint8_io
-@preserve_channel_dim
 def equalize(
     img: ImageType,
     mask: np.ndarray | None = None,
@@ -366,25 +379,32 @@ def equalize(
         >>> assert equalized.dtype == image.dtype
 
     """
+    uint8_img, input_dtype = to_uint8_working_image(img)
+    img = uint8_img
     _check_preconditions(img, mask, by_channels)
     function = _equalize_pil if mode == "pil" else _equalize_cv
 
     if is_grayscale_image(img):
-        return function(img, _handle_mask(mask))
+        result = cast("ImageUInt8", function(img, _handle_mask(mask)))
+        return restore_uint8_working_image(result, input_dtype)
 
     if mask is None and by_channels and mode == "cv" and is_rgb_image(img):
         if img.shape[0] * img.shape[1] >= MULTICHANNEL_LUT_LARGE_IMAGE_PIXELS:
-            return _equalize_cv_multichannel_lut(img)
+            result = cast("ImageUInt8", _equalize_cv_multichannel_lut(img))
+            return restore_uint8_working_image(result, input_dtype)
         channels = cv2.split(img)
-        return cast("ImageType", cv2.merge([cv2.equalizeHist(channel) for channel in channels]))
+        result = cast("ImageUInt8", cv2.merge([cv2.equalizeHist(channel) for channel in channels]))
+        return restore_uint8_working_image(result, input_dtype)
 
     if mask is None and by_channels and mode == "cv" and get_num_channels(img) > NUM_RGB_CHANNELS:
-        return _equalize_cv_multichannel_lut(img)
+        result = cast("ImageUInt8", _equalize_cv_multichannel_lut(img))
+        return restore_uint8_working_image(result, input_dtype)
 
     if not by_channels:
         result_img = cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2YCrCb))
         result_img[..., 0] = function(result_img[..., 0], _handle_mask(mask))
-        return cast("ImageType", cv2.cvtColor(result_img, cv2.COLOR_YCrCb2RGB))
+        result = cast("ImageUInt8", cv2.cvtColor(result_img, cv2.COLOR_YCrCb2RGB))
+        return restore_uint8_working_image(result, input_dtype)
 
     result_img = np.empty_like(img)
     for i in range(get_num_channels(img)):
@@ -395,7 +415,7 @@ def equalize(
             channel_result = channel_result.squeeze()
         result_img[..., i] = channel_result
 
-    return result_img
+    return restore_uint8_working_image(result_img, input_dtype)
 
 
 def evaluate_bez(
@@ -467,7 +487,7 @@ def move_tone_curve(
     """Apply a cubic Bezier tone curve with scalar or per-channel controls, dispatching to continuous float32
     arithmetic or a uint8 lookup table.
 
-    Float32 images are evaluated continuously. Uint8 images retain the rounded 256-entry LUT path.
+    Floating inputs use float32 arithmetic and retain dtype. Uint8 uses a rounded 256-entry LUT.
 
     Args:
         img (ImageType): Any number of channels
@@ -481,32 +501,28 @@ def move_tone_curve(
         ImageType: Image with adjusted tone curve
 
     """
+    input_dtype = img.dtype
+    if input_dtype.type is np.float16:
+        img = from_float(cast("NDArray[np.float16]", img), target_dtype=np.float32)
+
     if np.isscalar(low_y) and np.isscalar(high_y):
         low_y_scalar = cast("Any", low_y)
         high_y_scalar = cast("Any", high_y)
         if img.dtype == np.float32:
-            return _move_tone_curve_float32(
+            result = _move_tone_curve_float32(
                 cast("ImageFloat32", img),
                 float(low_y_scalar),
                 float(high_y_scalar),
             )
-        lut = cast(
-            "ImageUInt8",
-            clip(np.rint(evaluate_bez(float(low_y_scalar), float(high_y_scalar))), np.dtype(np.uint8), inplace=False),
-        )
-        return sz_lut(cast("ImageUInt8", img), lut, inplace=False)
+            return from_float(result, target_dtype=input_dtype)
+        lut = clip(np.rint(evaluate_bez(float(low_y_scalar), float(high_y_scalar))), np.dtype(np.uint8)).reshape(-1)
+        return apply_uint8_lut(cast("ImageUInt8", img), lut)
 
     if isinstance(low_y, np.ndarray) and isinstance(high_y, np.ndarray):
         if img.dtype == np.float32:
-            return _move_tone_curve_float32(cast("ImageFloat32", img), low_y, high_y)
-        lut = cast(
-            "ImageUInt8",
-            clip(
-                np.rint(evaluate_bez(low_y, high_y)),
-                np.dtype(np.uint8),
-                inplace=False,
-            ),
-        )
+            result = _move_tone_curve_float32(cast("ImageFloat32", img), low_y, high_y)
+            return from_float(result, target_dtype=input_dtype)
+        lut = clip(np.rint(evaluate_bez(low_y, high_y)), np.dtype(np.uint8))
         return apply_uint8_lut(cast("ImageUInt8", img), lut[:, np.newaxis, :])
 
     raise TypeError(
@@ -514,7 +530,6 @@ def move_tone_curve(
     )
 
 
-@clipped
 def linear_transformation_rgb(
     img: ImageType,
     transformation_matrix: np.ndarray,
@@ -536,24 +551,32 @@ def linear_transformation_rgb(
         ValueError: If input shapes do not conform to the supported configurations.
 
     """
+    input_dtype = img.dtype
+    is_half = input_dtype.type is np.float16
+    if is_half:
+        img = img.astype(np.float32, order="C")
     if img.ndim == 3:
-        return cast("ImageType", cv2.transform(img, transformation_matrix))
-    if img.ndim == 4:
+        result = cast("ImageType", cv2.transform(img, transformation_matrix, dst=img if is_half else None))
+    elif img.ndim == 4:
         transformed, original_shape = _reshape_xhwc_for_opencv(img)
-        transformed = cast("ImageType", cv2.transform(transformed, transformation_matrix))
-        return cast("ImageType", _restore_xhwc_from_opencv(transformed, original_shape))
-    raise ValueError(f"Expected input shape (H, W, 3) or (B, H, W, 3), got {img.shape}")
+        transformed = cast(
+            "ImageType", cv2.transform(transformed, transformation_matrix, dst=transformed if is_half else None)
+        )
+        result = cast("ImageType", _restore_xhwc_from_opencv(transformed, original_shape))
+    else:
+        raise ValueError(f"Expected input shape (H, W, 3) or (B, H, W, 3), got {img.shape}")
+    if is_half:
+        return clip(result, dtype=cast("np.dtype[np.float16]", input_dtype))
+    return clip(result, out=result)
 
 
-@uint8_io
-@preserve_channel_dim
 def clahe(
     img: ImageType,
     clip_limit: float,
     tile_grid_size: tuple[int, int],
 ) -> ImageType:
     """CLAHE (Contrast Limited Adaptive Histogram Equalization) per tile. clip_limit, tile_grid_size.
-    For color, applied in LAB to L channel. uint8 I/O.
+    For color, applied in LAB to L channel. Floating inputs are quantized to uint8 and restored.
 
     This function enhances the contrast of the input image using CLAHE. For color images,
     it converts the image to the LAB color space, applies CLAHE to the L channel, and then
@@ -569,8 +592,7 @@ def clahe(
         ImageType: Image with CLAHE applied. The output has the same dtype as the input.
 
     Note:
-        - If the input image is float32, it's temporarily converted to uint8 for processing
-          and then converted back to float32.
+        - Floating inputs are temporarily quantized to uint8 for processing and restored to their original dtype.
         - For color images, CLAHE is applied only to the luminance channel in the LAB color space.
 
     Raises:
@@ -584,26 +606,29 @@ def clahe(
         >>> assert result.dtype == img.dtype
 
     """
+    img, input_dtype = to_uint8_working_image(img)
     clahe_mat = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
 
     if is_grayscale_image(img):
-        return cast("ImageType", clahe_mat.apply(img))
+        if img.ndim == 3 and img.shape[-1] == 1:
+            result = np.empty_like(img)
+            clahe_mat.apply(img, dst=result)
+            return restore_uint8_working_image(result, input_dtype)
+        return restore_uint8_working_image(cast("ImageUInt8", clahe_mat.apply(img)), input_dtype)
 
     img_lab = cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2LAB))
     img_lab[:, :, 0] = clahe_mat.apply(img_lab[:, :, 0])
 
-    return cast("ImageType", cv2.cvtColor(img_lab, cv2.COLOR_LAB2RGB))
+    return restore_uint8_working_image(cast("ImageUInt8", cv2.cvtColor(img_lab, cv2.COLOR_LAB2RGB)), input_dtype)
 
 
-@uint8_io
-@preserve_channel_dim
 def image_compression(
     img: ImageType,
     quality: int,
     image_type: Literal[".jpg", ".webp"],
 ) -> ImageType:
     """Compress image with JPEG or WebP to simulate artifacts. quality, image_type (.jpg/.webp).
-    Lower quality increases blockiness. uint8 I/O.
+    Lower quality increases blockiness. Floating inputs are quantized to uint8 and restored.
 
     Args:
         img (ImageType): Input image
@@ -614,6 +639,7 @@ def image_compression(
         ImageType: Compressed image
 
     """
+    img, input_dtype = to_uint8_working_image(img)
     # Determine the quality flag for compression
     quality_flag = cv2.IMWRITE_JPEG_QUALITY if image_type == ".jpg" else cv2.IMWRITE_WEBP_QUALITY
     num_channels = get_num_channels(img)
@@ -626,7 +652,8 @@ def image_compression(
     if num_channels == 1:
         # Grayscale image
         decoded = encode_decode(img, cv2.IMREAD_GRAYSCALE)
-        return cast("ImageType", decoded[..., np.newaxis])  # Add channel dimension back
+        result = cast("ImageUInt8", decoded[..., np.newaxis])
+        return restore_uint8_working_image(result, input_dtype)
 
     if num_channels in (2, NUM_RGB_CHANNELS):
         # 2 channels: pad to 3, or 3 (RGB) channels
@@ -634,7 +661,8 @@ def image_compression(
             cast("ImageType", np.pad(img, ((0, 0), (0, 0), (0, 1)), mode="constant")) if num_channels == 2 else img
         )
         decoded_bgr = encode_decode(padded_img, cv2.IMREAD_UNCHANGED)
-        return cast("ImageType", decoded_bgr[..., :num_channels])  # Return only the required number of channels
+        result = cast("ImageUInt8", decoded_bgr[..., :num_channels])
+        return restore_uint8_working_image(result, input_dtype)
 
     # More than 3 channels
     bgr = img[..., :NUM_RGB_CHANNELS]
@@ -644,7 +672,8 @@ def image_compression(
     extra_channels = [
         encode_decode(img[..., i], cv2.IMREAD_GRAYSCALE)[..., np.newaxis] for i in range(NUM_RGB_CHANNELS, num_channels)
     ]
-    return cast("ImageType", np.dstack([decoded_bgr, *extra_channels]))
+    result = cast("ImageUInt8", np.dstack([decoded_bgr, *extra_channels]))
+    return restore_uint8_working_image(result, input_dtype)
 
 
 def invert(img: ImageType) -> ImageType:
@@ -725,6 +754,7 @@ def get_exposure_gains(
     image_axes = tuple(range(images.ndim - 3, images.ndim))
     values_per_image = images.shape[-3] * images.shape[-2] * images.shape[-1]
 
+    image_sums: int | float | nk.Tensor | NDArray[np.float64] | None
     if images.dtype == np.uint8:
         image_sums = nk.sum(images, axis=image_axes)
         if image_sums is None:
@@ -774,35 +804,54 @@ def exposure_match_batch(images: ImageType, gains: np.ndarray) -> ImageType:
     gain_shape = (*gains.shape, 1, 1, 1)
     result = np.multiply(images, gains.reshape(gain_shape), dtype=np.float32)
     np.clip(result, 0, MAX_VALUES_BY_DTYPE[images.dtype], out=result)
-    return cast("ImageType", result)
+    return from_float(result, target_dtype=images.dtype)
 
 
-def gamma_transform(img: ImageType, gamma: float) -> ImageType:
+def gamma_transform(img: ImageInputT, gamma: float) -> ImageInputT:
     """Apply a power-law correction (gamma correction) to image intensities, brightening or darkening
     midtones to adjust exposure and tonal contrast.
 
     For normalized intensities in [0, 1], output = input ** gamma: gamma > 1 darkens,
     0 < gamma < 1 brightens, and gamma = 1 leaves intensities unchanged.
     uint8 values are normalized by 255 before the power operation, then scaled back by 255
-    and converted to uint8, truncating fractional values. float32 values are used directly.
+    and converted to uint8, truncating fractional values. Floating arrays use the existing power kernel.
+    NumPy inputs are channel-last; Tensor inputs are CPU CHW images.
 
     Args:
-        img (ImageType): Input image with uint8 values in [0, 255] or float32 values in [0, 1].
+        img (ImageInputT): Input uint8 image in [0, 255], or float16/float32 image in [0, 1].
         gamma (float): The exponent applied to normalized intensities.
 
     Returns:
-        ImageType: The gamma transformed image.
+        ImageInputT: The gamma transformed image, preserving container and dtype.
 
     """
-    if img.dtype == np.uint8:
-        table = (np.arange(256, dtype=np.float64) / 255) ** gamma * 255
-        return sz_lut(cast("ImageUInt8", img), table.astype(np.uint8), inplace=False)
+    if isinstance(img, torch.Tensor):
+        if img.numel() == 0:
+            return img
+        if img.dtype != torch.uint8:
+            return cast("ImageInputT", power(img, gamma, layout="CHW"))
+    else:
+        if img.size == 0:
+            return img
+        if img.dtype != np.uint8:
+            return cast("ImageInputT", power(cast("ImageType", img), gamma))
+    table = (np.arange(256, dtype=np.float64) / 255) ** gamma * 255
+    return cast("ImageInputT", apply_uint8_lut(cast("ImageUInt8 | torch.Tensor", img), table.astype(np.uint8)))
 
-    return power(img, gamma)
+
+def _iso_noise_working_image(image: np.ndarray) -> tuple[np.ndarray, np.dtype]:
+    if image.dtype.type is np.uint8:
+        return to_float(image), image.dtype
+    if image.dtype.type is np.float16:
+        return image.astype(np.float32), image.dtype
+    return image, image.dtype
 
 
-@float32_io
-@clipped
+def _iso_noise_restore(image: np.ndarray, dtype: np.dtype) -> np.ndarray:
+    clip(image, out=image)
+    return from_float(image, target_dtype=dtype)
+
+
 def iso_noise(
     image: np.ndarray,
     color_shift: float,
@@ -810,7 +859,7 @@ def iso_noise(
     random_generator: np.random.Generator,
 ) -> np.ndarray:
     """Apply Poisson noise to simulate camera sensor noise. color_shift, intensity;
-    approximates shot noise. float32 I/O, clipped.
+    approximates shot noise. Float32 working arithmetic with explicit output clipping.
 
     Args:
         image (np.ndarray): Input image. Currently, only RGB images are supported.
@@ -824,12 +873,13 @@ def iso_noise(
         np.ndarray: The noised image.
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         3
 
     """
+    image, original_dtype = _iso_noise_working_image(image)
     hls = cast("ImageType", cv2.cvtColor(image, cv2.COLOR_RGB2HLS))
     _, stddev = cv2.meanStdDev(hls)
 
@@ -844,16 +894,15 @@ def iso_noise(
     )
 
     hls[..., 0] += color_noise
-    hls[..., 1] = add_array(
+    hls[..., 1] = add(
         hls[..., 1],
         cast("ImageType", (luminance_noise * intensity * (1.0 - hls[..., 1])).astype(np.float32, copy=False)),
     )
 
-    return cast("np.ndarray", cv2.cvtColor(hls, cv2.COLOR_HLS2RGB))
+    result = cast("np.ndarray", cv2.cvtColor(hls, cv2.COLOR_HLS2RGB))
+    return _iso_noise_restore(result, original_dtype)
 
 
-@float32_io
-@clipped
 def iso_noise_images(
     images: np.ndarray,
     color_shift: float,
@@ -876,12 +925,13 @@ def iso_noise_images(
         np.ndarray: (N, H, W, 3) noised images.
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         3
 
     """
+    images, original_dtype = _iso_noise_working_image(images)
     non_rgb_error(images[0])
     h, w = images.shape[1:3]
 
@@ -909,11 +959,9 @@ def iso_noise_images(
     for i in range(len(hls_batch)):
         cv2.cvtColor(hls_batch[i], cv2.COLOR_HLS2RGB, dst=hls_batch[i])
 
-    return hls_batch
+    return _iso_noise_restore(hls_batch, original_dtype)
 
 
-@float32_io
-@clipped
 def iso_noise_volume(
     volume: np.ndarray,
     color_shift: float,
@@ -923,6 +971,7 @@ def iso_noise_volume(
     """Apply camera-like ISO noise to an RGB volume with a single seeded voxel-wise field, so hue and
     luminance vary through depth. Use for 3D RGB data.
     """
+    volume, original_dtype = _iso_noise_working_image(volume)
     non_rgb_error(volume[0])
     hls_volume = np.empty_like(volume)
     for depth_index, image in enumerate(volume):
@@ -941,7 +990,7 @@ def iso_noise_volume(
     for image in hls_volume:
         cv2.cvtColor(image, cv2.COLOR_HLS2RGB, dst=image)
 
-    return hls_volume
+    return _iso_noise_restore(hls_volume, original_dtype)
 
 
 def to_gray_weighted_average(img: ImageType) -> ImageType:
@@ -965,31 +1014,33 @@ def to_gray_weighted_average(img: ImageType) -> ImageType:
         ImageType: Grayscale image with unchanged spatial and collection axes and C=1.
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         3
 
     """
+    input_dtype = img.dtype
+    if input_dtype.type is np.float16:
+        img = from_float(cast("NDArray[np.float16]", img), target_dtype=np.float32)
     if img.ndim == 3:
         gray = np.empty((*img.shape[:-1], 1), dtype=img.dtype)
-        return cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2GRAY, dst=gray))
-    if img.ndim == 4:
+        result = cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2GRAY, dst=gray))
+    elif img.ndim == 4:
         im, original_shape = _reshape_xhwc_for_opencv(img)
         gray = np.empty((*im.shape[:-1], 1), dtype=im.dtype)
         im = cast("ImageType", cv2.cvtColor(im, cv2.COLOR_RGB2GRAY, dst=gray))
+        result = cast("ImageType", _restore_xhwc_from_opencv(im, (*original_shape[:-1], 1)))
+    else:
+        raise ValueError(f"Unsupported number of dimensions: {img.ndim}")
+    if input_dtype.type is np.float16:
+        return result.astype(cast("np.dtype[np.float16]", input_dtype))
+    return result
 
-        new_shape = (*original_shape[:-1], 1)
 
-        return cast("ImageType", _restore_xhwc_from_opencv(im, new_shape))
-
-    raise ValueError(f"Unsupported number of dimensions: {img.ndim}")
-
-
-@uint8_io
 def to_gray_from_lab(img: ImageType) -> ImageType:
     """Convert RGB to grayscale using the LAB L channel; perceived brightness matches human vision
-    better than a simple average. Single image or batch. uint8 I/O.
+    better than a simple average. Single image or batch. Floating inputs are quantized to uint8 and restored.
 
     This function converts RGB images to grayscale by first converting to LAB color space
     and then extracting the L (lightness) channel. It flattens batches and volumes into one tall image
@@ -1004,7 +1055,7 @@ def to_gray_from_lab(img: ImageType) -> ImageType:
 
             Supported dtypes:
             - np.uint8: Values in range [0, 255]
-            - np.float32: Values in range [0, 1]
+            - np.float16 / np.float32: Values in range [0, 1]
 
     Returns:
         ImageType:
@@ -1044,23 +1095,24 @@ def to_gray_from_lab(img: ImageType) -> ImageType:
         better than simple RGB averaging or other methods.
 
     """
+    img, input_dtype = to_uint8_working_image(img)
     if img.ndim == 3:
-        return cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2LAB)[..., :1])
+        result = cast("ImageUInt8", cv2.cvtColor(img, cv2.COLOR_RGB2LAB)[..., :1])
+        return restore_uint8_working_image(result, input_dtype)
     if img.ndim == 4:
         im, original_shape = _reshape_xhwc_for_opencv(img)
-        im = cast("ImageType", cv2.cvtColor(im, cv2.COLOR_RGB2LAB)[..., :1])
+        im = cast("ImageUInt8", cv2.cvtColor(im, cv2.COLOR_RGB2LAB)[..., :1])
 
         new_shape = (*original_shape[:-1], 1)
-
-        return cast("ImageType", _restore_xhwc_from_opencv(im, new_shape))
+        result = cast("ImageUInt8", _restore_xhwc_from_opencv(im, new_shape))
+        return restore_uint8_working_image(result, input_dtype)
 
     raise ValueError(f"Unsupported number of dimensions: {img.ndim}")
 
 
-@clipped
 def to_gray_desaturation(img: ImageType) -> ImageType:
     """Convert to grayscale with desaturation (max + min) / 2 per pixel. Any channels; single or batch.
-    uint8 and float32. uint8 and float32.
+    uint8, float16, and float32.
 
     Args:
         img (ImageType): Input image as a numpy array.
@@ -1069,7 +1121,7 @@ def to_gray_desaturation(img: ImageType) -> ImageType:
         ImageType: Grayscale image with unchanged spatial and collection axes and C=1.
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         any
@@ -1079,9 +1131,9 @@ def to_gray_desaturation(img: ImageType) -> ImageType:
         if img.shape[-1] == 1:
             return img
         if img.ndim > NUM_MULTI_CHANNEL_DIMENSIONS:
-            ch_max = np.max(img, axis=-1, keepdims=True).astype(np.uint16)
-            ch_min = np.min(img, axis=-1, keepdims=True).astype(np.uint16)
-            return ((ch_max + ch_min) >> 1).astype(np.uint8)
+            wide_max = np.max(img, axis=-1, keepdims=True).astype(np.uint16)
+            wide_min = np.min(img, axis=-1, keepdims=True).astype(np.uint16)
+            return ((wide_max + wide_min) >> 1).astype(np.uint8)
         channels = cv2.split(img)
         ch_max = channels[0]
         ch_min = channels[0]
@@ -1092,7 +1144,8 @@ def to_gray_desaturation(img: ImageType) -> ImageType:
         cv2.add(ch_max, ch_min, dst=channel_sum, dtype=cv2.CV_16U)
         return (channel_sum >> 1).astype(np.uint8)
     float_image = img.astype(np.float32)
-    return (np.max(float_image, axis=-1, keepdims=True) + np.min(float_image, axis=-1, keepdims=True)) * 0.5
+    result = (np.max(float_image, axis=-1, keepdims=True) + np.min(float_image, axis=-1, keepdims=True)) * 0.5
+    return clip(result, img.dtype)
 
 
 def to_gray_average(img: ImageType) -> ImageType:
@@ -1165,10 +1218,9 @@ def to_gray_max(img: ImageType) -> ImageType:
     return np.max(img, axis=-1, keepdims=True)
 
 
-@clipped
 def to_gray_pca(img: ImageType) -> ImageType:
     """Reduce to one channel via PCA; captures max variance in color. Single or batch; uint8 or
-    float32. Clipped. Use when simple averaging loses info.
+    float16/float32. Use when simple averaging loses info.
 
     This function applies PCA to reduce a multi-channel image to a single channel,
     effectively creating a grayscale representation that captures the maximum variance
@@ -1184,7 +1236,7 @@ def to_gray_pca(img: ImageType) -> ImageType:
     Returns:
         ImageType: Grayscale image with the same leading dimensions as input and C=1.
                     If input is uint8, output is uint8 in range [0, 255].
-                    If input is float32, output is float32 in range [0, 1].
+                    If input is float16 or float32, output retains that dtype and lies in [0, 1].
 
     Note:
         This method can potentially preserve more information from the original image
@@ -1192,7 +1244,7 @@ def to_gray_pca(img: ImageType) -> ImageType:
         correlations between color channels.
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         any
@@ -1202,12 +1254,14 @@ def to_gray_pca(img: ImageType) -> ImageType:
     pixels = img.reshape(-1, img.shape[-1])
 
     pca = PCA(n_components=1, dtype=np.float32)
-    pca_result = pca.fit_transform(pixels)
+    pca_result: ImageFloat32 = pca.fit_transform(pixels)
 
     grayscale = pca_result.reshape(*img.shape[:-1], 1)
     grayscale = normalize_per_image(grayscale, "min_max")
 
-    return from_float(grayscale, target_dtype=dtype) if dtype == np.uint8 else grayscale
+    if dtype == np.uint8:
+        return from_float(grayscale, target_dtype=np.uint8)
+    return clip(grayscale, dtype)
 
 
 def to_gray(
@@ -1322,7 +1376,7 @@ def colorize(
     mid_value: int,
 ) -> ImageType:
     """Map grayscale intensity to a 2- or 3-color RGB gradient (Pillow `ImageOps.colorize`
-    style) using a (256, 3) LUT for uint8 and `np.interp` for float32.
+    style) using a (256, 3) LUT for uint8 and float32-working `np.interp` for floating inputs.
 
     Anchor colors are specified as RGB tuples in 0-255 regardless of input dtype; for float32
     inputs the anchors are scaled into [0, 1] before interpolation. Output always has 3 channels.
@@ -1354,8 +1408,8 @@ def colorize(
             flat_out[frame_index] = cv2.LUT(cv2.cvtColor(flat_in[frame_index], cv2.COLOR_GRAY2BGR), lut_cv)
         return out
 
-    if img.dtype != np.float32:
-        raise ValueError(f"colorize: unsupported dtype {img.dtype}; expected uint8 or float32")
+    if img.dtype.type not in (np.float16, np.float32):
+        raise ValueError(f"colorize: unsupported dtype {img.dtype}; expected uint8, float16 or float32")
 
     anchor_intensity_float = (
         np.array([0.0, 1.0], dtype=np.float32)
@@ -1368,16 +1422,14 @@ def colorize(
         else np.array([black, mid, white], dtype=np.float32) / 255.0
     )
     out = np.empty((*img.shape[:-1], 3), dtype=np.float32)
-    gray_clipped = np.clip(img, 0.0, 1.0)
+    gray_clipped = cast("NDArray[np.float16 | np.float32]", np.clip(img, 0.0, 1.0))
     for color_channel in range(3):
         out[..., color_channel : color_channel + 1] = np.interp(
             gray_clipped, anchor_intensity_float, anchor_color_float[:, color_channel]
         )
-    return out
+    return from_float(out, target_dtype=img.dtype)
 
 
-@preserve_channel_dim
-@uint8_io
 def downscale(
     img: ImageType,
     scale: float,
@@ -1385,7 +1437,7 @@ def downscale(
     up_interpolation: int,
 ) -> ImageType:
     """Simulate resolution loss: downscale then upscale. down/up_interpolation control quality.
-    Use for low-res or compression-style augmentation. uint8 I/O.
+    Use for low-res or compression-style augmentation. Floating inputs are quantized to uint8 and restored.
 
     This function downscales and upscales an image using the specified interpolation methods.
     The downscaling and upscaling are performed using albucore.resize.
@@ -1400,10 +1452,12 @@ def downscale(
         ImageType: The downscaled and upscaled image.
 
     """
+    img, input_dtype = to_uint8_working_image(img)
     height, width = img.shape[:2]
 
     downscaled = fgeometric.resize(img, (int(height * scale), int(width * scale)), down_interpolation)
-    return fgeometric.resize(downscaled, (height, width), up_interpolation)
+    result = fgeometric.resize(downscaled, (height, width), up_interpolation)
+    return restore_uint8_working_image(cast("ImageUInt8", result), input_dtype)
 
 
 def noop(input_obj: Any, **params: Any) -> Any:

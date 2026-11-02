@@ -5,6 +5,7 @@ import pytest
 
 import albumentations as A
 from albumentations.augmentations.medical import functional as fmedical
+from albumentations.core.tensor import numpy_to_tensor_spatial, tensor_to_numpy_spatial
 from albumentations.core.transform_params import SampledParams
 from tests.helpers import TestDataFactory
 
@@ -128,6 +129,56 @@ def test_hestain_explicit_full_basis_matches_direct_reference(dtype: type[np.gen
     )
     tolerance = 1 if dtype == np.uint8 else 1e-6
     np.testing.assert_allclose(result, expected, rtol=1e-5, atol=tolerance)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+def test_hestain_compose_dtype_and_clipping(dtype, container):
+    rng = np.random.default_rng(137)
+    uint8_image = rng.integers(1, 256, (12, 10, 3), dtype=np.uint8)
+    if dtype is np.uint8:
+        image = uint8_image
+    else:
+        image = (uint8_image.astype(np.float32) / 255).astype(dtype)
+    original = image.copy()
+    source = numpy_to_tensor_spatial(image.copy(), "image") if container == "tensor" else image.copy()
+    if container == "numpy":
+        source.flags.writeable = False
+
+    def pipeline():
+        return A.Compose(
+            [
+                A.HEStain(
+                    method="custom",
+                    stain_matrix=HED_STAIN_MATRIX,
+                    residual_mode="augment",
+                    intensity_scale_range=(1.2, 1.2),
+                    intensity_shift_range=(0.1, 0.1),
+                    augment_background=True,
+                    p=1.0,
+                ),
+            ],
+            seed=137,
+            strict=True,
+        )
+
+    result = pipeline()(image=source)["image"]
+    actual = tensor_to_numpy_spatial(result, "image") if container == "tensor" else result
+    preserved = tensor_to_numpy_spatial(source, "image") if container == "tensor" else source
+
+    assert actual.shape == image.shape
+    assert actual.dtype == dtype
+    assert np.all((actual >= 0) & (actual <= (255 if dtype is np.uint8 else 1)))
+    np.testing.assert_array_equal(preserved, original)
+    if dtype == np.float16:
+        float32_image = image.astype(np.float32)
+        float32_source = (
+            numpy_to_tensor_spatial(float32_image.copy(), "image") if container == "tensor" else float32_image
+        )
+        float32_result = pipeline()(image=float32_source)["image"]
+        if container == "tensor":
+            float32_result = tensor_to_numpy_spatial(float32_result, "image")
+        np.testing.assert_array_equal(actual, float32_result.astype(np.float16))
 
 
 def test_hestain_explicit_full_basis_preserves_third_stain_parameters() -> None:

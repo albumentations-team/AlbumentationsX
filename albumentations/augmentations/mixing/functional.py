@@ -11,6 +11,7 @@ from warnings import warn
 
 import cv2
 import numpy as np
+from numpy.typing import NDArray
 
 import albumentations.augmentations.geometric.functional as fgeometric
 from albumentations.augmentations.crops.transforms import Crop
@@ -289,7 +290,7 @@ def create_copy_paste_alpha(
 
     if blend_mode == "gaussian" and blend_sigma > 0:
         kernel_size = int(np.ceil(blend_sigma * 6)) | 1
-        alpha = cv2.GaussianBlur(alpha, (kernel_size, kernel_size), blend_sigma)
+        alpha = cast("NDArray[np.float32]", cv2.GaussianBlur(alpha, (kernel_size, kernel_size), blend_sigma))
         np.clip(alpha, 0, 1, out=alpha)
         # Drop numerical halo so low-opacity tails outside the true mask do not count as paste/occlusion.
         alpha[alpha < 1e-3] = 0.0

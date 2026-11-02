@@ -425,4 +425,20 @@ IMAGE_ONLY_TENSOR_TARGET_PROFILES = (
     ),
 )
 
+
+VOLUME_ONLY_TARGET_PROFILES = (
+    TargetProfile(
+        profile_id="volume",
+        required_targets=frozenset({"volume"}),
+        data_factory=make_target_volume_data,
+        assert_result=_assert_volume_shape,
+    ),
+    TargetProfile(
+        profile_id="volumes-batch",
+        required_targets=frozenset({"volumes"}),
+        data_factory=make_target_volumes_masks3d_data,
+        assert_result=_assert_volumes_shape,
+    ),
+)
+
 TARGET_PROFILES_BY_ID = {profile.profile_id: profile for profile in TARGET_CONTRACT_PROFILES}

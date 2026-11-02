@@ -1,0 +1,560 @@
+{
+  "source": "https://github.com/albumentations-team/AlbumentationsX/pull/602",
+  "author": "ayasyrev",
+  "retrieved_date": "2026-11-02",
+  "baseline": "45a1afe21448fd2e83716733e2880c00335060fb",
+  "candidate": "665585345666b852025e77c9f3a919306ada487c",
+  "head_with_identical_runtime": "2f567cb94dad13c5b1acffb5d56d1e41117e0307",
+  "manifest": {
+    "method": "literal-top-level-endpoint-rss-v2",
+    "date": "2026-10-22",
+    "baseline": "45a1afe21448fd2e83716733e2880c00335060fb",
+    "candidate": "665585345666b852025e77c9f3a919306ada487c",
+    "invocation_sha256": {
+      "baseline": "91861a80cac2232b216308ae88eefa0eb980612e2e64d458e6344e0fb7b2ae4d",
+      "candidate": "4d3032a221fd662020e3b2b82978731395d40747a7425d762f62de4d0971bebd"
+    },
+    "cells": [
+      "varying",
+      "explicit",
+      "fixed",
+      "image_mask",
+      "hwc1",
+      "direct"
+    ],
+    "fresh_process_repeats": 3,
+    "warmup": 100,
+    "calls": 800,
+    "dtype": "float32",
+    "input_rng_seed": 0,
+    "configured_seed": 137,
+    "explicit_invocation_seed": 137,
+    "varying_hw": [
+      "1344 - rng.integers(0, 160)",
+      "1280 - rng.integers(0, 160)"
+    ],
+    "fixed_hw": [
+      1280,
+      1200
+    ],
+    "pipeline": "Compose([Blur(p=1.0)], p=1.0, seed=137); direct cell uses Blur(p=1.0) with seed137",
+    "gc": "enabled; collect after warmup and after measured loop only",
+    "observer": "no per-call RSS, timestamps, GC stats, output retention, or logging",
+    "rss_endpoints": [
+      "after warmup and GC",
+      "after 800 calls and GC"
+    ],
+    "auxiliary_metadata": "OS process peak and GC stats include metadata work after the final endpoint; neither is a loop-specific metric nor used for the gate.",
+    "compute_threads": 1,
+    "run_order": "sequential fresh processes; baseline/candidate order alternates by repeat; controls first",
+    "primary_gate": {
+      "cell": "varying",
+      "controls": [
+        "hwc1",
+        "direct"
+      ],
+      "excess_kb_per_call": "max(0, median(varying) - median(control)) separately within each revision",
+      "reduction": "1 - candidate_excess / baseline_excess, only if baseline_excess > 0",
+      "minimum_reduction": 0.95,
+      "requirement": "both controls pass independently; do not average cells or controls"
+    },
+    "other_cells": "report each baseline/candidate min, median, max and investigate unexplained candidate growth; controls match original varying-HW case, not all secondary dimensions",
+    "timing_matrix": "unchanged; not rerun",
+    "arm64": "open; not measured",
+    "metadata_placement": "Manifest parsing, hashing, environment introspection, JSON imports, and GC stats occur only after final RSS. Compute thread environment is fixed by the launcher; cv2/torch thread settings precede the workload and are verified afterward.",
+    "reason_for_refinement": "v1 removed the in-loop observer but its different initialization/harness shape still suppressed the ordinary varying-HW baseline symptom. Preserve v1 as diagnostic evidence; v2 keeps a top-level workload close to the literal issue. Do not claim that a single initialization component has been isolated."
+  },
+  "tables": [
+    {
+      "columns": [
+        "Case",
+        "Before",
+        "After"
+      ],
+      "rows": [
+        [
+          "Varying HW",
+          "1350.262 [1350.262–1350.267]",
+          "1.382 [1.382–1.393]"
+        ],
+        [
+          "Explicit invocation seed",
+          "434.790 [434.775–965.074]",
+          "1.377 [1.367–1.388]"
+        ],
+        [
+          "Fixed HW",
+          "0.292 [0.276–0.297]",
+          "0.087 [0.082–0.087]"
+        ],
+        [
+          "HW image + mask",
+          "2246.615 [2007.388–2246.625]",
+          "2.499 [2.493–7.670]"
+        ],
+        [
+          "HWC1 control",
+          "1.403 [1.398–1.413]",
+          "1.321 [1.316–1.336]"
+        ],
+        [
+          "Direct Blur control",
+          "1.439 [1.423–8.192]",
+          "1.249 [1.249–1.254]"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "Dependency",
+        "Local timings / RSS",
+        "ASV"
+      ],
+      "rows": [
+        [
+          "Python",
+          "3.13.14",
+          "3.12.13"
+        ],
+        [
+          "Albucore",
+          "0.2.21",
+          "0.2.21"
+        ],
+        [
+          "NumPy",
+          "2.5.1",
+          "2.5.4"
+        ],
+        [
+          "opencv-python-headless",
+          "5.0.0.93",
+          "5.0.0.93"
+        ],
+        [
+          "PyTorch",
+          "2.14.1+cpu",
+          "2.14.1+cpu"
+        ],
+        [
+          "NumKong",
+          "7.8.4",
+          "7.8.5"
+        ],
+        [
+          "SciPy",
+          "1.18.0",
+          "1.18.1"
+        ],
+        [
+          "StringZilla",
+          "5.1.2",
+          "5.3.1"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "Cell",
+        "Iterations/repeat",
+        "Baseline µs",
+        "Candidate µs",
+        "Raw change",
+        "Paired change"
+      ],
+      "rows": [
+        [
+          "P2-HW-seed137-p0.5-forceFalse",
+          "19032",
+          "58.606 [58.597–62.755]",
+          "61.464 [60.180–62.137]",
+          "+4.88%",
+          "+1.67%"
+        ],
+        [
+          "P2-HW-seed137-p0.5-forceTrue",
+          "17243",
+          "58.307 [57.828–58.594]",
+          "59.351 [59.294–59.473]",
+          "+1.79%",
+          "—"
+        ],
+        [
+          "P2-HW-seed137-p1-forceFalse",
+          "19447",
+          "58.729 [58.674–58.991]",
+          "58.568 [58.260–59.785]",
+          "-0.27%",
+          "—"
+        ],
+        [
+          "P2-HW-seedNone-p0.5-forceFalse",
+          "35956",
+          "29.305 [29.171–29.573]",
+          "30.466 [30.274–31.655]",
+          "+3.96%",
+          "—"
+        ],
+        [
+          "P2-HW-seedNone-p0.5-forceTrue",
+          "20958",
+          "55.132 [54.326–55.236]",
+          "55.269 [55.195–55.380]",
+          "+0.25%",
+          "—"
+        ],
+        [
+          "P2-HW-seedNone-p1-forceFalse",
+          "20713",
+          "54.804 [54.718–55.170]",
+          "55.740 [55.604–55.755]",
+          "+1.71%",
+          "-0.22%"
+        ],
+        [
+          "P2-HWC1-seed137-p0.5-forceFalse",
+          "23906",
+          "45.735 [45.269–46.191]",
+          "46.576 [46.266–46.579]",
+          "+1.84%",
+          "+0.19%"
+        ],
+        [
+          "P2-HWC1-seed137-p0.5-forceTrue",
+          "21077",
+          "45.588 [45.496–46.569]",
+          "46.031 [45.954–46.076]",
+          "+0.97%",
+          "—"
+        ],
+        [
+          "P2-HWC1-seed137-p1-forceFalse",
+          "24725",
+          "45.727 [45.670–46.011]",
+          "46.354 [46.352–46.473]",
+          "+1.37%",
+          "—"
+        ],
+        [
+          "P2-HWC1-seedNone-p0.5-forceFalse",
+          "47660",
+          "22.715 [22.606–22.847]",
+          "23.326 [22.996–23.445]",
+          "+2.69%",
+          "—"
+        ],
+        [
+          "P2-HWC1-seedNone-p0.5-forceTrue",
+          "27551",
+          "41.442 [41.317–41.553]",
+          "44.023 [43.824–44.201]",
+          "+6.23%",
+          "+1.04%"
+        ],
+        [
+          "P2-HWC1-seedNone-p1-forceFalse",
+          "27296",
+          "41.385 [41.215–41.423]",
+          "43.069 [42.660–43.826]",
+          "+4.07%",
+          "+2.29%"
+        ],
+        [
+          "P2-noop",
+          "147898",
+          "6.201 [6.168–6.218]",
+          "6.322 [6.276–6.346]",
+          "+1.95%",
+          "-0.11%"
+        ],
+        [
+          "P2-root_zero",
+          "1412177",
+          "0.818 [0.817–0.823]",
+          "0.831 [0.823–0.834]",
+          "+1.59%",
+          "-0.96%"
+        ],
+        [
+          "P3-HW-seed137",
+          "4783",
+          "238.476 [238.209–239.189]",
+          "240.167 [239.498–242.736]",
+          "+0.71%",
+          "—"
+        ],
+        [
+          "P3-HW-seedNone",
+          "5379",
+          "214.914 [214.583–214.976]",
+          "216.870 [216.759–216.959]",
+          "+0.91%",
+          "—"
+        ],
+        [
+          "P3-HWC1-seed137",
+          "5137",
+          "221.166 [221.129–221.170]",
+          "221.904 [221.699–222.130]",
+          "+0.33%",
+          "—"
+        ],
+        [
+          "P3-HWC1-seedNone",
+          "5749",
+          "198.295 [198.274–198.633]",
+          "199.602 [199.497–200.302]",
+          "+0.66%",
+          "—"
+        ],
+        [
+          "P4-direct-blur",
+          "50231",
+          "21.842 [21.796–21.990]",
+          "24.044 [23.928–25.385]",
+          "+10.09%",
+          "-1.12%"
+        ],
+        [
+          "P4-scalar-1",
+          "41320",
+          "27.239 [27.202–27.317]",
+          "30.301 [30.161–30.440]",
+          "+11.24%",
+          "+2.02%"
+        ],
+        [
+          "P4-scalar-8",
+          "7803",
+          "145.625 [145.110–146.433]",
+          "150.075 [148.740–151.598]",
+          "+3.06%",
+          "—"
+        ],
+        [
+          "P5-CHW1-seed137",
+          "11780",
+          "97.258 [97.213–97.525]",
+          "100.101 [99.870–100.877]",
+          "+2.92%",
+          "—"
+        ],
+        [
+          "P5-CHW1-seedNone",
+          "10737",
+          "107.882 [107.634–107.947]",
+          "111.766 [111.665–112.787]",
+          "+3.60%",
+          "—"
+        ],
+        [
+          "P5-HW-seed137",
+          "10604",
+          "107.426 [106.663–107.987]",
+          "109.086 [108.982–110.166]",
+          "+1.54%",
+          "—"
+        ],
+        [
+          "P5-HW-seedNone",
+          "9645",
+          "120.144 [119.114–120.945]",
+          "122.211 [120.122–122.297]",
+          "+1.72%",
+          "—"
+        ],
+        [
+          "P7-seed137",
+          "20000",
+          "40.352 [39.653–41.843]",
+          "39.236 [28.887–40.117]",
+          "-2.77%",
+          "—"
+        ],
+        [
+          "P7-seedNone",
+          "20000",
+          "36.208 [35.792–37.260]",
+          "34.809 [34.502–35.349]",
+          "-3.86%",
+          "—"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "Catalog method",
+        "Number/sample",
+        "Baseline µs",
+        "Candidate µs",
+        "Raw change",
+        "Paired change",
+        "Measured seconds B/C"
+      ],
+      "rows": [
+        [
+          "TimeCorePipeline.time_additional_targets_compose",
+          "100000",
+          "28.991 [28.372–30.007]",
+          "28.153 [28.026–28.446]",
+          "-2.89%",
+          "—",
+          "8.74 / 8.46"
+        ],
+        [
+          "TimeCorePipeline.time_batch_image_compose",
+          "100000",
+          "8.546 [8.449–8.753]",
+          "8.394 [8.332–8.416]",
+          "-1.78%",
+          "—",
+          "2.57 / 2.51"
+        ],
+        [
+          "TimeCorePipeline.time_multi_transform_compose",
+          "3000",
+          "301.245 [298.380–302.220]",
+          "302.590 [299.039–307.991]",
+          "+0.45%",
+          "—",
+          "2.71 / 2.73"
+        ],
+        [
+          "TimeCorePipeline.time_noop_compose",
+          "100000",
+          "6.438 [6.409–6.463]",
+          "6.620 [6.573–6.639]",
+          "+2.84%",
+          "—",
+          "1.93 / 1.98"
+        ],
+        [
+          "TimeCorePipeline.time_noop_probability_compose",
+          "100000",
+          "6.427 [6.387–6.460]",
+          "6.457 [6.432–6.485]",
+          "+0.47%",
+          "—",
+          "1.93 / 1.94"
+        ],
+        [
+          "TimeCorePipeline.time_observed_noop_compose",
+          "100000",
+          "19.375 [18.923–19.803]",
+          "19.124 [19.028–19.180]",
+          "-1.29%",
+          "—",
+          "5.81 / 5.73"
+        ],
+        [
+          "TimeCorePipeline.time_replay_compose",
+          "3000",
+          "327.373 [327.159–328.155]",
+          "347.116 [334.033–407.480]",
+          "+6.03%",
+          "-1.24%",
+          "2.95 / 3.27"
+        ],
+        [
+          "TimeCorePipeline.time_single_transform_compose",
+          "100000",
+          "6.991 [6.962–7.021]",
+          "7.164 [7.161–7.178]",
+          "+2.48%",
+          "—",
+          "2.10 / 2.15"
+        ],
+        [
+          "TimeCorePipeline.time_skip_transform_compose",
+          "100000",
+          "4.153 [4.101–4.170]",
+          "4.089 [4.063–4.114]",
+          "-1.54%",
+          "—",
+          "1.24 / 1.23"
+        ],
+        [
+          "TimeCorePipelineTargetProcessors.time_bbox_keypoint_processor_roundtrip",
+          "3000",
+          "237.472 [236.138–238.868]",
+          "238.234 [237.520–238.421]",
+          "+0.32%",
+          "—",
+          "2.14 / 2.14"
+        ],
+        [
+          "TimeCorePipelineTracing.time_image_snapshot_trace",
+          "3000",
+          "1088.631 [1087.173–1098.025]",
+          "1091.548 [1087.529–1386.921]",
+          "+0.27%",
+          "—",
+          "9.82 / 10.70"
+        ],
+        [
+          "TimeCorePipelineTracing.time_metadata_trace",
+          "3000",
+          "363.896 [362.802–365.514]",
+          "364.726 [363.175–365.051]",
+          "+0.23%",
+          "—",
+          "3.28 / 3.28"
+        ],
+        [
+          "TimeCorePipelineTracing.time_timing_trace",
+          "3000",
+          "365.587 [364.789–365.910]",
+          "364.773 [364.200–366.308]",
+          "-0.22%",
+          "—",
+          "3.29 / 3.29"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "Case",
+        "Baseline repeats 1 / 2 / 3, KB/call",
+        "Candidate repeats 1 / 2 / 3, KB/call"
+      ],
+      "rows": [
+        [
+          "Varying HW",
+          "1350.26688 / 1350.26176 / 1350.26176",
+          "1.38240 / 1.38240 / 1.39264"
+        ],
+        [
+          "Explicit invocation seed",
+          "434.79040 / 965.07392 / 434.77504",
+          "1.38752 / 1.36704 / 1.37728"
+        ],
+        [
+          "Fixed HW",
+          "0.27648 / 0.29184 / 0.29696",
+          "0.08192 / 0.08704 / 0.08704"
+        ],
+        [
+          "HW image + mask",
+          "2246.61504 / 2007.38816 / 2246.62528",
+          "2.49344 / 2.49856 / 7.66976"
+        ],
+        [
+          "HWC1 control",
+          "1.39776 / 1.41312 / 1.40288",
+          "1.31584 / 1.32096 / 1.33632"
+        ],
+        [
+          "Direct Blur control",
+          "1.43872 / 1.42336 / 8.19200",
+          "1.25440 / 1.24928 / 1.24928"
+        ]
+      ]
+    }
+  ],
+  "notes": [
+    "Historical author measurements on AMD Ryzen 7 5800X, Linux x86-64, glibc 2.43, one compute thread. Timing/RSS use Python 3.13.14; ASV uses Python 3.12.13, so these are distinct from the Python 3.11 acceptance profile.",
+    "RSS: 100 warmup + 800 measured calls, GC enabled, endpoints after full GC, no per-call observation or malloc_trim. Three fresh processes per revision/case; reverse order in the second repeat.",
+    "Timing tables retain raw cells and paired follow-ups. Paired columns are medians of five candidate/baseline ratios, not replacements for raw observations.",
+    "Per-call RSS reads suppressed the baseline symptom; the exact allocator mechanism was not isolated. Lifetime tests independently identify cycles."
+  ]
+}

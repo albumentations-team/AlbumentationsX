@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import gc
 import weakref
-from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 from typing import Any
@@ -18,20 +17,7 @@ import albumentations.core.composition as composition_module
 import albumentations.core.invocation as invocation_module
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet
-
-
-def _watch(value: Any, references: list[weakref.ReferenceType[Any]]) -> None:
-    if isinstance(value, (np.ndarray, torch.Tensor)):
-        references.append(weakref.ref(value))
-        base = value.base if isinstance(value, np.ndarray) else value._base
-        if base is not None:
-            _watch(base, references)
-    elif isinstance(value, dict):
-        for item in value.values():
-            _watch(item, references)
-    elif isinstance(value, (tuple, list)):
-        for item in value:
-            _watch(item, references)
+from tests.helpers.lifetime import watch_array_references
 
 
 def _assert_released(references: list[weakref.ReferenceType[Any]]) -> None:
@@ -39,27 +25,6 @@ def _assert_released(references: list[weakref.ReferenceType[Any]]) -> None:
     assert not gc.isenabled()
     assert all(reference() is None for reference in references)
     assert invocation_module.get_current_invocation() is None
-
-
-@pytest.fixture
-def refcount_only() -> Iterator[None]:
-    """Guard the oracle against both automatic and explicit production collection."""
-    was_enabled = gc.isenabled()
-    invocation_module.clear_completed_observation()
-    gc.collect()
-    gc.disable()
-    try:
-        with pytest.MonkeyPatch.context() as patch:
-            patch.setattr(gc, "collect", lambda *args, **kwargs: pytest.fail("collection inside lifetime oracle"))
-            yield
-            assert not gc.isenabled()
-    finally:
-        invocation_module.clear_completed_observation()
-        if was_enabled:
-            gc.enable()
-        else:
-            gc.disable()
-        gc.collect()
 
 
 @pytest.fixture
@@ -79,17 +44,17 @@ def temporary_references(monkeypatch: pytest.MonkeyPatch) -> list[weakref.Refere
 
     def restoration(*args: Any, **kwargs: Any) -> Any:
         state = original_restoration(*args, **kwargs)
-        _watch(state.original_value, references)
-        _watch(state.normalized_value, references)
+        watch_array_references(state.original_value, references)
+        watch_array_references(state.normalized_value, references)
         return state
 
     def sample(transform: A.BasicTransform, *args: Any, **kwargs: Any) -> tuple[Any, SampledParams]:
-        _watch(args, references)
-        _watch(kwargs, references)
+        watch_array_references(args, references)
+        watch_array_references(kwargs, references)
         sink, sampled = original_sample(transform, *args, **kwargs)
-        _watch(sampled.params, references)
+        watch_array_references(sampled.params, references)
         for target_params in sampled.target_params:
-            _watch(target_params.params, references)
+            watch_array_references(target_params.params, references)
         return sink, sampled
 
     monkeypatch.setattr(invocation_module, "InvocationContext", WatchedInvocation)
@@ -127,7 +92,7 @@ def _call_target(
     elif target in {"mask3d", "masks3d"}:
         data["volume"] = np.ones((3, 17, 19, 1), np.float32)
     references: list[weakref.ReferenceType[Any]] = []
-    _watch(data, references)
+    watch_array_references(data, references)
     result = pipeline(
         **data, **({} if isinstance(pipeline, A.BasicTransform) else {"invocation_seed": invocation_seed})
     )
@@ -237,7 +202,7 @@ def test_primed_probability_releases_buffers(invocation_seed: int | None, tempor
 
 
 @pytest.mark.usefixtures("refcount_only")
-@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
 @pytest.mark.parametrize("shape", [(1, 19), (17, 1), (17, 19, 1), (17, 19, 3)])
 def test_degenerate_and_explicit_shapes_preserve_values(dtype: Any, shape: tuple[int, ...]) -> None:
     _assert_released(_call_target(A.Compose([A.Blur(p=1)], seed=137), shape=shape, dtype=dtype))
@@ -502,7 +467,7 @@ def test_observed_artifacts_survive_later_calls_and_release_after_discard(
             assert snapshots
             np.testing.assert_array_equal(snapshots[-1]["image"], expected[..., None])
         references = []
-        _watch(image, references)
+        watch_array_references(image, references)
         invocation_module.clear_completed_observation()
         return references
 
@@ -532,7 +497,7 @@ def test_processor_and_binding_states_release(binding: str, temporary_references
             options["keypoint_params"] = A.KeypointParams(coord_format="xy")
             data = {"image": image, "mask": mask, "bboxes": [[2, 3, 10, 12]], "label": ["cat"], "keypoints": [[4, 5]]}
         references = []
-        _watch(data, references)
+        watch_array_references(data, references)
         result = A.Compose([A.Blur(p=1)], seed=137, **options)(**data)
         if binding == "instances":
             assert result["instances"][0]["bbox_labels"]["label"] == "cat"
@@ -557,6 +522,38 @@ def test_repeated_calls_do_not_accumulate_buffers(temporary_references: list) ->
     for _ in range(32):
         references.extend(_call_target(pipeline))
         _assert_released(references + temporary_references)
+
+
+class _LifetimeDataset(torch.utils.data.Dataset):
+    def __init__(self) -> None:
+        self.pipeline = A.Compose([A.Blur(p=1)], seed=137)
+
+    def __len__(self) -> int:
+        return 2
+
+    def __getitem__(self, index: int) -> int:
+        was_enabled = gc.isenabled()
+        gc.disable()
+        try:
+            _assert_released(_call_target(self.pipeline))
+        finally:
+            if was_enabled:
+                gc.enable()
+        return index
+
+
+@pytest.mark.parametrize("persistent_workers", [False, True])
+def test_dataloader_workers_release_inputs_across_epochs(persistent_workers: bool) -> None:
+    loader = torch.utils.data.DataLoader(
+        _LifetimeDataset(),
+        num_workers=1,
+        multiprocessing_context="spawn",
+        timeout=30,
+        persistent_workers=persistent_workers,
+        generator=torch.Generator().manual_seed(137),
+    )
+    for _ in range(2):
+        assert [batch.item() for batch in loader] == [0, 1]
 
 
 @pytest.mark.usefixtures("refcount_only")

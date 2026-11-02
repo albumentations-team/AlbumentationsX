@@ -157,6 +157,8 @@ def _is_ci_tooling(path: str) -> bool:
         "tools/ci_matrix.py",
         "tools/collect_test_environment.py",
         "tools/pytest_summary.py",
+        "tools/check_memory.py",
+        "tools/_memory_probe.py",
     }
 
 

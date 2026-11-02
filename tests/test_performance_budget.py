@@ -222,7 +222,11 @@ def test_direct_script_ignores_unrelated_tools_package(tmp_path: Path) -> None:
     shadow_package = tmp_path / "tools"
     shadow_package.mkdir()
     (shadow_package / "__init__.py").write_text('"""Unrelated package."""\n', encoding="utf-8")
-    environment = {**os.environ, "PYTHONPATH": str(tmp_path)}
+    python_path = [str(tmp_path), str(REPO_ROOT)]
+    inherited_python_path = os.environ.get("PYTHONPATH")
+    if inherited_python_path:
+        python_path.append(inherited_python_path)
+    environment = {**os.environ, "PYTHONPATH": os.pathsep.join(python_path)}
 
     result = subprocess.run(  # noqa: S603
         [sys.executable, str(PERFORMANCE_BUDGET_SCRIPT), "--help"],

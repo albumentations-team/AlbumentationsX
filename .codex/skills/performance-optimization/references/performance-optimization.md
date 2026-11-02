@@ -14,6 +14,24 @@ sibling Albucore checkout.
 
 For eager CPU PyTorch candidates, also follow Albucore's `docs/torch-performance-optimization.md` workflow.
 
+## Acceptance environment
+
+Run correctness, performance, and memory acceptance on Python 3.11, the lowest supported Python minor shared by
+Albucore and AlbumentationsX. Resolve the newest stable releases that support Python 3.11 and the target platform for
+NumPy, OpenCV, NumKong, StringZilla, PyTorch, and the remaining runtime dependencies. Use CPU-only PyTorch. A run on a
+newer Python with packages that require it does not replace this profile.
+
+The profile recorded on 2026-10-31 used Python 3.11.15, NumPy 2.4.6, OpenCV 5.0.0.93, PyTorch 2.15.0, NumKong 7.8.6,
+and StringZilla 5.3.2 on macOS ARM64; Linux used the CPU build `torch==2.15.0+cpu`. PyTorch 2.15.0 has CPython 3.11
+wheels for both target platforms ([PyPI release files](https://pypi.org/project/torch/2.15.0/)). NumPy 2.5.4
+requires Python 3.12 ([PyPI metadata](https://pypi.org/project/numpy/2.5.4/)), so 2.4.6 was the newest NumPy release
+available to this Python 3.11 profile on that date.
+
+Re-resolve the profile before a later acceptance run. Record the Python patch version, every resolved package version,
+imported source paths, platform, and native backend capabilities. A lockfile or an existing virtual environment can lag
+behind the newest Python 3.11-compatible releases; verify the installed inventory before treating its tests or timings
+as acceptance evidence. Keep the project's runtime minimum separate from this test profile.
+
 ## Run the optimization pass in this order
 
 ### 1. Delete work first
@@ -151,13 +169,16 @@ derive both inputs from the same float32 values and use controls exactly represe
 accidental identity operations in only one dtype; verify the actual router branch and output dtype before comparing.
 
 Route only where evidence wins. Thresholds may depend on dtype, rank, size, channel count, contiguity, scalar versus
-per-channel parameters, and in-place versus allocating mode. Existing Albucore routes demonstrate that no backend is
+per-channel parameters, and no-output versus explicit-output mode. Existing Albucore routes demonstrate that no backend is
 globally fastest:
 
 - NumKong wins selected reductions, moments, blends, scales, and small distance matrices;
 - NumPy wins other float32 and high-channel paths;
 - OpenCV wins many dense image operations but has channel and layout constraints;
 - StringZilla is competitive for selected uint8 translation paths.
+- NumPy uint8 `add` with a one-element uint8 channel vector uses the scalar route before LUT setup. Native ARM64
+  measurements were bitwise exact and ran at 0.769× baseline for 128×160×1 and 0.821× for 240×320×1; other
+  vectors retain the LUT route.
 - CPU PyTorch is competitive for selected eager 3D volume operations when the complete interop route wins.
 - Preserve float16 support in every documented operation. Compare baseline and candidate at the same dtype,
   including dispatch, bridges, allocations, casts, and output restoration. Float16-versus-float32 comparisons are
@@ -186,7 +207,7 @@ Choose random generation by workload and contract:
 - OpenCV random fill can be benchmarked when it writes directly into an existing dense buffer.
 
 Measure generation and required post-processing together. Compare direct dtype generation, vectorized draws, bounds,
-temporary casts, and in-place scaling.
+temporary casts, and scaling into an existing output.
 
 For sparse dropout or impulse noise, compare generating a dense random mask with sampling sparse flat indices and
 scattering values. For channel-shared noise, do not generate independent channel data that will be discarded.
@@ -210,18 +231,18 @@ Move an operation to Albucore when it:
 Do not move transform-specific sampling or target semantics. Avoid parallel local helpers that implement the same
 atomic operation differently.
 
-### 9. Make safe operations in-place
+### 9. Reuse caller-owned outputs safely
 
-Prefer `out=`, OpenCV `dst=`, and Albucore `inplace=True` when all aliasing conditions hold:
+Prefer `out=` and OpenCV `dst=` when they remove an allocation or full-array copy under the operation contract:
 
-- the input may be modified under the public contract;
+- the operation explicitly supports the requested output alias;
 - no later calculation needs the original values;
 - source and destination overlap is supported by the backend;
 - shared arrays or views do not make the mutation observable elsewhere;
 - dtype and shape already match the destination.
 
-In-place is not automatically faster. It can trigger copies for non-contiguous views, block fusion, or corrupt
-read-after-write calculations. Benchmark both modes and test aliasing explicitly.
+Supplying an output is not automatically faster. It can trigger copies for non-contiguous views, block fusion, or
+corrupt read-after-write calculations. Benchmark allocation and output-storage paths, and test aliasing explicitly.
 
 ### 10. Specialize and route only after the simpler pass
 
@@ -234,14 +255,14 @@ After removing work and comparing straight implementations, consider routing by:
 - contiguous versus strided input;
 - small versus large arrays;
 - dense versus sparse labels;
-- allocating versus in-place output.
+- allocation without `out` versus an explicit `out` buffer.
 
 Keep the number of branches justified by durable benchmark regions. Do not add a threshold for noisy single-machine
 measurements.
 
 ### 11. Measure dispatch and pipeline overhead
 
-An isolated kernel speedup may disappear behind transform dispatch, conversion decorators, target routing, or
+An isolated kernel speedup may disappear behind transform dispatch, input/output conversions, target routing, or
 `Compose`. Benchmark the layer users execute.
 
 For AlbumentationsX, measure both the direct functional call and the transform through `Compose`. For batch-capable
@@ -299,9 +320,11 @@ user explicitly requests a thread-scaling experiment.
 Record the CPU model and enabled backend capabilities, including `nk.get_capabilities()` when NumKong is used.
 Check that these flags match the intended host profile before accepting timings. A restricted macOS process can deny
 `sysctl` and silently disable NEON in NumKong ([#407](https://github.com/ashvardanian/NumKong/issues/407)). Measurements
-under that restricted profile do not establish native-host performance. Keep them as separate diagnostics and rerun
-affected comparisons in an authorized environment where the hardware probe succeeds. Do not force global backend
-capabilities just to obtain faster results.
+under that restricted profile do not establish native-host performance. In Codex, run local macOS ARM64 benchmark
+commands with `sandbox_permissions="require_escalated"`; verify `nk.get_capabilities()["neon"]` is true in the
+benchmark process. `benchmark_router_synthetic.py` refuses native acceptance timing when that check fails. Use
+`--allow-restricted-isa` only to label a run diagnostic. Do not force global backend capabilities just to obtain faster
+results.
 
 At minimum:
 
@@ -330,6 +353,6 @@ Every performance task should report:
 - NumPy, OpenCV, NumKong, StringZilla, CPU PyTorch, and Python candidates that apply;
 - any missing upstream primitive, its Feature Request, and a linked implementation pull request when we can provide one;
 - reusable atoms moved or proposed for Albucore;
-- safe in-place opportunities;
+- safe explicit-output and aliasing opportunities;
 - correctness evidence;
 - benchmark matrix, wins, regressions, and rejected candidates.

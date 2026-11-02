@@ -14,6 +14,10 @@ When both repositories are available, verify exact synchronization with
 `cmp -s ../albucore/docs/performance-optimization.md .codex/skills/performance-optimization/references/performance-optimization.md`.
 A mismatch blocks completion.
 
+Final Core/AX acceptance runs on Python 3.11 with the newest stable dependencies compatible with Python 3.11 and
+the target platform. The recorded CPU PyTorch version is 2.15.0. Verify installed versions and imported source paths;
+a newer Python or stale lockfile does not satisfy this gate.
+
 ## Workflow
 
 1. Establish correctness and performance baselines before editing.
@@ -83,10 +87,12 @@ conditions.
 If investigation identifies an Albucore defect, pause AlbumentationsX changes and open an Albucore Issue and PR
 before resuming.
 
-Do not add a forwarding wrapper around a one-line call merely to attach a decorator. Use `@clipped` when every route
-of an image operation can leave the public range; branch and call `albucore.clip(..., inplace=True)` when only a known
-float32 mode (such as cubic interpolation) can. A separate function is justified only when it owns a real image
-operation and keeps that image policy distinct from masks or annotations.
+Keep dtype conversion and clipping in the owning operation unless a concrete Albucore operation has matching
+semantics. Use `albucore.clip` at the exact numerical stage required by the transform contract, with `out=` only
+for owned storage. When clipping applies only to one backend or interpolation mode, branch explicitly and test that
+route.
+Do not clip masks or annotations. A separate functional operation is justified only when it owns real image
+computation or keeps image policy distinct from masks and annotations.
 
 ## Required Handoff
 

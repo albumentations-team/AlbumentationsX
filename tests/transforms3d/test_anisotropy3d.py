@@ -175,3 +175,27 @@ def test_anisotropy3d_tensor_uses_current_non_antialiased_trilinear_fallback() -
 def test_anisotropy3d_validates_configuration(kwargs: dict[str, object], message: str) -> None:
     with pytest.raises(ValueError, match=message):
         A.Anisotropy3D(**kwargs)
+
+
+@pytest.mark.parametrize(
+    "tensor,expected",
+    [
+        (False, [[114, 130, 161, 177], [136, 140, 147, 150], [181, 160, 117, 95], [203, 169, 102, 68]]),
+        (True, [[114, 130, 161, 177], [136, 140, 146, 150], [181, 159, 116, 95], [203, 169, 101, 67]]),
+    ],
+)
+def test_uint8_anisotropy_preserves_released_container_rounding(tensor, expected):
+    source = np.array(
+        [[48, 33, 187, 125], [165, 209, 177, 219], [255, 233, 34, 60], [221, 101, 105, 70]],
+        dtype=np.uint8,
+    ).reshape(4, 1, 4, 1)
+    original = source.copy()
+    volume = torch.from_numpy(source).permute(3, 0, 1, 2) if tensor else source
+
+    result = A.Compose([_fixed_anisotropy(antialias=False)], seed=137, strict=True)(volume=volume)["volume"]
+
+    actual = result.permute(1, 2, 3, 0).numpy() if tensor else result
+    assert actual.shape == source.shape
+    assert actual.dtype == source.dtype
+    np.testing.assert_array_equal(actual.reshape(4, 4), np.array(expected, dtype=np.uint8))
+    np.testing.assert_array_equal(source, original)

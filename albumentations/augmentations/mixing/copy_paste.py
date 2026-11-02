@@ -1223,11 +1223,10 @@ class CopyAndPaste(DualTransform):
         paste_surviving_ids_ordered: list[int] | None,
         paste_surviving_indices: np.ndarray | None,
     ) -> np.ndarray:
-        """Select the subset of mask rows that survive after the paste using either
-        ID-driven or legacy positional indexing depending on whether binding is active.
+        """Select surviving mask rows by instance id or by unbound positional indices.
 
-        When `paste_surviving_ids_ordered` is not `None` (instance binding active) it indexes by surviving
-        `_bbox_instance_id` values; otherwise the legacy positional `paste_surviving_indices` path is used.
+        When `paste_surviving_ids_ordered` is set, it contains the surviving `_bbox_instance_id`
+        values. The unbound path uses `paste_surviving_indices`.
         """
         if paste_surviving_ids_ordered is not None:
             if len(paste_surviving_ids_ordered) > 0:

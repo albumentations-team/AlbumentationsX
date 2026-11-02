@@ -96,7 +96,7 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         - Works with any number of channels (grayscale, RGB, multispectral)
@@ -292,7 +292,7 @@ class PlasmaShadow(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         - The transform darkens the image using a plasma pattern

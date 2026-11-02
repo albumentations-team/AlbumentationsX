@@ -125,8 +125,7 @@ def set_seed(seed):
 
 
 def get_all_valid_transforms(use_cache=False):
-    """Find all transforms that are children of BasicTransform or BaseCompose,
-    and do not have DeprecationWarning or FutureWarning.
+    """Find all transforms that are children of BasicTransform or BaseCompose.
 
     Args:
         use_cache (bool): Whether to cache the results using lru_cache. Default: False

@@ -205,14 +205,14 @@ def test_k_space_spike_3d_volume_plane_wave_along_depth() -> None:
     np.testing.assert_allclose(out[:, 0, 0, 0], expected, atol=1e-5)
 
 
-@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
 @pytest.mark.parametrize("channels", [1, 3, 5])
 def test_k_space_spike_noise_preserves_shape_dtype_and_range(dtype: np.dtype, channels: int) -> None:
     rng = np.random.default_rng(137)
     image = (
         rng.integers(0, 256, (23, 19, channels), dtype=np.uint8)
         if dtype == np.uint8
-        else rng.random((23, 19, channels), dtype=np.float32)
+        else rng.random((23, 19, channels), dtype=np.float32).astype(dtype)
     )
     transform = A.Compose(
         [
@@ -237,6 +237,21 @@ def test_k_space_spike_noise_preserves_shape_dtype_and_range(dtype: np.dtype, ch
     else:
         assert result.min() >= 0
         assert result.max() <= 1
+
+
+@pytest.mark.parametrize("channels", [1, 3, 5])
+def test_k_space_spike_float16_matches_float32_reference(channels: int) -> None:
+    half_image = np.random.default_rng(137).random((23, 19, channels), dtype=np.float32).astype(np.float16)
+    original = half_image.copy()
+    params = {"num_spikes_range": (2, 2), "intensity_range": (0.25, 0.25), "p": 1.0}
+
+    half_result = A.Compose([A.KSpaceSpikeNoise(**params)], seed=137)(image=half_image)["image"]
+    float_result = A.Compose([A.KSpaceSpikeNoise(**params)], seed=137)(image=half_image.astype(np.float32))["image"]
+
+    assert half_result.shape == half_image.shape
+    assert half_result.dtype == np.float16
+    np.testing.assert_array_equal(half_result, float_result.astype(np.float16))
+    np.testing.assert_array_equal(half_image, original)
 
 
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])

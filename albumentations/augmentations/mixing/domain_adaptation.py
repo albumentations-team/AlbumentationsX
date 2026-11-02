@@ -67,7 +67,7 @@ class BaseDomainAdaptation(ImageOnlyTransform):
         image, volume
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Notes:
         - Subclasses should implement the `apply` method to perform the actual adaptation.
@@ -281,7 +281,7 @@ class HistogramMatching(BaseDomainAdaptation):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         - Requires at least one reference image to be provided via the `metadata_key` argument.
@@ -420,7 +420,7 @@ class FDA(BaseDomainAdaptation):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         - Requires at least one reference image to be provided via the `metadata_key` argument.
@@ -610,7 +610,7 @@ class PixelDistributionAdaptation(BaseDomainAdaptation):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         - Requires at least one reference image to be provided via the `metadata_key` argument.

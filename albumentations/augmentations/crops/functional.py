@@ -10,7 +10,6 @@ from typing import Any
 
 import cv2
 import numpy as np
-from albucore import preserve_channel_dim
 
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.utils import handle_empty_array
@@ -203,7 +202,6 @@ def crop(img: ImageType, x_min: int, y_min: int, x_max: int, y_max: int) -> Imag
     return img[y_min:y_max, x_min:x_max]
 
 
-@preserve_channel_dim
 def crop_and_pad(
     img: ImageType,
     crop_params: tuple[int, int, int, int] | None,

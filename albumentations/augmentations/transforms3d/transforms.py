@@ -612,7 +612,7 @@ class Resize3D(Transform3D):
         return cast("VolumeType", resize3d(volume, self.size, self.interpolation))
 
     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> VolumeType:
-        return cast("VolumeType", resize3d(mask3d, self.size, self.mask_interpolation))
+        return resize3d(mask3d, self.size, self.mask_interpolation)
 
     def apply_to_keypoints(
         self,
@@ -1827,7 +1827,7 @@ class CoarseDropout3D(Transform3D):
         volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         - The actual number and size of dropout regions are randomly chosen within the specified ranges.

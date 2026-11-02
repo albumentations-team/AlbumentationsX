@@ -2747,8 +2747,8 @@ class TestPipelineInvariantsHypothesis:
     def _build(name: str) -> A.BasicTransform:
         builders: dict[str, Callable[[], A.BasicTransform]] = {
             "affine": lambda: A.Affine(p=1.0),
-            "perspective": lambda: A.Perspective(scale=(0.05, 0.2), p=1.0, keep_size=True),
             "shift_scale_rotate": lambda: A.ShiftScaleRotate(p=1.0),
+            "perspective": lambda: A.Perspective(scale=(0.05, 0.2), p=1.0, keep_size=True),
             "horizontal_flip": lambda: A.HorizontalFlip(p=1.0),
             "rotate": lambda: A.Rotate(p=1.0),
             "random_crop": lambda: A.RandomCrop(80, 80, p=1.0),

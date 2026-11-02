@@ -15,14 +15,17 @@ from albucore import (
     MAX_VALUES_BY_DTYPE,
     get_num_channels,
     reduce_sum,
-    uint8_io,
     warp_affine,
 )
 
 from albumentations.augmentations.geometric.functional import split_uniform_grid
+from albumentations.augmentations.pixel._functional_shared import (
+    restore_uint8_working_image,
+    to_uint8_working_image,
+)
 from albumentations.augmentations.pixel.functional import grayscale_to_multichannel, to_gray_average
 from albumentations.augmentations.utils import handle_empty_array
-from albumentations.core.type_definitions import ImageType
+from albumentations.core.type_definitions import ImageType, ImageUInt8
 
 FillValueLiteral = Literal["random", "random_uniform", "inpaint_telea", "inpaint_ns", "grayscale"]
 
@@ -131,7 +134,6 @@ def generate_random_fill(
     raise ValueError(f"Unsupported dtype: {dtype}")
 
 
-@uint8_io
 def apply_inpainting(img: ImageType, holes: np.ndarray, method: Literal["inpaint_telea", "inpaint_ns"]) -> ImageType:
     """Apply OpenCV inpainting to fill holes. holes: [x1,y1,x2,y2]; method inpaint_telea or inpaint_ns.
     uint8; grayscale or 3-channel.
@@ -148,6 +150,7 @@ def apply_inpainting(img: ImageType, holes: np.ndarray, method: Literal["inpaint
         NotImplementedError: If image has more than 3 channels
 
     """
+    img, input_dtype = to_uint8_working_image(img)
     num_channels = get_num_channels(img)
     mask = np.zeros(img.shape[:2], dtype=np.uint8)
     for x_min, y_min, x_max, y_max in holes:
@@ -161,24 +164,28 @@ def apply_inpainting(img: ImageType, holes: np.ndarray, method: Literal["inpaint
         img_3ch = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
         result = cv2.inpaint(img_3ch, mask, 3, inpaint_method)
         # Always add channel dimension back since all images now have channel dimension
-        return cast("ImageType", cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)[..., None])
+        result = cast("ImageUInt8", cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)[..., None])
+        return restore_uint8_working_image(result, input_dtype)
 
-    return cast("ImageType", cv2.inpaint(img, mask, 3, inpaint_method))
+    result = cast("ImageUInt8", cv2.inpaint(img, mask, 3, inpaint_method))
+    return restore_uint8_working_image(result, input_dtype)
 
 
-@uint8_io
 def apply_inpainting_to_mask(
     img: ImageType,
     dropout_mask: np.ndarray,
     method: Literal["inpaint_telea", "inpaint_ns"],
 ) -> ImageType:
     """Inpaint an arbitrary two-dimensional dropout mask."""
+    img, input_dtype = to_uint8_working_image(img)
     mask = dropout_mask.astype(np.uint8) * 255
     inpaint_method = cv2.INPAINT_TELEA if method == "inpaint_telea" else cv2.INPAINT_NS
     if get_num_channels(img) == 1:
         result = cv2.inpaint(cv2.cvtColor(img.squeeze(), cv2.COLOR_GRAY2BGR), mask, 3, inpaint_method)
-        return cast("ImageType", cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)[..., None])
-    return cast("ImageType", cv2.inpaint(img, mask, 3, inpaint_method))
+        result = cast("ImageUInt8", cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)[..., None])
+        return restore_uint8_working_image(result, input_dtype)
+    result = cast("ImageUInt8", cv2.inpaint(img, mask, 3, inpaint_method))
+    return restore_uint8_working_image(result, input_dtype)
 
 
 def fill_masked_pixels(

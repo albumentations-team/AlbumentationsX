@@ -170,27 +170,22 @@ For transforms that handle gaps or boundaries, use these consistent names:
 
 ### Data Type Consistency
 
-- Ensure transforms produce consistent results regardless of input data type
-- Use provided decorators to handle type conversions:
-  - `@uint8_io`: For transforms that work with uint8 images
-  - `@float32_io`: For transforms that work with float32 images
+- Preserve each transform's declared input and output dtype behavior across `uint8`, `float16`, and `float32`.
+- Keep conversion and dtype restoration in the functional operation unless a concrete Albucore operation owns that
+  exact numerical contract.
+- Prefer an explicit Albucore router when its numerical semantics match. For transform-specific working dtypes, keep
+  conversion, rounding, clipping, and restoration in the functional operation that owns the computation.
+- Compare the complete public Compose path, including all conversions and output materialization.
 
-The decorators will:
-
-- Pass through images that are already in the target type without conversion
-- Convert other types as needed and convert back after processing
-
-Apply the decorator to the functional operation that owns the dtype-specific kernel. Keep transform application
-methods as dispatchers; do not add manual conversion or a forwarding wrapper just to attach a decorator.
-
-### Image Value Ranges and `@clipped`
+### Image Value Ranges and Clipping
 
 - Image transforms preserve `[0, 255]` for `uint8` and `[0, 1]` for `float32`, unless the transform explicitly sets
   `_preserves_input_image_range = False`.
-- Use `@clipped` when every route of a functional image operation can leave this range. When only a known float32 mode
-  can overshoot, branch on that mode and call `albucore.clip(..., inplace=True)` there. Do not clip masks or annotations.
-- Do not add a forwarding wrapper around a one-line call merely to attach a decorator. Add a function only when it
-  owns a real image operation and separates image policy from mask or annotation semantics.
+- Call `albucore.clip` at the precise stage required by the numerical contract, using `out=` only for owned output
+  storage. Do not move clipping across conversion, rounding, or intermediate arithmetic; do not clip masks or
+  annotations.
+- Keep transform methods as dispatchers. A functional operation should own real image computation and distinguish
+  image policy from mask or annotation semantics.
 
 ### Channel Flexibility
 

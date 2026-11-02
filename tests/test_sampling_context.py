@@ -67,7 +67,7 @@ def test_execution_entry_points_require_explicit_invocations() -> None:
 
 
 @pytest.mark.parametrize("hook_name", ("get_params", "get_params_dependent_on_data"))
-def test_declaring_a_removed_sampling_hook_fails_without_an_invocation(hook_name: str) -> None:
-    """Fail when legacy code is defined rather than adding a branch to transform execution."""
-    with pytest.raises(TypeError, match=rf"LegacyTransform defines removed sampling hook\(s\): {hook_name}"):
-        type("LegacyTransform", (A.ImageOnlyTransform,), {hook_name: lambda self: {}})
+def test_declaring_an_unsupported_sampling_hook_fails_without_an_invocation(hook_name: str) -> None:
+    """Reject transform subclasses that declare unsupported sampling hooks."""
+    with pytest.raises(TypeError, match=rf"UnsupportedTransform defines removed sampling hook\(s\): {hook_name}"):
+        type("UnsupportedTransform", (A.ImageOnlyTransform,), {hook_name: lambda self: {}})

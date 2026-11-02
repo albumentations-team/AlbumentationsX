@@ -25,6 +25,10 @@ change beyond the version uses the corresponding dependency, artifact, and insta
 4. **If a selected command fails**: fix the issue, then repeat that command. Do not expand the validation scope unless the
    failure proves that the initial scope was incomplete.
 
+For final Core/AX float16 acceptance, use Python 3.11 and the latest stable dependencies compatible with it on each
+target platform. The current recorded profile uses PyTorch 2.15.0. Verify the full version inventory and imported source
+paths; `uv run` against an older lock does not satisfy this acceptance profile.
+
 For transform or guidance changes, the focused mechanical check is `pre-commit run check-ax-rules --all-files`.
 Keep deterministic contract details in
 `docs/contributing/coding_guidelines.md`; keep design and benchmark review in the applicable skill.
@@ -32,6 +36,12 @@ Keep deterministic contract details in
 Before handoff, check `git status --short`. `pre-commit run --all-files` omits untracked files, so run `pre-commit`
 with `--files` for each new file until it is staged or tracked. When a change relies on type narrowing, run and report
 both mypy and Pyrefly.
+
+Run type checks through the project environment with its real backend stubs. A checker using a different Python or
+NumPy profile can report false dtype errors; missing Torch or Albucore imports can instead hide invalid calls behind
+`Any`. Prefer `uv run` so Pyrefly queries the project interpreter, or provide its interpreter path explicitly when
+invoking the binary directly. Use the permanent positive/negative contracts described in
+`docs/contributing/environment_setup.md`; a positive-only check does not prove argument enforcement.
 
 ## Rules
 

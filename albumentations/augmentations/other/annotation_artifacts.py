@@ -115,7 +115,7 @@ class AnnotationArtifacts(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -124,8 +124,8 @@ class AnnotationArtifacts(ImageOnlyTransform):
         - This is an image-only transform: masks, bounding boxes, and keypoints are not modified.
         - Colors are adapted to the number of channels; black and white affect all channels,
           while red maps to the first channel and pads remaining channels with zero.
-        - Palette and uniformly sampled colors use uint8-scale values. Float32 images are rendered through the
-          transform's dtype adapter, which maps those values to `[0, 1]`.
+        - Palette and uniformly sampled colors use uint8-scale values. Float16 and float32 images are rendered
+          through the transform's dtype adapter, which maps those values to `[0, 1]`.
         - Random values are sampled before drawing, so replay and deterministic pipelines preserve
           the exact generated artifacts.
 

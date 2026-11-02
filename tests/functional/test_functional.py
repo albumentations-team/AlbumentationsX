@@ -29,6 +29,23 @@ from tests.conftest import (
 from tests.utils import convert_2d_to_target_format
 
 
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("shape", [(3, 5), (3, 5, 1)])
+@pytest.mark.parametrize(("flip", "axis"), [(fgeometric.hflip, 1), (fgeometric.vflip, 0)])
+def test_flip_preserves_grayscale_axes_and_storage(dtype, shape, flip, axis):
+    image = np.arange(np.prod(shape), dtype=dtype).reshape(shape)
+    original = image.copy()
+    image.setflags(write=False)
+
+    result = flip(image)
+
+    assert result.dtype == image.dtype
+    assert result.shape == shape
+    assert np.shares_memory(result, image)
+    np.testing.assert_array_equal(result, np.flip(original, axis=axis))
+    np.testing.assert_array_equal(image, original)
+
+
 @pytest.mark.parametrize(
     ["input_shape", "expected_shape"],
     [[(128, 64), (64, 128)], [(128, 64, 3), (64, 128, 3)]],
@@ -1224,10 +1241,10 @@ def test_slic_assigns_labels_for_narrow_images(shape):
 
 
 @pytest.mark.parametrize("channels", [1, 3, 5])
-@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
 def test_superpixels_segment_mean_replacement(monkeypatch, channels, dtype):
     image_uint8 = np.arange(2 * 4 * channels, dtype=np.uint8).reshape(2, 4, channels)
-    image = image_uint8 if dtype == np.uint8 else image_uint8.astype(np.float32) / 255
+    image = image_uint8 if dtype == np.uint8 else (image_uint8.astype(np.float32) / 255).astype(dtype)
     segments = np.array(
         [
             [0, 0, 2, 2],
@@ -1249,7 +1266,7 @@ def test_superpixels_segment_mean_replacement(monkeypatch, channels, dtype):
     for segment_label in (2, 9):
         segment_mask = segments == segment_label
         expected_uint8[segment_mask] = np.rint(image_uint8[segment_mask].mean(axis=0)).astype(np.uint8)
-    expected = expected_uint8 if dtype == np.uint8 else expected_uint8.astype(np.float32) / 255
+    expected = expected_uint8 if dtype == np.uint8 else (expected_uint8.astype(np.float32) / 255).astype(dtype)
 
     np.testing.assert_array_equal(result, expected)
 
@@ -2450,8 +2467,10 @@ def test_apply_linear_illumination(img, intensity, angle, expected):
     ["shape", "dtype"],
     [
         ((100, 100), np.uint8),
+        ((100, 100), np.float16),
         ((100, 100), np.float32),
         ((100, 100, 3), np.uint8),
+        ((100, 100, 3), np.float16),
         ((100, 100, 3), np.float32),
         ((50, 75, 4), np.uint8),  # RGBA
     ],
@@ -4088,6 +4107,30 @@ class TestEqualizePilHistogramFilter:
         vec = histogram[histogram > 0]
 
         np.testing.assert_array_equal(vec, ref)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+def test_adjust_saturation_grayscale_channel_is_identity(dtype):
+    rng = np.random.default_rng(137)
+    image = (
+        rng.integers(0, 256, (17, 13, 1), dtype=np.uint8)
+        if dtype is np.uint8
+        else rng.random((17, 13, 1), dtype=np.float32).astype(dtype)
+    )
+    original = image.copy()
+
+    result = fpixel.adjust_saturation_torchvision(image, factor=0.5)
+
+    assert result.shape == image.shape
+    assert result.dtype == image.dtype
+    np.testing.assert_array_equal(result, original)
+    np.testing.assert_array_equal(image, original)
+
+
+def test_adjust_saturation_rejects_the_removed_gamma_argument():
+    image = np.zeros((5, 7, 3), dtype=np.uint8)
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        fpixel.adjust_saturation_torchvision(image, factor=0.5, gamma=0)
 
 
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])

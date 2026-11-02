@@ -12,13 +12,13 @@ from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 from functools import cache
-from typing import Annotated, Any, ClassVar, cast, get_args, get_type_hints
+from typing import Annotated, Any, ClassVar, TypeVar, cast, get_args, get_type_hints
 from warnings import warn
 
 import cv2
 import numpy as np
 import torch
-from albucore import sz_lut
+from albucore import apply_uint8_lut
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -66,6 +66,104 @@ from .type_definitions import (
     VolumeType,
 )
 from .utils import format_args, get_volume_shape, get_volumes_shape
+
+_ArrayTargetT = TypeVar("_ArrayTargetT", bound=NDArray[np.generic] | torch.Tensor)
+
+
+def _prepare_native_float_byte_order(value: Any) -> tuple[Any, Any | None]:
+    prepared_value = value
+    byte_order = None
+    if isinstance(value, np.ndarray):
+        if not value.dtype.isnative and value.dtype.type in (np.float16, np.float32):
+            prepared_value = value.astype(value.dtype.newbyteorder("="), order="K", copy=True)
+            byte_order = value.dtype
+    elif isinstance(value, list):
+        prepared = [_prepare_native_float_byte_order(item) for item in value]
+        if any(item_byte_order is not None for _, item_byte_order in prepared):
+            prepared_value = [item for item, _ in prepared]
+            byte_order = [item_byte_order for _, item_byte_order in prepared]
+    elif isinstance(value, tuple):
+        prepared = [_prepare_native_float_byte_order(item) for item in value]
+        if any(item_byte_order is not None for _, item_byte_order in prepared):
+            prepared_value = tuple(item for item, _ in prepared)
+            byte_order = tuple(item_byte_order for _, item_byte_order in prepared)
+    elif isinstance(value, dict):
+        prepared_mapping = {key: _prepare_native_float_byte_order(item) for key, item in value.items()}
+        if any(item_byte_order is not None for _, item_byte_order in prepared_mapping.values()):
+            prepared_value = {key: item for key, (item, _) in prepared_mapping.items()}
+            byte_order = {key: item_byte_order for key, (_, item_byte_order) in prepared_mapping.items()}
+    return prepared_value, byte_order
+
+
+def _restore_float_byte_order(value: Any, byte_order: Any) -> Any:
+    restored = value
+    if isinstance(byte_order, np.dtype):
+        if isinstance(value, np.ndarray) and value.dtype.type is byte_order.type and value.dtype.isnative:
+            restored_array = value if value.flags.writeable else value.copy(order="K")
+            restored_array.byteswap(inplace=True)
+            restored = restored_array.view(byte_order)
+    elif isinstance(value, list) and isinstance(byte_order, list) and len(value) == len(byte_order):
+        restored = [
+            _restore_float_byte_order(item, item_byte_order)
+            for item, item_byte_order in zip(value, byte_order, strict=True)
+        ]
+    elif isinstance(value, tuple) and isinstance(byte_order, tuple) and len(value) == len(byte_order):
+        restored = tuple(
+            _restore_float_byte_order(item, item_byte_order)
+            for item, item_byte_order in zip(value, byte_order, strict=True)
+        )
+    elif isinstance(value, dict) and isinstance(byte_order, dict):
+        restored = {key: _restore_float_byte_order(item, byte_order.get(key)) for key, item in value.items()}
+    return restored
+
+
+def _prepare_foreign_float_inputs(
+    transform: Any,
+    data: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any] | None, frozenset[str]]:
+    if isinstance(transform, NoOp):
+        return data, None, frozenset()
+
+    records: list[tuple[str, Any, Any, bool]] | None = None
+    for key, value in data.items():
+        handled = key in transform._key2func  # noqa: SLF001
+        if not handled and key not in transform.targets_as_params:
+            continue
+        if isinstance(value, np.ndarray):
+            if value.dtype.isnative or value.dtype.type not in (np.float16, np.float32):
+                continue
+            native_value, byte_order = value.astype(value.dtype.newbyteorder("="), order="K", copy=True), value.dtype
+        else:
+            native_value, byte_order = _prepare_native_float_byte_order(value)
+            if byte_order is None:
+                continue
+        if records is None:
+            records = []
+        records.append((key, native_value, byte_order, not handled))
+
+    if records is None:
+        return data, None, frozenset()
+    prepared = {key: value for key, value, _, _ in records}
+    byte_orders = {key: byte_order for key, _, byte_order, _ in records}
+    passthrough = frozenset(key for key, _, _, is_passthrough in records if is_passthrough)
+    return {**data, **prepared}, byte_orders, passthrough
+
+
+def _restore_foreign_float_outputs(
+    result: Any,
+    original_data: dict[str, Any],
+    byte_orders: dict[str, Any],
+    passthrough: frozenset[str],
+) -> Any:
+    if not isinstance(result, dict):
+        return result
+    for key, byte_order in byte_orders.items():
+        if key in passthrough:
+            result[key] = original_data[key]
+        elif key in result:
+            result[key] = _restore_float_byte_order(result[key], byte_order)
+    return result
+
 
 __all__ = [
     "BasicTransform",
@@ -145,9 +243,7 @@ class _DiscardedAppliedOverrides:
         return
 
     def update(self, *args: Any, **kwargs: Any) -> None:
-        """Discards bulk realized-policy writes for non-observing calls, preserving dictionary-update compatibility
-        without retaining replay data.
-        """
+        """Discard a bulk update when no replay, trace, or observation consumer needs the realized values."""
         return
 
 
@@ -314,12 +410,10 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
     _removed_sampling_hooks: ClassVar[frozenset[str]] = frozenset({"get_params", "get_params_dependent_on_data"})
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
-        """Reject removed sampling hooks when a transform subclass is declared, keeping the execution hot path free
-        from legacy compatibility checks.
+        """Reject unsupported sampling hooks when a transform subclass is declared.
 
-        Only methods declared directly on the new class are considered. This lets
-        an unrelated base class retain a same-named helper while making a former
-        Albumentations sampling override fail at import or class-definition time.
+        Only methods declared directly on the new class are checked, so an unrelated
+        base class may retain a same-named helper.
         """
         super().__init_subclass__(**kwargs)
         cls._runtime_binding_params = FrameBinding.empty_parameters(cls._runtime_generated_params)
@@ -699,6 +793,18 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         **kwargs: Any,
     ) -> Any:
         """Run one applied leaf through its Tensor-aware or NumPy fallback route."""
+        if type(self) is NoOp and invocation is not None and invocation.has_tensor_inputs is False:
+            return self._apply_sampled_in_route(state, collect_applied, invocation, **kwargs)
+        single_target = kwargs.get("image") if len(kwargs) == 1 else None
+        if single_target is None and len(kwargs) == 1:
+            single_target = next(iter(kwargs.values()))
+        if isinstance(single_target, np.ndarray) and single_target.dtype.isnative:
+            return self._apply_sampled_in_route(state, collect_applied, invocation, **kwargs)
+        if not isinstance(single_target, torch.Tensor):
+            native_data, byte_orders, passthrough = _prepare_foreign_float_inputs(self, kwargs)
+            if byte_orders:
+                result = self._apply_sampled(state, collect_applied, invocation, **native_data)
+                return _restore_foreign_float_outputs(result, kwargs, byte_orders, passthrough)
         if self._can_bypass_tensor_route(kwargs, invocation):
             return self._apply_sampled_in_route(state, collect_applied, invocation, **kwargs)
         route = self._tensor_fallback_route(kwargs)
@@ -868,8 +974,23 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         """
         if not self.applied_in_replay:
             return kwargs
+        if type(self) is NoOp and invocation is not None and invocation.has_tensor_inputs is False:
+            return self._apply_replay_in_route(state, **kwargs)
+        single_target = kwargs.get("image") if len(kwargs) == 1 else None
+        if single_target is None and len(kwargs) == 1:
+            single_target = next(iter(kwargs.values()))
+        if isinstance(single_target, np.ndarray) and single_target.dtype.isnative:
+            return self._apply_replay_in_route(state, **kwargs)
+        if not isinstance(single_target, torch.Tensor):
+            native_data, byte_orders, passthrough = _prepare_foreign_float_inputs(self, kwargs)
+            if byte_orders:
+                result = self._apply_replay(state, invocation=invocation, **native_data)
+                return _restore_foreign_float_outputs(result, kwargs, byte_orders, passthrough)
         if self._can_bypass_tensor_route(kwargs, invocation):
             return self._apply_replay_in_route(state, **kwargs)
+        return self._apply_replay_with_tensor_route(state, **kwargs)
+
+    def _apply_replay_with_tensor_route(self, state: TransformInvocationState | None, **kwargs: Any) -> Any:
         route = self._tensor_fallback_route(kwargs)
         if self._uses_tensor_fallback(route):
             result = self._apply_replay_in_route(state, **self._enter_tensor_fallback(kwargs, route))
@@ -914,8 +1035,8 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         to replay through canonical implementations.
 
         Most transforms replay as their own class. Semantic aliases declare their canonical
-        implementation through `_applied_replay_class` so replay does not re-enter deprecated
-        constructors.
+        implementation through `_applied_replay_class` so the recorded configuration replays through its canonical
+        constructor.
         """
         replay_cls = self._applied_replay_class
         return type(self) if replay_cls is None else replay_cls
@@ -1063,7 +1184,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         state.update(self.get_transform_init_args())
         return f"{self.__class__.__name__}({format_args(state)})"
 
-    def apply(self, img: ImageType, *args: Any, **params: Any) -> ImageType:
+    def apply(self, img: ImageType, *args: Any, **params: Any) -> ImageType | torch.Tensor:
         """Applies an image with invocation-supplied parameters. Subclasses implement pixel kernels while sampling stays
         outside execution.
         """
@@ -1169,7 +1290,12 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
         return np.require(result, requirements=["C_CONTIGUOUS"]) if ensure_contiguous else result
 
-    def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType | TargetResult[ImageType]:
+    def apply_to_images(
+        self,
+        images: ImageType,
+        *args: Any,
+        **params: Any,
+    ) -> ImageType | torch.Tensor | TargetResult[ImageType]:
         """Apply transform on images. Input shape (N, H, W, C); uses _apply_to_batch with per-image
         apply. Returns same format. Batch API.
 
@@ -1181,12 +1307,16 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             **params (Any): Additional parameters specific to the transform
 
         Returns:
-            ImageType | TargetResult[ImageType]: Transformed array, optionally with explicitly updated binding IDs.
+            ImageType | torch.Tensor | TargetResult[ImageType]: Transformed array or Tensor; array results may
+                carry updated binding IDs.
 
         """
-        return self._apply_to_batch(images, lambda img: self.apply(img, *args, **params))
+        return self._apply_to_batch(
+            images,
+            cast("Callable[[np.ndarray], np.ndarray]", lambda img: self.apply(img, *args, **params)),
+        )
 
-    def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> VolumeType:
+    def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> VolumeType | torch.Tensor:
         """Apply transform slice by slice to a volume. Delegates to apply_to_images so each slice
         is transformed consistently. Single volume.
 
@@ -1196,14 +1326,14 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             **params (Any): Additional parameters specific to the transform
 
         Returns:
-            VolumeType: Transformed volume as numpy array in the same format as input
+            VolumeType | torch.Tensor: Transformed volume in the handler's output container.
 
         """
         return cast("VolumeType", self.apply_to_images(volume, *args, **params))
 
     def apply_to_volumes(
         self,
-        volumes: Annotated[NDArray[np.generic], torch.Tensor],
+        volumes: Annotated[ImageType, torch.Tensor],
         *args: Any,
         **params: Any,
     ) -> NDArray[np.generic] | torch.Tensor:
@@ -1642,7 +1772,7 @@ class DualTransform(BasicTransform):
         raise NotImplementedError(f"BBoxes not implemented for {self.__class__.__name__}")
 
     def apply_to_mask(self, mask: ImageType, *args: Any, **params: Any) -> ImageType:
-        return self.apply(mask, *args, **params)
+        return cast("ImageType", self.apply(mask, *args, **params))
 
     def apply_to_masks(self, masks: StackedMasks4D, *args: Any, **params: Any) -> StackedMasks4D:
         """Apply the per-row mask transform to a `StackedMasks4D` `(N, H, W, C)` and return a
@@ -1777,8 +1907,9 @@ class DualTransform(BasicTransform):
         if is_empty:
             return mask
         if isinstance(mask, np.ndarray) and mask.dtype == np.uint8 and uint8_lut is not None:
-            return sz_lut(cast("NDArray[np.uint8]", mask), uint8_lut, inplace=False)
+            return apply_uint8_lut(cast("NDArray[np.uint8]", mask), uint8_lut)
 
+        result: NDArray[np.generic] | torch.Tensor
         if isinstance(mask, torch.Tensor):
             result = mask.clone()
             for source_label, target_label in mapping.items():
@@ -2033,10 +2164,10 @@ class NoOp(DualTransform):
     def apply_to_mask3d(self, mask3d: Annotated[VolumeType, torch.Tensor], **params: Any) -> VolumeType:
         return mask3d
 
-    def apply_to_volumes(self, volumes: Annotated[NDArray[np.generic], torch.Tensor], **params: Any) -> Any:
+    def apply_to_volumes(self, volumes: Annotated[_ArrayTargetT, torch.Tensor], **params: Any) -> _ArrayTargetT:
         return volumes
 
-    def apply_to_masks3d(self, masks3d: Annotated[NDArray[np.generic], torch.Tensor], **params: Any) -> Any:
+    def apply_to_masks3d(self, masks3d: Annotated[_ArrayTargetT, torch.Tensor], **params: Any) -> _ArrayTargetT:
         return masks3d
 
 

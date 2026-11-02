@@ -53,7 +53,7 @@ class ImageCompression(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -169,7 +169,7 @@ class Downscale(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         - The actual downscaling factor is randomly chosen for each image from the range

@@ -1,6 +1,6 @@
 # Float16 support for transforms and Compose
 
-**Status:** current-source full suites pass on macOS ARM64. Linux full suites pass only for the October 30 source snapshot; current-source Linux correctness remains open. Performance and working-memory acceptance remain open on both platforms.
+**Status:** the November 2 macOS ARM64 suite passed 23,511 tests with 34 skips. The native Linux x86-64 suite passed 23,516 tests with 27 skips at `283b2ac`; subsequent dispatch changes have focused contract coverage and will run through PR CI. Broader performance and working-memory acceptance remains open.
 **Decisions recorded:** 2026-10-12 through 2026-10-17.
 **Initial baseline:** AlbumentationsX `1ab3d3d944a2ddad361a13bd34c447824e78f221`, albucore 0.3.0.
 **Published dependency:** [Albucore 0.3.2](https://pypi.org/project/albucore/0.3.2/) provides the explicit output API used by this branch. AX pins this release in Python and Conda metadata; CI installs the published wheel.
@@ -17,10 +17,16 @@ The coordinated Core/AX pair now uses the published Albucore 0.3.2 wheel.
 
 Run final correctness, performance, and memory acceptance on Python 3.11, the lowest supported Python minor shared
 with Albucore. Resolve the newest stable third-party dependencies that support Python 3.11 and each target platform.
-The profile recorded on 2026-10-31 used NumPy 2.4.6, OpenCV 5.0.0.93, PyTorch 2.15.0 on macOS ARM64 and
-`2.15.0+cpu` on Linux x86-64, NumKong 7.8.6, and StringZilla 5.3.2. Re-resolve before future acceptance runs and
+The profile verified on 2026-11-02 used NumPy 2.4.6, OpenCV 5.0.0.93, PyTorch 2.15.0 on macOS ARM64 and
+`2.15.0+cpu` on Linux x86-64, NumKong 7.8.7, and StringZilla 5.3.2. Re-resolve before future acceptance runs and
 record the complete package inventory and imported Core/AX source paths. A newer Python or stale project lock does not
 replace this profile. The full compatibility matrix on Python 3.12–3.14 remains additional evidence.
+
+The [November 2 benchmark data](../../benchmark/results/float16-20261102/metadata.json) records 16 core runtime cases
+and 90 image-matrix comparisons against `45a1afe`. Both versions use the same input storage and allocator in one
+process. Scalar normalization controls keep the 1/3/5-channel matrix valid. The selected numerical and geometry routes
+do not replace the transform-wide release gates below. Cheap Flip calls retain about 0.2 microseconds of overhead;
+the single-channel uint8 GaussianBlur case is about 7% slower in this screen.
 
 Preserve the relationship between input and output types:
 

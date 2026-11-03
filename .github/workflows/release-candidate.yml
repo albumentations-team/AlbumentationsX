@@ -39,6 +39,9 @@ jobs:
         python-version: ${{ matrix.python-version }}
         dependency-group: ci-test
         runtime-profile: torch-cpu
+    - name: Enforce release candidate memory budgets
+      if: runner.os == 'Linux' && matrix.python-version == '3.11'
+      run: python tools/check_memory.py --output release-candidate-evidence/memory-budget.json
     - name: Verify matrix and regression vectors
       if: matrix.operating-system == 'ubuntu-latest' && matrix.python-version == '3.12'
       run: |

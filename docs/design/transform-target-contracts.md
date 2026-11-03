@@ -31,6 +31,10 @@ Every primary `ImageOnlyTransform` mode automatically runs through the Tensor br
 `volume`, and batched `volumes`. These profiles check `CHW`, `NCHW`, `CDHW`, and `NCDHW` Tensor layouts without adding
 annotation targets that an image-only transform does not declare.
 
+Every primary mode also runs through `tests/contracts/test_transform_lifetime.py` with default and explicit invocation
+seeds. The pipeline remains alive across calls; all per-call input and result arrays must be released by reference
+counting after the caller discards them. The test shares the existing registry and adds no transform-name exceptions.
+
 The generated matrix answers three questions:
 
 | Matrix | Cases | Profiles | Property under test |

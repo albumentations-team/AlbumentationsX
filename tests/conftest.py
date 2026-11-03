@@ -11,6 +11,8 @@ from hypothesis import HealthCheck, settings
 # allow_subnormal=False (see tests using @given / st.floats).
 import albumentations as A
 
+pytest_plugins = ["tests.helpers.lifetime"]
+
 cv2.setRNGSeed(137)
 
 np.random.seed(137)

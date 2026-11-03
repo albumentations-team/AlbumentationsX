@@ -215,6 +215,9 @@ jobs:
             -n 2 --dist=worksteal -m "not pytorch" \
             --hypothesis-profile=ci-fast \
             --junitxml=ci-evidence/junit.xml
+      - name: Enforce Linux memory budgets
+        if: runner.os == 'Linux' && matrix.python-version == '3.11'
+        run: python tools/check_memory.py --output ci-evidence/memory-budget.json
       - name: Collect test environment evidence
         if: always()
         shell: bash
@@ -480,6 +483,10 @@ jobs:
             --output "${RUNNER_TEMP}/release-bundle/evidence/benchmark-coverage-release.json"
           python -m tools.benchmark_coverage details \
             --output "${RUNNER_TEMP}/release-bundle/evidence/benchmark-coverage-detail-release.json"
+      - name: Enforce release memory budgets
+        run: >-
+          python tools/check_memory.py
+          --output "${RUNNER_TEMP}/release-bundle/evidence/memory-budget.json"
       - name: Register release ASV machine profile
         working-directory: benchmark
         run: asv --config asv.conf.json machine --yes

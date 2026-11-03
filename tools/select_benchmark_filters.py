@@ -35,6 +35,7 @@ PATH_RULES: tuple[tuple[tuple[str, ...], frozenset[str]], ...] = (
     (
         (
             "albumentations/core/composition.py",
+            "albumentations/core/invocation.py",
             "albumentations/core/random_utils.py",
             "albumentations/core/serialization.py",
             "albumentations/core/transforms_interface.py",

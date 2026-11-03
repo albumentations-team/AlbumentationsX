@@ -72,6 +72,42 @@ class _ReservedRandomStreams:
         return self.py_random
 
 
+@dataclass(slots=True)
+class _InvocationRandomState:
+    """Share lazy RNG streams with sampling views without retaining an invocation."""
+
+    seed: int | None = None
+    random_stream_reserver: Callable[[], _ReservedRandomStreams] | None = None
+    _py_random: random.Random | None = None
+    _random_generator: np.random.Generator | None = None
+    _reserved_random_streams: _ReservedRandomStreams | None = None
+
+    def random_streams(self) -> _ReservedRandomStreams:
+        if self._reserved_random_streams is None:
+            seed = self.seed
+            self._reserved_random_streams = (
+                _ReservedRandomStreams(
+                    random_generator_factory=lambda: np.random.default_rng(seed),
+                    py_random_factory=lambda: random.Random(seed),
+                )
+                if self.random_stream_reserver is None
+                else self.random_stream_reserver()
+            )
+        return self._reserved_random_streams
+
+    @property
+    def random_generator(self) -> np.random.Generator:
+        if self._random_generator is None:
+            self._random_generator = self.random_streams().get_random_generator()
+        return self._random_generator
+
+    @property
+    def py_random(self) -> random.Random:
+        if self._py_random is None:
+            self._py_random = self.random_streams().get_py_random()
+        return self._py_random
+
+
 class InvocationRngOwner:
     """Owns configured seed sources for transforms and Compose nodes. It resolves thread-local streams without
     retaining generators that belong to active calls.
@@ -224,8 +260,10 @@ class InvocationRngOwner:
         invoking a transform. Normal transform execution receives its context from
         `apply_in_invocation`.
         """
-        invocation = self._create_invocation_context(collect_applied=False)
-        return invocation.sampling_context({} if applied_overrides is None else applied_overrides)
+        return SamplingContext(
+            _random_state=_InvocationRandomState(random_stream_reserver=self._reserve_invocation_streams),
+            applied_overrides={} if applied_overrides is None else applied_overrides,
+        )
 
     def _reserve_invocation_streams(self) -> _ReservedRandomStreams:
         """Returns this execution thread's random-stream pair without steady-state locks, ensuring concurrent threads
@@ -480,6 +518,7 @@ class InvocationContext:
     _py_random: random.Random | None = None
     _random_generator: np.random.Generator | None = None
     _reserved_random_streams: _ReservedRandomStreams | None = None
+    _random_state: _InvocationRandomState | None = None
     _first_transform_key: object | None = None
     _first_transform_state: TransformInvocationState | None = None
     _transform_states: dict[object, TransformInvocationState] | None = None
@@ -495,19 +534,33 @@ class InvocationContext:
     _activation_token: Token[InvocationContext | None] | None = None
 
     def _random_streams(self) -> _ReservedRandomStreams:
-        """Resolves this invocation's stream pair only when code samples randomness. Deterministic execution therefore
-        avoids NumPy and Python generator allocation.
-        """
+        """Keep root-only probability checks free of sampling-state allocation."""
         if self._reserved_random_streams is None:
-            self._reserved_random_streams = (
-                _ReservedRandomStreams(
-                    random_generator_factory=lambda: np.random.default_rng(self.seed),
-                    py_random_factory=lambda: random.Random(self.seed),
+            if self._random_state is not None:
+                self._reserved_random_streams = self._random_state.random_streams()
+            else:
+                seed = self.seed
+                self._reserved_random_streams = (
+                    _ReservedRandomStreams(
+                        random_generator_factory=lambda: np.random.default_rng(seed),
+                        py_random_factory=lambda: random.Random(seed),
+                    )
+                    if self.random_stream_reserver is None
+                    else self.random_stream_reserver()
                 )
-                if self.random_stream_reserver is None
-                else self.random_stream_reserver()
-            )
         return self._reserved_random_streams
+
+    def _get_random_state(self) -> _InvocationRandomState:
+        """Share streams already used by the root probability check."""
+        if self._random_state is None:
+            self._random_state = _InvocationRandomState(
+                seed=self.seed,
+                random_stream_reserver=self.random_stream_reserver,
+                _py_random=self._py_random,
+                _random_generator=self._random_generator,
+                _reserved_random_streams=self._reserved_random_streams,
+            )
+        return self._random_state
 
     @property
     def random_generator(self) -> np.random.Generator:
@@ -653,7 +706,7 @@ class InvocationContext:
         """
         context = self._sampling_context
         if context is None:
-            context = SamplingContext(invocation=self, applied_overrides=applied_overrides)
+            context = SamplingContext(_random_state=self._get_random_state(), applied_overrides=applied_overrides)
             self._sampling_context = context
         else:
             context.applied_overrides = applied_overrides
@@ -722,7 +775,7 @@ class SamplingContext:
     instead of reading a reusable configured object.
     """
 
-    invocation: InvocationContext
+    _random_state: _InvocationRandomState
     applied_overrides: Any
 
     @classmethod
@@ -730,8 +783,10 @@ class SamplingContext:
         """Build an isolated sampling view from a fixed seed, making direct sampler tests and small utilities
         deterministic without configuring an owner.
         """
-        invocation = InvocationContext(seed=seed)
-        return cls(invocation=invocation, applied_overrides={} if applied_overrides is None else applied_overrides)
+        return cls(
+            _random_state=_InvocationRandomState(seed=seed),
+            applied_overrides={} if applied_overrides is None else applied_overrides,
+        )
 
     @classmethod
     def from_owner(cls, owner: InvocationRngOwner, applied_overrides: Any | None = None) -> SamplingContext:
@@ -745,14 +800,14 @@ class SamplingContext:
         """Expose the invocation-local NumPy generator for array-valued sampling, creating its reserved stream only
         when a sampler needs it.
         """
-        return self.invocation.random_generator
+        return self._random_state.random_generator
 
     @property
     def py_random(self) -> random.Random:
         """Expose the invocation-local Python generator for probabilities and scalar choices, creating its reserved
         stream only when a sampler needs it.
         """
-        return self.invocation.py_random
+        return self._random_state.py_random
 
 
 _CURRENT_INVOCATION: ContextVar[InvocationContext | None] = ContextVar("albumentations_invocation", default=None)

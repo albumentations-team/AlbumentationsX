@@ -60,6 +60,33 @@ retaining an applied-configuration dictionary. Observed calls provide a real sin
 Target-sensitive samplers use `targets` and return `TargetParams` entries keyed by actual target names;
 they must not route through target-named fields such as `volume_noise_map`.
 
+Random-state ownership is one-way:
+
+```text
+InvocationContext --> SamplingContext --> independent RNG state
+        |                                       ^
+        +---------------------------------------+
+        +--> normalization / processors / frame binding / trace state
+```
+
+The sampling view holds no reference to its invocation. Root probability and samplers share the same lazy random
+state; its provider may reserve streams from the configured owner but must not be a bound invocation method.
+Isolated stream factories capture seed values rather than their owning state. An ordinary invocation reuses one
+sampling view and replaces its override sink for each leaf; shared thread streams never contain those overrides.
+Probability-only execution resolves its streams on the invocation without allocating sampler state. If a sampler
+view is requested later, it shares the already resolved streams and generators without creating replacements.
+
+The former `SamplingContext.invocation` field and `invocation=` constructor argument are removed. Custom samplers
+that used them must migrate to the sampling properties, hook arguments, or standalone factories described in the
+[SamplingContext migration guide](../contributing/coding_guidelines.md#samplingcontext-compatibility-and-migration).
+
+Optional-channel restoration keeps the original and normalized objects throughout execution so unchanged targets
+can retain their existing identity behavior. Once a call returns or raises and its callers release input, output,
+trace/replay artifacts, and exception tracebacks, temporary contexts and their buffers are released without cyclic GC.
+This also applies to the unactivated executor and standalone sampling. A retained sampling view with a discard sink
+can continue sampling without retaining the completed invocation's input or processor state. Caller-owned output,
+published observations, replay parameters, and requested trace snapshots remain valid owners of their own data.
+
 ## Ordinary hot path
 
 The ordinary executor has one root boundary and a direct loop over compiled children. It must avoid work that cannot
@@ -96,6 +123,14 @@ validation, arrays, transforms, tracing, and postprocessing run outside it.
 An explicit `invocation_seed` creates isolated sample-keyed streams and does not advance the configured worker
 stream. Concurrent users of one configured pipeline receive independent invocation streams. A failed call neither
 publishes observation state nor leaves an active invocation behind.
+
+Configured `Compose` construction prepares its Python/NumPy source pair and concurrent copies. A dormant
+`BasicTransform` owner prepares that pair on its first RNG access, including standalone `SamplingContext.from_owner()`.
+These owner initialization boundaries are distinct from generator materialization: isolated `invocation_seed` and
+`SamplingContext.from_seed()` streams, and reserved streams in other execution threads, create each generator only
+when requested. Python-only sampling does not materialize their NumPy generator, and NumPy-only sampling does not
+materialize their Python generator unless root, selector, or leaf probability also needs it. Ordinary calls continue
+advancing their existing owner/thread streams. Failure preserves draws already consumed; it does not roll RNG back.
 
 ## Observed routes
 

@@ -152,6 +152,7 @@ ci-test = [
   "requests>=2.34.2",
   "scikit-image>=0.25.2",
   "scikit-learn>=1.7.2",
+  "threadpoolctl>=3.6.0",
 ]
 ci-quality = [
   "defusedxml>=0.7.1",
@@ -184,6 +185,7 @@ ci-package = [
 ci-benchmark = [
   "asv",
   "opencv-python-headless>=5.0.0.93",
+  "threadpoolctl>=3.6.0",
 ]
 ci-release = [
   { include-group = "ci-benchmark" },

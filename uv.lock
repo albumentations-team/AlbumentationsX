@@ -79,6 +79,7 @@ hub = [
 ci-benchmark = [
     { name = "asv" },
     { name = "opencv-python-headless" },
+    { name = "threadpoolctl" },
 ]
 ci-package = [
     { name = "pytest" },
@@ -114,6 +115,7 @@ ci-release = [
     { name = "requests" },
     { name = "scikit-image" },
     { name = "scikit-learn" },
+    { name = "threadpoolctl" },
     { name = "twine" },
     { name = "zizmor" },
 ]
@@ -138,6 +140,7 @@ ci-test = [
     { name = "requests" },
     { name = "scikit-image" },
     { name = "scikit-learn" },
+    { name = "threadpoolctl" },
 ]
 ci-torch-cpu = [
     { name = "torch", version = "2.15.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'darwin'" },
@@ -178,6 +181,7 @@ dev = [
     { name = "ruff" },
     { name = "scikit-image" },
     { name = "scikit-learn" },
+    { name = "threadpoolctl" },
     { name = "twine" },
     { name = "types-pyyaml" },
     { name = "types-setuptools" },
@@ -206,6 +210,7 @@ provides-extras = ["contrib", "contrib-headless", "gui", "headless", "hub"]
 ci-benchmark = [
     { name = "asv" },
     { name = "opencv-python-headless", specifier = ">=5.0.0.93" },
+    { name = "threadpoolctl", specifier = ">=3.6.0" },
 ]
 ci-package = [
     { name = "pytest", specifier = ">=9.1.1" },
@@ -241,6 +246,7 @@ ci-release = [
     { name = "requests", specifier = ">=2.34.2" },
     { name = "scikit-image", specifier = ">=0.25.2" },
     { name = "scikit-learn", specifier = ">=1.7.2" },
+    { name = "threadpoolctl", specifier = ">=3.6.0" },
     { name = "twine", specifier = ">=7.0.0" },
     { name = "zizmor", specifier = ">=1.29.0" },
 ]
@@ -265,6 +271,7 @@ ci-test = [
     { name = "requests", specifier = ">=2.34.2" },
     { name = "scikit-image", specifier = ">=0.25.2" },
     { name = "scikit-learn", specifier = ">=1.7.2" },
+    { name = "threadpoolctl", specifier = ">=3.6.0" },
 ]
 ci-torch-cpu = [{ name = "torch", specifier = ">=2.13.0", index = "https://download.pytorch.org/whl/cpu" }]
 ci-types = [
@@ -302,6 +309,7 @@ dev = [
     { name = "ruff", specifier = ">=0.16.2" },
     { name = "scikit-image", specifier = ">=0.25.2" },
     { name = "scikit-learn", specifier = ">=1.7.2" },
+    { name = "threadpoolctl", specifier = ">=3.6.0" },
     { name = "twine", specifier = ">=7.0.0" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20260724" },
     { name = "types-setuptools", specifier = ">=84.0.0.20260812" },

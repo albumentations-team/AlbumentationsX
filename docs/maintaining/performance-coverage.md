@@ -53,6 +53,59 @@ against a baseline and candidate. They save raw ASV output, parsed summary,
 catalog coverage detail, environment evidence, and a performance-budget result.
 Release preflight requires a comparison and fails on release-blocking regressions.
 
+## Memory regression gates
+
+Memory has three separate checks:
+
+| Check | Failure it detects | Execution |
+|---|---|---|
+| Reference lifetime | A completed call retains arrays through an ownership cycle | Normal pytest compatibility matrix |
+| Repeated-call RSS | Native allocations or allocator retention accumulate across calls | Linux Python 3.11 PR and release-candidate jobs, weekly performance, release preflight |
+| Working peak RSS | One call allocates excessive output or temporary storage | The same Linux memory command |
+
+`tests/test_invocation_lifetime.py` disables cyclic GC and checks success, failure,
+optional channels, aliases, batches, volumes, Tensor inputs, retained sampling
+views, and DataLoader workers. `tests/contracts/test_transform_lifetime.py` runs
+every primary mode from the existing transform registry while keeping its
+configured pipeline alive. Inputs and returned arrays must be released after
+the caller discards them. Live outputs, replay/trace artifacts and exception
+tracebacks remain legitimate owners and have separate lifetime tests.
+
+Run the Linux checks with the normal CPU Torch environment:
+
+```bash
+uv run python tools/check_memory.py --output _internal/memory-budget.json
+```
+
+The command runs each workload three times in fresh processes with one compute
+thread and writes every sample, source hash and dependency version. An incomplete
+run fails. The JSON is included in CI evidence and the publishable release bundle.
+
+The RSS cases reproduce 100 warmup and 800 measured calls on fixed or varying
+float32 HW inputs, explicit invocation seeds, image plus mask, HWC1 inputs and
+direct Blur. Automatic GC remains enabled; full collection occurs only at the
+measurement endpoints. The measured loop performs no memory reads or logging.
+Post-GC median growth is limited to 16 MiB, or 32 MiB for image plus mask. These
+budgets allow approximately two maximum-sized sample buffers plus allocator
+noise; the deterministic lifetime tests still require immediate release.
+Control growth and excess relative to HWC1/direct Blur are reported alongside
+the absolute growth budget. No `malloc_trim` is used.
+
+The peak cases cover float32/float16 Blur, RGB normalization, batch normalization,
+CPU Tensor normalization and volume padding. Backend initialization uses small
+inputs before measurement. The worker resets its Linux RSS high-water mark after
+imports and input setup, then reads the kernel peak after one public Compose call.
+This uses the documented
+[clear_refs reset](https://www.kernel.org/doc/html/v6.12/filesystems/proc.html).
+The budget is two expected output buffers plus 8 MiB of fixed backend allowance.
+Output shape, dtype and byte count must also match the case's expected result.
+This captures native allocations that Python-only allocation tracing can miss.
+
+These are bounds for the registered workloads. Add a case when a new allocation
+pattern, dtype conversion or target route needs its own budget. Keep ASV memory
+comparisons as additional triage evidence; they do not replace the blocking
+lifetime, repeated-call and working-peak checks.
+
 ## Local large-input evidence
 
 For a PR that changes a hot path or makes a performance or memory claim, run

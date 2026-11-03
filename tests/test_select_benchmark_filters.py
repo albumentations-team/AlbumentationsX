@@ -13,8 +13,9 @@ from tools.select_benchmark_filters import (
 )
 
 
-def test_select_benchmark_filters_changed_profile_routes_changed_paths() -> None:
-    assert select_profile_patterns("changed", ["albumentations/core/composition.py"]) == (
+@pytest.mark.parametrize("module", ["composition", "invocation"])
+def test_select_benchmark_filters_changed_profile_routes_changed_paths(module: str) -> None:
+    assert select_profile_patterns("changed", [f"albumentations/core/{module}.py"]) == (
         "TimeBatch",
         "TimeCatalogTransformSmoke",
         "TimeComposeFullMatrix",

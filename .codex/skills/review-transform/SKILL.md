@@ -19,6 +19,10 @@ Then review the behavior the hook cannot prove.
   lengths alone.
 - Check the mathematical operation, coordinate boundaries, dtype range, and annotation semantics.
 - Verify that constructor fields, validators, and defaults express a coherent public policy.
+- Enforce [initialization-only validation](../../../docs/contributing/coding_guidelines.md#initialization-only-validation):
+  only Pydantic `InitSchema` may reject configuration during construction. Prefer fixed supported bounds there. Treat
+  runtime validation exceptions as defects; handle unavoidable image-dependent extremes with deterministic recovery.
+  Require regression coverage showing that a successfully initialized transform cannot abort training on those values.
 - Check empty inputs, ownership, aliasing, and unsupported input handling through the public route.
 - Distinguish public grayscale inputs from internal execution: Compose normalizes NumPy inputs to explicit channels
   before dispatch. Use [NumPy and Tensor routing](../../../docs/design/numpy-tensor-routing.md) for boundary changes.

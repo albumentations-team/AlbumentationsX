@@ -189,9 +189,9 @@ For transforms that handle gaps or boundaries, use these consistent names:
 
 ### Channel Flexibility
 
-Support arbitrary channel counts unless the operation requires a specific layout, such as RGB. Validate that
-transform-specific requirement before dispatching to the functional operation. Keep channel arithmetic in the
-functional layer.
+Support arbitrary channel counts unless the operation requires a specific layout, such as RGB. Document that
+requirement and define a safe no-op for inputs that cannot produce the effect, following
+[initialization-only validation](#initialization-only-validation). Keep channel arithmetic in the functional layer.
 
 ### Image and Volume Shape Invariants
 
@@ -406,9 +406,9 @@ Every transform `apply*` method must name each sampled parameter it reads, inclu
 #### Keep `apply*` Methods Thin
 
 `apply`, `apply_to_images`, and other `apply*` methods are transform-layer policy and dispatch points, not places to
-implement pixel kernels. Keep a transform-specific runtime input check here, so the transform's supported contract is
-visible next to its public application method. Then select a target-specific functional operation and pass sampled
-parameters. Image arithmetic, gradient or mask construction, dtype routing, clipping, and kernel-selection branches
+implement pixel kernels. Validate configuration in Pydantic `InitSchema` during initialization. Select a target-specific
+functional operation and pass sampled parameters without runtime validation exceptions. Image arithmetic, gradient or
+mask construction, dtype routing, clipping, and kernel-selection branches
 belong in a named helper in the functional layer (or Albucore when the operation is reusable there).
 
 Each concrete transform `apply*` body is limited to 20 code-bearing physical lines. Its signature, docstring, blank
@@ -462,6 +462,23 @@ explicitly forwards those inputs does not need a new schema. The schema is respo
 - Validating input parameters before `__init__` execution
 - Converting parameter types if needed
 - Ensuring consistent parameter handling
+
+#### Initialization-only validation
+
+Augmentation validation errors are allowed only during initialization, exclusively through Pydantic `InitSchema`.
+Validate parameter domains, finite values, range ordering, and cross-field constraints there. Do not add manual
+validation exceptions in `__init__`, `__call__`, `sample_parameters`, `apply*`, or functional helpers.
+
+After successful initialization, sampled parameters and image-dependent numerical limits must not interrupt training.
+When a bound depends on the current image or displacement-map shape, deterministically clamp the sampled value before
+unsafe arithmetic. If the effect cannot be produced, use a documented safe no-op. Apply geometric recovery consistently
+to every target, preserve reproducibility, and keep ordinary settings unchanged. Do not wrap the pipeline in a blanket
+exception handler.
+
+Use fixed Pydantic bounds whenever a supported parameter range can be defined at construction. For example,
+`WaterRefraction.InitSchema` restricts both `wavelength_range` endpoints to `[0.001, 1.0]`, excluding unrealistic
+wavelengths before training starts. Test invalid configuration at construction and verify that allowed boundary values
+produce finite results through direct transform calls and `Compose`.
 
 #### No Default Values in InitSchema
 

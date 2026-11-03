@@ -43,7 +43,6 @@ _PLASMA_FLOAT32_DEDICATED_MAX_BATCH_SIZE = 4
 _PLASMA_UINT8_BRIGHTNESS_ONLY_PER_IMAGE_MAX_BATCH_SIZE = 4
 _PLASMA_UINT8_BRIGHTNESS_ONLY_PER_IMAGE_MIN_CHANNELS = 5
 _PLASMA_UINT8_BRIGHTNESS_ONLY_PER_IMAGE_MIN_PIXELS = 1024 * 1024
-_WATER_REFRACTION_MAX_PHASE = 1e6
 
 
 def _normalize_minmax_float32(src: np.ndarray) -> np.ndarray:
@@ -1485,30 +1484,15 @@ def generate_water_displacement_maps(
     Args:
         image_shape (tuple[int, int]): (height, width).
         amplitude (float): Maximum displacement in pixels.
-        wavelength (float): Base wavelength of waves in pixels. Must be finite and at least
-            `2 * pi * 1.3 * hypot(height, width) / (1e6 - 2 * pi)` for the displacement-map shape.
+        wavelength (float): Base wavelength of waves in pixels.
         num_waves (int): Number of overlaid sine waves.
         random_generator (np.random.Generator): NumPy random generator.
 
     Returns:
         tuple[np.ndarray, np.ndarray]: Tuple of (map_x, map_y) float32 arrays for cv2.remap.
 
-    Raises:
-        ValueError: If wavelength is non-finite or too small to keep wave phases below 1e6 radians.
-
     """
     height, width = image_shape
-    max_frequency_scale = 1.3
-    # Stay well below NumKong's integer-quotient limits during sine argument reduction.
-    minimum_wavelength = (
-        math.tau * max_frequency_scale * math.hypot(height, width) / (_WATER_REFRACTION_MAX_PHASE - math.tau)
-    )
-    if not math.isfinite(wavelength) or wavelength < minimum_wavelength:
-        raise ValueError(
-            f"wavelength must be finite and at least {minimum_wavelength} pixels "
-            f"for displacement-map shape {image_shape}; got {wavelength}",
-        )
-
     y, x = np.mgrid[:height, :width].astype(np.float32)
 
     dx = np.zeros((height, width), dtype=np.float32)
@@ -1517,7 +1501,7 @@ def generate_water_displacement_maps(
     for _ in range(num_waves):
         angle = random_generator.uniform(0, 2 * np.pi)
         phase = random_generator.uniform(0, 2 * np.pi)
-        freq = random_generator.uniform(0.7, max_frequency_scale) / wavelength
+        freq = random_generator.uniform(0.7, 1.3) / wavelength
         amp = amplitude * random_generator.uniform(0.5, 1.0)
 
         wave_x = np.cos(angle)

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Literal, cast
 
+from numpy.typing import NDArray
+
 from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
     MONO_CHANNEL_DIMENSIONS,
@@ -106,7 +108,7 @@ def shot_noise(
     if input_dtype.type is np.uint8:
         img = to_float(img)
     elif input_dtype.type is np.float16:
-        img = img.astype(np.float32)
+        img = from_float(cast("NDArray[np.float16]", img), np.float32)
 
     if img.ndim == 4:
         batch_linear = power(img, 2.2)
@@ -632,7 +634,7 @@ def sharpen_gaussian(
     """
     input_dtype = img.dtype
     if input_dtype.type is np.float16:
-        img = img.astype(np.float32)
+        img = from_float(cast("NDArray[np.float16]", img), np.float32)
     if img.shape[-1] == 1:
         blurred = np.empty(img.shape, dtype=img.dtype)
         cv2.GaussianBlur(

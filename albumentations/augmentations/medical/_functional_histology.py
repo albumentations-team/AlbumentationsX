@@ -37,7 +37,12 @@ def rgb_to_optical_density(img: ImageType, eps: float = 1e-6) -> np.ndarray:
 
     """
     max_value = MAX_VALUES_BY_DTYPE[img.dtype]
-    pixel_matrix = np.ascontiguousarray(img.reshape(-1, 3)).astype(np.float32, copy=True)
+    pixels = img.reshape(-1, 3)
+    pixel_matrix = (
+        from_float(cast("NDArray[np.float16]", pixels), np.float32)
+        if img.dtype.type is np.float16 and pixels.flags.c_contiguous
+        else np.ascontiguousarray(pixels).astype(np.float32, copy=True)
+    )
     multiply = cast("_Cv2InPlaceOp", cv2.multiply)
     max_op = cast("_Cv2InPlaceOp", cv2.max)
     multiply(pixel_matrix, 1.0 / max_value, dst=pixel_matrix)

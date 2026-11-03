@@ -52,7 +52,7 @@ def _float32_working_image(img: ImageType) -> tuple[NDArray[np.float32], np.dtyp
     if input_dtype.type is np.uint8:
         return to_float(cast("NDArray[np.uint8]", img)), input_dtype
     if input_dtype.type is np.float16:
-        return img.astype(np.float32), input_dtype
+        return from_float(cast("NDArray[np.float16]", img), np.float32), input_dtype
     return cast("NDArray[np.float32]", img), input_dtype
 
 

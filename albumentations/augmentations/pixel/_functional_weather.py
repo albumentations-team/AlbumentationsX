@@ -93,7 +93,7 @@ def add_snow_bleach(
     """
     input_dtype = img.dtype
     if input_dtype.type is np.float16:
-        img = img.astype(np.float32)
+        img = from_float(cast("NDArray[np.float16]", img), np.float32)
     max_value = MAX_VALUES_BY_DTYPE[np.dtype(img.dtype)]
 
     snow_point = (snow_point * max_value / 2) + (max_value / 3)
@@ -112,7 +112,7 @@ def add_snow_bleach(
 
     result = cast("ImageType", cv2.cvtColor(image_hls, cv2.COLOR_HLS2RGB))
     if input_dtype.type is np.float16:
-        return result.astype(cast("np.dtype[np.float16]", input_dtype))
+        return from_float(cast("ImageFloat32", result), cast("np.dtype[np.float16]", input_dtype))
     return result
 
 
@@ -202,7 +202,7 @@ def add_snow_texture(
     """
     input_dtype = img.dtype
     if input_dtype.type is np.float16:
-        img = img.astype(np.float32)
+        img = from_float(cast("NDArray[np.float16]", img), np.float32)
     max_value = MAX_VALUES_BY_DTYPE[np.dtype(img.dtype)]
 
     img_hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV).astype(np.float32)
@@ -253,7 +253,7 @@ def add_snow_texture(
     rgb_snow[sparkle_mask] = [max_value, max_value, max_value]
 
     if input_dtype.type is np.float16:
-        return rgb_snow.astype(cast("np.dtype[np.float16]", input_dtype))
+        return from_float(cast("ImageFloat32", rgb_snow), cast("np.dtype[np.float16]", input_dtype))
     return rgb_snow
 
 
@@ -728,7 +728,7 @@ def add_shadow_batch(
         return cast("ImageUInt8", result)
     floating_result = to_float(cast("ImageUInt8", result))
     if input_dtype.type is np.float16:
-        return floating_result.astype(cast("np.dtype[np.float16]", input_dtype))
+        return from_float(floating_result, cast("np.dtype[np.float16]", input_dtype))
     return floating_result.astype(cast("np.dtype[np.float32]", input_dtype), copy=False)
 
 
@@ -763,7 +763,7 @@ def _spatter_working_image(img: ImageType) -> tuple[np.ndarray, np.dtype]:
     if img.dtype.type is np.uint8:
         return to_float(img), img.dtype
     if img.dtype.type is np.float16:
-        return img.astype(np.float32), img.dtype
+        return from_float(cast("NDArray[np.float16]", img), np.float32), img.dtype
     return img, img.dtype
 
 

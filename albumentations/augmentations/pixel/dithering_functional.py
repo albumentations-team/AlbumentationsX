@@ -5,6 +5,7 @@ from typing import Any, cast
 
 import numpy as np
 from albucore import apply_uint8_lut, from_float, to_float
+from numpy.typing import NDArray
 
 from albumentations.augmentations.pixel._functional_shared import (
     MULTICHANNEL_LUT_LARGE_IMAGE_PIXELS,
@@ -519,7 +520,7 @@ def _float32_working_image(img: ImageType) -> tuple[ImageFloat32, np.dtype]:
     if input_dtype.type is np.uint8:
         return to_float(cast("ImageUInt8", img)), input_dtype
     if input_dtype.type is np.float16:
-        return img.astype(np.float32), input_dtype
+        return from_float(cast("NDArray[np.float16]", img), np.float32), input_dtype
     return cast("ImageFloat32", img), input_dtype
 
 
@@ -714,10 +715,10 @@ def apply_dithering(
 
     """
     input_dtype = img.dtype
-    working_img = img.astype(np.float32) if input_dtype == np.float16 else img
+    working_img = from_float(cast("NDArray[np.float16]", img), np.float32) if input_dtype == np.float16 else img
     if color_mode == "grayscale":
         result = _apply_dithering_to_grayscale(working_img, method, n_colors, **kwargs)
     else:
         result = _apply_single_dithering_method(working_img, method, n_colors, **kwargs)
 
-    return result.astype(np.float16, copy=False) if input_dtype == np.float16 else result
+    return from_float(cast("ImageFloat32", result), np.float16) if input_dtype == np.float16 else result

@@ -191,7 +191,7 @@ def _finish_plasma_brightness_contrast_batch(work: ImageFloat32, output_dtype: n
     """Clip and restore an owned float32 batch to the public dtype and contiguous layout."""
     if output_dtype.type in (np.float16, np.float32):
         np.clip(work, 0.0, 1.0, out=work, dtype=np.float32, casting="unsafe")
-        return cast("ImageType", np.ascontiguousarray(work.astype(output_dtype, copy=False)))
+        return cast("ImageType", np.ascontiguousarray(from_float(work, output_dtype)))
     return cast("ImageType", np.ascontiguousarray(from_float(work, target_dtype=output_dtype)))
 
 
@@ -637,7 +637,7 @@ def apply_linear_illumination(img: ImageType, intensity: float, angle: float) ->
     if input_dtype.type is np.uint8:
         img = to_float(img)
     elif input_dtype.type is np.float16:
-        img = img.astype(np.float32)
+        img = from_float(cast("NDArray[np.float16]", img), np.float32)
     else:
         img = cast("ImageFloat32", img)
 
@@ -668,7 +668,7 @@ def apply_linear_illumination_batch(images: ImageType, intensity: float, angle: 
     if input_dtype.type is np.uint8:
         images = to_float(images)
     elif input_dtype.type is np.float16:
-        images = images.astype(np.float32)
+        images = from_float(cast("NDArray[np.float16]", images), np.float32)
     else:
         images = cast("ImageFloat32", images)
 
@@ -1439,8 +1439,6 @@ def apply_lens_flare(
     """
     height, width = img.shape[:2]
     max_val = MAX_VALUES_BY_DTYPE[img.dtype]
-    result = img.copy()
-
     flare_layer = np.zeros((height, width), dtype=np.float32)
 
     fx, fy = flare_center
@@ -1468,7 +1466,7 @@ def apply_lens_flare(
 
     flare_3d = flare_layer[:, :, np.newaxis] * max_val
 
-    return clip(cast("ImageFloat32", result.astype(np.float32) + flare_3d), result.dtype)
+    return clip(np.add(img, flare_3d, dtype=np.float32), img.dtype)
 
 
 def generate_water_displacement_maps(

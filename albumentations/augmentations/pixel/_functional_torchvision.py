@@ -152,7 +152,7 @@ def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
     if input_dtype.type is np.uint8:
         img = to_float(img)
     elif input_dtype.type is np.float16:
-        img = img.astype(np.float32)
+        img = from_float(cast("NDArray[np.float16]", img), np.float32)
 
     orig_shape = img.shape
     num_channels = get_num_channels(img)
@@ -250,7 +250,7 @@ def adjust_hue_torchvision(img: ImageType, factor: float) -> ImageType:
 
     input_dtype = img.dtype
     if input_dtype.type is np.float16:
-        img = img.astype(np.float32)
+        img = from_float(cast("NDArray[np.float16]", img), np.float32)
     img = cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2HSV))
     img[..., 0] = np.mod(img[..., 0] + factor * 360, 360)
     result = cast("NDArray[np.float32]", cv2.cvtColor(img, cv2.COLOR_HSV2RGB))
@@ -667,7 +667,11 @@ def slic(
 
     # Normalize image to [0, 1] range
     max_value = np.float32(image.max())
-    image_normalized = image.astype(np.float32)
+    image_normalized = (
+        from_float(cast("NDArray[np.float16]", image), np.float32)
+        if image.dtype.type is np.float16
+        else image.astype(np.float32)
+    )
     np.divide(image_normalized, max_value + np.float32(1e-6), out=image_normalized)
     single_channel = image_normalized.shape[-1] == 1
 

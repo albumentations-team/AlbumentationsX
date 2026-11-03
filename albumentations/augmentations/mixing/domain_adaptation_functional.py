@@ -440,8 +440,8 @@ def adapt_pixel_distribution(
         img = from_float(cast("NDArray[np.float16]", img), np.dtype(np.uint8))
         ref = from_float(cast("NDArray[np.float16]", ref), np.dtype(np.uint8))
     elif original_dtype == np.float16:
-        img = img.astype(np.float32)
-        ref = ref.astype(np.float32)
+        img = from_float(cast("NDArray[np.float16]", img), np.float32)
+        ref = from_float(cast("NDArray[np.float16]", ref), np.float32)
 
     if img.shape != ref.shape:
         ref = fgeometric.resize(ref, cast("tuple[int, int]", img.shape[:2]), cv2.INTER_AREA)
@@ -538,8 +538,16 @@ def fourier_domain_adaptation(img: ImageType, target_img: ImageType, beta: float
         img = img[..., None]
     if target_img.ndim == 2:
         target_img = target_img[..., None]
-    src_img = img.astype(np.float32)
-    trg_img = target_img.astype(np.float32)
+    src_img = (
+        from_float(cast("NDArray[np.float16]", img), np.float32)
+        if img.dtype.type is np.float16
+        else img.astype(np.float32)
+    )
+    trg_img = (
+        from_float(cast("NDArray[np.float16]", target_img), np.float32)
+        if target_img.dtype.type is np.float16
+        else target_img.astype(np.float32)
+    )
 
     num_channels = src_img.shape[-1]
 
@@ -608,7 +616,7 @@ def apply_histogram(img: ImageType, reference_image: ImageType, blend_ratio: flo
     """
     original_dtype = img.dtype
     if original_dtype == np.float16 and reference_image.dtype == np.float16:
-        image_float32 = img.astype(np.float32)
+        image_float32 = from_float(cast("NDArray[np.float16]", img), np.float32)
         if img.shape == reference_image.shape:
             image_uint8 = from_float(cast("NDArray[np.float16]", img), np.dtype(np.uint8))
             reference_uint8 = from_float(cast("NDArray[np.float16]", reference_image), np.dtype(np.uint8))
@@ -618,7 +626,7 @@ def apply_histogram(img: ImageType, reference_image: ImageType, blend_ratio: flo
             half_result = add_weighted(matched_float32, blend_ratio, image_float32, 1 - blend_ratio)
             return clip(half_result, original_dtype)
         img = image_float32
-        reference_image = reference_image.astype(np.float32)
+        reference_image = from_float(cast("NDArray[np.float16]", reference_image), np.float32)
 
     if img.shape[:2] != reference_image.shape[:2]:
         reference_image = fgeometric.resize(reference_image, cast("tuple[int, int]", img.shape[:2]), cv2.INTER_LINEAR)

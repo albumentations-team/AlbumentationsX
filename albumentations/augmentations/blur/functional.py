@@ -55,10 +55,18 @@ def box_blur(img: ImageType, ksize: int) -> ImageType:
         ImageType: Blurred image.
 
     """
-    result = img.astype(np.float32, order="C") if img.dtype.type is np.float16 else img.copy(order="C")
+    result: ImageType
+    if img.dtype.type is np.float16:
+        result = (
+            from_float(cast("NDArray[np.float16]", img), np.float32)
+            if img.flags.c_contiguous
+            else img.astype(np.float32, order="C")
+        )
+    else:
+        result = img.copy(order="C")
     cv2.blur(result, (ksize, ksize), dst=result)
     if img.dtype.type is np.float16:
-        return result.astype(cast("np.dtype[np.float16]", img.dtype))
+        return from_float(cast("ImageFloat32", result), cast("np.dtype[np.float16]", img.dtype))
     return result
 
 
@@ -87,8 +95,11 @@ def glass_blur(
         ImageType: Glass blurred image.
 
     """
-    working_dtype = np.float32 if img.dtype.type is np.float16 else img.dtype
-    working = cast("ImageType", np.array(img, dtype=working_dtype))
+    working = (
+        from_float(cast("NDArray[np.float16]", img), np.float32)
+        if img.dtype.type is np.float16
+        else cast("ImageType", np.array(img, copy=True, order="K"))
+    )
     single_channel = img.shape[-1] == 1
     if single_channel:
         x = np.empty_like(working)
@@ -130,7 +141,7 @@ def glass_blur(
     else:
         result = cast("ImageType", cv2.GaussianBlur(x, sigmaX=sigma, ksize=(0, 0)))
     if img.dtype.type is np.float16:
-        return result.astype(cast("np.dtype[np.float16]", img.dtype))
+        return from_float(cast("ImageFloat32", result), cast("np.dtype[np.float16]", img.dtype))
     return result
 
 
@@ -201,7 +212,7 @@ def zoom_blur(img: ImageType, zoom_factors: np.ndarray | Sequence[int]) -> Image
     if input_dtype.type is np.uint8:
         img = to_float(img)
     elif input_dtype.type is np.float16:
-        img = img.astype(np.float32)
+        img = from_float(cast("NDArray[np.float16]", img), np.float32)
 
     out = np.zeros_like(img, dtype=np.float32)
 
@@ -548,7 +559,11 @@ def _pillow_gaussian_blur_float32(
     normalized_kernel = kernel.astype(np.float32) / _PILLOW_FIXED_POINT_SCALE_F32
     horizontal_kernel = normalized_kernel[np.newaxis, :]
     vertical_kernel = normalized_kernel[:, np.newaxis]
-    result = np.array(img, dtype=np.float32, copy=True, order="C")
+    result = (
+        from_float(img, np.float32)
+        if input_dtype.type is np.float16 and img.flags.c_contiguous
+        else np.array(img, dtype=np.float32, copy=True, order="C")
+    )
     output = np.empty_like(result)
 
     for filter_kernel in (
@@ -570,7 +585,7 @@ def _pillow_gaussian_blur_float32(
 
     if input_dtype.type is np.float16:
         del output
-        half_result = result.astype(np.dtype(np.float16))
+        half_result = from_float(result, np.float16)
         if not input_dtype.isnative:
             half_result.byteswap(inplace=True)
             return cast("NDArray[np.float16]", half_result.view(input_dtype))

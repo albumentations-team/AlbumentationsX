@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Literal, cast
 
+from numpy.typing import NDArray
+
 from ._functional_shared import (
     NUM_MULTI_CHANNEL_DIMENSIONS,
     ImageFloat32,
@@ -12,6 +14,7 @@ from ._functional_shared import (
     ImageUInt8,
     clip,
     cv2,
+    from_float,
     lru_cache,
     multiply,
     np,
@@ -76,12 +79,11 @@ def unsharp_mask(
     """
     input_dtype = image.dtype
     if input_dtype.type is np.float16:
-        image = image.astype(np.float32)
+        image = from_float(cast("NDArray[np.float16]", image), np.float32)
 
     if image.ndim == NUM_MULTI_CHANNEL_DIMENSIONS and image.shape[2] == 1:
-        return unsharp_mask(image[..., 0], ksize, sigma, alpha, threshold)[..., np.newaxis].astype(
-            input_dtype, copy=False
-        )
+        result = unsharp_mask(image[..., 0], ksize, sigma, alpha, threshold)[..., np.newaxis]
+        return from_float(result, input_dtype) if input_dtype.type is np.float16 else result
 
     ksize_tuple = (ksize, ksize)
     blurred = cv2.GaussianBlur(image, ksize_tuple, sigmaX=sigma)
@@ -91,19 +93,18 @@ def unsharp_mask(
         np.clip(sharpened, 0, 1, out=sharpened)
 
     if threshold <= 0:
-        return sharpened.astype(input_dtype, copy=False)
-
-    diff = cast("np.ndarray", cv2.absdiff(image, blurred))
-    threshold_value = threshold / 255.0 if image.dtype == np.float32 else threshold
-    if image.ndim == NUM_MULTI_CHANNEL_DIMENSIONS and image.shape[2] not in {1, 3, 4}:
-        multichannel_mask = diff > threshold_value
-        return np.where(multichannel_mask, sharpened, image).astype(input_dtype, copy=False)
-
-    compare = cast("_Cv2Compare", cv2.compare)
-    mask = compare(diff, threshold_value, cv2.CMP_GT)
-    result = image.copy()
-    cv2.copyTo(sharpened, mask, result)
-    return result.astype(input_dtype, copy=False)
+        result = sharpened
+    else:
+        diff = cast("np.ndarray", cv2.absdiff(image, blurred))
+        threshold_value = threshold / 255.0 if image.dtype == np.float32 else threshold
+        if image.ndim == NUM_MULTI_CHANNEL_DIMENSIONS and image.shape[2] not in {1, 3, 4}:
+            result = np.where(diff > threshold_value, sharpened, image)
+        else:
+            compare = cast("_Cv2Compare", cv2.compare)
+            mask = compare(diff, threshold_value, cv2.CMP_GT)
+            result = image.copy()
+            cv2.copyTo(sharpened, mask, result)
+    return from_float(cast("ImageFloat32", result), input_dtype) if input_dtype.type is np.float16 else result
 
 
 def pixel_dropout(
@@ -378,8 +379,14 @@ def convolve(
 
     """
     input_dtype = img.dtype
-    working_dtype = np.float32 if input_dtype.type is np.float16 else input_dtype
-    img = cast("ImageType", np.array(img, dtype=working_dtype, copy=True, order="C"))
+    if input_dtype.type is np.float16:
+        img = (
+            from_float(cast("NDArray[np.float16]", img), np.float32)
+            if img.flags.c_contiguous
+            else img.astype(np.float32, order="C")
+        )
+    else:
+        img = cast("ImageType", np.array(img, copy=True, order="C"))
     if kernel.ndim == 2:
         cv2.filter2D(img, ddepth=-1, kernel=kernel, dst=img, borderType=border_mode)
     elif kernel.ndim == 3:
@@ -456,8 +463,14 @@ def separable_convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
     """
     input_dtype = img.dtype
     is_half = input_dtype.type is np.float16
-    working_dtype = np.dtype(np.float32) if is_half else input_dtype.newbyteorder("=")
-    working = cast("ImageType", np.array(img, dtype=working_dtype, copy=True, order="C"))
+    working = (
+        from_float(cast("NDArray[np.float16]", img), np.float32)
+        if is_half and img.flags.c_contiguous
+        else cast(
+            "ImageType",
+            np.array(img, dtype=np.float32 if is_half else input_dtype.newbyteorder("="), copy=True, order="C"),
+        )
+    )
     cv2.sepFilter2D(working, ddepth=-1, kernelX=kernel, kernelY=kernel, dst=working)
     result: ImageType
     if input_dtype.type is np.uint8:

@@ -11,6 +11,7 @@ from warnings import warn
 
 import cv2
 import numpy as np
+from albucore import from_float
 from numpy.typing import NDArray
 
 import albumentations.augmentations.geometric.functional as fgeometric
@@ -265,9 +266,18 @@ def blend_images_using_alpha(
         np.multiply(blended, alpha_3d, out=blended)
         np.add(blended, base_image, out=blended)
     else:
-        blended = donor_image.astype(np.float32) * alpha_3d + base_image.astype(np.float32) * (1.0 - alpha_3d)
+        donor_float32 = (
+            from_float(donor_image, np.float32) if img_dtype == np.float16 else donor_image.astype(np.float32)
+        )
+        base_float32 = from_float(base_image, np.float32) if img_dtype == np.float16 else base_image.astype(np.float32)
+        blended = donor_float32 * alpha_3d + base_float32 * (1.0 - alpha_3d)
     clip_high = _soft_blend_clip_high(base_image, donor_image)
-    return np.clip(blended, 0, clip_high).astype(img_dtype)
+    result = np.clip(blended, 0, clip_high)
+    return (
+        from_float(cast("NDArray[np.float32]", result), img_dtype)
+        if img_dtype == np.float16
+        else result.astype(img_dtype)
+    )
 
 
 def create_copy_paste_alpha(

@@ -554,7 +554,11 @@ def linear_transformation_rgb(
     input_dtype = img.dtype
     is_half = input_dtype.type is np.float16
     if is_half:
-        img = img.astype(np.float32, order="C")
+        img = (
+            from_float(cast("NDArray[np.float16]", img), np.float32)
+            if img.flags.c_contiguous
+            else img.astype(np.float32, order="C")
+        )
     if img.ndim == 3:
         result = cast("ImageType", cv2.transform(img, transformation_matrix, dst=img if is_half else None))
     elif img.ndim == 4:
@@ -843,7 +847,7 @@ def _iso_noise_working_image(image: np.ndarray) -> tuple[np.ndarray, np.dtype]:
     if image.dtype.type is np.uint8:
         return to_float(image), image.dtype
     if image.dtype.type is np.float16:
-        return image.astype(np.float32), image.dtype
+        return from_float(cast("NDArray[np.float16]", image), np.float32), image.dtype
     return image, image.dtype
 
 
@@ -1034,7 +1038,7 @@ def to_gray_weighted_average(img: ImageType) -> ImageType:
     else:
         raise ValueError(f"Unsupported number of dimensions: {img.ndim}")
     if input_dtype.type is np.float16:
-        return result.astype(cast("np.dtype[np.float16]", input_dtype))
+        return from_float(cast("NDArray[np.float32]", result), cast("np.dtype[np.float16]", input_dtype))
     return result
 
 
@@ -1143,7 +1147,7 @@ def to_gray_desaturation(img: ImageType) -> ImageType:
         channel_sum = np.empty((*img.shape[:-1], 1), dtype=np.uint16)
         cv2.add(ch_max, ch_min, dst=channel_sum, dtype=cv2.CV_16U)
         return (channel_sum >> 1).astype(np.uint8)
-    float_image = img.astype(np.float32)
+    float_image = from_float(cast("NDArray[np.float16] | ImageFloat32", img), np.float32)
     result = (np.max(float_image, axis=-1, keepdims=True) + np.min(float_image, axis=-1, keepdims=True)) * 0.5
     return clip(result, img.dtype)
 

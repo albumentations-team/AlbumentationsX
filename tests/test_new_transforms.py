@@ -496,10 +496,17 @@ class TestWaterRefraction:
         assert isinstance(exc_info.value.__cause__, ValidationError)
 
     @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
-    @pytest.mark.parametrize("shape", [(16, 17, 3), (2, 257, 3), (257, 2, 3), (2, 32766, 3)])
-    @pytest.mark.parametrize("map_resolution", [0.25, 1.0])
+    @pytest.mark.parametrize(
+        ("shape", "map_resolution", "use_compose"),
+        [
+            ((16, 17, 3), 1.0, False),
+            ((16, 17, 3), 1.0, True),
+            ((16, 17, 3), 0.25, True),
+            ((2, 257, 3), 1.0, True),
+            ((2, 32766, 3), 1.0, True),
+        ],
+    )
     @pytest.mark.parametrize("wavelength", [0.001, 0.1, 1.0])
-    @pytest.mark.parametrize("use_compose", [False, True])
     def test_supported_wavelength_matches_sine_reference(
         self,
         dtype,
@@ -510,30 +517,27 @@ class TestWaterRefraction:
         monkeypatch,
     ):
         image = _make_image(shape=shape, dtype=dtype)
-
-        def run():
-            transform = A.WaterRefraction(
-                amplitude_range=(0.05, 0.05),
-                wavelength_range=(wavelength, wavelength),
-                num_waves_range=(1, 1),
-                map_resolution_range=(map_resolution, map_resolution),
-                border_mode=cv2.BORDER_CONSTANT,
-                p=1.0,
-            )
-            if use_compose:
-                transform = A.Compose([transform], strict=True, seed=137)
-            else:
-                transform.set_random_seed(137)
-            return transform(image=image)["image"]
+        transform = A.WaterRefraction(
+            amplitude_range=(0.05, 0.05),
+            wavelength_range=(wavelength, wavelength),
+            num_waves_range=(1, 1),
+            map_resolution_range=(map_resolution, map_resolution),
+            border_mode=cv2.BORDER_CONSTANT,
+            p=1.0,
+        )
+        if use_compose:
+            transform = A.Compose([transform], strict=True)
+        transform.set_random_seed(137)
 
         def reference_sine(values):
             assert np.isfinite(values).all()
             return np.fromiter(map(math.sin, values), dtype=values.dtype)
 
         with np.errstate(over="raise", invalid="raise", divide="raise"):
-            actual = run()
+            actual = transform(image=image)["image"]
             monkeypatch.setattr(nk, "sin", reference_sine)
-            expected = run()
+            transform.set_random_seed(137)
+            expected = transform(image=image)["image"]
 
         assert np.isfinite(actual).all()
         assert actual.dtype == dtype

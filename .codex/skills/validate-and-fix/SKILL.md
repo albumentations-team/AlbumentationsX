@@ -17,12 +17,9 @@ change beyond the version uses the corresponding dependency, artifact, and insta
 
 ## Workflow
 
-For augmentation parameter changes, enforce
+For augmentation parameter changes, test constructor rejection and finite boundary outputs through direct calls and
+`Compose`, as required by
 [initialization-only validation](../../../docs/contributing/coding_guidelines.md#initialization-only-validation).
-Verify that invalid configuration fails through Pydantic at construction and that accepted extreme settings execute
-without runtime validation exceptions through direct calls and `Compose`. Check finite outputs at supported bounds,
-unchanged ordinary settings, and any deterministic recovery used for image-dependent limits. A test expecting a runtime
-parameter-validation error violates this contract.
 
 1. **Name the decision and failure mode**: identify the changed contract and the smallest test, check, or artifact that can
    reject it.

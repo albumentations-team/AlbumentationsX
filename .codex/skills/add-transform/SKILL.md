@@ -35,11 +35,9 @@ Implement the operation in the corresponding functional module, without transfor
 
 ## 3. Write the transform class
 
-- Follow [initialization-only validation](../../../docs/contributing/coding_guidelines.md#initialization-only-validation):
-  reject invalid configuration only through Pydantic `InitSchema` during construction. Prefer fixed supported bounds
-  there. Accepted settings must not abort training; clamp unavoidable image-dependent extremes or use a documented no-op.
-- Cover both boundaries: Pydantic rejects invalid configuration at initialization, while accepted extreme settings
-  remain finite and preserve target alignment through direct calls and `Compose`.
+- Set supported parameter bounds in Pydantic `InitSchema`; follow
+  [initialization-only validation](../../../docs/contributing/coding_guidelines.md#initialization-only-validation)
+  for image-dependent limits and boundary tests.
 - Read [Generated Transform Target Contracts](../../../docs/design/transform-target-contracts.md) before declaring
   transform support. For every concrete public transform, its `Targets:` docstring, effective `_targets`, and active
   dispatch keys describe the same behavior. A working inherited handler counts; a stub does not. Declare `images` and

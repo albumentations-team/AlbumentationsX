@@ -73,11 +73,8 @@ parameters. Pixel arithmetic, temporary-array construction, clipping, dtype rout
 belong in the functional helper that owns the operation. The deterministic source contract is checked by the
 repository's unified AX guidance hook; keep its exact limits and exceptions in `docs/contributing/coding_guidelines.md`.
 
-Follow [initialization-only validation](../../../docs/contributing/coding_guidelines.md#initialization-only-validation).
-Reject invalid configuration exclusively through Pydantic `InitSchema` during construction. Prefer fixed supported
-bounds there over execution-time checks. When a limit unavoidably depends on image data, clamp before unsafe arithmetic
-or use a documented, deterministic no-op without raising for accepted settings. Preserve aligned targets and seeded
-behavior; benchmark ordinary inputs and recovery boundaries only when execution changes.
+Follow [initialization-only validation](../../../docs/contributing/coding_guidelines.md#initialization-only-validation)
+when adding numerical guards. Benchmark ordinary settings and recovery boundaries when execution changes.
 
 Propose an Albucore primitive when an operation:
 

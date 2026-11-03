@@ -35,6 +35,9 @@ Implement the operation in the corresponding functional module, without transfor
 
 ## 3. Write the transform class
 
+- Set supported parameter bounds in Pydantic `InitSchema`; follow
+  [initialization-only validation](../../../docs/contributing/coding_guidelines.md#initialization-only-validation)
+  for image-dependent limits and boundary tests.
 - Read [Generated Transform Target Contracts](../../../docs/design/transform-target-contracts.md) before declaring
   transform support. For every concrete public transform, its `Targets:` docstring, effective `_targets`, and active
   dispatch keys describe the same behavior. A working inherited handler counts; a stub does not. Declare `images` and

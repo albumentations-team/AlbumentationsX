@@ -68,11 +68,13 @@ mailbox for any of them.
 
 Keep transform policy, parameter sampling, target dispatch, and annotation semantics in AlbumentationsX.
 
-Keep transform `apply*` methods as thin policy and dispatch methods. A method may validate its transform-specific
-runtime input contract, select a functional operation, and forward sampled parameters, but pixel arithmetic,
-temporary-array construction, clipping, dtype routing, and kernel-selection branches belong in the functional helper
-that owns the operation. The deterministic source contract is checked by the repository's unified AX guidance hook;
-keep its exact limits and exceptions in `docs/contributing/coding_guidelines.md`.
+Keep transform `apply*` methods as thin policy and dispatch methods: select a functional operation and forward sampled
+parameters. Pixel arithmetic, temporary-array construction, clipping, dtype routing, and kernel-selection branches
+belong in the functional helper that owns the operation. The deterministic source contract is checked by the
+repository's unified AX guidance hook; keep its exact limits and exceptions in `docs/contributing/coding_guidelines.md`.
+
+Follow [initialization-only validation](../../../docs/contributing/coding_guidelines.md#initialization-only-validation)
+when adding numerical guards. Benchmark ordinary settings and recovery boundaries when execution changes.
 
 Propose an Albucore primitive when an operation:
 

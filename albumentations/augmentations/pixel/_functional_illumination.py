@@ -26,8 +26,8 @@ from ._functional_shared import (
     add_weighted,
     apply_uint8_lut,
     clip,
+    convert_dtype,
     cv2,
-    from_float,
     get_num_channels,
     math,
     mean,
@@ -35,7 +35,6 @@ from ._functional_shared import (
     np,
     reduce_sum,
     restore_uint8_working_image,
-    to_float,
     to_uint8_working_image,
 )
 
@@ -147,13 +146,9 @@ def apply_plasma_brightness_contrast(
 
     """
     input_dtype = img.dtype
-    img = (
-        from_float(cast("NDArray[np.float16]", img), target_dtype=np.float32)
-        if input_dtype == np.float16
-        else to_float(cast("NDArray[np.uint8] | NDArray[np.float32]", img))
-    )
+    img = convert_dtype(img, np.float32)
     if brightness_factor == 0 and contrast_factor == 0:
-        result = img if input_dtype == np.float32 else from_float(img, target_dtype=input_dtype)
+        result = img if input_dtype == np.float32 else convert_dtype(img, dtype=input_dtype)
         return result if input_dtype == np.uint8 else clip(result, input_dtype)
 
     if img.ndim > MONO_CHANNEL_DIMENSIONS:
@@ -172,7 +167,7 @@ def apply_plasma_brightness_contrast(
         mean_factor = img_mean * (1.0 - contrast_weights)
         img = add(img, mean_factor, out=img)
 
-    result = img if input_dtype == np.float32 else from_float(img, target_dtype=input_dtype)
+    result = img if input_dtype == np.float32 else convert_dtype(img, dtype=input_dtype)
     return result if input_dtype == np.uint8 else clip(result, input_dtype)
 
 
@@ -187,12 +182,14 @@ def _plasma_pattern_for_batch(images: ImageType, plasma_pattern: np.ndarray) -> 
     return np.broadcast_to(channel_pattern, (*plasma_pattern.shape, images.shape[-1])).copy()
 
 
-def _finish_plasma_brightness_contrast_batch(work: ImageFloat32, output_dtype: np.dtype[Any]) -> ImageType:
-    """Clip and restore an owned float32 batch to the public dtype and contiguous layout."""
+def _finish_plasma_brightness_contrast_batch(
+    work: NDArray[np.float16] | ImageFloat32,
+    output_dtype: np.dtype[Any],
+) -> ImageType:
+    """Clip and restore an owned floating batch to the public dtype and contiguous layout."""
     if output_dtype.type in (np.float16, np.float32):
         np.clip(work, 0.0, 1.0, out=work, dtype=np.float32, casting="unsafe")
-        return cast("ImageType", np.ascontiguousarray(from_float(work, output_dtype)))
-    return cast("ImageType", np.ascontiguousarray(from_float(work, target_dtype=output_dtype)))
+    return cast("ImageType", np.ascontiguousarray(convert_dtype(work, output_dtype)))
 
 
 def _apply_plasma_brightness_contrast_dedicated(
@@ -269,8 +266,10 @@ def _apply_plasma_brightness_contrast_loop(
     )
 
     for index, image in enumerate(images):
-        work: ImageFloat32 = (
-            cast("ImageFloat32", image) if output_dtype == np.float32 else to_float(cast("ImageUInt8", image))
+        work = (
+            convert_dtype(image, np.float32)
+            if output_dtype == np.uint8
+            else cast("NDArray[np.float16] | ImageFloat32", image)
         )
 
         if brightness_map is not None:
@@ -635,9 +634,9 @@ def apply_linear_illumination(img: ImageType, intensity: float, angle: float) ->
     """
     input_dtype = img.dtype
     if input_dtype.type is np.uint8:
-        img = to_float(img)
+        img = convert_dtype(img, np.float32)
     elif input_dtype.type is np.float16:
-        img = from_float(cast("NDArray[np.float16]", img), np.float32)
+        img = convert_dtype(cast("NDArray[np.float16]", img), np.float32)
     else:
         img = cast("ImageFloat32", img)
 
@@ -657,7 +656,7 @@ def apply_linear_illumination(img: ImageType, intensity: float, angle: float) ->
 
     result = img + gradient
     clip(result, out=result)
-    return _restore_linear_illumination_dtype(cast("ImageFloat32", result), input_dtype)
+    return _restore_linear_illumination_dtype(result, input_dtype)
 
 
 def apply_linear_illumination_batch(images: ImageType, intensity: float, angle: float, **params: Any) -> ImageType:
@@ -666,9 +665,9 @@ def apply_linear_illumination_batch(images: ImageType, intensity: float, angle: 
     """
     input_dtype = images.dtype
     if input_dtype.type is np.uint8:
-        images = to_float(images)
+        images = convert_dtype(images, np.float32)
     elif input_dtype.type is np.float16:
-        images = from_float(cast("NDArray[np.float16]", images), np.float32)
+        images = convert_dtype(cast("NDArray[np.float16]", images), np.float32)
     else:
         images = cast("ImageFloat32", images)
 
@@ -678,14 +677,14 @@ def apply_linear_illumination_batch(images: ImageType, intensity: float, angle: 
     batch_gradient = gradient if images.ndim == NUM_MULTI_CHANNEL_DIMENSIONS else gradient[..., np.newaxis]
     result = images + batch_gradient
     clip(result, out=result)
-    return _restore_linear_illumination_dtype(cast("ImageFloat32", result), input_dtype)
+    return _restore_linear_illumination_dtype(result, input_dtype)
 
 
 def _restore_linear_illumination_dtype(img: ImageFloat32, input_dtype: np.dtype) -> ImageType:
     if input_dtype.type is np.uint8:
-        return from_float(img, np.uint8)
+        return convert_dtype(img, np.uint8)
     if input_dtype.type is np.float16:
-        return from_float(img, np.float16)
+        return convert_dtype(img, np.float16)
     return img
 
 

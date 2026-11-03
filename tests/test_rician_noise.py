@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from albucore import from_float, to_float
+from albucore import convert_dtype
 
 import albumentations as A
 from albumentations.augmentations.medical import functional as fmedical
@@ -66,7 +66,7 @@ def test_rician_noise_zero_std_is_an_exact_volume_identity(volume: np.ndarray) -
 def test_rician_reconstruction_preserves_sampled_fields_and_replay(shape, dtype, per_channel, layout) -> None:
     source = np.random.default_rng(137).integers(0, 256, (*shape[:-2], shape[-2] * 2, shape[-1]), dtype=np.uint8)
     if dtype == np.float32:
-        source = to_float(source)
+        source = convert_dtype(source, np.float32)
     image = source[..., ::2, :]
     if layout == "contiguous":
         image = image.copy()
@@ -84,10 +84,10 @@ def test_rician_reconstruction_preserves_sampled_fields_and_replay(shape, dtype,
     fields = record["target_params"][0]["params"]
     real_noise = fields["real_noise"].copy()
     imaginary_noise = fields["imaginary_noise"].copy()
-    signal = to_float(image) if dtype == np.uint8 else image
+    signal = convert_dtype(image, np.float32) if dtype == np.uint8 else image
     expected = np.clip(np.sqrt(np.square(signal + real_noise) + np.square(imaginary_noise)), 0, 1)
     if dtype == np.uint8:
-        expected = from_float(expected, target_dtype=np.uint8)
+        expected = convert_dtype(expected, dtype=np.uint8)
     np.testing.assert_allclose(result[target], expected, atol=1 if dtype == np.uint8 else 2e-7, rtol=0)
 
     replayed = A.ReplayCompose.replay(result["replay"], **{target: image})

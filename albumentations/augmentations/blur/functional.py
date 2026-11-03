@@ -15,12 +15,7 @@ from warnings import warn
 
 import cv2
 import numpy as np
-from albucore import (
-    clip,
-    from_float,
-    reduce_sum,
-    to_float,
-)
+from albucore import clip, convert_dtype, reduce_sum
 from numpy.typing import NDArray
 from pydantic import ValidationInfo
 
@@ -58,7 +53,7 @@ def box_blur(img: ImageType, ksize: int) -> ImageType:
     result: ImageType
     if img.dtype.type is np.float16:
         result = (
-            from_float(cast("NDArray[np.float16]", img), np.float32)
+            convert_dtype(cast("NDArray[np.float16]", img), np.float32)
             if img.flags.c_contiguous
             else img.astype(np.float32, order="C")
         )
@@ -66,7 +61,7 @@ def box_blur(img: ImageType, ksize: int) -> ImageType:
         result = img.copy(order="C")
     cv2.blur(result, (ksize, ksize), dst=result)
     if img.dtype.type is np.float16:
-        return from_float(cast("ImageFloat32", result), cast("np.dtype[np.float16]", img.dtype))
+        return convert_dtype(cast("ImageFloat32", result), cast("np.dtype[np.float16]", img.dtype))
     return result
 
 
@@ -96,7 +91,7 @@ def glass_blur(
 
     """
     working = (
-        from_float(cast("NDArray[np.float16]", img), np.float32)
+        convert_dtype(cast("NDArray[np.float16]", img), np.float32)
         if img.dtype.type is np.float16
         else cast("ImageType", np.array(img, copy=True, order="K"))
     )
@@ -141,7 +136,7 @@ def glass_blur(
     else:
         result = cast("ImageType", cv2.GaussianBlur(x, sigmaX=sigma, ksize=(0, 0)))
     if img.dtype.type is np.float16:
-        return from_float(cast("ImageFloat32", result), cast("np.dtype[np.float16]", img.dtype))
+        return convert_dtype(cast("ImageFloat32", result), cast("np.dtype[np.float16]", img.dtype))
     return result
 
 
@@ -210,9 +205,9 @@ def zoom_blur(img: ImageType, zoom_factors: np.ndarray | Sequence[int]) -> Image
     """
     input_dtype = img.dtype
     if input_dtype.type is np.uint8:
-        img = to_float(img)
+        img = convert_dtype(img, np.float32)
     elif input_dtype.type is np.float16:
-        img = from_float(cast("NDArray[np.float16]", img), np.float32)
+        img = convert_dtype(cast("NDArray[np.float16]", img), np.float32)
 
     out = np.zeros_like(img, dtype=np.float32)
 
@@ -222,7 +217,7 @@ def zoom_blur(img: ImageType, zoom_factors: np.ndarray | Sequence[int]) -> Image
     np.add(img, out, out=out)
     np.multiply(out, np.float32(1.0 / (len(zoom_factors) + 1)), out=out)
     clip(out, out=out)
-    return from_float(out, target_dtype=input_dtype)
+    return convert_dtype(out, dtype=input_dtype)
 
 
 def mode_filter(img: ImageType, kernel_size: int) -> ImageType:
@@ -235,12 +230,12 @@ def mode_filter(img: ImageType, kernel_size: int) -> ImageType:
     uint8_img = (
         cast("ImageUInt8", img)
         if input_dtype == np.uint8
-        else from_float(cast("NDArray[np.float16] | ImageFloat32", img), np.uint8)
+        else convert_dtype(cast("NDArray[np.float16] | ImageFloat32", img), np.uint8)
     )
     result = _mode_filter_uint8(uint8_img, kernel_size)
     if input_dtype == np.uint8:
         return result
-    return from_float(to_float(result), input_dtype)
+    return convert_dtype(convert_dtype(result, np.float32), input_dtype)
 
 
 def _mode_filter_uint8(img: ImageUInt8, kernel_size: int) -> ImageUInt8:
@@ -560,7 +555,7 @@ def _pillow_gaussian_blur_float32(
     horizontal_kernel = normalized_kernel[np.newaxis, :]
     vertical_kernel = normalized_kernel[:, np.newaxis]
     result = (
-        from_float(img, np.float32)
+        convert_dtype(img, np.float32)
         if input_dtype.type is np.float16 and img.flags.c_contiguous
         else np.array(img, dtype=np.float32, copy=True, order="C")
     )
@@ -585,7 +580,7 @@ def _pillow_gaussian_blur_float32(
 
     if input_dtype.type is np.float16:
         del output
-        half_result = from_float(result, np.float16)
+        half_result = convert_dtype(result, np.float16)
         if not input_dtype.isnative:
             half_result.byteswap(inplace=True)
             return cast("NDArray[np.float16]", half_result.view(input_dtype))

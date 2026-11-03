@@ -12,14 +12,7 @@ from warnings import warn
 
 import cv2
 import numpy as np
-from albucore import (
-    clip,
-    from_float,
-    reduce_sum,
-    remap,
-    to_float,
-    warp_perspective,
-)
+from albucore import clip, convert_dtype, reduce_sum, remap, warp_perspective
 from albucore import (
     copy_make_border as albucore_copy_make_border,
 )
@@ -72,10 +65,10 @@ __all__ = [
     "bboxes_to_mask",
     "cast",
     "clip_if_interpolation_can_overshoot",
+    "convert_dtype",
     "cv2",
     "defaultdict",
     "denormalize_bboxes",
-    "from_float",
     "handle_empty_array",
     "hflip",
     "lru_cache",
@@ -89,7 +82,6 @@ __all__ = [
     "polygons_to_obb",
     "reduce_sum",
     "remap",
-    "to_float",
     "vflip",
     "warn",
     "warp_perspective",

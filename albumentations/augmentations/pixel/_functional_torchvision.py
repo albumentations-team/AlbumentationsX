@@ -22,9 +22,9 @@ from ._functional_shared import (
     add_weighted,
     apply_uint8_lut,
     clip,
+    convert_dtype,
     cv2,
     fgeometric,
-    from_float,
     get_num_channels,
     is_grayscale_image,
     is_rgb_image,
@@ -34,7 +34,6 @@ from ._functional_shared import (
     np,
     restore_uint8_working_image,
     std,
-    to_float,
     to_uint8_working_image,
 )
 
@@ -150,9 +149,9 @@ def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
     """
     input_dtype = img.dtype
     if input_dtype.type is np.uint8:
-        img = to_float(img)
+        img = convert_dtype(img, np.float32)
     elif input_dtype.type is np.float16:
-        img = from_float(cast("NDArray[np.float16]", img), np.float32)
+        img = convert_dtype(cast("NDArray[np.float16]", img), np.float32)
 
     orig_shape = img.shape
     num_channels = get_num_channels(img)
@@ -188,7 +187,7 @@ def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
     img_pca = img_pca.reshape(orig_shape)
 
     np.clip(img_pca, 0, 1, out=img_pca)
-    return from_float(img_pca.astype(np.float32, copy=False), target_dtype=input_dtype)
+    return convert_dtype(img_pca.astype(np.float32, copy=False), dtype=input_dtype)
 
 
 def adjust_saturation_torchvision(
@@ -250,11 +249,11 @@ def adjust_hue_torchvision(img: ImageType, factor: float) -> ImageType:
 
     input_dtype = img.dtype
     if input_dtype.type is np.float16:
-        img = from_float(cast("NDArray[np.float16]", img), np.float32)
+        img = convert_dtype(cast("NDArray[np.float16]", img), np.float32)
     img = cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2HSV))
     img[..., 0] = np.mod(img[..., 0] + factor * 360, 360)
     result = cast("NDArray[np.float32]", cv2.cvtColor(img, cv2.COLOR_HSV2RGB))
-    return from_float(result, target_dtype=input_dtype)
+    return convert_dtype(result, dtype=input_dtype)
 
 
 def _apply_brightness_only_torchvision(img: ImageType, brightness_factor: float) -> ImageType:
@@ -579,14 +578,14 @@ def apply_brightness_contrast_torchvision_batch(
         result = np.multiply(images, gains.reshape(broadcast_shape), dtype=np.float32)
         np.add(result, offsets.reshape(broadcast_shape), out=result)
         np.clip(result, 0.0, 1.0, out=result)
-        return from_float(result, target_dtype=images.dtype)
+        return convert_dtype(result, dtype=images.dtype)
 
     result = np.multiply(images, contrast_factor, dtype=np.float32)
     np.add(result, offsets.reshape(broadcast_shape), out=result)
     np.clip(result, 0.0, 1.0, out=result)
     np.multiply(result, brightness_factor, out=result)
     np.clip(result, 0.0, 1.0, out=result)
-    return from_float(result, target_dtype=images.dtype)
+    return convert_dtype(result, dtype=images.dtype)
 
 
 def superpixels(
@@ -668,7 +667,7 @@ def slic(
     # Normalize image to [0, 1] range
     max_value = np.float32(image.max())
     image_normalized = (
-        from_float(cast("NDArray[np.float16]", image), np.float32)
+        convert_dtype(cast("NDArray[np.float16]", image), np.float32)
         if image.dtype.type is np.float16
         else image.astype(np.float32)
     )

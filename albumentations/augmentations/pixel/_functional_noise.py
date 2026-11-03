@@ -13,14 +13,13 @@ from ._functional_shared import (
     add,
     add_weighted,
     clip,
+    convert_dtype,
     cv2,
-    from_float,
     math,
     multiply,
     np,
     power,
     random,
-    to_float,
 )
 
 
@@ -106,9 +105,9 @@ def shot_noise(
     """
     input_dtype = img.dtype
     if input_dtype.type is np.uint8:
-        img = to_float(img)
+        img = convert_dtype(img, np.float32)
     elif input_dtype.type is np.float16:
-        img = from_float(cast("NDArray[np.float16]", img), np.float32)
+        img = convert_dtype(cast("NDArray[np.float16]", img), np.float32)
 
     if img.ndim == 4:
         batch_linear = power(img, 2.2)
@@ -116,7 +115,7 @@ def shot_noise(
         noisy_img = random_generator.poisson(scaled_img).astype(np.float32)
         noisy_img *= scale
         np.clip(noisy_img, 0, 1, out=noisy_img)
-        return from_float(power(noisy_img, 1 / 2.2), target_dtype=input_dtype)
+        return convert_dtype(power(noisy_img, 1 / 2.2), dtype=input_dtype)
 
     # Apply inverse gamma correction to work in linear space
     if img.shape[-1] == 1:
@@ -133,7 +132,7 @@ def shot_noise(
     multiply(noisy_img, scale, out=noisy_img)
 
     # Scale back and apply gamma correction
-    return from_float(power(np.clip(noisy_img, 0, 1, out=noisy_img), 1 / 2.2), target_dtype=input_dtype)
+    return convert_dtype(power(np.clip(noisy_img, 0, 1, out=noisy_img), 1 / 2.2), dtype=input_dtype)
 
 
 def get_safe_brightness_contrast_params(
@@ -634,7 +633,7 @@ def sharpen_gaussian(
     """
     input_dtype = img.dtype
     if input_dtype.type is np.float16:
-        img = from_float(cast("NDArray[np.float16]", img), np.float32)
+        img = convert_dtype(cast("NDArray[np.float16]", img), np.float32)
     if img.shape[-1] == 1:
         blurred = np.empty(img.shape, dtype=img.dtype)
         cv2.GaussianBlur(

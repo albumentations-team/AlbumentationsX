@@ -19,14 +19,13 @@ from ._functional_shared import (
     add,
     add_weighted,
     clip,
+    convert_dtype,
     cv2,
-    from_float,
     maybe_process_in_chunks,
     non_rgb_error,
     np,
     reduce_sum,
     restore_uint8_working_image,
-    to_float,
     to_uint8_working_image,
 )
 from ._functional_sharpness import (
@@ -93,7 +92,7 @@ def add_snow_bleach(
     """
     input_dtype = img.dtype
     if input_dtype.type is np.float16:
-        img = from_float(cast("NDArray[np.float16]", img), np.float32)
+        img = convert_dtype(cast("NDArray[np.float16]", img), np.float32)
     max_value = MAX_VALUES_BY_DTYPE[np.dtype(img.dtype)]
 
     snow_point = (snow_point * max_value / 2) + (max_value / 3)
@@ -112,7 +111,7 @@ def add_snow_bleach(
 
     result = cast("ImageType", cv2.cvtColor(image_hls, cv2.COLOR_HLS2RGB))
     if input_dtype.type is np.float16:
-        return from_float(cast("ImageFloat32", result), cast("np.dtype[np.float16]", input_dtype))
+        return convert_dtype(cast("ImageFloat32", result), cast("np.dtype[np.float16]", input_dtype))
     return result
 
 
@@ -202,7 +201,7 @@ def add_snow_texture(
     """
     input_dtype = img.dtype
     if input_dtype.type is np.float16:
-        img = from_float(cast("NDArray[np.float16]", img), np.float32)
+        img = convert_dtype(cast("NDArray[np.float16]", img), np.float32)
     max_value = MAX_VALUES_BY_DTYPE[np.dtype(img.dtype)]
 
     img_hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV).astype(np.float32)
@@ -253,7 +252,7 @@ def add_snow_texture(
     rgb_snow[sparkle_mask] = [max_value, max_value, max_value]
 
     if input_dtype.type is np.float16:
-        return from_float(cast("ImageFloat32", rgb_snow), cast("np.dtype[np.float16]", input_dtype))
+        return convert_dtype(cast("ImageFloat32", rgb_snow), cast("np.dtype[np.float16]", input_dtype))
     return rgb_snow
 
 
@@ -693,13 +692,13 @@ def add_shadow_batch(
         flat_result = np.empty(flat_images.shape, dtype=np.uint8)
         for start in range(0, flat_images.size, conversion_chunk_elements):
             stop = start + conversion_chunk_elements
-            flat_result[start:stop] = from_float(
+            flat_result[start:stop] = convert_dtype(
                 cast("ImageFloat32", flat_images[start:stop]),
-                target_dtype=np.dtype(np.uint8),
+                dtype=np.dtype(np.uint8),
             )
         result = flat_result.reshape(images.shape)
     else:
-        result = from_float(cast("ImageFloat32", images), target_dtype=np.dtype(np.uint8))
+        result = convert_dtype(cast("ImageFloat32", images), dtype=np.dtype(np.uint8))
     max_value = MAX_VALUES_BY_DTYPE[np.uint8]
     poly_mask = np.zeros((*images.shape[1:3], 1), dtype=np.uint8)
     shadowed_indices = np.empty(images.shape[1:3], dtype=bool)
@@ -726,9 +725,9 @@ def add_shadow_batch(
 
     if input_dtype == np.uint8:
         return cast("ImageUInt8", result)
-    floating_result = to_float(cast("ImageUInt8", result))
+    floating_result = convert_dtype(cast("ImageUInt8", result), np.float32)
     if input_dtype.type is np.float16:
-        return from_float(floating_result, cast("np.dtype[np.float16]", input_dtype))
+        return convert_dtype(floating_result, cast("np.dtype[np.float16]", input_dtype))
     return floating_result.astype(cast("np.dtype[np.float32]", input_dtype), copy=False)
 
 
@@ -761,15 +760,15 @@ def add_gravel(img: ImageType, gravels: list[Any]) -> ImageType:
 
 def _spatter_working_image(img: ImageType) -> tuple[np.ndarray, np.dtype]:
     if img.dtype.type is np.uint8:
-        return to_float(img), img.dtype
+        return convert_dtype(img, np.float32), img.dtype
     if img.dtype.type is np.float16:
-        return from_float(cast("NDArray[np.float16]", img), np.float32), img.dtype
+        return convert_dtype(cast("NDArray[np.float16]", img), np.float32), img.dtype
     return img, img.dtype
 
 
 def _spatter_restore_dtype(img: np.ndarray, dtype: np.dtype) -> ImageType:
     clip(img, out=img)
-    return from_float(img, target_dtype=dtype)
+    return convert_dtype(img, dtype=dtype)
 
 
 def spatter_rain(img: ImageType, rain: np.ndarray) -> ImageType:
@@ -811,7 +810,7 @@ def spatter_mud(img: ImageType, non_mud: np.ndarray, mud: np.ndarray) -> ImageTy
 
 def _prepare_spatter_batch(images: ImageType) -> NDArray[np.float16] | NDArray[np.float32]:
     return (
-        to_float(cast("NDArray[np.uint8]", images))
+        convert_dtype(cast("NDArray[np.uint8]", images), np.float32)
         if images.dtype == np.uint8
         else cast("NDArray[np.float16] | NDArray[np.float32]", images.copy(order="C"))
     )
@@ -833,7 +832,7 @@ def spatter_rain_batch(images: ImageType, rain: np.ndarray) -> ImageType:
     result = _prepare_spatter_batch(images)
     np.add(result, rain, out=result)
     np.clip(result, 0, 1, out=result)
-    return from_float(result, target_dtype=input_dtype) if input_dtype == np.uint8 else result
+    return convert_dtype(result, dtype=input_dtype) if input_dtype == np.uint8 else result
 
 
 def spatter_mud_batch(images: ImageType, non_mud: np.ndarray, mud: np.ndarray) -> ImageType:
@@ -854,7 +853,7 @@ def spatter_mud_batch(images: ImageType, non_mud: np.ndarray, mud: np.ndarray) -
     np.multiply(result, non_mud, out=result)
     np.add(result, mud, out=result)
     np.clip(result, 0, 1, out=result)
-    return from_float(result, target_dtype=input_dtype) if input_dtype == np.uint8 else result
+    return convert_dtype(result, dtype=input_dtype) if input_dtype == np.uint8 else result
 
 
 def get_rain_params(

@@ -5,16 +5,7 @@ from typing import Any, cast
 import cv2
 import numpy as np
 import torch
-from albucore import (
-    add,
-    clip,
-    from_float,
-    matmul,
-    multiply,
-    resize3d,
-    to_float,
-    warp_affine3d,
-)
+from albucore import add, clip, convert_dtype, matmul, multiply, resize3d, warp_affine3d
 from albucore import exp as albucore_exp
 from albucore import mean as albucore_mean
 from numpy.typing import NDArray
@@ -50,17 +41,17 @@ _RICIAN_MIN_TORCH_ELEMENTS = 1_048_576
 def _float32_working_image(img: ImageType) -> tuple[NDArray[np.float32], np.dtype]:
     input_dtype = img.dtype
     if input_dtype.type is np.uint8:
-        return to_float(cast("NDArray[np.uint8]", img)), input_dtype
+        return convert_dtype(cast("NDArray[np.uint8]", img), np.float32), input_dtype
     if input_dtype.type is np.float16:
-        return from_float(cast("NDArray[np.float16]", img), np.float32), input_dtype
+        return convert_dtype(cast("NDArray[np.float16]", img), np.float32), input_dtype
     return cast("NDArray[np.float32]", img), input_dtype
 
 
 def _restore_working_dtype(img: NDArray[np.float32], input_dtype: np.dtype) -> ImageType:
     if input_dtype.type is np.uint8:
-        return from_float(img, np.uint8)
+        return convert_dtype(img, np.uint8)
     if input_dtype.type is np.float16:
-        return from_float(img, np.float16)
+        return convert_dtype(img, np.float16)
     return img
 
 
@@ -168,16 +159,16 @@ def _apply_bias_gain(img: ImageType, field: np.ndarray) -> ImageType:
     """Multiply normalized float32 intensities, clip, and restore the source dtype."""
     input_dtype = img.dtype
     if input_dtype == np.uint8:
-        working = to_float(cast("NDArray[np.uint8]", img))
+        working = convert_dtype(cast("NDArray[np.uint8]", img), np.float32)
     elif input_dtype == np.float16:
-        working = from_float(cast("NDArray[np.float16]", img), target_dtype=np.float32)
+        working = convert_dtype(cast("NDArray[np.float16]", img), dtype=np.float32)
     else:
         working = cast("NDArray[np.float32]", img)
     result = multiply(working, field)
     clip(result, out=result)
     if input_dtype == np.float32:
         return result
-    return from_float(result, target_dtype=input_dtype)
+    return convert_dtype(result, dtype=input_dtype)
 
 
 def generate_bias_field(coarse_field: np.ndarray, spatial_shape: tuple[int, ...]) -> np.ndarray:

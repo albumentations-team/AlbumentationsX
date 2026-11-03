@@ -12,11 +12,10 @@ from albumentations.augmentations.pixel._functional_shared import (
     MAX_VALUES_BY_DTYPE,
     ImageType,
     clip,
+    convert_dtype,
     cv2,
-    from_float,
     np,
     reduce_sum,
-    to_float,
 )
 
 _Cv2InPlaceOp = Callable[..., np.ndarray]
@@ -39,7 +38,7 @@ def rgb_to_optical_density(img: ImageType, eps: float = 1e-6) -> np.ndarray:
     max_value = MAX_VALUES_BY_DTYPE[img.dtype]
     pixels = img.reshape(-1, 3)
     pixel_matrix = (
-        from_float(cast("NDArray[np.float16]", pixels), np.float32)
+        convert_dtype(cast("NDArray[np.float16]", pixels), np.float32)
         if img.dtype.type is np.float16 and pixels.flags.c_contiguous
         else np.ascontiguousarray(pixels).astype(np.float32, copy=True)
     )
@@ -607,11 +606,7 @@ def apply_he_stain_augmentation(
 
     """
     input_dtype = img.dtype
-    img = (
-        from_float(cast("NDArray[np.float16]", img), target_dtype=np.float32)
-        if input_dtype == np.float16
-        else to_float(img)
-    )
+    img = convert_dtype(img, np.float32)
     stain_matrix, scale_factors, shift_values = _validate_stain_augmentation_inputs(
         stain_matrix,
         scale_factors,
@@ -651,7 +646,7 @@ def apply_he_stain_augmentation(
             )
 
     result = rgb_result.reshape(img.shape)
-    result = result if input_dtype == np.float32 else from_float(result, target_dtype=input_dtype)
+    result = result if input_dtype == np.float32 else convert_dtype(result, dtype=input_dtype)
     return result if input_dtype == np.uint8 else clip(result, input_dtype)
 
 

@@ -11,14 +11,7 @@ from typing import Any, Literal, Protocol, cast
 
 import cv2
 import numpy as np
-from albucore import (
-    add_weighted,
-    clip,
-    from_float,
-    get_num_channels,
-    mean_std,
-    to_float,
-)
+from albucore import add_weighted, clip, convert_dtype, get_num_channels, mean_std
 from numpy.typing import NDArray
 
 import albumentations.augmentations.geometric.functional as fgeometric
@@ -352,7 +345,8 @@ class DomainAdapter:
 
         """
         img = self.to_colorspace(img)
-        img = to_float(img)
+        if img.dtype == np.uint8:
+            img = convert_dtype(img, np.float32)
         return img.reshape(-1, self.num_channels)
 
     def reconstruct(self, pixels: np.ndarray, height: int, width: int) -> np.ndarray:
@@ -369,7 +363,7 @@ class DomainAdapter:
                 an explicit singleton channel dimension for grayscale images.
 
         """
-        pixels = from_float(pixels.astype(np.float32, copy=False), np.uint8)
+        pixels = convert_dtype(pixels.astype(np.float32, copy=False), np.uint8)
         return self.from_colorspace(pixels.reshape(height, width, self.num_channels))
 
     @staticmethod
@@ -437,18 +431,18 @@ def adapt_pixel_distribution(
     original_dtype = img.dtype
     half_reference_aligned = original_dtype == np.float16 and img.shape == ref.shape
     if half_reference_aligned:
-        img = from_float(cast("NDArray[np.float16]", img), np.dtype(np.uint8))
-        ref = from_float(cast("NDArray[np.float16]", ref), np.dtype(np.uint8))
+        img = convert_dtype(cast("NDArray[np.float16]", img), np.dtype(np.uint8))
+        ref = convert_dtype(cast("NDArray[np.float16]", ref), np.dtype(np.uint8))
     elif original_dtype == np.float16:
-        img = from_float(cast("NDArray[np.float16]", img), np.float32)
-        ref = from_float(cast("NDArray[np.float16]", ref), np.float32)
+        img = convert_dtype(cast("NDArray[np.float16]", img), np.float32)
+        ref = convert_dtype(cast("NDArray[np.float16]", ref), np.float32)
 
     if img.shape != ref.shape:
         ref = fgeometric.resize(ref, cast("tuple[int, int]", img.shape[:2]), cv2.INTER_AREA)
 
     if original_dtype == np.float32 or (original_dtype == np.float16 and not half_reference_aligned):
-        img = from_float(cast("NDArray[np.float16] | NDArray[np.float32]", img), np.dtype(np.uint8))
-        ref = from_float(cast("NDArray[np.float16] | NDArray[np.float32]", ref), np.dtype(np.uint8))
+        img = convert_dtype(cast("NDArray[np.float16] | NDArray[np.float32]", img), np.dtype(np.uint8))
+        ref = convert_dtype(cast("NDArray[np.float16] | NDArray[np.float32]", ref), np.dtype(np.uint8))
 
     transformer = {"pca": PCA, "standard": StandardScaler, "minmax": MinMaxScaler}[transform_type]()
     adapter = DomainAdapter(transformer=transformer, ref_img=ref)
@@ -458,8 +452,8 @@ def adapt_pixel_distribution(
         image_float32 = image_uint8.astype(np.float32)
         transformed_float32 = transformed.astype(np.float32)
     else:
-        image_float32 = to_float(image_uint8)
-        transformed_float32 = to_float(transformed)
+        image_float32 = convert_dtype(image_uint8, np.float32)
+        transformed_float32 = convert_dtype(transformed, np.float32)
     result = add_weighted(image_float32, 1 - weight, transformed_float32, weight)
     output: ImageType = clip(result, out=result) if original_dtype == np.float32 else clip(result, original_dtype)
     return output[..., 0] if is_channel_less else output
@@ -539,12 +533,12 @@ def fourier_domain_adaptation(img: ImageType, target_img: ImageType, beta: float
     if target_img.ndim == 2:
         target_img = target_img[..., None]
     src_img = (
-        from_float(cast("NDArray[np.float16]", img), np.float32)
+        convert_dtype(cast("NDArray[np.float16]", img), np.float32)
         if img.dtype.type is np.float16
         else img.astype(np.float32)
     )
     trg_img = (
-        from_float(cast("NDArray[np.float16]", target_img), np.float32)
+        convert_dtype(cast("NDArray[np.float16]", target_img), np.float32)
         if target_img.dtype.type is np.float16
         else target_img.astype(np.float32)
     )
@@ -616,17 +610,17 @@ def apply_histogram(img: ImageType, reference_image: ImageType, blend_ratio: flo
     """
     original_dtype = img.dtype
     if original_dtype == np.float16 and reference_image.dtype == np.float16:
-        image_float32 = from_float(cast("NDArray[np.float16]", img), np.float32)
+        image_float32 = convert_dtype(cast("NDArray[np.float16]", img), np.float32)
         if img.shape == reference_image.shape:
-            image_uint8 = from_float(cast("NDArray[np.float16]", img), np.dtype(np.uint8))
-            reference_uint8 = from_float(cast("NDArray[np.float16]", reference_image), np.dtype(np.uint8))
+            image_uint8 = convert_dtype(cast("NDArray[np.float16]", img), np.dtype(np.uint8))
+            reference_uint8 = convert_dtype(cast("NDArray[np.float16]", reference_image), np.dtype(np.uint8))
             matched_uint8 = match_histograms(image_uint8, reference_uint8)
             del image_uint8, reference_uint8
-            matched_float32 = to_float(matched_uint8)
+            matched_float32 = convert_dtype(matched_uint8, np.float32)
             half_result = add_weighted(matched_float32, blend_ratio, image_float32, 1 - blend_ratio)
             return clip(half_result, original_dtype)
         img = image_float32
-        reference_image = from_float(cast("NDArray[np.float16]", reference_image), np.float32)
+        reference_image = convert_dtype(cast("NDArray[np.float16]", reference_image), np.float32)
 
     if img.shape[:2] != reference_image.shape[:2]:
         reference_image = fgeometric.resize(reference_image, cast("tuple[int, int]", img.shape[:2]), cv2.INTER_LINEAR)
@@ -662,7 +656,7 @@ def match_histograms(image: ImageType, reference: ImageType) -> ImageType:
     """
     image, input_dtype = to_uint8_working_image(image)
     if reference.dtype.type is not np.uint8:
-        reference = from_float(cast("NDArray[np.float16] | NDArray[np.float32]", reference), np.uint8)
+        reference = convert_dtype(cast("NDArray[np.float16] | NDArray[np.float32]", reference), np.uint8)
 
     matched = np.empty(image.shape, dtype=np.uint8)
 

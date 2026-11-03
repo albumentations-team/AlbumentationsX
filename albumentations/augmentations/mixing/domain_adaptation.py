@@ -11,7 +11,7 @@ from typing import Annotated, Any, ClassVar, Literal
 
 import cv2
 import numpy as np
-from albucore import from_float, to_float
+from albucore import convert_dtype
 from pydantic import field_validator
 from pydantic.functional_validators import AfterValidator
 
@@ -200,8 +200,7 @@ class BaseDomainAdaptation(ImageOnlyTransform):
         if reference_image.dtype == target_numpy_dtype:
             return reference_image
 
-        reference_float = to_float(reference_image)
-        return reference_float if target_numpy_dtype == np.float32 else from_float(reference_float, target_numpy_dtype)
+        return convert_dtype(reference_image, target_numpy_dtype)
 
     def _target_reference_params(
         self,

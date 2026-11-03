@@ -13,8 +13,8 @@ from ._functional_shared import (
     ImageType,
     ImageUInt8,
     clip,
+    convert_dtype,
     cv2,
-    from_float,
     lru_cache,
     multiply,
     np,
@@ -79,11 +79,11 @@ def unsharp_mask(
     """
     input_dtype = image.dtype
     if input_dtype.type is np.float16:
-        image = from_float(cast("NDArray[np.float16]", image), np.float32)
+        image = convert_dtype(cast("NDArray[np.float16]", image), np.float32)
 
     if image.ndim == NUM_MULTI_CHANNEL_DIMENSIONS and image.shape[2] == 1:
         result = unsharp_mask(image[..., 0], ksize, sigma, alpha, threshold)[..., np.newaxis]
-        return from_float(result, input_dtype) if input_dtype.type is np.float16 else result
+        return convert_dtype(result, input_dtype) if input_dtype.type is np.float16 else result
 
     ksize_tuple = (ksize, ksize)
     blurred = cv2.GaussianBlur(image, ksize_tuple, sigmaX=sigma)
@@ -104,7 +104,7 @@ def unsharp_mask(
             mask = compare(diff, threshold_value, cv2.CMP_GT)
             result = image.copy()
             cv2.copyTo(sharpened, mask, result)
-    return from_float(cast("ImageFloat32", result), input_dtype) if input_dtype.type is np.float16 else result
+    return convert_dtype(cast("ImageFloat32", result), input_dtype) if input_dtype.type is np.float16 else result
 
 
 def pixel_dropout(
@@ -381,7 +381,7 @@ def convolve(
     input_dtype = img.dtype
     if input_dtype.type is np.float16:
         img = (
-            from_float(cast("NDArray[np.float16]", img), np.float32)
+            convert_dtype(cast("NDArray[np.float16]", img), np.float32)
             if img.flags.c_contiguous
             else img.astype(np.float32, order="C")
         )
@@ -464,7 +464,7 @@ def separable_convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
     input_dtype = img.dtype
     is_half = input_dtype.type is np.float16
     working = (
-        from_float(cast("NDArray[np.float16]", img), np.float32)
+        convert_dtype(cast("NDArray[np.float16]", img), np.float32)
         if is_half and img.flags.c_contiguous
         else cast(
             "ImageType",

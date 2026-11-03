@@ -26,9 +26,9 @@ from ._functional_shared import (
     add,
     apply_uint8_lut,
     clip,
+    convert_dtype,
     cv2,
     fgeometric,
-    from_float,
     get_num_channels,
     is_grayscale_image,
     is_rgb_image,
@@ -39,7 +39,6 @@ from ._functional_shared import (
     power,
     reduce_sum,
     restore_uint8_working_image,
-    to_float,
     to_uint8_working_image,
     warn,
 )
@@ -503,7 +502,7 @@ def move_tone_curve(
     """
     input_dtype = img.dtype
     if input_dtype.type is np.float16:
-        img = from_float(cast("NDArray[np.float16]", img), target_dtype=np.float32)
+        img = convert_dtype(cast("NDArray[np.float16]", img), dtype=np.float32)
 
     if np.isscalar(low_y) and np.isscalar(high_y):
         low_y_scalar = cast("Any", low_y)
@@ -514,14 +513,14 @@ def move_tone_curve(
                 float(low_y_scalar),
                 float(high_y_scalar),
             )
-            return from_float(result, target_dtype=input_dtype)
+            return convert_dtype(result, dtype=input_dtype)
         lut = clip(np.rint(evaluate_bez(float(low_y_scalar), float(high_y_scalar))), np.dtype(np.uint8)).reshape(-1)
         return apply_uint8_lut(cast("ImageUInt8", img), lut)
 
     if isinstance(low_y, np.ndarray) and isinstance(high_y, np.ndarray):
         if img.dtype == np.float32:
             result = _move_tone_curve_float32(cast("ImageFloat32", img), low_y, high_y)
-            return from_float(result, target_dtype=input_dtype)
+            return convert_dtype(result, dtype=input_dtype)
         lut = clip(np.rint(evaluate_bez(low_y, high_y)), np.dtype(np.uint8))
         return apply_uint8_lut(cast("ImageUInt8", img), lut[:, np.newaxis, :])
 
@@ -555,7 +554,7 @@ def linear_transformation_rgb(
     is_half = input_dtype.type is np.float16
     if is_half:
         img = (
-            from_float(cast("NDArray[np.float16]", img), np.float32)
+            convert_dtype(cast("NDArray[np.float16]", img), np.float32)
             if img.flags.c_contiguous
             else img.astype(np.float32, order="C")
         )
@@ -808,7 +807,7 @@ def exposure_match_batch(images: ImageType, gains: np.ndarray) -> ImageType:
     gain_shape = (*gains.shape, 1, 1, 1)
     result = np.multiply(images, gains.reshape(gain_shape), dtype=np.float32)
     np.clip(result, 0, MAX_VALUES_BY_DTYPE[images.dtype], out=result)
-    return from_float(result, target_dtype=images.dtype)
+    return convert_dtype(result, dtype=images.dtype)
 
 
 def gamma_transform(img: ImageInputT, gamma: float) -> ImageInputT:
@@ -845,15 +844,15 @@ def gamma_transform(img: ImageInputT, gamma: float) -> ImageInputT:
 
 def _iso_noise_working_image(image: np.ndarray) -> tuple[np.ndarray, np.dtype]:
     if image.dtype.type is np.uint8:
-        return to_float(image), image.dtype
+        return convert_dtype(image, np.float32), image.dtype
     if image.dtype.type is np.float16:
-        return from_float(cast("NDArray[np.float16]", image), np.float32), image.dtype
+        return convert_dtype(cast("NDArray[np.float16]", image), np.float32), image.dtype
     return image, image.dtype
 
 
 def _iso_noise_restore(image: np.ndarray, dtype: np.dtype) -> np.ndarray:
     clip(image, out=image)
-    return from_float(image, target_dtype=dtype)
+    return convert_dtype(image, dtype=dtype)
 
 
 def iso_noise(
@@ -1026,7 +1025,7 @@ def to_gray_weighted_average(img: ImageType) -> ImageType:
     """
     input_dtype = img.dtype
     if input_dtype.type is np.float16:
-        img = from_float(cast("NDArray[np.float16]", img), target_dtype=np.float32)
+        img = convert_dtype(cast("NDArray[np.float16]", img), dtype=np.float32)
     if img.ndim == 3:
         gray = np.empty((*img.shape[:-1], 1), dtype=img.dtype)
         result = cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2GRAY, dst=gray))
@@ -1038,7 +1037,7 @@ def to_gray_weighted_average(img: ImageType) -> ImageType:
     else:
         raise ValueError(f"Unsupported number of dimensions: {img.ndim}")
     if input_dtype.type is np.float16:
-        return from_float(cast("NDArray[np.float32]", result), cast("np.dtype[np.float16]", input_dtype))
+        return convert_dtype(cast("NDArray[np.float32]", result), cast("np.dtype[np.float16]", input_dtype))
     return result
 
 
@@ -1147,7 +1146,7 @@ def to_gray_desaturation(img: ImageType) -> ImageType:
         channel_sum = np.empty((*img.shape[:-1], 1), dtype=np.uint16)
         cv2.add(ch_max, ch_min, dst=channel_sum, dtype=cv2.CV_16U)
         return (channel_sum >> 1).astype(np.uint8)
-    float_image = from_float(cast("NDArray[np.float16] | ImageFloat32", img), np.float32)
+    float_image = convert_dtype(cast("NDArray[np.float16] | ImageFloat32", img), np.float32)
     result = (np.max(float_image, axis=-1, keepdims=True) + np.min(float_image, axis=-1, keepdims=True)) * 0.5
     return clip(result, img.dtype)
 
@@ -1264,7 +1263,7 @@ def to_gray_pca(img: ImageType) -> ImageType:
     grayscale = normalize_per_image(grayscale, "min_max")
 
     if dtype == np.uint8:
-        return from_float(grayscale, target_dtype=np.uint8)
+        return convert_dtype(grayscale, dtype=np.uint8)
     return clip(grayscale, dtype)
 
 
@@ -1431,7 +1430,7 @@ def colorize(
         out[..., color_channel : color_channel + 1] = np.interp(
             gray_clipped, anchor_intensity_float, anchor_color_float[:, color_channel]
         )
-    return from_float(out, target_dtype=img.dtype)
+    return convert_dtype(out, dtype=img.dtype)
 
 
 def downscale(

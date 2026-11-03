@@ -7,7 +7,7 @@ from operator import attrgetter, index
 from typing import Any, Literal, cast
 
 import torch
-from albucore import flip_volume, from_float, rot90_volume, transpose_volume
+from albucore import convert_dtype, flip_volume, rot90_volume, transpose_volume
 from numpy.typing import NDArray
 
 from ._functional_shared import (
@@ -1067,12 +1067,12 @@ def erode(img: ImageType, kernel: np.ndarray) -> ImageType:
     """
     if img.dtype.type is np.float16:
         working = (
-            from_float(cast("NDArray[np.float16]", img), np.float32)
+            convert_dtype(cast("NDArray[np.float16]", img), np.float32)
             if img.flags.c_contiguous
             else img.astype(np.float32, order="C")
         )
         cv2.erode(working, kernel, dst=working, iterations=1)
-        return from_float(working, cast("np.dtype[np.float16]", img.dtype))
+        return convert_dtype(working, cast("np.dtype[np.float16]", img.dtype))
     if img.ndim == 3 and img.shape[-1] == 1:
         destination = np.empty_like(img, order="C")
         return cast("ImageType", cv2.erode(img, kernel, dst=destination, iterations=1))
@@ -1095,12 +1095,12 @@ def dilate(img: ImageType, kernel: np.ndarray) -> ImageType:
     """
     if img.dtype.type is np.float16:
         working = (
-            from_float(cast("NDArray[np.float16]", img), np.float32)
+            convert_dtype(cast("NDArray[np.float16]", img), np.float32)
             if img.flags.c_contiguous
             else img.astype(np.float32, order="C")
         )
         cv2.dilate(working, kernel, dst=working, iterations=1)
-        return from_float(working, cast("np.dtype[np.float16]", img.dtype))
+        return convert_dtype(working, cast("np.dtype[np.float16]", img.dtype))
     if img.ndim == 3 and img.shape[-1] == 1:
         destination = np.empty_like(img, order="C")
         return cast("ImageType", cv2.dilate(img, kernel, dst=destination, iterations=1))

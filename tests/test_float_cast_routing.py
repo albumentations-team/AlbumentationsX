@@ -46,8 +46,8 @@ def test_float32_workspace_uses_shared_cast_without_changing_ownership(
     elif layout == "readonly":
         image.setflags(write=False)
     original = image.tobytes()
-    shared_cast = Mock(wraps=module.from_float)
-    monkeypatch.setattr(module, "from_float", shared_cast)
+    shared_cast = Mock(wraps=module.convert_dtype)
+    monkeypatch.setattr(module, "convert_dtype", shared_cast)
 
     working, source_dtype = prepare(image)
 
@@ -179,7 +179,7 @@ def test_soft_blend_releases_cast_workspaces_before_output_conversion(monkeypatc
     donor = np.full_like(base, 0.75)
     alpha = np.full(base.shape[:2], 0.25, dtype=np.float32)
     workspaces: list[weakref.ReferenceType[np.ndarray]] = []
-    original_cast = fmixing.from_float
+    original_cast = fmixing.convert_dtype
 
     def tracked_cast(image: np.ndarray, target_dtype: np.dtype | type[np.generic]) -> np.ndarray:
         if np.dtype(target_dtype) == np.float16:
@@ -191,7 +191,7 @@ def test_soft_blend_releases_cast_workspaces_before_output_conversion(monkeypatc
             workspaces.append(weakref.ref(result))
         return result
 
-    monkeypatch.setattr(fmixing, "from_float", tracked_cast)
+    monkeypatch.setattr(fmixing, "convert_dtype", tracked_cast)
 
     result = fmixing.blend_images_using_alpha(base, donor, alpha)
 

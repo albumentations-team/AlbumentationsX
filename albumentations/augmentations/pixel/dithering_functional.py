@@ -4,7 +4,7 @@ import functools
 from typing import Any, cast
 
 import numpy as np
-from albucore import apply_uint8_lut, from_float, to_float
+from albucore import apply_uint8_lut, convert_dtype
 from numpy.typing import NDArray
 
 from albumentations.augmentations.pixel._functional_shared import (
@@ -518,17 +518,17 @@ def ordered_dither(
 def _float32_working_image(img: ImageType) -> tuple[ImageFloat32, np.dtype]:
     input_dtype = img.dtype
     if input_dtype.type is np.uint8:
-        return to_float(cast("ImageUInt8", img)), input_dtype
+        return convert_dtype(cast("ImageUInt8", img), np.float32), input_dtype
     if input_dtype.type is np.float16:
-        return from_float(cast("NDArray[np.float16]", img), np.float32), input_dtype
+        return convert_dtype(cast("NDArray[np.float16]", img), np.float32), input_dtype
     return cast("ImageFloat32", img), input_dtype
 
 
 def _restore_dither_dtype(img: ImageFloat32, input_dtype: np.dtype) -> ImageType:
     if input_dtype.type is np.uint8:
-        return from_float(img, np.uint8)
+        return convert_dtype(img, np.uint8)
     if input_dtype.type is np.float16:
-        return from_float(img, np.float16)
+        return convert_dtype(img, np.float16)
     return img
 
 
@@ -715,10 +715,10 @@ def apply_dithering(
 
     """
     input_dtype = img.dtype
-    working_img = from_float(cast("NDArray[np.float16]", img), np.float32) if input_dtype == np.float16 else img
+    working_img = convert_dtype(cast("NDArray[np.float16]", img), np.float32) if input_dtype == np.float16 else img
     if color_mode == "grayscale":
         result = _apply_dithering_to_grayscale(working_img, method, n_colors, **kwargs)
     else:
         result = _apply_single_dithering_method(working_img, method, n_colors, **kwargs)
 
-    return from_float(cast("ImageFloat32", result), np.float16) if input_dtype == np.float16 else result
+    return convert_dtype(cast("ImageFloat32", result), np.float16) if input_dtype == np.float16 else result

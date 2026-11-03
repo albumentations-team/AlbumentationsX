@@ -17,6 +17,10 @@ change beyond the version uses the corresponding dependency, artifact, and insta
 
 ## Workflow
 
+For augmentation parameter changes, test constructor rejection and finite boundary outputs through direct calls and
+`Compose`, as required by
+[initialization-only validation](../../../docs/contributing/coding_guidelines.md#initialization-only-validation).
+
 1. **Name the decision and failure mode**: identify the changed contract and the smallest test, check, or artifact that can
    reject it.
 2. **Run that focused validation**: use the matching test or quality-gate subcommand.

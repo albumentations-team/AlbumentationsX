@@ -1133,7 +1133,8 @@ class WaterRefraction(BaseDistortion):
         amplitude_range (tuple[float, float]): Range for maximum displacement as a
             fraction of image size. Default: (0.01, 0.05).
         wavelength_range (tuple[float, float]): Range for wave period as a fraction
-            of image size. Default: (0.05, 0.2).
+            of the smaller displacement-map dimension. Both values must be in [0.001, 1.0].
+            Default: (0.05, 0.2).
         num_waves_range (tuple[int, int]): Range for number of overlaid sine waves.
             More waves = more complex distortion. Default: (3, 7).
         interpolation (int): OpenCV interpolation flag. Default: cv2.INTER_LINEAR.
@@ -1179,7 +1180,7 @@ class WaterRefraction(BaseDistortion):
         ]
         wavelength_range: Annotated[
             tuple[float, float],
-            AfterValidator(check_range_bounds(0, None, min_inclusive=False)),
+            AfterValidator(check_range_bounds(0.001, 1.0)),
             AfterValidator(nondecreasing),
         ]
         num_waves_range: Annotated[

@@ -97,6 +97,7 @@ def test_seeded_mri_pipeline_and_replay_match_numpy_cast_reference(artifact, dty
     volume.setflags(write=False)
     original = volume.tobytes()
     mask = (volume[..., 0] > 0.5).astype(np.uint8)
+    keypoints = np.array([[0, 0, 0], [31, 0, 0], [0, 31, 0], [0, 0, 15]], dtype=np.float32)
     pipeline = A.ReplayCompose(
         [
             A.Affine(scale=(0.95, 1.05), p=1),
@@ -107,9 +108,10 @@ def test_seeded_mri_pipeline_and_replay_match_numpy_cast_reference(artifact, dty
         ],
         seed=137,
         strict=True,
+        keypoint_params=A.KeypointParams(coord_format="xyz", remove_invisible=False),
     )
 
-    actual = pipeline(volume=volume, mask3d=mask)
+    actual = pipeline(volume=volume, mask3d=mask, keypoints=keypoints)
 
     def numpy_cast(image, target, *, out=None):
         if out is not None:
@@ -119,11 +121,12 @@ def test_seeded_mri_pipeline_and_replay_match_numpy_cast_reference(artifact, dty
 
     monkeypatch.setattr(cast_router, "_cast_float_numpy", numpy_cast)
     monkeypatch.setattr("albucore.convert._cast_float_numpy", numpy_cast)
-    expected = A.ReplayCompose.replay(actual["replay"], volume=volume, mask3d=mask)
+    expected = A.ReplayCompose.replay(actual["replay"], volume=volume, mask3d=mask, keypoints=keypoints)
 
     unsigned = np.uint16 if dtype == np.float16 else np.uint32
     np.testing.assert_array_equal(actual["volume"].view(unsigned), expected["volume"].view(unsigned))
     np.testing.assert_array_equal(actual["mask3d"], expected["mask3d"])
+    np.testing.assert_array_equal(actual["keypoints"], expected["keypoints"])
     assert volume.tobytes() == original
 
 

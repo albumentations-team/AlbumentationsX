@@ -2,6 +2,10 @@
 Halftone, GridMask, LensFlare, WaterRefraction, AtmosphericFog.
 """
 
+import math
+
+import cv2
+import numkong as nk
 import numpy as np
 import pytest
 from albucore import clip
@@ -467,6 +471,92 @@ class TestLensFlare:
 
 
 class TestWaterRefraction:
+    @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+    @pytest.mark.parametrize("wavelength", [1e-12, 1e-20, float.fromhex("0x0.0000000000001p-1022")])
+    @pytest.mark.parametrize("map_resolution", [0.25, 1.0])
+    @pytest.mark.parametrize("use_compose", [False, True])
+    def test_rejects_unsafe_wavelength(self, dtype, wavelength, map_resolution, use_compose):
+        image = _make_image(shape=(16, 17, 3), dtype=dtype)
+        transform = A.WaterRefraction(
+            wavelength_range=(wavelength, wavelength),
+            map_resolution_range=(map_resolution, map_resolution),
+            p=1.0,
+        )
+        if use_compose:
+            transform = A.Compose([transform], strict=True, seed=137)
+        else:
+            transform.set_random_seed(137)
+
+        with np.errstate(over="raise", invalid="raise", divide="raise"):
+            with pytest.raises(ValueError, match=r"wavelength.*at least"):
+                transform(image=image)
+
+    @pytest.mark.parametrize("wavelength", [0.0, math.nan, math.inf])
+    def test_rejects_invalid_functional_wavelength(self, wavelength):
+        with np.errstate(over="raise", invalid="raise", divide="raise"):
+            with pytest.raises(ValueError, match=r"wavelength.*finite.*at least"):
+                fpixel.generate_water_displacement_maps((1, 1), 0.05, wavelength, 1, np.random.default_rng(137))
+
+    @pytest.mark.parametrize("shape", [(1, 1), (16, 17), (2, 257)])
+    def test_rejects_wavelength_below_phase_boundary(self, shape):
+        minimum_wavelength = 2 * math.pi * 1.3 * math.hypot(*shape) / (1e6 - 2 * math.pi)
+        map_x, map_y = fpixel.generate_water_displacement_maps(
+            shape,
+            0.05,
+            minimum_wavelength,
+            1,
+            np.random.default_rng(137),
+        )
+        assert np.isfinite(map_x).all()
+        assert np.isfinite(map_y).all()
+
+        with pytest.raises(ValueError, match=r"wavelength.*at least"):
+            fpixel.generate_water_displacement_maps(
+                shape,
+                0.05,
+                math.nextafter(minimum_wavelength, 0),
+                1,
+                np.random.default_rng(137),
+            )
+
+    @pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+    @pytest.mark.parametrize("shape", [(16, 17, 3), (2, 257, 3), (257, 2, 3)])
+    @pytest.mark.parametrize("map_resolution", [0.25, 1.0])
+    @pytest.mark.parametrize("at_boundary", [False, True])
+    def test_supported_wavelength_matches_sine_reference(self, dtype, shape, map_resolution, at_boundary, monkeypatch):
+        image = _make_image(shape=shape, dtype=dtype)
+        map_height, map_width = (max(2, int(size * map_resolution)) for size in shape[:2])
+        minimum_wavelength = 2 * math.pi * 1.3 * math.hypot(map_height, map_width) / (1e6 - 2 * math.pi)
+        wavelength = math.nextafter(minimum_wavelength / min(map_height, map_width), math.inf) if at_boundary else 0.1
+
+        def run():
+            return A.Compose(
+                [
+                    A.WaterRefraction(
+                        amplitude_range=(0.05, 0.05),
+                        wavelength_range=(wavelength, wavelength),
+                        num_waves_range=(1, 1),
+                        map_resolution_range=(map_resolution, map_resolution),
+                        border_mode=cv2.BORDER_CONSTANT,
+                        p=1.0,
+                    ),
+                ],
+                strict=True,
+                seed=137,
+            )(image=image)["image"]
+
+        def reference_sine(values):
+            assert np.isfinite(values).all()
+            assert np.max(np.abs(values)) <= 1e6
+            return np.fromiter(map(math.sin, values), dtype=values.dtype)
+
+        actual = run()
+        monkeypatch.setattr(nk, "sin", reference_sine)
+        expected = run()
+
+        assert np.isfinite(actual).all()
+        np.testing.assert_allclose(actual, expected, rtol=0, atol=1 if dtype == np.uint8 else 2e-6)
+
     def test_deforms_image(self):
         img = _make_image(seed=50)
         aug = A.WaterRefraction(amplitude_range=(0.03, 0.05), p=1.0)

@@ -1133,7 +1133,8 @@ class WaterRefraction(BaseDistortion):
         amplitude_range (tuple[float, float]): Range for maximum displacement as a
             fraction of image size. Default: (0.01, 0.05).
         wavelength_range (tuple[float, float]): Range for wave period as a fraction
-            of image size. Default: (0.05, 0.2).
+            of the smaller displacement-map dimension. Extremely small wavelengths
+            raise ValueError when the transform is applied; see Note. Default: (0.05, 0.2).
         num_waves_range (tuple[int, int]): Range for number of overlaid sine waves.
             More waves = more complex distortion. Default: (3, 7).
         interpolation (int): OpenCV interpolation flag. Default: cv2.INTER_LINEAR.
@@ -1161,6 +1162,9 @@ class WaterRefraction(BaseDistortion):
     Note:
         This is a geometric (DualTransform) because the displacement warps the
         image geometry - masks, bboxes, and keypoints are transformed accordingly.
+        To keep wave phases below 1e6 radians, the sampled wavelength in map pixels
+        must be at least `2 * pi * 1.3 * hypot(map_height, map_width) / (1e6 - 2 * pi)`.
+        The limit uses the displacement-map dimensions after sampling `map_resolution_range`.
 
     Examples:
         >>> import numpy as np

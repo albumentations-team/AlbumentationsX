@@ -3,8 +3,57 @@ from typing import Any, cast
 
 import numpy as np
 import pytest
+import torch
 
 import albumentations as A
+
+
+@pytest.mark.parametrize("normalization", ["image", "image_per_channel"])
+@pytest.mark.parametrize("use_compose", [False, True], ids=["direct", "compose"])
+@pytest.mark.parametrize("use_tensor", [False, True], ids=["numpy", "tensor"])
+@pytest.mark.parametrize(
+    ("target_name", "shape", "channel_axis"),
+    [
+        ("image", (600, 500, 4), 0),
+        ("images", (2, 600, 500, 4), 1),
+        ("volume", (2, 600, 500, 4), 0),
+        ("volumes", (2, 2, 600, 500, 4), 1),
+    ],
+)
+def test_normalize_large_uint8_moments_do_not_overflow(
+    target_name: str,
+    shape: tuple[int, ...],
+    channel_axis: int,
+    use_tensor: bool,
+    use_compose: bool,
+    normalization: str,
+) -> None:
+    # High uint8 values expose the SIMD square-accumulator overflow reported in #601.
+    data = np.random.default_rng(137).integers(240, 256, shape, dtype=np.uint8)
+    original = data.copy()
+    values = data.astype(np.float64)
+    first_axis = 1 if target_name == "volumes" else 0
+    last_axis = values.ndim - 1 if normalization == "image_per_channel" else values.ndim
+    axes = tuple(range(first_axis, last_axis))
+    expected = (values - values.mean(axis=axes, keepdims=True)) / (values.std(axis=axes, keepdims=True) + 1e-4)
+    transform = A.Normalize(normalization=normalization, p=1.0)
+    if use_compose:
+        transform = A.Compose([transform], strict=True)
+    if use_tensor:
+        data = torch.from_numpy(data).movedim(-1, channel_axis)
+
+    result = transform(**{target_name: data})[target_name]
+
+    if use_tensor:
+        assert isinstance(result, torch.Tensor)
+        assert result.dtype == torch.float32
+        np.testing.assert_array_equal(data.movedim(channel_axis, -1).numpy(), original)
+        result = result.movedim(channel_axis, -1).numpy()
+    else:
+        assert isinstance(result, np.ndarray)
+        np.testing.assert_array_equal(data, original)
+    assert result.dtype == np.float32
+    np.testing.assert_allclose(result, expected, rtol=2e-5, atol=2e-5)
 
 
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32])

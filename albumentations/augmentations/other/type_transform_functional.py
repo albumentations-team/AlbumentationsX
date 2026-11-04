@@ -14,8 +14,10 @@ if TYPE_CHECKING:
 
 def to_float(img: ImageType, max_value: float | None) -> NDArray[np.float16] | NDArray[np.float32]:
     """Normalize byte inputs to float32 while preserving floating inputs and omitted channels."""
-    if img.dtype.type is not np.uint8:
+    if img.dtype.kind == "f":
         return cast("NDArray[np.float16] | NDArray[np.float32]", img)
+    if img.dtype.type is not np.uint8:
+        raise TypeError(f"ToFloat does not support dtype {img.dtype}; expected uint8 or a floating dtype.")
     is_channel_less = img.ndim == 2
     working = img[..., None] if is_channel_less else img
     result = convert_dtype(working, np.float32, max_value=max_value)

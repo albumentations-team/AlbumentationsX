@@ -3,7 +3,7 @@ import pytest
 from albucore.utils import get_max_value
 
 from albumentations import Compose
-from albumentations.augmentations import FromFloat, ToFloat, ToGray, ToRGB
+from albumentations.augmentations import FromFloat, Normalize, ToFloat, ToGray, ToRGB
 
 
 @pytest.mark.parametrize("dtype", ["uint8", "float16", "float32"])
@@ -47,6 +47,20 @@ def test_to_float_preserves_half_bits_through_compose(target):
     assert result.dtype == np.float16
     np.testing.assert_array_equal(result.view(np.uint16), original)
     np.testing.assert_array_equal(image.view(np.uint16), original)
+
+
+@pytest.mark.parametrize("dtype", [np.uint16, np.int16])
+@pytest.mark.parametrize("max_value", [None, 65535.0])
+@pytest.mark.parametrize("target", ["image", "images", "volume", "volumes"])
+def test_to_float_rejects_unsupported_integers_before_normalize(
+    dtype: type[np.generic], max_value: float | None, target: str
+) -> None:
+    shape = {"image": (3, 7, 1), "images": (2, 3, 7, 1), "volume": (2, 3, 7, 1), "volumes": (2, 2, 3, 7, 1)}[target]
+    image = np.full(shape, 137, dtype=dtype)
+    pipeline = Compose([ToFloat(max_value=max_value), Normalize()], strict=True)
+
+    with pytest.raises(TypeError, match="ToFloat does not support dtype"):
+        pipeline(**{target: image})
 
 
 @pytest.mark.parametrize("dtype", ["uint8"])

@@ -4,12 +4,12 @@ from typing import Any, Literal, Self
 
 import numpy as np
 import pytest
+from numpy.typing import NDArray
 from pydantic import model_validator
 
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.transforms_interface import BaseTransformInitSchema, ImageOnlyTransform
-from albumentations.core.type_definitions import ImageType
 from tests.helpers.applied_config import (
     AppliedConfigContractError,
     ContractLevel,
@@ -50,7 +50,9 @@ class CrossFieldConflict(ImageOnlyTransform):
         sampling.applied_overrides["choice"] = "a"
         return SampledParams(params={})
 
-    def apply(self, img: ImageType, **params: Any) -> ImageType:
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return img
 
 
@@ -65,7 +67,9 @@ class UnknownEmittedKey(ImageOnlyTransform):
         sampling.applied_overrides["unknown_key"] = 137
         return SampledParams(params={})
 
-    def apply(self, img: ImageType, **params: Any) -> ImageType:
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return img
 
 
@@ -87,7 +91,9 @@ class NonJsonValue(ImageOnlyTransform):
         sampling.applied_overrides["payload"] = {1, 2}
         return SampledParams(params={})
 
-    def apply(self, img: ImageType, **params: Any) -> ImageType:
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return img
 
 
@@ -110,7 +116,9 @@ class MutatesPreviousRecord(ImageOnlyTransform):
         sampling.applied_overrides["history"] = self.history
         return SampledParams(params={})
 
-    def apply(self, img: ImageType, **params: Any) -> ImageType:
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return img
 
 
@@ -132,7 +140,9 @@ class ReconstructsButCannotRun(ImageOnlyTransform):
         sampling.applied_overrides["mode"] = "replay"
         return SampledParams(params={})
 
-    def apply(self, img: ImageType, **params: Any) -> ImageType:
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if self.mode == "replay":
             raise RuntimeError("replay mode deliberately cannot execute")
         return img
@@ -156,12 +166,16 @@ class ReconstructsWithDifferentOutput(ImageOnlyTransform):
         sampling.applied_overrides["mode"] = "replay"
         return SampledParams(params={})
 
-    def apply(self, img: ImageType, **params: Any) -> ImageType:
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return np.zeros_like(img) if self.mode == "replay" else img
 
 
 class MutatesInput(ImageOnlyTransform):
-    def apply(self, img: ImageType, **params: Any) -> ImageType:
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         img[...] = 0
         return img
 

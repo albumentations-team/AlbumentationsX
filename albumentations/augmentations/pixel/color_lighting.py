@@ -2,6 +2,8 @@
 
 from typing import Annotated, Any, Literal
 
+from numpy.typing import NDArray
+
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import (
     SampledParams,
@@ -15,7 +17,6 @@ from ._color_shared import (
     BaseTransformInitSchema,
     Field,
     ImageOnlyTransform,
-    ImageType,
     Self,
     albucore,
     check_range_bounds,
@@ -234,12 +235,12 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         brightness_factor: float,
         contrast_factor: float,
         plasma_pattern: np.ndarray,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.apply_plasma_brightness_contrast(
             img,
             brightness_factor,
@@ -249,12 +250,12 @@ class PlasmaBrightnessContrast(ImageOnlyTransform):
 
     def apply_to_images(
         self,
-        images: ImageType,
+        images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         brightness_factor: float,
         contrast_factor: float,
         plasma_pattern: np.ndarray,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.apply_plasma_brightness_contrast_batch(
             images,
             brightness_factor,
@@ -415,11 +416,11 @@ class PlasmaShadow(ImageOnlyTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         intensity: float,
         plasma_pattern: np.ndarray,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.apply_plasma_shadow(img, intensity, plasma_pattern)
 
 
@@ -753,7 +754,7 @@ class Illumination(ImageOnlyTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         intensity: float | None,
         angle: float | None,
         corner: Literal[0, 1, 2, 3] | None,
@@ -761,7 +762,7 @@ class Illumination(ImageOnlyTransform):
         sigma: float | None,
         spots: tuple[GaussianIlluminationSpot, ...] | None,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if self.mode == "linear" and intensity is not None and angle is not None:
             return fpixel.apply_linear_illumination(img, intensity=intensity, angle=angle)
         if self.mode == "corner" and intensity is not None and corner is not None:
@@ -772,7 +773,9 @@ class Illumination(ImageOnlyTransform):
             return fpixel.apply_gaussian_illumination(img, intensity=intensity, center=center, sigma=sigma)
         raise RuntimeError(f"Illumination sampled parameters are incompatible with mode {self.mode!r}")
 
-    def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
+    def apply_to_images(
+        self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], *args: Any, **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.apply_illumination_batch(images, self.mode, **params)
 
 
@@ -841,15 +844,17 @@ class Vignetting(ImageOnlyTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         intensity: float,
         center_x: float,
         center_y: float,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.apply_vignette(img, intensity, center_x, center_y)
 
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+    def apply_to_images(
+        self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
     def sample_parameters(

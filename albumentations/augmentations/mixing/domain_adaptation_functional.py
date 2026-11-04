@@ -20,7 +20,6 @@ from albumentations.augmentations.pixel._functional_shared import (
     to_uint8_working_image,
 )
 from albumentations.augmentations.utils import PCA
-from albumentations.core.type_definitions import ImageType
 
 __all__ = [
     "adapt_pixel_distribution",
@@ -289,7 +288,7 @@ class DomainAdapter:
     def __init__(
         self,
         transformer: TransformerInterface,
-        ref_img: ImageType,
+        ref_img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         color_conversions: tuple[None, None] = (None, None),
     ):
         self.color_in, self.color_out = color_conversions
@@ -298,47 +297,57 @@ class DomainAdapter:
         self.num_channels = get_num_channels(ref_img)
         self.target_transformer.fit(self.flatten(ref_img))
 
-    def to_colorspace(self, img: ImageType) -> ImageType:
+    def to_colorspace(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         """Convert the image to the target color space (e.g. for PCA). Uses cv2.cvtColor if
         color_in set; otherwise returns img unchanged.
 
         Args:
-            img (ImageType): The input image to convert.
+            img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): The input image to convert.
 
         Returns:
-            ImageType: The image in the target color space, or the original image if no conversion is specified.
+            NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: The image in the target color space, or the
+                original image if no conversion is specified.
 
         """
-        return img if self.color_in is None else cast("ImageType", cv2.cvtColor(img, self.color_in))
+        return (
+            img
+            if self.color_in is None
+            else cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", cv2.cvtColor(img, self.color_in))
+        )
 
-    def from_colorspace(self, img: ImageType) -> ImageType:
+    def from_colorspace(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         """Convert image back from target color space to original (e.g. after PCA). Uses
         cv2.cvtColor when color_out is set; otherwise returns img unchanged.
 
         Args:
-            img (ImageType): The image to convert back.
+            img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): The image to convert back.
 
         Returns:
-            ImageType: The image converted back to the original color space, or the original image
+            NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: The image converted back to the original
+                color space, or the original image
                 if no conversion is specified.
 
         """
         if self.color_out is None:
             return img
         return cast(
-            "ImageType",
+            "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]",
             cv2.cvtColor(
                 clip(img, np.uint8, out=cast("NDArray[np.uint8]", img) if img.dtype == np.uint8 else None),
                 self.color_out,
             ),
         )
 
-    def flatten(self, img: ImageType) -> np.ndarray:
+    def flatten(self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]) -> np.ndarray:
         """Flatten image to (n_pixels, n_channels): target colorspace, to float, reshape. For
         pixel-domain adaptation (PCA, standard, minmax).
 
         Args:
-            img (ImageType): The input image to flatten.
+            img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): The input image to flatten.
 
         Returns:
             np.ndarray: The flattened image with shape (n_pixels, n_channels).
@@ -370,7 +379,9 @@ class DomainAdapter:
     def _pca_sign(x: Any) -> np.ndarray:
         return np.sign(np.trace(cast("np.ndarray", x.components_)))
 
-    def __call__(self, image: ImageType) -> ImageType:
+    def __call__(
+        self, image: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         height, width = image.shape[:2]
         pixels = self.flatten(image)
         self.source_transformer.fit(pixels)
@@ -390,11 +401,11 @@ class DomainAdapter:
 
 
 def adapt_pixel_distribution(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     ref: np.ndarray,
     transform_type: Literal["pca", "standard", "minmax"],
     weight: float,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Adapt input pixel distribution to match a reference using PCA, standard, or minmax.
     weight controls blend with original; same shape and dtype as input.
 
@@ -402,13 +413,13 @@ def adapt_pixel_distribution(
     using a specified transformation type and weight.
 
     Args:
-        img (ImageType): The input image to be adapted.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): The input image to be adapted.
         ref (np.ndarray): The reference image.
         transform_type (Literal['pca', 'standard', 'minmax']): The type of transformation to use.
         weight (float): The weight of the transformation.
 
     Returns:
-        ImageType: The adapted image.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: The adapted image.
 
     Raises:
         ValueError: If the input image and reference image have different dtypes or numbers of channels.
@@ -431,18 +442,18 @@ def adapt_pixel_distribution(
     original_dtype = img.dtype
     half_reference_aligned = original_dtype == np.float16 and img.shape == ref.shape
     if half_reference_aligned:
-        img = convert_dtype(cast("NDArray[np.float16]", img), np.dtype(np.uint8))
-        ref = convert_dtype(cast("NDArray[np.float16]", ref), np.dtype(np.uint8))
+        img = convert_dtype(img, np.dtype(np.uint8))
+        ref = convert_dtype(ref, np.dtype(np.uint8))
     elif original_dtype == np.float16:
-        img = convert_dtype(cast("NDArray[np.float16]", img), np.float32)
-        ref = convert_dtype(cast("NDArray[np.float16]", ref), np.float32)
+        img = convert_dtype(img, np.float32)
+        ref = convert_dtype(ref, np.float32)
 
     if img.shape != ref.shape:
         ref = fgeometric.resize(ref, cast("tuple[int, int]", img.shape[:2]), cv2.INTER_AREA)
 
     if original_dtype == np.float32 or (original_dtype == np.float16 and not half_reference_aligned):
-        img = convert_dtype(cast("NDArray[np.float16] | NDArray[np.float32]", img), np.dtype(np.uint8))
-        ref = convert_dtype(cast("NDArray[np.float16] | NDArray[np.float32]", ref), np.dtype(np.uint8))
+        img = convert_dtype(img, np.dtype(np.uint8))
+        ref = convert_dtype(ref, np.dtype(np.uint8))
 
     transformer = {"pca": PCA, "standard": StandardScaler, "minmax": MinMaxScaler}[transform_type]()
     adapter = DomainAdapter(transformer=transformer, ref_img=ref)
@@ -455,7 +466,9 @@ def adapt_pixel_distribution(
         image_float32 = convert_dtype(image_uint8, np.float32)
         transformed_float32 = convert_dtype(transformed, np.float32)
     result = add_weighted(image_float32, 1 - weight, transformed_float32, weight)
-    output: ImageType = clip(result, out=result) if original_dtype == np.float32 else clip(result, original_dtype)
+    output: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32] = (
+        clip(result, out=result) if original_dtype == np.float32 else clip(result, original_dtype)
+    )
     return output[..., 0] if is_channel_less else output
 
 
@@ -474,7 +487,11 @@ def low_freq_mutate(amp_src: np.ndarray, amp_trg: np.ndarray, beta: float) -> np
     return amp_src
 
 
-def fourier_domain_adaptation(img: ImageType, target_img: ImageType, beta: float) -> ImageType:
+def fourier_domain_adaptation(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+    target_img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+    beta: float,
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Fourier Domain Adaptation: swap low-frequency amplitude with target, keep phase. beta
     controls strength. Same shape as input.
 
@@ -484,14 +501,17 @@ def fourier_domain_adaptation(img: ImageType, target_img: ImageType, beta: float
     its style to match the target image.
 
     Args:
-        img (ImageType): The source image to be adapted. Can be grayscale or RGB.
-        target_img (ImageType): The target image used as a reference for adaptation.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): The source image to be adapted. Can be
+            grayscale or RGB.
+        target_img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): The target image used as a reference
+            for adaptation.
             Should have the same dimensions as the source image.
         beta (float): The adaptation strength, typically in the range [0, 1].
             Higher values result in stronger adaptation towards the target image's style.
 
     Returns:
-        ImageType: The adapted image with the same shape and type as the input image.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: The adapted image with the same shape and type as
+            the input image.
 
     Raises:
         ValueError: If the source and target images have different shapes.
@@ -532,15 +552,9 @@ def fourier_domain_adaptation(img: ImageType, target_img: ImageType, beta: float
         img = img[..., None]
     if target_img.ndim == 2:
         target_img = target_img[..., None]
-    src_img = (
-        convert_dtype(cast("NDArray[np.float16]", img), np.float32)
-        if img.dtype.type is np.float16
-        else img.astype(np.float32)
-    )
+    src_img = convert_dtype(img, np.float32) if img.dtype.type is np.float16 else img.astype(np.float32)
     trg_img = (
-        convert_dtype(cast("NDArray[np.float16]", target_img), np.float32)
-        if target_img.dtype.type is np.float16
-        else target_img.astype(np.float32)
+        convert_dtype(target_img, np.float32) if target_img.dtype.type is np.float16 else target_img.astype(np.float32)
     )
 
     num_channels = src_img.shape[-1]
@@ -576,7 +590,11 @@ def fourier_domain_adaptation(img: ImageType, target_img: ImageType, beta: float
     return result[..., 0] if is_channel_less else result
 
 
-def apply_histogram(img: ImageType, reference_image: ImageType, blend_ratio: float) -> ImageType:
+def apply_histogram(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+    reference_image: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+    blend_ratio: float,
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Match input histogram to a reference, then blend with original. blend_ratio in [0,1]
     controls strength. Same shape and dtype as input.
 
@@ -584,16 +602,19 @@ def apply_histogram(img: ImageType, reference_image: ImageType, blend_ratio: flo
     then blends the result with the original input image based on the specified blend ratio.
 
     Args:
-        img (ImageType): The input image to be transformed. Can be either grayscale or RGB.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): The input image to be transformed. Can be
+            either grayscale or RGB.
             Supported dtypes: uint8, float16, float32 (floating values are in [0, 1]).
-        reference_image (ImageType): The reference image used for histogram matching.
+        reference_image (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): The reference image used for
+            histogram matching.
             Should have the same number of channels as the input image.
             Supported dtypes: uint8, float16, float32 (floating values are in [0, 1]).
         blend_ratio (float): The ratio for blending the matched image with the original image.
             Should be in the range [0, 1], where 0 means no change and 1 means full histogram matching.
 
     Returns:
-        ImageType: The transformed image after histogram matching and blending.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: The transformed image after histogram matching
+            and blending.
             The output will have the same shape and dtype as the input image.
 
     Supported image types:
@@ -610,17 +631,17 @@ def apply_histogram(img: ImageType, reference_image: ImageType, blend_ratio: flo
     """
     original_dtype = img.dtype
     if original_dtype == np.float16 and reference_image.dtype == np.float16:
-        image_float32 = convert_dtype(cast("NDArray[np.float16]", img), np.float32)
+        image_float32 = convert_dtype(img, np.float32)
         if img.shape == reference_image.shape:
-            image_uint8 = convert_dtype(cast("NDArray[np.float16]", img), np.dtype(np.uint8))
-            reference_uint8 = convert_dtype(cast("NDArray[np.float16]", reference_image), np.dtype(np.uint8))
+            image_uint8 = convert_dtype(img, np.dtype(np.uint8))
+            reference_uint8 = convert_dtype(reference_image, np.dtype(np.uint8))
             matched_uint8 = match_histograms(image_uint8, reference_uint8)
             del image_uint8, reference_uint8
             matched_float32 = convert_dtype(matched_uint8, np.float32)
             half_result = add_weighted(matched_float32, blend_ratio, image_float32, 1 - blend_ratio)
             return clip(half_result, original_dtype)
         img = image_float32
-        reference_image = convert_dtype(cast("NDArray[np.float16]", reference_image), np.float32)
+        reference_image = convert_dtype(reference_image, np.float32)
 
     if img.shape[:2] != reference_image.shape[:2]:
         reference_image = fgeometric.resize(reference_image, cast("tuple[int, int]", img.shape[:2]), cv2.INTER_LINEAR)
@@ -635,20 +656,25 @@ def apply_histogram(img: ImageType, reference_image: ImageType, blend_ratio: flo
     return result if result.dtype == np.uint8 else clip(result, original_dtype)
 
 
-def match_histograms(image: ImageType, reference: ImageType) -> ImageType:
+def match_histograms(
+    image: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+    reference: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Adjust image so its CDF matches the reference, per channel. Uses uint8 CDFs and restores
     the input dtype; the reference is quantized separately. Reference may be resized.
 
     The adjustment is applied separately for each channel.
 
     Args:
-        image (ImageType): Input image. Can be gray-scale or in color.
-        reference (ImageType): Image to match histogram of. Must have the same number of channels as image.
+        image (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image. Can be gray-scale or in
+            color.
+        reference (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Image to match histogram of. Must
+            have the same number of channels as image.
         channel_axis (int | None): If None, the image is assumed to be a grayscale (single channel) image.
             Otherwise, this indicates which axis of the array corresponds to channels.
 
     Returns:
-        ImageType: Transformed input image.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Transformed input image.
 
     Raises:
         ValueError: Thrown when the number of channels in the input image and the reference differ.
@@ -656,7 +682,7 @@ def match_histograms(image: ImageType, reference: ImageType) -> ImageType:
     """
     image, input_dtype = to_uint8_working_image(image)
     if reference.dtype.type is not np.uint8:
-        reference = convert_dtype(cast("NDArray[np.float16] | NDArray[np.float32]", reference), np.uint8)
+        reference = convert_dtype(reference, np.uint8)
 
     matched = np.empty(image.shape, dtype=np.uint8)
 

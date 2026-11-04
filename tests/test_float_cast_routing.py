@@ -1,8 +1,6 @@
 import gc
 import weakref
 from collections.abc import Callable
-from types import ModuleType
-from unittest.mock import Mock
 
 import albucore._float_cast as cast_router
 import cv2
@@ -12,55 +10,30 @@ import pytest
 import albumentations as A
 from albumentations.augmentations.blur import functional as fblur
 from albumentations.augmentations.geometric import functional as fgeometric
-from albumentations.augmentations.medical import functional as fmedical
 from albumentations.augmentations.mixing import functional as fmixing
-from albumentations.augmentations.pixel import _functional_color as fcolor
 from albumentations.augmentations.pixel import _functional_illumination as fillumination
-from albumentations.augmentations.pixel import _functional_weather as fweather
-from albumentations.augmentations.pixel import dithering_functional as fdithering
 
 
-@pytest.mark.parametrize(
-    ("module", "prepare"),
-    [
-        (fmedical, fmedical._float32_working_image),
-        (fdithering, fdithering._float32_working_image),
-        (fcolor, fcolor._iso_noise_working_image),
-        (fweather, fweather._spatter_working_image),
-    ],
-    ids=["medical", "dithering", "iso-noise", "spatter"],
-)
-@pytest.mark.parametrize("dtype", [np.float16, np.float32])
-@pytest.mark.parametrize("layout", ["contiguous", "transpose", "readonly"])
-def test_float32_workspace_uses_shared_cast_without_changing_ownership(
-    module: ModuleType,
-    prepare: Callable[[np.ndarray], tuple[np.ndarray, np.dtype]],
-    dtype: type[np.generic],
-    layout: str,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    image = np.linspace(-2, 2, 128 * 160 * 3, dtype=dtype).reshape(128, 160, 3)
-    image[0, 0] = [-0.0, np.inf, -np.inf]
-    if layout == "transpose":
-        image = image.swapaxes(0, 1)
-    elif layout == "readonly":
-        image.setflags(write=False)
-    original = image.tobytes()
-    shared_cast = Mock(wraps=module.convert_dtype)
-    monkeypatch.setattr(module, "convert_dtype", shared_cast)
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("channels", [1, 3, 5])
+@pytest.mark.parametrize("mode", ["fast", "exact"])
+def test_glass_blur_readonly_fortran_matches_contiguous(dtype: type[np.generic], channels: int, mode: str) -> None:
+    values = np.random.default_rng(137).random((24, 32, channels), dtype=np.float32)
+    image = (values * 255).astype(np.uint8) if dtype == np.uint8 else values.astype(dtype)
+    source = np.asfortranarray(image)
+    source.flags.writeable = False
+    original = source.tobytes()
 
-    working, source_dtype = prepare(image)
+    def pipeline() -> A.Compose:
+        return A.Compose([A.GlassBlur(max_delta=1, iterations=1, mode=mode, p=1)], seed=137)
 
-    assert source_dtype == image.dtype
-    assert working.dtype == np.float32
-    np.testing.assert_array_equal(working.view(np.uint32), image.astype(np.float32).view(np.uint32))
-    assert image.tobytes() == original
-    assert shared_cast.call_count == int(dtype == np.float16)
-    if dtype == np.float16:
-        assert not np.shares_memory(working, image)
-        assert working.flags.writeable
-    else:
-        assert working is image
+    expected = pipeline()(image=image)["image"]
+    result = pipeline()(image=source)["image"]
+
+    np.testing.assert_array_equal(result, expected)
+    assert result.dtype == source.dtype
+    assert result.shape == source.shape
+    assert source.tobytes() == original
 
 
 @pytest.mark.parametrize(
@@ -181,12 +154,14 @@ def test_soft_blend_releases_cast_workspaces_before_output_conversion(monkeypatc
     workspaces: list[weakref.ReferenceType[np.ndarray]] = []
     original_cast = fmixing.convert_dtype
 
-    def tracked_cast(image: np.ndarray, target_dtype: np.dtype | type[np.generic]) -> np.ndarray:
+    def tracked_cast(
+        image: np.ndarray, target_dtype: np.dtype | type[np.generic], *, max_value: float | None = None
+    ) -> np.ndarray:
         if np.dtype(target_dtype) == np.float16:
             gc.collect()
             assert len(workspaces) == 2
             assert all(reference() is None for reference in workspaces)
-        result = original_cast(image, target_dtype)
+        result = original_cast(image, target_dtype, max_value=max_value)
         if np.dtype(target_dtype) == np.float32:
             workspaces.append(weakref.ref(result))
         return result

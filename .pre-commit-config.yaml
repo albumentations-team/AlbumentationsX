@@ -157,7 +157,7 @@ repos:
         pass_filenames: false
         always_run: true
   - repo: https://github.com/ternaus/google-docstring-parser
-    rev: 0.0.11
+    rev: 0.0.12
     hooks:
       - id: check-google-docstrings
         files: ^albumentations/

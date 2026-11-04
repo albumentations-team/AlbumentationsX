@@ -31,6 +31,7 @@ from typing import Annotated, Any, Literal, Self
 
 import numpy as np
 from albucore import remap
+from numpy.typing import NDArray
 from pydantic import (
     AfterValidator,
     Field,
@@ -62,7 +63,6 @@ from albumentations.core.type_definitions import (
     CV2_INTER_LINEAR,
     CV2_INTER_NEAREST,
     BorderModeType,
-    ImageType,
     InterpolationType,
     VolumeType,
 )
@@ -118,11 +118,11 @@ class BaseRemapTransform(DualTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         map_x: np.ndarray,
         map_y: np.ndarray,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         result = remap(
             img,
             map_x,
@@ -138,11 +138,11 @@ class BaseRemapTransform(DualTransform):
 
     def apply_to_mask(
         self,
-        mask: ImageType,
+        mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         map_x: np.ndarray,
         map_y: np.ndarray,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return remap(
             mask,
             map_x,

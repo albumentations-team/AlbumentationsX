@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from numpy.typing import NDArray
+
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet
 
@@ -9,7 +11,6 @@ from ._transforms_shared import (
     LENGTH_RAW_BBOX,
     BaseTransformInitSchema,
     DualTransform,
-    ImageType,
     Targets,
     check_bboxes,
     cv2,
@@ -30,7 +31,8 @@ class OverlayElements(DualTransform):
         p (float): Probability of applying the transformation. Default: 0.5.
 
     Possible Metadata Fields:
-        - image (ImageType): The overlay image to be applied. This is a required field.
+        - image (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): The overlay image to be applied. This
+            is a required field.
         - bbox (list[int]): The bounding box specifying the region where the overlay should be applied. It should
                             contain four floats: [y_min, x_min, y_max, x_max]. If `label_id` is provided, it should
                             be appended as the fifth element in the bbox. BBox should be in Albumentations format,
@@ -243,10 +245,10 @@ class OverlayElements(DualTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         overlay_data: list[dict[str, Any]],
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         for data in overlay_data:
             overlay_image = data["overlay_image"]
             overlay_mask = data["overlay_mask"]
@@ -256,10 +258,10 @@ class OverlayElements(DualTransform):
 
     def apply_to_mask(
         self,
-        mask: ImageType,
+        mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         overlay_data: list[dict[str, Any]],
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         result = mask.copy()
         for data in overlay_data:
             if "mask_id" in data and data["mask_id"] is not None:

@@ -2,19 +2,18 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 import numpy as np
 from albucore import apply_uint8_lut, clip, convert_dtype
 from numpy.typing import NDArray
 
-if TYPE_CHECKING:
-    from albucore import ImageType
-
 _FLOAT_DTYPES = (np.float16, np.float32)
 
 
-def to_float(img: ImageType, max_value: float | None) -> NDArray[np.float16] | NDArray[np.float32]:
+def to_float(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], max_value: float | None
+) -> NDArray[np.float16] | NDArray[np.float32]:
     """Normalize byte inputs to float32 while preserving floating inputs and omitted channels."""
     source_dtype = img.dtype.type
     if source_dtype in _FLOAT_DTYPES:
@@ -27,7 +26,9 @@ def to_float(img: ImageType, max_value: float | None) -> NDArray[np.float16] | N
     return result[..., 0] if is_channel_less else result
 
 
-def from_float(img: ImageType, max_value: float) -> NDArray[np.uint8]:
+def from_float(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], max_value: float
+) -> NDArray[np.uint8]:
     """Quantize float images and retain the byte-input scalar-promotion contract."""
     is_channel_less = img.ndim == 2
     if is_channel_less:

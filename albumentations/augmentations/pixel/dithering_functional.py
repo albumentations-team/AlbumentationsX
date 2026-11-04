@@ -12,7 +12,7 @@ from albumentations.augmentations.pixel._functional_shared import (
     MULTICHANNEL_LUT_MEDIUM_IMAGE_PIXELS,
 )
 from albumentations.augmentations.pixel.functional import to_gray_average, to_gray_weighted_average
-from albumentations.core.type_definitions import ImageFloat32, ImageType, ImageUInt8
+from albumentations.core.type_definitions import ImageFloat32, ImageUInt8
 
 # Error diffusion kernels
 FLOYD_STEINBERG_KERNEL = {
@@ -515,47 +515,32 @@ def ordered_dither(
     return np.clip(quantized, 0, (n_colors - 1) / n_colors).astype(np.float32)
 
 
-def _float32_working_image(img: ImageType) -> tuple[ImageFloat32, np.dtype]:
-    input_dtype = img.dtype
-    if input_dtype.type is np.uint8:
-        return convert_dtype(cast("ImageUInt8", img), np.float32), input_dtype
-    if input_dtype.type is np.float16:
-        return convert_dtype(cast("NDArray[np.float16]", img), np.float32), input_dtype
-    return cast("ImageFloat32", img), input_dtype
-
-
-def _restore_dither_dtype(img: ImageFloat32, input_dtype: np.dtype) -> ImageType:
-    if input_dtype.type is np.uint8:
-        return convert_dtype(img, np.uint8)
-    if input_dtype.type is np.float16:
-        return convert_dtype(img, np.float16)
-    return img
-
-
 def error_diffusion_dither(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     n_colors: int,
     algorithm: str = "floyd_steinberg",
     serpentine: bool = False,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Error diffusion dithering (e.g. Floyd-Steinberg): quantize and diffuse error. algorithm,
     serpentine. Per-channel processing.
 
     Args:
-        img (ImageType): Input image in [0, 1] range with shape (H, W, C).
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image in [0, 1] range with shape (H,
+            W, C).
         n_colors (int): Number of colors per channel.
         algorithm (str): Error diffusion algorithm name.
         serpentine (bool): Use serpentine (back-and-forth) scanning.
 
     Returns:
-        ImageType: Dithered image in [0, 1] range.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Dithered image in [0, 1] range.
 
     """
     if algorithm not in ERROR_DIFFUSION_KERNELS:
         msg = f"Unknown error diffusion algorithm: {algorithm}"
         raise ValueError(msg)
 
-    img, input_dtype = _float32_working_image(img)
+    input_dtype = img.dtype
+    img = convert_dtype(img, np.float32)
 
     kernel = ERROR_DIFFUSION_KERNELS[algorithm]
     offsets: list[tuple[int, int]] = cast("list[tuple[int, int]]", kernel["offsets"])
@@ -601,15 +586,15 @@ def error_diffusion_dither(
         np.clip(channel, 0, 1, out=channel)
         result[:, :, channel_idx] = channel
 
-    return _restore_dither_dtype(result, input_dtype)
+    return convert_dtype(result, input_dtype)
 
 
 def _apply_dithering_to_grayscale(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     method: str,
     n_colors: int,
     **kwargs: Any,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Convert to grayscale, apply dithering, then broadcast to original channel count.
     Grayscale path: one channel dithered then expanded.
     """
@@ -624,15 +609,17 @@ def _apply_dithering_to_grayscale(
 
     dithered = _apply_single_dithering_method(gray, method, n_colors, **kwargs)
 
-    return cast("ImageType", np.repeat(dithered, original_channels, axis=2))
+    return cast(
+        "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", np.repeat(dithered, original_channels, axis=2)
+    )
 
 
 def _apply_single_dithering_method(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     method: str,
     n_colors: int,
     **kwargs: Any,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Dispatch to ordered_dither, random_dither, or error_diffusion_dither by method. Uses uint8
     paths when img is uint8. Called by apply_dithering.
     """
@@ -692,33 +679,35 @@ def _apply_single_dithering_method(
 
 
 def apply_dithering(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     method: str,
     n_colors: int,
     color_mode: str = "per_channel",
     **kwargs: Any,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Apply dithering (ordered, random, or error_diffusion) to image. method, n_colors,
     color_mode, **kwargs. Entry point for Dithering transform.
 
     Args:
-        img (ImageType): Input image in [0, 1] range with shape (H, W, C).
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image in [0, 1] range with shape (H,
+            W, C).
         method (str): Dithering method to use.
         n_colors (int): Number of colors per channel.
         color_mode (str): How to handle colors ("grayscale", "per_channel", "rgb").
         **kwargs (Any): Additional parameters for specific methods.
 
     Returns:
-        ImageType: Dithered image in [0, 1] range with shape (H, W, C).
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Dithered image in [0, 1] range with shape (H, W,
+            C).
 
     Float16 inputs use float32 working values and return float16.
 
     """
     input_dtype = img.dtype
-    working_img = convert_dtype(cast("NDArray[np.float16]", img), np.float32) if input_dtype == np.float16 else img
+    working_img = convert_dtype(img, np.float32) if input_dtype == np.float16 else img
     if color_mode == "grayscale":
         result = _apply_dithering_to_grayscale(working_img, method, n_colors, **kwargs)
     else:
         result = _apply_single_dithering_method(working_img, method, n_colors, **kwargs)
 
-    return convert_dtype(cast("ImageFloat32", result), np.float16) if input_dtype == np.float16 else result
+    return convert_dtype(result, np.float16) if input_dtype == np.float16 else result

@@ -2,6 +2,8 @@
 
 from typing import Annotated, Any, Literal, cast
 
+from numpy.typing import NDArray
+
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import (
     SampledParams,
@@ -16,7 +18,6 @@ from ._color_shared import (
     BaseTransformInitSchema,
     Field,
     ImageOnlyTransform,
-    ImageType,
     check_range_bounds,
     fpixel,
     get_num_channels,
@@ -195,7 +196,9 @@ class ToGray(ImageOnlyTransform):
         self.num_output_channels = num_output_channels
         self.method = method
 
-    def apply(self, img: ImageType, **params: Any) -> ImageType:
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if is_grayscale_image(img):
             warnings.warn("The image is already gray.", stacklevel=2)
             return img
@@ -213,7 +216,9 @@ class ToGray(ImageOnlyTransform):
 
         return fpixel.to_gray(img, self.num_output_channels, self.method)
 
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+    def apply_to_images(
+        self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if images.shape[-1] == 1:
             warnings.warn("The image is already gray.", stacklevel=2)
             return images
@@ -270,10 +275,12 @@ class ToRGB(ImageOnlyTransform):
 
         self.num_output_channels = num_output_channels
 
-    def apply(self, img: ImageType, **params: Any) -> ImageType:
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if is_rgb_image(img):
             warnings.warn("The image is already an RGB.", stacklevel=2)
-            return cast("ImageType", np.ascontiguousarray(img))
+            return cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", np.ascontiguousarray(img))
         if not is_grayscale_image(img):
             msg = "ToRGB transformation expects images with the number of channels equal to 1."
             raise TypeError(msg)
@@ -283,7 +290,9 @@ class ToRGB(ImageOnlyTransform):
             num_output_channels=self.num_output_channels,
         )
 
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+    def apply_to_images(
+        self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self.apply(images, **params)
 
 
@@ -441,13 +450,13 @@ class Colorize(ImageOnlyTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         black_color: tuple[int, int, int],
         white_color: tuple[int, int, int],
         mid_color: tuple[int, int, int] | None,
         mid_value: int,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if get_num_channels(img) != 1:
             warnings.warn(
                 "Colorize expects a single-channel image; got a multi-channel image, returning it unchanged.",
@@ -456,7 +465,9 @@ class Colorize(ImageOnlyTransform):
             return img
         return fpixel.colorize(img, black_color, white_color, mid_color, mid_value)
 
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+    def apply_to_images(
+        self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self.apply(images, **params)
 
 
@@ -539,7 +550,9 @@ class ToSepia(ImageOnlyTransform):
             [[0.393, 0.769, 0.189], [0.349, 0.686, 0.168], [0.272, 0.534, 0.131]],
         )
 
-    def apply(self, img: ImageType, **params: Any) -> ImageType:
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if is_grayscale_image(img):
             return img
 
@@ -548,7 +561,9 @@ class ToSepia(ImageOnlyTransform):
             raise TypeError(msg)
         return fpixel.linear_transformation_rgb(img, self.sepia_transformation_matrix)
 
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+    def apply_to_images(
+        self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self.apply(images, **params)
 
 
@@ -609,10 +624,10 @@ class FancyPCA(ImageOnlyTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         alpha_vector: np.ndarray,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.fancy_pca(img, alpha_vector)
 
     def sample_parameters(

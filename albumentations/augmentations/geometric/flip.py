@@ -28,6 +28,7 @@ from typing import Any, Literal, cast, overload
 import numpy as np
 import torch
 from albucore import flip_volume
+from numpy.typing import NDArray
 
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet
@@ -35,14 +36,7 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
 )
-from albumentations.core.type_definitions import (
-    ALL_TARGETS,
-    D4_INVERSE,
-    ArrayT,
-    ImageType,
-    StackedMasks4D,
-    d4_group_elements,
-)
+from albumentations.core.type_definitions import ALL_TARGETS, D4_INVERSE, ArrayT, StackedMasks4D, d4_group_elements
 
 from . import functional as fgeometric
 
@@ -609,10 +603,10 @@ class D4(DualTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fgeometric.d4(img, group_element)
 
     def apply_to_bboxes(
@@ -635,16 +629,19 @@ class D4(DualTransform):
 
     def apply_to_mask(
         self,
-        mask: ImageType,
+        mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if mask.size == 0:
             # Group elements that transpose dimensions: "r90", "r270", "t", "hvt"
             # Assume mask shape is (H, W, C)
             if group_element in {"r90", "r270", "t", "hvt"}:
                 # These swap H and W: (H, W, C) -> (W, H, C)
-                return cast("ImageType", np.empty((mask.shape[1], mask.shape[0], mask.shape[2]), dtype=mask.dtype))
+                return cast(
+                    "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]",
+                    np.empty((mask.shape[1], mask.shape[0], mask.shape[2]), dtype=mask.dtype),
+                )
             # Other elements preserve dimensions: "e", "r180", "v", "h"
             return mask
         return self.apply(mask, group_element)

@@ -6,7 +6,7 @@ import math
 import random
 from collections.abc import Sequence
 from functools import lru_cache
-from typing import Any, Literal, cast
+from typing import Any, Literal
 from warnings import warn
 
 import cv2
@@ -31,6 +31,7 @@ from albucore import (
     remap,
     std,
 )
+from numpy.typing import NDArray
 
 import albumentations.augmentations.geometric.functional as fgeometric
 from albumentations.augmentations.utils import (
@@ -42,7 +43,6 @@ from albumentations.core.type_definitions import (
     NUM_MULTI_CHANNEL_DIMENSIONS,
     NUM_RGB_CHANNELS,
     ImageFloat32,
-    ImageType,
     ImageUInt8,
 )
 
@@ -50,18 +50,16 @@ MULTICHANNEL_LUT_MEDIUM_IMAGE_PIXELS = 512 * 512
 MULTICHANNEL_LUT_LARGE_IMAGE_PIXELS = 1024 * 1024
 
 
-def to_uint8_working_image(img: ImageType) -> tuple[ImageUInt8, np.dtype]:
-    input_dtype = img.dtype
-    if input_dtype.type is np.uint8:
-        return cast("ImageUInt8", img), input_dtype
-    return convert_dtype(img, np.uint8), input_dtype
+def to_uint8_working_image(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+) -> tuple[ImageUInt8, np.dtype]:
+    return convert_dtype(img, np.uint8), img.dtype
 
 
-def restore_uint8_working_image(img: ImageUInt8, input_dtype: np.dtype) -> ImageType:
-    if input_dtype.type is np.uint8:
-        return img
-    restored = convert_dtype(img, np.float32)
-    return convert_dtype(restored, np.float16) if input_dtype.type is np.float16 else restored
+def restore_uint8_working_image(
+    img: ImageUInt8, input_dtype: np.dtype
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
+    return convert_dtype(img, input_dtype)
 
 
 __all__ = [
@@ -74,7 +72,6 @@ __all__ = [
     "PCA",
     "Any",
     "ImageFloat32",
-    "ImageType",
     "ImageUInt8",
     "Literal",
     "Sequence",

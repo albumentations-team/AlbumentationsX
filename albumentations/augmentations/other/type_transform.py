@@ -20,7 +20,6 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
 )
-from albumentations.core.type_definitions import ImageType
 
 __all__ = [
     "FromFloat",
@@ -91,7 +90,9 @@ class ToFloat(ImageOnlyTransform):
     @overload
     def apply(self, img: NDArray[np.uint8] | NDArray[np.float32], **params: Any) -> NDArray[np.float32]: ...
 
-    def apply(self, img: ImageType, **params: Any) -> NDArray[np.float16] | NDArray[np.float32]:
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.float16] | NDArray[np.float32]:
         return ftype.to_float(img, self.max_value)
 
     @overload
@@ -102,7 +103,9 @@ class ToFloat(ImageOnlyTransform):
         self, images: NDArray[np.uint8] | NDArray[np.float32], **params: Any
     ) -> NDArray[np.float32]: ...
 
-    def apply_to_images(self, images: ImageType, **params: Any) -> NDArray[np.float16] | NDArray[np.float32]:
+    def apply_to_images(
+        self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.float16] | NDArray[np.float32]:
         return ftype.to_float(images, self.max_value)
 
 
@@ -162,8 +165,12 @@ class FromFloat(ImageOnlyTransform):
         self.dtype = dtype
         self.max_value = max_value
 
-    def apply(self, img: ImageType, **params: Any) -> ImageType:
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return ftype.from_float(img, cast("float", self.max_value))
 
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+    def apply_to_images(
+        self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self.apply(images, **params)

@@ -2,6 +2,8 @@
 
 from typing import Annotated, Any, ClassVar
 
+from numpy.typing import NDArray
+
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet
 
@@ -13,7 +15,6 @@ from ._transforms_shared import (
     BaseTransformInitSchema,
     Field,
     FullInterpolationType,
-    ImageType,
     check_range_bounds,
     denormalize_bboxes,
     fcrops,
@@ -369,20 +370,20 @@ class RandomSizedBBoxSafeCrop(BBoxSafeRandomCrop):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         crop = fcrops.crop(img, *crop_coords)
         result = fgeometric.resize(crop, (self.height, self.width), self.interpolation)
         return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
 
     def apply_to_mask(
         self,
-        mask: ImageType,
+        mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         crop = fcrops.crop(mask, *crop_coords)
         return fgeometric.resize(crop, (self.height, self.width), self.mask_interpolation)
 

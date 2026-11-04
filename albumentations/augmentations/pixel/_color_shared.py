@@ -34,7 +34,6 @@ from albumentations.core.type_definitions import (
     PAIR,
     SEVEN,
     FullInterpolationType,
-    ImageType,
     VolumeType,
 )
 
@@ -53,7 +52,6 @@ __all__ = [
     "Field",
     "FullInterpolationType",
     "ImageOnlyTransform",
-    "ImageType",
     "Literal",
     "Self",
     "Sequence",

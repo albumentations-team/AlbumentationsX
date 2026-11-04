@@ -6,7 +6,6 @@ from albucore import power
 from numpy.typing import NDArray
 
 from albumentations.core.transforms_interface import BasicTransform, NoOp
-from albumentations.core.type_definitions import ImageType
 from albumentations.pytorch.transforms import ToTensor3D, ToTensorV2
 
 image: NDArray[np.float32] = np.zeros((3, 5, 1), dtype=np.float32)
@@ -19,9 +18,11 @@ tensor_result: torch.Tensor = power(tensor_image, 2, layout="CHW")
 same_tensor: torch.Tensor = NoOp().apply_to_volumes(tensor_image[None, None, ...])
 same_half: NDArray[np.float16] = NoOp().apply_to_volumes(half[None, None, ...])
 transform: BasicTransform = ToTensorV2()
-base_result: ImageType | torch.Tensor = transform.apply(image)
+base_result: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32] | torch.Tensor = transform.apply(image)
 
 
 class FloatArrayOutput(BasicTransform):
-    def apply(self, img: ImageType, *args: Any, **params: Any) -> NDArray[np.float32]:
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], *args: Any, **params: Any
+    ) -> NDArray[np.float32]:
         return img.astype(np.float32)

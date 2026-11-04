@@ -4,6 +4,7 @@ from typing import Annotated, Any, Literal, Self, cast
 
 import numpy as np
 import torch
+from numpy.typing import NDArray
 from pydantic import AfterValidator, field_validator, model_validator
 
 from albumentations.augmentations.medical import functional as fmedical
@@ -26,7 +27,7 @@ from albumentations.core.transform_params import (
     requirements_for_views,
 )
 from albumentations.core.transforms_interface import BaseTransformInitSchema, ImageOnlyTransform, VolumeOnlyTransform
-from albumentations.core.type_definitions import CV2_INTER_LINEAR, ImageType, VolumeType
+from albumentations.core.type_definitions import CV2_INTER_LINEAR, VolumeType
 
 __all__ = [
     "Anisotropy3D",
@@ -281,27 +282,47 @@ class BiasField(_FullVolumeNoiseTransform):
 
     @staticmethod
     def _apply_field(
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         coarse_field: np.ndarray | None,
         *,
         is_batch: bool,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if img.dtype not in (np.uint8, np.float16, np.float32):
             raise ValueError("BiasField supports uint8, float16 or float32 image/volume targets")
         if coarse_field is None:
             return img
         return fmedical.bias_field(img, coarse_field, is_batch=is_batch)
 
-    def apply(self, img: ImageType, coarse_field: np.ndarray | None, **params: Any) -> ImageType:
+    def apply(
+        self,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+        coarse_field: np.ndarray | None,
+        **params: Any,
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self._apply_field(img, coarse_field, is_batch=False)
 
-    def apply_to_images(self, images: ImageType, coarse_field: np.ndarray | None, **params: Any) -> ImageType:
+    def apply_to_images(
+        self,
+        images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+        coarse_field: np.ndarray | None,
+        **params: Any,
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self._apply_field(images, coarse_field, is_batch=True)
 
-    def apply_to_volume(self, volume: ImageType, coarse_field: np.ndarray | None, **params: Any) -> ImageType:
+    def apply_to_volume(
+        self,
+        volume: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+        coarse_field: np.ndarray | None,
+        **params: Any,
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self.apply(volume, coarse_field, **params)
 
-    def apply_to_volumes(self, volumes: ImageType, coarse_field: np.ndarray | None, **params: Any) -> ImageType:
+    def apply_to_volumes(
+        self,
+        volumes: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+        coarse_field: np.ndarray | None,
+        **params: Any,
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self.apply_to_images(volumes, coarse_field, **params)
 
 
@@ -420,12 +441,12 @@ class GhostingArtifact(VolumeOnlyTransform):
 
     def apply_to_volume(
         self,
-        volume: ImageType,
+        volume: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         num_ghosts: int,
         intensity: float,
         restore: float,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if volume.dtype not in (np.uint8, np.float16, np.float32):
             raise ValueError("GhostingArtifact supports uint8, float16 or float32 real magnitude volumes")
         if intensity == 0 or restore == 1:
@@ -520,7 +541,12 @@ class GibbsRinging(_FullVolumeNoiseTransform):
         sampling.applied_overrides["retained_fraction_range"] = (retained_fraction, retained_fraction)
         return SampledParams(params={"retained_fraction": retained_fraction})
 
-    def apply(self, img: ImageType, retained_fraction: float, **params: Any) -> ImageType:
+    def apply(
+        self,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+        retained_fraction: float,
+        **params: Any,
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if img.dtype not in (np.uint8, np.float16, np.float32):
             raise ValueError("GibbsRinging supports uint8, float16 or float32 real inputs")
         if img.dtype in (np.float16, np.float32) and not np.isfinite(img).all():
@@ -529,7 +555,12 @@ class GibbsRinging(_FullVolumeNoiseTransform):
             return img
         return fmedical.gibbs_ringing(img, retained_fraction)
 
-    def apply_to_volume(self, volume: ImageType, retained_fraction: float, **params: Any) -> ImageType:
+    def apply_to_volume(
+        self,
+        volume: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+        retained_fraction: float,
+        **params: Any,
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self.apply(volume, retained_fraction, **params)
 
 
@@ -802,7 +833,9 @@ class HEStain(ImageOnlyTransform):
             args["stain_matrix"] = args["stain_matrix"].tolist()
         return args
 
-    def _get_stain_matrix(self, img: ImageType | None, sampling: SamplingContext) -> np.ndarray:
+    def _get_stain_matrix(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32] | None, sampling: SamplingContext
+    ) -> np.ndarray:
         if self.method == "preset" and self.preset is not None:
             return fmedical.STAIN_MATRICES[self.preset]
         if self.method == "random_preset":
@@ -820,12 +853,12 @@ class HEStain(ImageOnlyTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         stain_matrix: np.ndarray,
         scale_factors: np.ndarray,
         shift_values: np.ndarray,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         non_rgb_error(img)
         return fmedical.apply_he_stain_augmentation(
             img=img,
@@ -1017,17 +1050,35 @@ class KSpaceSpikeNoise(_FullVolumeNoiseTransform):
         self.intensity_range = intensity_range
         self.per_channel = per_channel
 
-    def apply(self, img: ImageType, spikes: np.ndarray, intensity: float, **params: Any) -> ImageType:
+    def apply(
+        self,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+        spikes: np.ndarray,
+        intensity: float,
+        **params: Any,
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if intensity == 0 or spikes.size == 0:
             return img
         return fmedical.k_space_spike(img, spikes, intensity)
 
-    def apply_to_images(self, images: ImageType, spikes: np.ndarray, intensity: float, **params: Any) -> ImageType:
+    def apply_to_images(
+        self,
+        images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+        spikes: np.ndarray,
+        intensity: float,
+        **params: Any,
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if intensity == 0 or spikes.size == 0:
             return images
         return fmedical.k_space_spike(images, spikes, intensity)
 
-    def apply_to_volume(self, volume: ImageType, spikes: np.ndarray, intensity: float, **params: Any) -> ImageType:
+    def apply_to_volume(
+        self,
+        volume: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+        spikes: np.ndarray,
+        intensity: float,
+        **params: Any,
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if intensity == 0 or spikes.size == 0:
             return volume
         return fmedical.k_space_spike(volume, spikes, intensity)
@@ -1289,12 +1340,12 @@ class RicianNoise(_FullVolumeNoiseTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         std: float,
         real_noise: np.ndarray | None,
         imaginary_noise: np.ndarray | None,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if std == 0:
             return img
         if real_noise is None or imaginary_noise is None:
@@ -1304,22 +1355,22 @@ class RicianNoise(_FullVolumeNoiseTransform):
 
     def apply_to_images(
         self,
-        images: ImageType,
+        images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         std: float,
         real_noise: np.ndarray | None,
         imaginary_noise: np.ndarray | None,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self.apply(images, std, real_noise, imaginary_noise, **params)
 
     def apply_to_volume(
         self,
-        volume: ImageType,
+        volume: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         std: float,
         real_noise: np.ndarray | None,
         imaginary_noise: np.ndarray | None,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self.apply(volume, std, real_noise, imaginary_noise)
 
     def sample_parameters(

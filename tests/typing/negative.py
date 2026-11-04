@@ -6,7 +6,6 @@ from albucore import power
 from numpy.typing import NDArray
 
 from albumentations.core.transforms_interface import BasicTransform, NoOp
-from albumentations.core.type_definitions import ImageType
 from albumentations.pytorch.transforms import ToTensorV2
 
 image: NDArray[np.float32] = np.zeros((3, 5, 1), dtype=np.float32)
@@ -21,5 +20,7 @@ invalid_noop_dtype: NDArray[np.float32] = NoOp().apply_to_volumes(half[None, Non
 
 
 class ScalarOutput(BasicTransform):
-    def apply(self, img: ImageType, *args: Any, **params: Any) -> int:  # expected-error
+    def apply(  # expected-error
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], *args: Any, **params: Any
+    ) -> int:
         return 137

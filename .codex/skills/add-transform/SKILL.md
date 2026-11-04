@@ -53,7 +53,7 @@ Implement the operation in the corresponding functional module, without transfor
   for representation-dependent values. The coding guidance document describes the complete contract and the hook reports
   mechanical violations.
 - Use relative parameters where users should transfer a policy across image sizes.
-- Use `ImageType` for image, mask, and volume signatures; reserve `np.ndarray` for bboxes and keypoints.
+- Use explicit `NDArray[...]` dtype annotations for images, masks, and volumes: a concrete dtype where known, or `NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]` for the three supported image dtypes. Reserve `np.ndarray` for bboxes and keypoints.
 - NumPy inputs inside transform execution have explicit channel-last layouts: `(H, W, C)`, `(N, H, W, C)`, and
   `(D, H, W, C)`; grayscale is `(H, W, 1)`. Compose normalizes public channel-free inputs before dispatch. Native
   Tensor handlers use the channel-first layouts in [NumPy and Tensor routing](../../../docs/design/numpy-tensor-routing.md).

@@ -12,6 +12,7 @@ from typing import Annotated, Any, ClassVar, Literal
 import cv2
 import numpy as np
 from albucore import convert_dtype
+from numpy.typing import NDArray
 from pydantic import field_validator
 from pydantic.functional_validators import AfterValidator
 
@@ -28,7 +29,6 @@ from albumentations.core.pydantic import (
 )
 from albumentations.core.transform_params import SampledParams, TargetParams, TargetSet, requirements_for_views
 from albumentations.core.transforms_interface import BaseTransformInitSchema, ImageOnlyTransform
-from albumentations.core.type_definitions import ImageType
 
 __all__ = [
     "FDA",
@@ -116,10 +116,10 @@ class BaseDomainAdaptation(ImageOnlyTransform):
         ...
         ...     def apply(
         ...         self,
-        ...         img: ImageType,
+        ...         img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         ...         target_image: np.ndarray = None,
         ...         **params
-        ...     ) -> ImageType:
+        ...     ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         ...         if target_image is None:
         ...             return img
         ...
@@ -170,7 +170,9 @@ class BaseDomainAdaptation(ImageOnlyTransform):
     def targets_as_params(self) -> list[str]:
         return [self.metadata_key]
 
-    def _get_reference_image(self, data: dict[str, Any], sampling: SamplingContext) -> ImageType:
+    def _get_reference_image(
+        self, data: dict[str, Any], sampling: SamplingContext
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         """Retrieve a reference image from data[metadata_key]. Returns one image from the
         sequence; raises ValueError or TypeError if missing or invalid type.
         """
@@ -369,11 +371,11 @@ class HistogramMatching(BaseDomainAdaptation):
 
     def apply(
         self,
-        img: ImageType,
-        reference_image: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+        reference_image: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         blend_ratio: float,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return apply_histogram(img, reference_image, blend_ratio)
 
 
@@ -556,11 +558,11 @@ class FDA(BaseDomainAdaptation):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         target_image: np.ndarray,
         beta: float,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fourier_domain_adaptation(img, target_image, beta)
 
 
@@ -741,7 +743,13 @@ class PixelDistributionAdaptation(BaseDomainAdaptation):
             ),
         )
 
-    def apply(self, img: ImageType, reference_image: ImageType, blend_ratio: float, **params: Any) -> ImageType:
+    def apply(
+        self,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+        reference_image: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+        blend_ratio: float,
+        **params: Any,
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return adapt_pixel_distribution(
             img,
             ref=reference_image,

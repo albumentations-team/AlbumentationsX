@@ -2,6 +2,8 @@
 
 from typing import Annotated, Any, Literal, Self, cast
 
+from numpy.typing import NDArray
+
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetParams, TargetSet, requirements_for_views
 
@@ -14,7 +16,6 @@ from ._transforms_shared import (
     BboxProcessor,
     DualTransform,
     FullInterpolationType,
-    ImageType,
     KeypointsProcessor,
     StackedMasks4D,
     Targets,
@@ -786,12 +787,12 @@ class Mosaic(DualTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         processed_cells: dict[tuple[int, int, int, int], dict[str, Any]],
         target_shape: tuple[int, int],
         additional_image: str | None,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fmixing.assemble_mosaic_from_processed_cells(
             processed_cells=processed_cells,
             target_shape=target_shape,
@@ -803,12 +804,12 @@ class Mosaic(DualTransform):
 
     def apply_to_mask(
         self,
-        mask: ImageType,
+        mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         processed_cells: dict[tuple[int, int, int, int], dict[str, Any]],
         target_mask_shape: tuple[int, int],
         additional_mask: str | None,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fmixing.assemble_mosaic_from_processed_cells(
             processed_cells=processed_cells,
             target_shape=target_mask_shape,

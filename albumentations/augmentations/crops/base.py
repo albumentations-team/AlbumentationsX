@@ -2,6 +2,8 @@
 
 from typing import Annotated, Any, ClassVar, Literal, cast
 
+from numpy.typing import NDArray
+
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.type_definitions import Targets
 
@@ -14,7 +16,6 @@ from ._transforms_shared import (
     BorderModeType,
     DualTransform,
     FullInterpolationType,
-    ImageType,
     StackedMasks4D,
     VolumeType,
     check_range_bounds,
@@ -125,10 +126,10 @@ class BaseCrop(DualTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fcrops.crop(img, x_min=crop_coords[0], y_min=crop_coords[1], x_max=crop_coords[2], y_max=crop_coords[3])
 
     def apply_to_bboxes(
@@ -150,15 +151,18 @@ class BaseCrop(DualTransform):
 
     def apply_to_mask(
         self,
-        mask: ImageType,
+        mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if mask.size == 0:
             # Assume mask shape is (H, W, C)
             crop_height = crop_coords[3] - crop_coords[1]
             crop_width = crop_coords[2] - crop_coords[0]
-            return cast("ImageType", np.empty((crop_height, crop_width, mask.shape[2]), dtype=mask.dtype))
+            return cast(
+                "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]",
+                np.empty((crop_height, crop_width, mask.shape[2]), dtype=mask.dtype),
+            )
         return self.apply(mask, crop_coords, **params)
 
     def apply_to_masks(
@@ -175,10 +179,10 @@ class BaseCrop(DualTransform):
 
     def apply_to_images(
         self,
-        images: ImageType,
+        images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fcrops.volume_crop_yx(images, crop_coords[0], crop_coords[1], crop_coords[2], crop_coords[3])
 
     def apply_to_volume(
@@ -417,11 +421,11 @@ class BaseCropAndPad(BaseCrop):
 
     def apply(  # type: ignore[override]  # pyrefly: ignore[bad-override]
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         crop_coords: tuple[int, int, int, int],
         pad_params: dict[str, int] | None,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if pad_params is not None:
             img = fgeometric.pad_with_params(
                 img,
@@ -436,11 +440,11 @@ class BaseCropAndPad(BaseCrop):
 
     def apply_to_mask(  # type: ignore[override]  # pyrefly: ignore[bad-override]
         self,
-        mask: ImageType,
+        mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         crop_coords: Any,
         pad_params: dict[str, int] | None,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if pad_params is not None:
             mask = fgeometric.pad_with_params(
                 mask,
@@ -456,11 +460,11 @@ class BaseCropAndPad(BaseCrop):
 
     def apply_to_images(  # type: ignore[override]  # pyrefly: ignore[bad-override]
         self,
-        images: ImageType,
+        images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         crop_coords: tuple[int, int, int, int],
         pad_params: dict[str, int] | None,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if pad_params is not None:
             images = fcrops.pad_along_axes(
                 images,
@@ -737,10 +741,10 @@ class _BaseRandomSizedCrop(DualTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         crop = fcrops.crop(img, *crop_coords)
         interpolation = self._get_interpolation_for_resize(cast("tuple[int, int]", crop.shape[:2]), "image")
         result = fgeometric.resize(crop, self.size, interpolation)
@@ -748,10 +752,10 @@ class _BaseRandomSizedCrop(DualTransform):
 
     def apply_to_mask(
         self,
-        mask: ImageType,
+        mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         crop = fcrops.crop(mask, *crop_coords)
         interpolation = self._get_interpolation_for_resize(cast("tuple[int, int]", crop.shape[:2]), "mask")
         return fgeometric.resize(crop, self.size, interpolation)
@@ -785,10 +789,10 @@ class _BaseRandomSizedCrop(DualTransform):
 
     def apply_to_images(
         self,
-        images: ImageType,
+        images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         crop_coords: tuple[int, int, int, int],
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         # First crop the volume using volume_crop_yx (reduces data size)
         crop = fcrops.volume_crop_yx(images, *crop_coords)
 
@@ -798,7 +802,9 @@ class _BaseRandomSizedCrop(DualTransform):
         result = np.empty((images.shape[0], self.size[0], self.size[1], crop.shape[-1]), dtype=crop.dtype)
         for i in range(images.shape[0]):
             result[i] = fgeometric.resize(crop[i], self.size, interpolation)
-        return fgeometric.clip_if_interpolation_can_overshoot(cast("ImageType", result), interpolation)
+        return fgeometric.clip_if_interpolation_can_overshoot(
+            cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", result), interpolation
+        )
 
     def apply_to_mask3d(
         self,

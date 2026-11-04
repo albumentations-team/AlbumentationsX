@@ -3,6 +3,8 @@
 from collections.abc import Sequence
 from typing import Annotated, Any, Literal, cast
 
+from numpy.typing import NDArray
+
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet
 
@@ -15,7 +17,6 @@ from ._transforms_shared import (
     ClassVar,
     DualTransform,
     Field,
-    ImageType,
     KeypointsProcessor,
     StackedMasks4D,
     Targets,
@@ -1165,23 +1166,23 @@ class CopyAndPaste(DualTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         paste_donor_image: np.ndarray | None,
         paste_alpha: np.ndarray | None,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if paste_donor_image is None or paste_alpha is None:
             return img
         return fmixing.blend_images_using_alpha(img, paste_donor_image, paste_alpha)
 
     def apply_to_mask(
         self,
-        mask: ImageType,
+        mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         paste_alpha: np.ndarray | None,
         paste_donor_mask: np.ndarray | None,
         paste_instance_masks: np.ndarray | None,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if paste_alpha is None:
             return mask
         if paste_donor_mask is not None:
@@ -1201,7 +1202,7 @@ class CopyAndPaste(DualTransform):
 
     @staticmethod
     def _normalize_existing_masks(
-        masks: ImageType,
+        masks: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         paste_instance_masks: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Normalize existing masks and the pasted instance-masks scratch array to the canonical

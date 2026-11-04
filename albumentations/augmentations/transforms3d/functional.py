@@ -16,10 +16,11 @@ import cv2
 import numpy as np
 import torch
 from albucore import clip, pad3d, remap3d, warp_affine3d
+from numpy.typing import NDArray
 
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.utils import handle_empty_array
-from albumentations.core.type_definitions import NUM_VOLUME_DIMENSIONS, ImageType, VolumeType
+from albumentations.core.type_definitions import NUM_VOLUME_DIMENSIONS, VolumeType
 from albumentations.core.utils import get_volume_shape
 
 AxisValues3D = Mapping[Literal["x", "y", "z"], float] | Mapping[str, float]
@@ -698,19 +699,21 @@ def pad_3d_with_params(
 
 
 def crop3d(
-    volume: ImageType,
+    volume: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     crop_coords: tuple[int, int, int, int, int, int],
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Crop 3D volume using coordinates. crop_coords: (z_min, z_max, y_min, y_max, x_min, x_max).
     Volume (D,H,W) or (D,H,W,C). Used by CenterCrop3D and RandomCrop3D.
 
     Args:
-        volume (ImageType): Input volume with shape (z, y, x) or (z, y, x, channels)
+        volume (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input volume with shape (z, y, x) or (z,
+            y, x, channels)
         crop_coords (tuple[int, int, int, int, int, int]):
             (z_min, z_max, y_min, y_max, x_min, x_max) coordinates for cropping
 
     Returns:
-        ImageType: Cropped volume with same number of dimensions as input
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Cropped volume with same number of dimensions as
+            input
 
     """
     z_min, z_max, y_min, y_max, x_min, x_max = crop_coords
@@ -718,18 +721,23 @@ def crop3d(
     return volume[z_min:z_max, y_min:y_max, x_min:x_max]
 
 
-def cutout3d(volume: ImageType, holes: np.ndarray, fill: tuple[float, ...] | float) -> ImageType:
+def cutout3d(
+    volume: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+    holes: np.ndarray,
+    fill: tuple[float, ...] | float,
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Cut out holes in 3D volume and fill. holes (n, 6) [z1,y1,x1,z2,y2,x2]; fill scalar or per-channel.
     Used by CoarseDropout3D. Returns volume.
 
     Args:
-        volume (ImageType): Input volume with shape (depth, height, width) or (depth, height, width, channels)
+        volume (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input volume with shape (depth, height,
+            width) or (depth, height, width, channels)
         holes (np.ndarray): Array of holes with shape (num_holes, 6).
             Each hole is represented as [z1, y1, x1, z2, y2, x2]
         fill (tuple[float, ...] | float): Value to fill the holes
 
     Returns:
-        ImageType: Volume with holes filled with the given value
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Volume with holes filled with the given value
 
     """
     volume = volume.copy()
@@ -1125,20 +1133,22 @@ def shuffle_tiles_within_shape_groups_3d(
 
 
 def swap_tiles_on_volume(
-    volume: ImageType,
+    volume: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     tiles: np.ndarray,
     mapping: list[int],
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Swap tiles on 3D volume by mapping. tiles (n, 6); mapping[i] = source for position i. Variable
     tile sizes; loop-based. For CubicSymmetry-style shuffle.
 
     Args:
-        volume (ImageType): Input volume with shape (D, H, W) or (D, H, W, C).
+        volume (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input volume with shape (D, H, W) or (D,
+            H, W, C).
         tiles (np.ndarray): Array of tiles with each tile as [z_start, y_start, x_start, z_end, y_end, x_end].
         mapping (list[int]): List of new tile indices. Must have the same length as tiles.
 
     Returns:
-        ImageType: Output volume with tiles swapped according to the random shuffle.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Output volume with tiles swapped according to the
+            random shuffle.
 
     Note:
         This implementation uses a loop rather than vectorized operations because tiles may have

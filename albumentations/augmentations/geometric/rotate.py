@@ -12,6 +12,7 @@ import cv2
 import numpy as np
 import torch
 from albucore import rot90_volume, warp_affine
+from numpy.typing import NDArray
 from pydantic import model_validator
 
 from albumentations.augmentations.crops import functional as fcrops
@@ -29,7 +30,6 @@ from albumentations.core.type_definitions import (
     CV2_INTER_LINEAR,
     CV2_INTER_NEAREST,
     BorderModeType,
-    ImageType,
     InterpolationType,
     VolumeType,
     c4_group_elements,
@@ -186,10 +186,10 @@ class RandomRotate90(DualTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         group_element: Literal["e", "r90", "r180", "r270"],
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fgeometric.rot90(img, group_element)
 
     def sample_parameters(
@@ -232,10 +232,10 @@ class RandomRotate90(DualTransform):
 
     def apply_to_images(
         self,
-        images: ImageType,
+        images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         group_element: Literal["e", "r90", "r180", "r270"],
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fgeometric.rot90_images(images, group_element)
 
     def apply_to_volumes(
@@ -414,7 +414,7 @@ class Rotate(DualTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         matrix: np.ndarray,
         x_min: int,
         x_max: int,
@@ -422,7 +422,7 @@ class Rotate(DualTransform):
         y_max: int,
         shape: tuple[int, int],
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         height, width = shape[:2]
         img_out = warp_affine(
             img,
@@ -438,7 +438,7 @@ class Rotate(DualTransform):
 
     def apply_to_mask(
         self,
-        mask: ImageType,
+        mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         matrix: np.ndarray,
         x_min: int,
         x_max: int,
@@ -446,7 +446,7 @@ class Rotate(DualTransform):
         y_max: int,
         shape: tuple[int, int],
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         height, width = shape[:2]
         img_out = warp_affine(
             mask,

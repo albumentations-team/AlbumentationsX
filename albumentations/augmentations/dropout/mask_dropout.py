@@ -10,6 +10,7 @@ from typing import Annotated, Any, Literal, cast
 
 import cv2
 import numpy as np
+from numpy.typing import NDArray
 from pydantic.functional_validators import AfterValidator
 
 import albumentations.augmentations.dropout.functional as fdropout
@@ -19,7 +20,7 @@ from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.pydantic import check_range_bounds
 from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
-from albumentations.core.type_definitions import ImageType, Targets
+from albumentations.core.type_definitions import Targets
 
 __all__ = ["MaskDropout"]
 
@@ -181,7 +182,12 @@ class MaskDropout(DualTransform):
 
         return SampledParams(params={"dropout_mask": dropout_mask})
 
-    def apply(self, img: ImageType, dropout_mask: np.ndarray | None, **params: Any) -> ImageType:
+    def apply(
+        self,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+        dropout_mask: np.ndarray | None,
+        **params: Any,
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if dropout_mask is None:
             return img
 
@@ -190,7 +196,10 @@ class MaskDropout(DualTransform):
             _, _, width, height = cv2.boundingRect(dropout_mask)
             radius = max(1, min(3, max(width, height) // 2))
             inpaint_method = cv2.INPAINT_TELEA if self.fill == "inpaint_telea" else cv2.INPAINT_NS
-            return cast("ImageType", cv2.inpaint(img, dropout_mask, radius, inpaint_method))
+            return cast(
+                "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]",
+                cv2.inpaint(img, dropout_mask, radius, inpaint_method),
+            )
 
         if self.fill == "grayscale":
             return fdropout.fill_mask_with_grayscale(img, dropout_mask)
@@ -201,7 +210,12 @@ class MaskDropout(DualTransform):
 
         return img
 
-    def apply_to_mask(self, mask: ImageType, dropout_mask: np.ndarray | None, **params: Any) -> ImageType:
+    def apply_to_mask(
+        self,
+        mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+        dropout_mask: np.ndarray | None,
+        **params: Any,
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if dropout_mask is None or self.fill_mask is None:
             return mask
 

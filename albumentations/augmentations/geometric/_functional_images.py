@@ -13,7 +13,6 @@ from numpy.typing import NDArray
 from ._functional_shared import (
     NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS,
     NUM_MULTI_CHANNEL_DIMENSIONS,
-    ImageType,
     albucore_copy_make_border,
     albucore_resize,
     angle_2pi_range,
@@ -38,7 +37,7 @@ _PadArray = Callable[..., np.ndarray]
 
 
 def resize(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     target_shape: tuple[int, int],
     interpolation: int,
 ) -> np.ndarray:
@@ -47,7 +46,7 @@ def resize(
     If the image is already the target size, it is returned unchanged.
 
     Args:
-        img (ImageType): Input image.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image.
         target_shape (tuple[int, int]): Target (height, width) dimensions.
         interpolation (int): Interpolation method.
 
@@ -65,36 +64,43 @@ def resize(
     return albucore_resize(img, (width, height), interpolation=interpolation)
 
 
-def scale(img: ImageType, scale: float, interpolation: int) -> ImageType:
+def scale(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], scale: float, interpolation: int
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Scale an image by a factor while preserving aspect ratio. scale > 1
     enlarges, scale < 1 shrinks. interpolation: cv2 flag. Calls resize internally.
 
     This function scales both height and width dimensions of the image by the same factor.
 
     Args:
-        img (ImageType): Input image to scale.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image to scale.
         scale (float): Scale factor. Values > 1 will enlarge the image, values < 1 will shrink it.
         interpolation (int): Interpolation method to use (cv2 interpolation flag).
 
     Returns:
-        ImageType: Scaled image.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Scaled image.
 
     """
     return scale_xy(img, scale, scale, interpolation)
 
 
-def scale_xy(img: ImageType, scale_x: float, scale_y: float, interpolation: int) -> ImageType:
+def scale_xy(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+    scale_x: float,
+    scale_y: float,
+    interpolation: int,
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Scale an image by independent X and Y factors. scale_x > 1 widens,
     scale_y > 1 heightens. Useful for anisotropic / non-uniform scaling.
 
     Args:
-        img (ImageType): Input image to scale.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image to scale.
         scale_x (float): Scale factor for the width (x-axis).
         scale_y (float): Scale factor for the height (y-axis).
         interpolation (int): Interpolation method to use (cv2 interpolation flag).
 
     Returns:
-        ImageType: Scaled image.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Scaled image.
 
     """
     height, width = img.shape[:2]
@@ -103,7 +109,7 @@ def scale_xy(img: ImageType, scale_x: float, scale_y: float, interpolation: int)
 
 
 def perspective(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     matrix: np.ndarray,
     max_width: int,
     max_height: int,
@@ -119,7 +125,7 @@ def perspective(
     It can either maintain the original dimensions or use the specified max dimensions.
 
     Args:
-        img (ImageType): Input image to transform.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image to transform.
         matrix (np.ndarray): 3x3 perspective transformation matrix.
         max_width (int): Maximum width of the output image if keep_size is False.
         max_height (int): Maximum height of the output image if keep_size is False.
@@ -414,7 +420,10 @@ def calculate_affine_transform_padding(
 D4_GROUP_ELEMENTS = ["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]
 
 
-def d4(img: ImageType, group_member: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]) -> ImageType:
+def d4(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+    group_member: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Apply D4 symmetry (rotations and reflections) to an image. group_member:
     e, r90, r180, r270, v, hvt, h, t. Square input; same shape output.
 
@@ -423,7 +432,7 @@ def d4(img: ImageType, group_member: Literal["e", "r90", "r180", "r270", "v", "h
     Each transformation is identified by a unique group member code.
 
     Args:
-        img (ImageType): The input image array to transform.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): The input image array to transform.
         group_member (Literal['e', 'r90', 'r180', 'r270', 'v', 'hvt', 'h', 't']): A string identifier indicating
             the specific transformation to apply. Valid codes include:
             - 'e': Identity (no transformation).
@@ -436,27 +445,32 @@ def d4(img: ImageType, group_member: Literal["e", "r90", "r180", "r270", "v", "h
             - 't': Transpose (reflect over the main diagonal).
 
     Returns:
-        ImageType: The transformed image array.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: The transformed image array.
 
     """
     # Execute the appropriate transformation
     return D4_TRANSFORMATIONS[group_member](img)
 
 
-def transpose(img: ImageType) -> ImageType:
+def transpose(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Transpose the first two dimensions (H, W) of an array. (H, W, ...) -> (W, H, ...).
     Retains the order of any additional dimensions. For image transpose.
 
     Args:
-        img (ImageType): Input array.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input array.
 
     Returns:
-        ImageType: Transposed array.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Transposed array.
 
     """
     num_channels = img.shape[-1]
     if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS and num_channels in {1, 3, 4}:
-        result = cast("ImageType", cv2.transpose(img if num_channels != 1 else img[..., 0]))
+        result = cast(
+            "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]",
+            cv2.transpose(img if num_channels != 1 else img[..., 0]),
+        )
         return result[..., None] if num_channels == 1 else result
 
     # Generate the new axes order
@@ -467,7 +481,13 @@ def transpose(img: ImageType) -> ImageType:
     return img.transpose(new_axes)
 
 
-D4_TRANSFORMATIONS: dict[str, Callable[[ImageType], ImageType]] = {
+D4_TRANSFORMATIONS: dict[
+    str,
+    Callable[
+        [NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]],
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+    ],
+] = {
     "e": lambda x: x,  # Identity transformation
     "r90": lambda x: rot90(x, "r90"),  # Rotate 90 degrees
     "r180": lambda x: rot90(x, "r180"),  # Rotate 180 degrees
@@ -479,18 +499,20 @@ D4_TRANSFORMATIONS: dict[str, Callable[[ImageType], ImageType]] = {
 }
 
 
-def transpose_images(images: ImageType) -> ImageType:
+def transpose_images(
+    images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Transpose a batch of images (N, H, W, C). Swaps H and W per image.
     Same as transpose on each image along axes 0, 1. Returns same shape.
 
     Args:
-        images (ImageType): Batch of images to transpose with shape:
+        images (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Batch of images to transpose with shape:
             - (N, H, W) for grayscale images
             - (N, H, W, C) for multi-channel images
             where N is the batch size, H is height, W is width, C is channels
 
     Returns:
-        ImageType: Transposed batch of images with shape:
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Transposed batch of images with shape:
             - (N, W, H) for grayscale images
             - (N, W, H, C) for multi-channel images
 
@@ -504,16 +526,19 @@ def transpose_images(images: ImageType) -> ImageType:
     return images.transpose(new_axes)
 
 
-def rot90(img: ImageType, group_element: Literal["e", "r90", "r180", "r270"]) -> ImageType:
+def rot90(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+    group_element: Literal["e", "r90", "r180", "r270"],
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Rotate image 90° counterclockwise. group_element: e, r90, r180, r270. Same as np.rot90.
     Use for D4-style augmentation. Same dtype and shape.
 
     Args:
-        img (ImageType): The input image to rotate.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): The input image to rotate.
         group_element (Literal['e', 'r90', 'r180', 'r270']): C4 group element to apply.
 
     Returns:
-        ImageType: The rotated image.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: The rotated image.
 
     """
     rot90_count = C4_GROUP_ELEMENT_TO_K[group_element]
@@ -530,25 +555,32 @@ def rot90(img: ImageType, group_element: Literal["e", "r90", "r180", "r270"]) ->
             rotate_code = cv2.ROTATE_90_CLOCKWISE
 
         cv2_input = img if num_channels != 1 else img[..., 0]
-        result = cast("ImageType", cv2.rotate(cv2_input, rotate_code))
+        result = cast(
+            "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", cv2.rotate(cv2_input, rotate_code)
+        )
         return result[..., None] if num_channels == 1 else result
 
-    return cast("ImageType", cast("Any", np.rot90(img, rot90_count)))
+    return cast(
+        "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", cast("Any", np.rot90(img, rot90_count))
+    )
 
 
-def rot90_images(images: ImageType, group_element: Literal["e", "r90", "r180", "r270"]) -> ImageType:
+def rot90_images(
+    images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+    group_element: Literal["e", "r90", "r180", "r270"],
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Rotate a batch of images 90° CCW. k per image or single k. Same as rot90
     on each image. Shape (N, H, W, C) preserved. Returns same dtype.
 
     Args:
-        images (ImageType): Batch of images to rotate with shape:
+        images (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Batch of images to rotate with shape:
             - (N, H, W) for grayscale images
             - (N, H, W, C) for multi-channel images
             where N is the batch size, H is height, W is width, C is channels
         group_element (Literal['e', 'r90', 'r180', 'r270']): C4 group element to apply.
 
     Returns:
-        ImageType: Rotated batch of images with shape:
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Rotated batch of images with shape:
             - (N, W, H) for grayscale images when group_element is r90 or r270
             - (N, H, W) for grayscale images when group_element is e or r180
             - (N, W, H, C) for multi-channel images when group_element is r90 or r270
@@ -556,11 +588,14 @@ def rot90_images(images: ImageType, group_element: Literal["e", "r90", "r180", "
 
     """
     rot90_count = C4_GROUP_ELEMENT_TO_K[group_element]
-    return cast("ImageType", cast("Any", np.rot90(images, k=rot90_count, axes=(1, 2))))
+    return cast(
+        "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]",
+        cast("Any", np.rot90(images, k=rot90_count, axes=(1, 2))),
+    )
 
 
 def pad(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     min_height: int,
     min_width: int,
     border_mode: int,
@@ -573,7 +608,7 @@ def pad(
     the specified minimum dimensions. Padding is added evenly on all sides.
 
     Args:
-        img (ImageType): Input image to pad.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image to pad.
         min_height (int): Minimum height of the output image.
         min_width (int): Minimum width of the output image.
         border_mode (int): OpenCV border mode for padding.
@@ -618,7 +653,7 @@ def pad(
 
 
 def pad_with_params(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     h_pad_top: int,
     h_pad_bottom: int,
     w_pad_left: int,
@@ -632,7 +667,7 @@ def pad_with_params(
     This function adds specified amounts of padding to each side of the image.
 
     Args:
-        img (ImageType): Input image to pad.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image to pad.
         h_pad_top (int): Number of pixels to add at the top.
         h_pad_bottom (int): Number of pixels to add at the bottom.
         w_pad_left (int): Number of pixels to add on the left.
@@ -677,7 +712,7 @@ def pad_with_params(
 
 
 def pad_images_with_params(
-    images: ImageType,
+    images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     h_pad_top: int,
     h_pad_bottom: int,
     w_pad_left: int,
@@ -692,7 +727,7 @@ def pad_images_with_params(
     image in the batch.
 
     Args:
-        images (ImageType): Input batch of images to pad.
+        images (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input batch of images to pad.
         h_pad_top (int): Number of pixels to add at the top.
         h_pad_bottom (int): Number of pixels to add at the bottom.
         w_pad_left (int): Number of pixels to add on the left.
@@ -727,7 +762,10 @@ def pad_images_with_params(
         kwargs = {}
 
     pad_array = cast("_PadArray", np.pad)
-    images = cast("ImageType", pad_array(images, pad_width=pad_width, mode=mode, **kwargs))
+    images = cast(
+        "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]",
+        pad_array(images, pad_width=pad_width, mode=mode, **kwargs),
+    )
     if no_channel_dim:
         images = images[..., 0]
 
@@ -1051,64 +1089,70 @@ def vflip_images(volume: np.ndarray) -> np.ndarray:
 transpose_tensor = attrgetter("mT")
 
 
-def erode(img: ImageType, kernel: np.ndarray) -> ImageType:
+def erode(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], kernel: np.ndarray
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """One iteration of morphological erosion. Shrinks bright regions. Use for mask/bbox
     morphology. Same shape and channel count.
 
     This function applies erosion to an image using the cv2.erode function.
 
     Args:
-        img (ImageType): Input image as a numpy array.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image as a numpy array.
         kernel (np.ndarray): Kernel as a numpy array.
 
     Returns:
-        ImageType: The eroded image.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: The eroded image.
 
     """
     if img.dtype.type is np.float16:
-        working = (
-            convert_dtype(cast("NDArray[np.float16]", img), np.float32)
-            if img.flags.c_contiguous
-            else img.astype(np.float32, order="C")
+        working = convert_dtype(
+            img, np.float32, out=None if img.flags.c_contiguous else np.empty(img.shape, dtype=np.float32)
         )
         cv2.erode(working, kernel, dst=working, iterations=1)
         return convert_dtype(working, cast("np.dtype[np.float16]", img.dtype))
     if img.ndim == 3 and img.shape[-1] == 1:
         destination = np.empty_like(img, order="C")
-        return cast("ImageType", cv2.erode(img, kernel, dst=destination, iterations=1))
-    return cast("ImageType", cv2.erode(img, kernel, iterations=1))
+        return cast(
+            "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]",
+            cv2.erode(img, kernel, dst=destination, iterations=1),
+        )
+    return cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", cv2.erode(img, kernel, iterations=1))
 
 
-def dilate(img: ImageType, kernel: np.ndarray) -> ImageType:
+def dilate(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], kernel: np.ndarray
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """One iteration of morphological dilation. Expands bright regions. Use for mask/bbox
     morphology. Same shape and channel count.
 
     This function applies dilation to an image using the cv2.dilate function.
 
     Args:
-        img (ImageType): Input image as a numpy array.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image as a numpy array.
         kernel (np.ndarray): Kernel as a numpy array.
 
     Returns:
-        ImageType: The dilated image.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: The dilated image.
 
     """
     if img.dtype.type is np.float16:
-        working = (
-            convert_dtype(cast("NDArray[np.float16]", img), np.float32)
-            if img.flags.c_contiguous
-            else img.astype(np.float32, order="C")
+        working = convert_dtype(
+            img, np.float32, out=None if img.flags.c_contiguous else np.empty(img.shape, dtype=np.float32)
         )
         cv2.dilate(working, kernel, dst=working, iterations=1)
         return convert_dtype(working, cast("np.dtype[np.float16]", img.dtype))
     if img.ndim == 3 and img.shape[-1] == 1:
         destination = np.empty_like(img, order="C")
-        return cast("ImageType", cv2.dilate(img, kernel, dst=destination, iterations=1))
-    return cast("ImageType", cv2.dilate(img, kernel, iterations=1))
+        return cast(
+            "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]",
+            cv2.dilate(img, kernel, dst=destination, iterations=1),
+        )
+    return cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", cv2.dilate(img, kernel, iterations=1))
 
 
 def morphology(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     kernel: np.ndarray,
     operation: Literal["dilation", "erosion"],
 ) -> np.ndarray:
@@ -1118,7 +1162,7 @@ def morphology(
     This function applies morphology to an image using the cv2.morphologyEx function.
 
     Args:
-        img (ImageType): Input image as a numpy array.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image as a numpy array.
         kernel (np.ndarray): Kernel as a numpy array.
         operation (Literal['dilation', 'erosion']): The operation to apply.
 
@@ -1146,7 +1190,10 @@ D4_TRANSFORMATIONS_IMAGES = {
 }
 
 
-def d4_images(img: ImageType, group_member: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"]) -> np.ndarray:
+def d4_images(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+    group_member: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"],
+) -> np.ndarray:
     """Apply one of eight D4 square symmetries to a batch of images (N, H, W[, C]).
     group_member: e, r90, r180, r270, v, hvt, h, t. Rotations and flips.
 
@@ -1155,7 +1202,8 @@ def d4_images(img: ImageType, group_member: Literal["e", "r90", "r180", "r270", 
     Each transformation is identified by a unique group member code.
 
     Args:
-        img (ImageType): The input batch of images to transform with shape:
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): The input batch of images to transform with
+            shape:
             - (N, H, W) for grayscale images
             - (N, H, W, C) for multi-channel images
             where N is the batch size, H is height, W is width, C is channels

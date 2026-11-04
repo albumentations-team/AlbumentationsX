@@ -3,6 +3,8 @@
 from decimal import Decimal
 from typing import Annotated, Any
 
+import numpy as np
+from numpy.typing import NDArray
 from pydantic import Field, field_validator
 
 from albumentations.core.invocation import SamplingContext
@@ -13,7 +15,6 @@ from albumentations.core.transform_params import (
     requirements_for_views,
 )
 from albumentations.core.transforms_interface import BaseTransformInitSchema, ImageOnlyTransform
-from albumentations.core.type_definitions import ImageType
 
 from .functional import channel_dropout
 
@@ -107,10 +108,20 @@ class ChannelDropout(ImageOnlyTransform):
         self.dropout_ratio = dropout_ratio
         self.fill = fill
 
-    def apply(self, img: ImageType, selected_channels: tuple[int, ...], **params: Any) -> ImageType:
+    def apply(
+        self,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+        selected_channels: tuple[int, ...],
+        **params: Any,
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return channel_dropout(img, selected_channels, self.fill)
 
-    def apply_to_images(self, images: ImageType, selected_channels: tuple[int, ...], **params: Any) -> ImageType:
+    def apply_to_images(
+        self,
+        images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+        selected_channels: tuple[int, ...],
+        **params: Any,
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return channel_dropout(images, selected_channels, self.fill)
 
     def sample_parameters(

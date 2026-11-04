@@ -9,7 +9,6 @@ from numpy.typing import NDArray
 from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
     MONO_CHANNEL_DIMENSIONS,
-    ImageType,
     add,
     add_weighted,
     clip,
@@ -23,15 +22,18 @@ from ._functional_shared import (
 )
 
 
-def add_noise(img: ImageType, noise: np.ndarray) -> ImageType:
+def add_noise(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], noise: np.ndarray
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Add broadcastable noise and clip floating results to the input dtype's image range.
 
     Args:
-        img (ImageType): Channel-last input image, batch, or volume.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Channel-last input image, batch, or volume.
         noise (np.ndarray): Per-channel vector or array broadcastable to the image shape.
 
     Returns:
-        ImageType: Image with saturated uint8 arithmetic or floating values clipped to [0, 1].
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Image with saturated uint8 arithmetic or floating
+            values clipped to [0, 1].
 
     """
     if img.ndim == 3 and noise.ndim == 1:
@@ -51,17 +53,21 @@ def add_noise(img: ImageType, noise: np.ndarray) -> ImageType:
     return result if img.dtype == np.uint8 else clip(result, img.dtype)
 
 
-def add_noise_by_patches(img: ImageType, noise: np.ndarray, patches: np.ndarray) -> ImageType:
+def add_noise_by_patches(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], noise: np.ndarray, patches: np.ndarray
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Add pre-generated noise inside rectangular patches while preserving pixels outside the sampled regions and
     replacing earlier values where patches overlap.
 
     Args:
-        img (ImageType): Input image or image batch in channel-last layout.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image or image batch in channel-last
+            layout.
         noise (np.ndarray): Dense noise map whose spatial dimensions match the image.
         patches (np.ndarray): Integer patch coordinates in `(x_min, y_min, x_max, y_max)` format.
 
     Returns:
-        ImageType: A copy of the input with noise applied inside the patches.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: A copy of the input with noise applied inside the
+            patches.
 
     Note:
         Every patch is evaluated against the original image. Later patches therefore overwrite earlier ones in
@@ -87,27 +93,25 @@ def add_noise_by_patches(img: ImageType, noise: np.ndarray, patches: np.ndarray)
 
 
 def shot_noise(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     scale: float,
     random_generator: np.random.Generator,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Add shot (Poisson) noise in linear light space; scale controls strength. Simulates
     sensor noise. Use for camera noise augmentation. Float32 working arithmetic with input dtype restored.
 
     Args:
-        img (ImageType): Input image
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image
         scale (float): Scale factor for the noise
         random_generator (np.random.Generator): Random number generator
 
     Returns:
-        ImageType: Image with shot noise
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Image with shot noise
 
     """
     input_dtype = img.dtype
-    if input_dtype.type is np.uint8:
+    if input_dtype.type is np.uint8 or input_dtype.type is np.float16:
         img = convert_dtype(img, np.float32)
-    elif input_dtype.type is np.float16:
-        img = convert_dtype(cast("NDArray[np.float16]", img), np.float32)
 
     if img.ndim == 4:
         batch_linear = power(img, 2.2)
@@ -122,7 +126,7 @@ def shot_noise(
         img_linear = np.empty_like(img)
         cv2.pow(img, 2.2, dst=img_linear)
     else:
-        img_linear = cast("ImageType", cv2.pow(img, 2.2))
+        img_linear = cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", cv2.pow(img, 2.2))
 
     # Scale image values and add small constant to avoid zero values
     scaled_img = (img_linear + scale * 1e-6) / scale
@@ -611,29 +615,29 @@ def generate_patch_noise(
 
 
 def sharpen_gaussian(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     alpha: float,
     kernel_size: int,
     sigma: float,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Sharpen via unsharp mask: subtract Gaussian blur, add back with alpha. kernel_size, sigma
     control blur; floating results clip to the input dtype range.
 
     This function sharpens an image using a Gaussian blur.
 
     Args:
-        img (ImageType): The image to sharpen.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): The image to sharpen.
         alpha (float): The alpha value to use for the sharpening.
         kernel_size (int): The kernel size to use for the Gaussian blur.
         sigma (float): The sigma value to use for the Gaussian blur.
 
     Returns:
-        ImageType: The sharpened image.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: The sharpened image.
 
     """
     input_dtype = img.dtype
     if input_dtype.type is np.float16:
-        img = convert_dtype(cast("NDArray[np.float16]", img), np.float32)
+        img = convert_dtype(img, np.float32)
     if img.shape[-1] == 1:
         blurred = np.empty(img.shape, dtype=img.dtype)
         cv2.GaussianBlur(
@@ -645,7 +649,7 @@ def sharpen_gaussian(
         )
     else:
         blurred = cast(
-            "ImageType",
+            "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]",
             cv2.GaussianBlur(
                 img,
                 ksize=(kernel_size, kernel_size),
@@ -712,10 +716,10 @@ SPARSE_SALT_AND_PEPPER_THRESHOLD = 0.16
 
 
 def apply_salt_and_pepper(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     salt_mask: np.ndarray,
     pepper_mask: np.ndarray,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Apply salt and pepper noise using pre-computed masks. Replaces pixels with
     min or max value; amount controlled by masks.
 
@@ -723,14 +727,14 @@ def apply_salt_and_pepper(
     Salt pixels are set to maximum value, pepper pixels are set to 0.
 
     Args:
-        img (ImageType): Input image of any dtype and dimensions:
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image of any dtype and dimensions:
             - 3D: (H, W, C) - RGB/multi-channel
             - 4D: (D, H, W, C) - volume with depth
         salt_mask (np.ndarray): Boolean mask indicating salt pixels (H, W)
         pepper_mask (np.ndarray): Boolean mask indicating pepper pixels (H, W)
 
     Returns:
-        ImageType: The image with salt and pepper noise applied.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: The image with salt and pepper noise applied.
 
     """
     max_value = MAX_VALUES_BY_DTYPE[img.dtype]

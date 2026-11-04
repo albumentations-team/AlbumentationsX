@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
-    ImageType,
     ImageUInt8,
     add_weighted,
     apply_uint8_lut,
@@ -115,17 +114,20 @@ def _replace_segments_with_mean(
     return result
 
 
-def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
+def fancy_pca(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], alpha_vector: np.ndarray
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Fancy PCA color augmentation: add noise along principal components. alpha_vector; any channel
     count. Float32 working arithmetic with output restored to the input dtype.
 
     Args:
-        img (ImageType): Input image
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image
         alpha_vector (np.ndarray): Vector of scale factors for each principal component.
                                    Should have the same length as the number of channels in the image.
 
     Returns:
-        ImageType: Augmented image of the same shape, type, and range as the input.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Augmented image of the same shape, type, and
+            range as the input.
 
     Image types:
         uint8, float16, float32
@@ -148,10 +150,8 @@ def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
 
     """
     input_dtype = img.dtype
-    if input_dtype.type is np.uint8:
+    if input_dtype.type is np.uint8 or input_dtype.type is np.float16:
         img = convert_dtype(img, np.float32)
-    elif input_dtype.type is np.float16:
-        img = convert_dtype(cast("NDArray[np.float16]", img), np.float32)
 
     orig_shape = img.shape
     num_channels = get_num_channels(img)
@@ -191,9 +191,9 @@ def fancy_pca(img: ImageType, alpha_vector: np.ndarray) -> ImageType:
 
 
 def adjust_saturation_torchvision(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     factor: float,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Adjust saturation by blending with grayscale. Factor in [0, inf]; uses
     to_gray (weighted_average for RGB). Torchvision-compatible.
 
@@ -201,11 +201,11 @@ def adjust_saturation_torchvision(
     arbitrary channels. Works on four- and five-dimensional batch data.
 
     Args:
-        img (ImageType): Input image as a numpy array.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image as a numpy array.
         factor (float): The factor to adjust the saturation by.
 
     Returns:
-        ImageType: The adjusted image.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: The adjusted image.
 
     """
     if factor == 1 or is_grayscale_image(img):
@@ -214,7 +214,11 @@ def adjust_saturation_torchvision(
     gray = to_gray_weighted_average(img) if is_rgb_image(img) else to_gray_average(img)
     gray_expanded = grayscale_to_multichannel(gray, img.shape[-1])
     result = gray_expanded if factor == 0 else add_weighted(img, factor, gray_expanded, 1 - factor)
-    return result if result.dtype == np.uint8 else cast("ImageType", clip(result))
+    return (
+        result
+        if result.dtype == np.uint8
+        else cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", clip(result))
+    )
 
 
 def _adjust_hue_torchvision_uint8(img: ImageUInt8, factor: float) -> ImageUInt8:
@@ -227,18 +231,20 @@ def _adjust_hue_torchvision_uint8(img: ImageUInt8, factor: float) -> ImageUInt8:
     return cast("ImageUInt8", cv2.cvtColor(img, cv2.COLOR_HSV2RGB))
 
 
-def adjust_hue_torchvision(img: ImageType, factor: float) -> ImageType:
+def adjust_hue_torchvision(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], factor: float
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Adjust hue by shifting in HSV. factor in [-0.5, 0.5]. Torchvision-compatible; RGB only.
     LUT for uint8; in-place mod for float32.
 
     This function adjusts the hue of an image by adding a factor to the hue value.
 
     Args:
-        img (ImageType): Input image.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image.
         factor (float): The factor to adjust the hue by.
 
     Returns:
-        ImageType: The adjusted image.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: The adjusted image.
 
     """
     if is_grayscale_image(img) or factor == 0:
@@ -249,14 +255,16 @@ def adjust_hue_torchvision(img: ImageType, factor: float) -> ImageType:
 
     input_dtype = img.dtype
     if input_dtype.type is np.float16:
-        img = convert_dtype(cast("NDArray[np.float16]", img), np.float32)
-    img = cast("ImageType", cv2.cvtColor(img, cv2.COLOR_RGB2HSV))
+        img = convert_dtype(img, np.float32)
+    img = cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", cv2.cvtColor(img, cv2.COLOR_RGB2HSV))
     img[..., 0] = np.mod(img[..., 0] + factor * 360, 360)
     result = cast("NDArray[np.float32]", cv2.cvtColor(img, cv2.COLOR_HSV2RGB))
     return convert_dtype(result, dtype=input_dtype)
 
 
-def _apply_brightness_only_torchvision(img: ImageType, brightness_factor: float) -> ImageType:
+def _apply_brightness_only_torchvision(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], brightness_factor: float
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     if brightness_factor == 0:
         return np.zeros_like(img)
     if brightness_factor == 1:
@@ -268,13 +276,18 @@ def _apply_brightness_only_torchvision(img: ImageType, brightness_factor: float)
     return np.clip(result, 0.0, 1.0, out=result) if result.dtype == np.float32 else result
 
 
-def _apply_contrast_only_torchvision(img: ImageType, contrast_factor: float) -> ImageType:
+def _apply_contrast_only_torchvision(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], contrast_factor: float
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     gray_img = img if is_grayscale_image(img) else to_gray_weighted_average(img)
     img_mean = float(mean(gray_img))
     if contrast_factor == 0:
         if img.dtype == np.uint8:
             img_mean = int(img_mean + 0.5)
-        return cast("ImageType", np.full_like(img, img_mean, dtype=img.dtype))
+        return cast(
+            "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]",
+            np.full_like(img, img_mean, dtype=img.dtype),
+        )
 
     result = multiply_add(img, contrast_factor, img_mean * (1 - contrast_factor))
     if result.dtype == np.float16:
@@ -283,12 +296,12 @@ def _apply_contrast_only_torchvision(img: ImageType, contrast_factor: float) -> 
 
 
 def _apply_brightness_contrast_uint8(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     brightness_factor: float,
     contrast_factor: float,
     mean_at_contrast: float,
     brightness_first: bool,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     lut = np.arange(256, dtype=np.float32)
     if brightness_first:
         lut = np.clip(lut * brightness_factor, 0.0, 255.0)
@@ -302,12 +315,12 @@ def _apply_brightness_contrast_uint8(
 
 
 def _apply_brightness_contrast_float32(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     brightness_factor: float,
     contrast_factor: float,
     mean_at_contrast: float,
     brightness_first: bool,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     offset = mean_at_contrast * (1.0 - contrast_factor)
     out = np.empty_like(img)
     if brightness_first:
@@ -326,11 +339,11 @@ def _apply_brightness_contrast_float32(
 
 
 def apply_brightness_contrast_torchvision(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     brightness_factor: float,
     contrast_factor: float,
     brightness_first: bool,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Fused brightness and contrast: single LUT (uint8) or two passes (float32). clip(a*x+b);
     torchvision-compatible; order via brightness_first.
 
@@ -344,13 +357,13 @@ def apply_brightness_contrast_torchvision(
     two sequential clipped passes are used.
 
     Args:
-        img (ImageType): Input image (uint8 or float32).
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image (uint8 or float32).
         brightness_factor (float): Brightness multiplicative factor.
         contrast_factor (float): Contrast multiplicative factor.
         brightness_first (bool): Whether brightness is applied before contrast.
 
     Returns:
-        ImageType: Adjusted image with the same dtype as input.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Adjusted image with the same dtype as input.
 
     """
     if contrast_factor == 1:
@@ -387,13 +400,13 @@ def apply_brightness_contrast_torchvision(
 
 
 def apply_color_jitter(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     brightness: float,
     contrast: float,
     saturation: float,
     hue: float,
     order: list[str],
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Apply ColorJitter's sampled brightness, contrast, saturation, and hue operations in randomized order to a
     prevalidated one- or three-channel image.
     """
@@ -414,14 +427,14 @@ def apply_color_jitter(
 
 
 def apply_photometric_distort(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     brightness_factor: float | None,
     contrast_factor: float | None,
     saturation_factor: float | None,
     hue_factor: float | None,
     contrast_before: bool,
     channel_permutation: list[int] | None,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Apply PhotoMetricDistort's sampled brightness, contrast, saturation, hue, and channel permutation to a
     prevalidated one- or three-channel image.
     """
@@ -439,10 +452,10 @@ def apply_photometric_distort(
 
 
 def _apply_optional_brightness_contrast(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     brightness_factor: float | None,
     contrast_factor: float | None,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     if brightness_factor is not None and contrast_factor is not None:
         return apply_brightness_contrast_torchvision(img, brightness_factor, contrast_factor, brightness_first=True)
     if brightness_factor is not None:
@@ -453,12 +466,12 @@ def _apply_optional_brightness_contrast(
 
 
 def apply_random_brightness_contrast(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     alpha: float,
     beta: float,
     brightness_by_max: bool,
     ensure_safe_output: bool,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Apply RandomBrightnessContrast coefficients using the requested brightness mode, output-safety policy,
     dtype routing, and clipping semantics.
     """
@@ -509,7 +522,7 @@ def _apply_brightness_contrast_batch_uint8(
     brightness_factor: float,
     contrast_factor: float,
     ensure_safe_output: bool,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     gains, offsets = _batch_brightness_contrast_coefficients(
         image_means,
         brightness_factor,
@@ -534,16 +547,19 @@ def _apply_brightness_contrast_batch_uint8(
         np.multiply(tables, brightness_factor, out=tables)
         np.clip(tables, 0, 255, out=tables)
     flat_images = images.reshape(len(images), -1)
-    return cast("ImageType", np.take_along_axis(tables.astype(np.uint8), flat_images, axis=1).reshape(images.shape))
+    return cast(
+        "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]",
+        np.take_along_axis(tables.astype(np.uint8), flat_images, axis=1).reshape(images.shape),
+    )
 
 
 def apply_brightness_contrast_torchvision_batch(
-    images: ImageType,
+    images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     brightness_factor: float,
     contrast_factor: float,
     *,
     ensure_safe_output: bool = False,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Apply one brightness/contrast pair to a batch, using an independent mean per image."""
     if images.shape[0] == 0:
         return images
@@ -666,11 +682,9 @@ def slic(
 
     # Normalize image to [0, 1] range
     max_value = np.float32(image.max())
-    image_normalized = (
-        convert_dtype(cast("NDArray[np.float16]", image), np.float32)
-        if image.dtype.type is np.float16
-        else image.astype(np.float32)
-    )
+    image_normalized = convert_dtype(image, np.float32, max_value=1)
+    if image_normalized is image:
+        image_normalized = image_normalized.copy()
     np.divide(image_normalized, max_value + np.float32(1e-6), out=image_normalized)
     single_channel = image_normalized.shape[-1] == 1
 
@@ -682,8 +696,7 @@ def slic(
     y_coordinates_flat = np.repeat(np.arange(height, dtype=np.float32), width)
     distances = np.empty((height, width), dtype=np.float32)
 
-    max_window_height = min(height, 2 * grid_step + 1)
-    max_window_width = min(width, 2 * grid_step + 1)
+    max_window_height, max_window_width = min(height, 2 * grid_step + 1), min(width, 2 * grid_step + 1)
     color_diff_buffer = (
         np.empty(0, dtype=np.float32)
         if single_channel
@@ -705,8 +718,7 @@ def slic(
 
             y_low, y_high = max(0, center_y - grid_step), min(height, center_y + grid_step + 1)
             x_low, x_high = max(0, center_x - grid_step), min(width, center_x + grid_step + 1)
-            window_height = y_high - y_low
-            window_width = x_high - x_low
+            window_height, window_width = y_high - y_low, x_high - x_low
 
             crop = image_normalized[y_low:y_high, x_low:x_high]
             distance = distance_buffer[:window_height, :window_width]

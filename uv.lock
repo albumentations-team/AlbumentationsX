@@ -28,7 +28,7 @@ wheels = [
 
 [[package]]
 name = "albucore"
-version = "0.3.3"
+version = "0.3.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numkong" },
@@ -36,9 +36,9 @@ dependencies = [
     { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "stringzilla" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/52/cd/7459d6ee20e5dcfa2124775aecc2351fc202e2e58571e36d8470b8ddd45a/albucore-0.3.3.tar.gz", hash = "sha256:060ac7487068600c9e8141d4d989a2001ab194909b9a058878c3ca4d24e99486", size = 248589, upload-time = "2026-11-03T12:43:12.151Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4b/d4/f83591e9018df35349f63fed1d29ec3c36297b69551c83b5b7b082319eb8/albucore-0.3.4.tar.gz", hash = "sha256:50104cf4bd1e97f966842416014bcc9078ecdf88c2214c715a2c60e94145861a", size = 250468, upload-time = "2026-11-04T06:47:01.022Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/50/cf/8e142c942f13e40c5dd289b9f6fa1c1ac7295dcaa36075609b777c23b17b/albucore-0.3.3-py3-none-any.whl", hash = "sha256:fd60076a67750f67fe5c335c22990fa0a629f22e83d368668d60d77c23d7320d", size = 80247, upload-time = "2026-11-03T12:43:10.564Z" },
+    { url = "https://files.pythonhosted.org/packages/55/b5/19d4d87aea0af4b621c324d7acb0a80cba9ce0622683afead0b38e264e14/albucore-0.3.4-py3-none-any.whl", hash = "sha256:4ebd5236d1ebe1dd5261c0916fc2dd5ee51283969ef13aed1979927d74f8e826", size = 80691, upload-time = "2026-11-04T06:46:59.706Z" },
 ]
 
 [[package]]
@@ -190,7 +190,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "albucore", specifier = "==0.3.3" },
+    { name = "albucore", specifier = "==0.3.4" },
     { name = "huggingface-hub", marker = "extra == 'hub'" },
     { name = "numkong", specifier = ">=7.8.7" },
     { name = "numpy", specifier = ">=2.2.6" },

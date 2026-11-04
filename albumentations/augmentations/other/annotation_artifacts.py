@@ -5,6 +5,7 @@ from typing import Annotated, Any, Literal, Self
 
 import cv2
 import numpy as np
+from numpy.typing import NDArray
 from pydantic import Field, model_validator
 from pydantic.functional_validators import AfterValidator
 
@@ -13,7 +14,6 @@ from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
 from albumentations.core.transform_params import SampledParams, TargetParams, TargetSet, requirements_for_views
 from albumentations.core.transforms_interface import BaseTransformInitSchema, ImageOnlyTransform
-from albumentations.core.type_definitions import ImageType
 
 __all__ = ["AnnotationArtifacts"]
 
@@ -283,10 +283,10 @@ class AnnotationArtifacts(ImageOnlyTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         artifacts: list[dict[str, Any]],
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fannotation.draw_annotation_artifacts(img, artifacts)
 
     def sample_parameters(

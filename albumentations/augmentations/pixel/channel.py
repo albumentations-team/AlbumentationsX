@@ -6,6 +6,8 @@ Transforms that reorder or permute image channels.
 import warnings
 from typing import Any, ClassVar
 
+import numpy as np
+from numpy.typing import NDArray
 from pydantic import field_validator
 
 from albumentations.augmentations.pixel import functional as fpixel
@@ -20,7 +22,6 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
 )
-from albumentations.core.type_definitions import ImageType
 
 __all__ = [
     "ChannelShuffle",
@@ -109,20 +110,20 @@ class ChannelShuffle(ImageOnlyTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         channels_shuffled: list[int] | None,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if channels_shuffled is None:
             return img
         return fpixel.channel_shuffle(img, channels_shuffled)
 
     def apply_to_images(
         self,
-        images: ImageType,
+        images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         channels_shuffled: list[int] | None,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if channels_shuffled is None:
             return images
         return fpixel.volume_channel_shuffle(images, channels_shuffled)

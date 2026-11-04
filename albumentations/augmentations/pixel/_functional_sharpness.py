@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Literal, cast
 
+import albucore
 from numpy.typing import NDArray
 
 from ._functional_shared import (
@@ -21,8 +21,6 @@ from ._functional_shared import (
     restore_uint8_working_image,
     to_uint8_working_image,
 )
-
-_Cv2Compare = Callable[..., np.ndarray]
 
 
 def unsharp_mask_images(
@@ -66,7 +64,7 @@ def unsharp_mask(
     and threshold-gated replacement for faster Pillow-style sharpening.
 
     Args:
-        image (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Single image, shape (H, W, C) or (H, W).
+        image (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Single image, shape (H, W, C).
         ksize (int): The kernel size for Gaussian blur.
         sigma (float): The sigma value for Gaussian blur.
         alpha (float): The alpha value for the unsharp mask.
@@ -77,36 +75,7 @@ def unsharp_mask(
             input.
 
     """
-    input_dtype = image.dtype
-    if input_dtype.type is np.float16:
-        image = convert_dtype(
-            image,
-            np.float32,
-            out=None if image.flags.c_contiguous else np.empty(image.shape, dtype=np.float32),
-        )
-
-    ksize_tuple = (ksize, ksize)
-    blurred: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32] = np.empty_like(image, order="C")
-    cv2.GaussianBlur(image, ksize_tuple, sigmaX=sigma, dst=blurred)
-
-    sharpened: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32] = np.empty_like(image, order="C")
-    cv2.addWeighted(image, 1.0 + alpha, blurred, -alpha, 0, dst=sharpened)
-    if image.dtype == np.float32:
-        np.clip(sharpened, 0, 1, out=sharpened)
-
-    if threshold <= 0:
-        result = sharpened
-    else:
-        diff = cast("np.ndarray", cv2.absdiff(image, blurred))
-        threshold_value = threshold / 255.0 if image.dtype == np.float32 else threshold
-        if image.ndim == NUM_MULTI_CHANNEL_DIMENSIONS and image.shape[2] not in {1, 3, 4}:
-            result = np.where(diff > threshold_value, sharpened, image)
-        else:
-            compare = cast("_Cv2Compare", cv2.compare)
-            mask = compare(diff, threshold_value, cv2.CMP_GT)
-            result = image if input_dtype.type is np.float16 else image.copy()
-            cv2.copyTo(sharpened, mask, result)
-    return convert_dtype(result, input_dtype) if input_dtype.type is np.float16 else result
+    return albucore.unsharp_mask(image, ksize, sigma, alpha, threshold)
 
 
 def pixel_dropout(
@@ -380,31 +349,12 @@ def convolve(
         NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Convolved image.
 
     """
-    input_dtype = img.dtype
-    if input_dtype.type is np.float16:
-        img = convert_dtype(
-            img, np.float32, out=None if img.flags.c_contiguous else np.empty(img.shape, dtype=np.float32)
-        )
-    else:
-        img = cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", np.array(img, copy=True, order="C"))
-    if kernel.ndim == 2:
-        cv2.filter2D(img, ddepth=-1, kernel=kernel, dst=img, borderType=border_mode)
-    elif kernel.ndim == 3:
-        channels = 1 if img.ndim == 2 else img.shape[-1]
-        if kernel.shape[0] != channels:
-            raise ValueError(f"Expected one kernel per channel ({channels}), got {kernel.shape[0]}")
-        if img.ndim == 2:
-            cv2.filter2D(img, ddepth=-1, kernel=kernel[0], dst=img, borderType=border_mode)
-        else:
-            for channel, channel_kernel in enumerate(kernel):
-                img[..., channel] = cv2.filter2D(
-                    img[..., channel], ddepth=-1, kernel=channel_kernel, borderType=border_mode
-                )
-    else:
+    if kernel.ndim not in (2, 3):
         raise ValueError(f"kernel must have 2 or 3 dimensions, got {kernel.ndim}")
-    if input_dtype.type is np.float16:
-        return clip(img, dtype=cast("np.dtype[np.float16]", input_dtype))
-    return clip(img, out=img)
+    channels = img.shape[-1]
+    if kernel.ndim == 3 and kernel.shape[0] != channels:
+        raise ValueError(f"Expected one kernel per channel ({channels}), got {kernel.shape[0]}")
+    return albucore.convolve(img, kernel, border_mode)
 
 
 def create_stochastic_convolution_kernel(

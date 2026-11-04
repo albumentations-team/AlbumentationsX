@@ -173,3 +173,34 @@ def test_soft_blend_releases_cast_workspaces_before_output_conversion(monkeypatc
     np.testing.assert_array_equal(result, np.full_like(base, 0.375))
     np.testing.assert_array_equal(base, np.full_like(base, 0.25))
     np.testing.assert_array_equal(donor, np.full_like(donor, 0.75))
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+def test_morphology_public_grayscale_boundary_passes_explicit_channels_to_core(
+    dtype: type[np.generic],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import albucore
+
+    original_erode = albucore.erode
+    seen_shapes: list[tuple[int, ...]] = []
+
+    def erode(image: np.ndarray, kernel: np.ndarray) -> np.ndarray:
+        seen_shapes.append(image.shape)
+        assert image.ndim == 3 and image.shape[-1] == 1
+        return original_erode(image, kernel)
+
+    monkeypatch.setattr(albucore, "erode", erode)
+    values = np.random.default_rng(137).random((13, 17), dtype=np.float32)
+    image = (values * 255).astype(dtype) if dtype == np.uint8 else values.astype(dtype)
+    mask = (values > 0.5).astype(np.uint8)
+    image.flags.writeable = False
+    mask.flags.writeable = False
+    pipeline = A.Compose([A.Morphological(scale=(3, 3), operation="erosion", p=1)], seed=137)
+
+    result = pipeline(image=image, mask=mask)
+
+    assert seen_shapes == [(13, 17, 1), (13, 17, 1)]
+    assert result["image"].shape == image.shape
+    assert result["mask"].shape == mask.shape
+    assert result["image"].dtype == image.dtype

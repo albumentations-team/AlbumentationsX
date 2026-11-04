@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Literal, cast
 
+import albucore
 import numkong as nk
 import torch
 
@@ -574,32 +575,9 @@ def linear_transformation_rgb(
         ValueError: If input shapes do not conform to the supported configurations.
 
     """
-    input_dtype = img.dtype
-    is_half = input_dtype.type is np.float16
-    if is_half:
-        img = convert_dtype(
-            img, np.float32, out=None if img.flags.c_contiguous else np.empty(img.shape, dtype=np.float32)
-        )
-    if img.ndim == 3:
-        result = cast(
-            "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]",
-            cv2.transform(img, transformation_matrix, dst=img if is_half else None),
-        )
-    elif img.ndim == 4:
-        transformed, original_shape = _reshape_xhwc_for_opencv(img)
-        transformed = cast(
-            "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]",
-            cv2.transform(transformed, transformation_matrix, dst=transformed if is_half else None),
-        )
-        result = cast(
-            "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]",
-            _restore_xhwc_from_opencv(transformed, original_shape),
-        )
-    else:
+    if img.ndim not in (3, 4):
         raise ValueError(f"Expected input shape (H, W, 3) or (B, H, W, 3), got {img.shape}")
-    if is_half:
-        return clip(result, dtype=cast("np.dtype[np.float16]", input_dtype))
-    return clip(result, out=result)
+    return albucore.linear_transformation_rgb(img, transformation_matrix)
 
 
 def clahe(

@@ -13,6 +13,7 @@ from math import ceil, cos, radians, sin
 from typing import Literal, cast
 from warnings import warn
 
+import albucore
 import cv2
 import numpy as np
 from albucore import clip, convert_dtype, reduce_sum
@@ -52,17 +53,7 @@ def box_blur(
         NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Blurred image.
 
     """
-    result: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]
-    if img.dtype.type is np.float16:
-        result = convert_dtype(
-            img, np.float32, out=None if img.flags.c_contiguous else np.empty(img.shape, dtype=np.float32)
-        )
-    else:
-        result = img.copy(order="C")
-    cv2.blur(result, (ksize, ksize), dst=result)
-    if img.dtype.type is np.float16:
-        return convert_dtype(result, cast("np.dtype[np.float16]", img.dtype))
-    return result
+    return albucore.box_blur(img, ksize)
 
 
 def glass_blur(

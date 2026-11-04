@@ -6,8 +6,9 @@ from collections.abc import Callable, Mapping
 from operator import attrgetter, index
 from typing import Any, Literal, cast
 
+import albucore
 import torch
-from albucore import convert_dtype, flip_volume, rot90_volume, transpose_volume
+from albucore import flip_volume, rot90_volume, transpose_volume
 from numpy.typing import NDArray
 
 from ._functional_shared import (
@@ -1105,19 +1106,7 @@ def erode(
         NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: The eroded image.
 
     """
-    if img.dtype.type is np.float16:
-        working = convert_dtype(
-            img, np.float32, out=None if img.flags.c_contiguous else np.empty(img.shape, dtype=np.float32)
-        )
-        cv2.erode(working, kernel, dst=working, iterations=1)
-        return convert_dtype(working, cast("np.dtype[np.float16]", img.dtype))
-    if img.ndim == 3 and img.shape[-1] == 1:
-        destination = np.empty_like(img, order="C")
-        return cast(
-            "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]",
-            cv2.erode(img, kernel, dst=destination, iterations=1),
-        )
-    return cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", cv2.erode(img, kernel, iterations=1))
+    return albucore.erode(img, kernel)
 
 
 def dilate(
@@ -1136,19 +1125,7 @@ def dilate(
         NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: The dilated image.
 
     """
-    if img.dtype.type is np.float16:
-        working = convert_dtype(
-            img, np.float32, out=None if img.flags.c_contiguous else np.empty(img.shape, dtype=np.float32)
-        )
-        cv2.dilate(working, kernel, dst=working, iterations=1)
-        return convert_dtype(working, cast("np.dtype[np.float16]", img.dtype))
-    if img.ndim == 3 and img.shape[-1] == 1:
-        destination = np.empty_like(img, order="C")
-        return cast(
-            "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]",
-            cv2.dilate(img, kernel, dst=destination, iterations=1),
-        )
-    return cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", cv2.dilate(img, kernel, iterations=1))
+    return albucore.dilate(img, kernel)
 
 
 def morphology(

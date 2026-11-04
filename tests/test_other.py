@@ -49,10 +49,10 @@ def test_to_float_preserves_half_bits_through_compose(target):
     np.testing.assert_array_equal(image.view(np.uint16), original)
 
 
-@pytest.mark.parametrize("dtype", [np.uint16, np.int16])
+@pytest.mark.parametrize("dtype", [np.uint16, np.int16, np.float64])
 @pytest.mark.parametrize("max_value", [None, 65535.0])
 @pytest.mark.parametrize("target", ["image", "images", "volume", "volumes"])
-def test_to_float_rejects_unsupported_integers_before_normalize(
+def test_to_float_rejects_unsupported_dtypes_before_normalize(
     dtype: type[np.generic], max_value: float | None, target: str
 ) -> None:
     shape = {"image": (3, 7, 1), "images": (2, 3, 7, 1), "volume": (2, 3, 7, 1), "volumes": (2, 2, 3, 7, 1)}[target]

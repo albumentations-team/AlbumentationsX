@@ -11,13 +11,16 @@ from numpy.typing import NDArray
 if TYPE_CHECKING:
     from albucore import ImageType
 
+_FLOAT_DTYPES = (np.float16, np.float32)
+
 
 def to_float(img: ImageType, max_value: float | None) -> NDArray[np.float16] | NDArray[np.float32]:
     """Normalize byte inputs to float32 while preserving floating inputs and omitted channels."""
-    if img.dtype.kind == "f":
+    source_dtype = img.dtype.type
+    if source_dtype in _FLOAT_DTYPES:
         return cast("NDArray[np.float16] | NDArray[np.float32]", img)
-    if img.dtype.type is not np.uint8:
-        raise TypeError(f"ToFloat does not support dtype {img.dtype}; expected uint8 or a floating dtype.")
+    if source_dtype is not np.uint8:
+        raise TypeError(f"ToFloat does not support dtype {img.dtype}; expected uint8, float16 or float32.")
     is_channel_less = img.ndim == 2
     working = img[..., None] if is_channel_less else img
     result = convert_dtype(working, np.float32, max_value=max_value)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from array import array
 from typing import TYPE_CHECKING, cast
 from unittest.mock import patch
 
@@ -72,13 +73,20 @@ def test_fixed_mode_broadcasts_channel_statistics_over_a_batch() -> None:
     torch.testing.assert_close(result, expected)
 
 
-def test_fixed_mode_owns_its_statistics() -> None:
-    mean = torch.tensor([1.0, 10.0], requires_grad=True)
-    standard_deviation = torch.tensor([2.0, 4.0], requires_grad=True)
+@pytest.mark.parametrize(
+    "make_statistics",
+    [
+        pytest.param(lambda values: torch.tensor(values, requires_grad=True), id="tensor"),
+        pytest.param(lambda values: array("d", values), id="buffer"),
+    ],
+)
+def test_fixed_mode_owns_its_statistics(make_statistics) -> None:
+    mean = make_statistics([1.0, 10.0])
+    standard_deviation = make_statistics([2.0, 4.0])
     normalizer = InputNormalizer("fixed", output_precision="fp32", mean=mean, standard_deviation=standard_deviation)
     with torch.no_grad():
-        mean.zero_()
-        standard_deviation.fill_(1.0)
+        mean[0] = 0.0
+        standard_deviation[1] = 1.0
 
     values = torch.tensor([3.0, 18.0]).reshape(1, 2, 1, 1)
     torch.testing.assert_close(normalizer(values).flatten(), torch.tensor([1.0, 2.0]))

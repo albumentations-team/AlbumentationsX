@@ -69,9 +69,9 @@ class InputNormalizer(nn.Module):
             if mean is None or standard_deviation is None:
                 message = "Fixed input normalization requires mean and standard_deviation."
                 raise ValueError(message)
-            mean_tensor = torch.asarray(mean, dtype=torch.float32, copy=True).detach().reshape(-1)
+            mean_tensor = torch.as_tensor(mean, dtype=torch.float32).detach().reshape(-1).clone()
             standard_deviation_tensor = (
-                torch.asarray(standard_deviation, dtype=torch.float32, copy=True).detach().reshape(-1)
+                torch.as_tensor(standard_deviation, dtype=torch.float32).detach().reshape(-1).clone()
             )
             if mean_tensor.numel() == 0 or mean_tensor.numel() != standard_deviation_tensor.numel():
                 message = "Fixed input normalization statistics must have the same nonzero length."

@@ -11,6 +11,7 @@ from warnings import warn
 
 import cv2
 import numpy as np
+from albucore import convert_dtype
 from numpy.typing import NDArray
 
 import albumentations.augmentations.geometric.functional as fgeometric
@@ -235,19 +236,19 @@ def _soft_blend_clip_high(base_image: np.ndarray, donor_image: np.ndarray) -> fl
 
 
 def blend_images_using_alpha(
-    base_image: np.ndarray,
-    donor_image: np.ndarray,
+    base_image: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+    donor_image: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     alpha: np.ndarray,
-) -> np.ndarray:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Blend donor pixels onto base image using a float alpha mask, doing a hard copy where alpha == 1 and linear blend elsewhere.
 
     Args:
-        base_image (np.ndarray): Target image (H, W, C).
-        donor_image (np.ndarray): Source image, same shape as base_image.
+        base_image (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Target image (H, W, C).
+        donor_image (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Source image, same shape as base_image.
         alpha (np.ndarray): Float mask (H, W) in [0, 1]. 1 = full donor, 0 = full base.
 
     Returns:
-        np.ndarray: Blended image, same shape and dtype as base_image.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Blended image, same shape and dtype as base_image.
 
     """
     img_dtype = base_image.dtype
@@ -260,14 +261,23 @@ def blend_images_using_alpha(
         return result
 
     alpha_3d = alpha[..., np.newaxis].astype(np.float32)
+    blended: NDArray[np.float32]
     if img_dtype == np.float32:
         blended = np.subtract(donor_image, base_image, dtype=np.float32)
         np.multiply(blended, alpha_3d, out=blended)
         np.add(blended, base_image, out=blended)
     else:
-        blended = donor_image.astype(np.float32) * alpha_3d + base_image.astype(np.float32) * (1.0 - alpha_3d)
+        blended = np.multiply(convert_dtype(donor_image, np.float32, max_value=1), alpha_3d)
+        np.add(
+            blended,
+            convert_dtype(base_image, np.float32, max_value=1) * (1.0 - alpha_3d),
+            out=blended,
+        )
     clip_high = _soft_blend_clip_high(base_image, donor_image)
-    return np.clip(blended, 0, clip_high).astype(img_dtype)
+    result = np.clip(blended, 0, clip_high)
+    if img_dtype == np.uint8:
+        return result.astype(np.uint8)
+    return convert_dtype(result, img_dtype)
 
 
 def create_copy_paste_alpha(

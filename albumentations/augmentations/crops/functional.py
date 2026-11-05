@@ -10,6 +10,7 @@ from typing import Any
 
 import cv2
 import numpy as np
+from numpy.typing import NDArray
 
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.utils import handle_empty_array
@@ -17,7 +18,6 @@ from albumentations.core.bbox_utils import (
     denormalize_bboxes,
     normalize_bboxes,
 )
-from albumentations.core.type_definitions import ImageType
 from albumentations.core.utils import get_volume_shape
 
 __all__ = [
@@ -168,21 +168,23 @@ def get_center_crop_coords(image_shape: tuple[int, int], crop_shape: tuple[int, 
     return x_min, y_min, x_max, y_max
 
 
-def crop(img: ImageType, x_min: int, y_min: int, x_max: int, y_max: int) -> ImageType:
+def crop(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], x_min: int, y_min: int, x_max: int, y_max: int
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Extract pixel region [x_min:x_max, y_min:y_max]. Bounds: x_min < x_max, y_min < y_max.
     Use for crop transforms or ROI. Same channel count.
 
     This function crops an image.
 
     Args:
-        img (ImageType): Input image.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image.
         x_min (int): Minimum x coordinate.
         y_min (int): Minimum y coordinate.
         x_max (int): Maximum x coordinate.
         y_max (int): Maximum y coordinate.
 
     Returns:
-        ImageType: Cropped image.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Cropped image.
 
     """
     height, width = img.shape[:2]
@@ -203,7 +205,7 @@ def crop(img: ImageType, x_min: int, y_min: int, x_max: int, y_max: int) -> Imag
 
 
 def crop_and_pad(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     crop_params: tuple[int, int, int, int] | None,
     pad_params: tuple[int, int, int, int] | None,
     pad_value: tuple[float, ...] | float | None,
@@ -211,14 +213,14 @@ def crop_and_pad(
     interpolation: int,
     pad_mode: int,
     keep_size: bool,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Crop and/or pad from crop_params and pad_params. keep_size, interpolation,
     pad_mode, pad_value (scalar or per-channel). Returns resized when keep_size.
 
     This function crops and pads an image.
 
     Args:
-        img (ImageType): Input image.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image.
         crop_params (tuple[int, int, int, int] | None): Crop parameters.
         pad_params (tuple[int, int, int, int] | None): Pad parameters.
         pad_value (tuple[float, ...] | float | None): Pad value.
@@ -228,7 +230,7 @@ def crop_and_pad(
         keep_size (bool): Whether to keep the original size.
 
     Returns:
-        ImageType: Cropped and padded image.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Cropped and padded image.
 
     """
     if crop_params is not None and any(i != 0 for i in crop_params):
@@ -346,24 +348,25 @@ def crop_and_pad_keypoints(
 
 
 def volume_crop_yx(
-    volume: ImageType,
+    volume: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     x_min: int,
     y_min: int,
     x_max: int,
     y_max: int,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Crop volume (D, H, W[, C]) along Y and X only; depth unchanged. Validates bounds;
     returns volume[:, y_min:y_max, x_min:x_max].
 
     Args:
-        volume (ImageType): Input volume with shape (D, H, W) or (D, H, W, C).
+        volume (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input volume with shape (D, H, W) or (D,
+            H, W, C).
         x_min (int): Minimum width coordinate.
         y_min (int): Minimum height coordinate.
         x_max (int): Maximum width coordinate.
         y_max (int): Maximum height coordinate.
 
     Returns:
-        ImageType: Cropped volume (D, H_new, W_new, [C]).
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Cropped volume (D, H_new, W_new, [C]).
 
     Raises:
         ValueError: If crop coordinates are invalid.

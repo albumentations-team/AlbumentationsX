@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 import pytest
 import torch
-from albucore import from_float, to_float
+from albucore import convert_dtype
 from PIL import Image, ImageOps
 
 import albumentations as A
@@ -227,7 +227,7 @@ def test_equalize_pil_float_conversion(masked: bool) -> None:
     mask = np.zeros((37, 53, 1), dtype=np.uint8) if masked else None
     if mask is not None:
         mask[:20] = 1
-    expected = to_float(pil_equalize(from_float(before, target_dtype=np.uint8), mask))
+    expected = convert_dtype(pil_equalize(convert_dtype(before, dtype=np.uint8), mask), np.float32)
     result = run_equalize(image, "compose", mask=mask)
     np.testing.assert_array_equal(result, expected)
     np.testing.assert_array_equal(image, before)

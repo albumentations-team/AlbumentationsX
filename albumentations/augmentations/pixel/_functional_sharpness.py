@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Literal, cast
+
+import albucore
+from numpy.typing import NDArray
 
 from ._functional_shared import (
     NUM_MULTI_CHANNEL_DIMENSIONS,
     ImageFloat32,
-    ImageType,
     ImageUInt8,
     clip,
+    convert_dtype,
     cv2,
     lru_cache,
     multiply,
@@ -19,8 +21,6 @@ from ._functional_shared import (
     restore_uint8_working_image,
     to_uint8_working_image,
 )
-
-_Cv2Compare = Callable[..., np.ndarray]
 
 
 def unsharp_mask_images(
@@ -54,56 +54,28 @@ def unsharp_mask_images(
 
 
 def unsharp_mask(
-    image: np.ndarray,
+    image: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     ksize: int,
     sigma: float,
     alpha: float,
     threshold: int,
-) -> np.ndarray:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Apply unsharp mask to a single image using one blur, weighted residual sharpening,
     and threshold-gated replacement for faster Pillow-style sharpening.
 
     Args:
-        image (np.ndarray): Single image, shape (H, W, C) or (H, W).
+        image (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Single image, shape (H, W, C).
         ksize (int): The kernel size for Gaussian blur.
         sigma (float): The sigma value for Gaussian blur.
         alpha (float): The alpha value for the unsharp mask.
         threshold (int): The threshold value for the unsharp mask.
 
     Returns:
-        np.ndarray: Unsharp masked image with same shape and dtype as input.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Unsharp masked image with same shape and dtype as
+            input.
 
     """
-    input_dtype = image.dtype
-    if input_dtype.type is np.float16:
-        image = image.astype(np.float32)
-
-    if image.ndim == NUM_MULTI_CHANNEL_DIMENSIONS and image.shape[2] == 1:
-        return unsharp_mask(image[..., 0], ksize, sigma, alpha, threshold)[..., np.newaxis].astype(
-            input_dtype, copy=False
-        )
-
-    ksize_tuple = (ksize, ksize)
-    blurred = cv2.GaussianBlur(image, ksize_tuple, sigmaX=sigma)
-
-    sharpened = cv2.addWeighted(image, 1.0 + alpha, blurred, -alpha, 0)
-    if image.dtype == np.float32:
-        np.clip(sharpened, 0, 1, out=sharpened)
-
-    if threshold <= 0:
-        return sharpened.astype(input_dtype, copy=False)
-
-    diff = cast("np.ndarray", cv2.absdiff(image, blurred))
-    threshold_value = threshold / 255.0 if image.dtype == np.float32 else threshold
-    if image.ndim == NUM_MULTI_CHANNEL_DIMENSIONS and image.shape[2] not in {1, 3, 4}:
-        multichannel_mask = diff > threshold_value
-        return np.where(multichannel_mask, sharpened, image).astype(input_dtype, copy=False)
-
-    compare = cast("_Cv2Compare", cv2.compare)
-    mask = compare(diff, threshold_value, cv2.CMP_GT)
-    result = image.copy()
-    cv2.copyTo(sharpened, mask, result)
-    return result.astype(input_dtype, copy=False)
+    return albucore.unsharp_mask(image, ksize, sigma, alpha, threshold)
 
 
 def pixel_dropout(
@@ -146,20 +118,20 @@ def pixel_dropout(
 
 
 def chromatic_aberration(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     primary_distortion_red: float,
     secondary_distortion_red: float,
     primary_distortion_blue: float,
     secondary_distortion_blue: float,
     interpolation: int,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Chromatic aberration: shift R/B channels. primary/secondary_distortion_red/blue, interpolation.
     Simulates lens R/B shift. Floating inputs are quantized to uint8 and restored.
 
     This function applies chromatic aberration to an image by distorting the red and blue channels.
 
     Args:
-        img (ImageType): Input image with three color channels.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image with three color channels.
         primary_distortion_red (float): The primary distortion of the red channel.
         secondary_distortion_red (float): The secondary distortion of the red channel.
         primary_distortion_blue (float): The primary distortion of the blue channel.
@@ -167,7 +139,7 @@ def chromatic_aberration(
         interpolation (int): The interpolation method to use.
 
     Returns:
-        ImageType: Output with the input shape and dtype.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Output with the input shape and dtype.
 
     """
     img, input_dtype = to_uint8_working_image(img)
@@ -322,10 +294,10 @@ def _get_planckian_coeffs(
 
 
 def planckian_jitter(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     temperature: int,
     mode: Literal["blackbody", "cied"],
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Apply Planckian jitter (color temp shift) to an image. Params: temperature,
     mode (blackbody/cied). Used for color augmentation; RGB only.
 
@@ -333,12 +305,12 @@ def planckian_jitter(
     between the two closest temperatures in the PLANCKIAN_COEFFS dictionary.
 
     Args:
-        img (ImageType): Input image as a numpy array.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image as a numpy array.
         temperature (int): The temperature to apply.
         mode (Literal['blackbody', 'cied']): The mode to use.
 
     Returns:
-        ImageType: The Planckian jitter applied to the image.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: The Planckian jitter applied to the image.
 
     """
     input_dtype = img.dtype
@@ -358,46 +330,31 @@ def planckian_jitter(
 
 
 def convolve(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     kernel: np.ndarray,
     border_mode: int = cv2.BORDER_DEFAULT,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Convolve image with 2D kernel via cv2.filter2D. Any channel count. Use for custom blur,
     sharpen, or edge kernels. Clipped.
 
     This function convolves an image with a kernel.
 
     Args:
-        img (ImageType): Input image.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image.
         kernel (np.ndarray): A 2D kernel shared across channels, or a stack of 2D kernels with
             shape `(channels, height, width)`.
         border_mode (int): OpenCV border mode used for pixels outside the image.
 
     Returns:
-        ImageType: Convolved image.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Convolved image.
 
     """
-    input_dtype = img.dtype
-    working_dtype = np.float32 if input_dtype.type is np.float16 else input_dtype
-    img = cast("ImageType", np.array(img, dtype=working_dtype, copy=True, order="C"))
-    if kernel.ndim == 2:
-        cv2.filter2D(img, ddepth=-1, kernel=kernel, dst=img, borderType=border_mode)
-    elif kernel.ndim == 3:
-        channels = 1 if img.ndim == 2 else img.shape[-1]
-        if kernel.shape[0] != channels:
-            raise ValueError(f"Expected one kernel per channel ({channels}), got {kernel.shape[0]}")
-        if img.ndim == 2:
-            cv2.filter2D(img, ddepth=-1, kernel=kernel[0], dst=img, borderType=border_mode)
-        else:
-            for channel, channel_kernel in enumerate(kernel):
-                img[..., channel] = cv2.filter2D(
-                    img[..., channel], ddepth=-1, kernel=channel_kernel, borderType=border_mode
-                )
-    else:
+    if kernel.ndim not in (2, 3):
         raise ValueError(f"kernel must have 2 or 3 dimensions, got {kernel.ndim}")
-    if input_dtype.type is np.float16:
-        return clip(img, dtype=cast("np.dtype[np.float16]", input_dtype))
-    return clip(img, out=img)
+    channels = img.shape[-1]
+    if kernel.ndim == 3 and kernel.shape[0] != channels:
+        raise ValueError(f"Expected one kernel per channel ({channels}), got {kernel.shape[0]}")
+    return albucore.convolve(img, kernel, border_mode)
 
 
 def create_stochastic_convolution_kernel(
@@ -440,26 +397,34 @@ def create_stochastic_convolution_kernel(
     return kernel
 
 
-def separable_convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
+def separable_convolve(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], kernel: np.ndarray
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Convolve with separable 1D kernel in two passes. Faster than full 2D for large kernels.
     Use for Gaussian-like blur or custom separable filters. Clipped.
 
     This function convolves an image with a separable kernel.
 
     Args:
-        img (ImageType): Input image.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image.
         kernel (np.ndarray): Kernel.
 
     Returns:
-        ImageType: Convolved image.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Convolved image.
 
     """
     input_dtype = img.dtype
     is_half = input_dtype.type is np.float16
-    working_dtype = np.dtype(np.float32) if is_half else input_dtype.newbyteorder("=")
-    working = cast("ImageType", np.array(img, dtype=working_dtype, copy=True, order="C"))
+    working = (
+        convert_dtype(img, np.float32)
+        if is_half and img.flags.c_contiguous
+        else cast(
+            "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]",
+            np.array(img, dtype=np.float32 if is_half else input_dtype.newbyteorder("="), copy=True, order="C"),
+        )
+    )
     cv2.sepFilter2D(working, ddepth=-1, kernelX=kernel, kernelY=kernel, dst=working)
-    result: ImageType
+    result: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]
     if input_dtype.type is np.uint8:
         uint8_working = cast("ImageUInt8", working)
         result = clip(uint8_working, out=uint8_working)
@@ -470,7 +435,7 @@ def separable_convolve(img: ImageType, kernel: np.ndarray) -> ImageType:
         result = clip(float32_working, out=float32_working)
     if not input_dtype.isnative:
         result.byteswap(inplace=True)
-        return cast("ImageType", result.view(input_dtype))
+        return cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", result.view(input_dtype))
     return result
 
 

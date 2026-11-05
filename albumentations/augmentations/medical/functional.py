@@ -5,23 +5,14 @@ from typing import Any, cast
 import cv2
 import numpy as np
 import torch
-from albucore import (
-    add,
-    clip,
-    from_float,
-    matmul,
-    multiply,
-    resize3d,
-    to_float,
-    warp_affine3d,
-)
+from albucore import add, clip, convert_dtype, matmul, multiply, resize3d, warp_affine3d
 from albucore import exp as albucore_exp
 from albucore import mean as albucore_mean
 from numpy.typing import NDArray
 from scipy import fft
 
 from albumentations.augmentations.geometric import functional as fgeometric
-from albumentations.core.type_definitions import NUM_VOLUME_DIMENSIONS, ImageType, VolumeType
+from albumentations.core.type_definitions import NUM_VOLUME_DIMENSIONS, VolumeType
 from albumentations.core.utils import get_volume_shape
 
 from ._functional_histology import (
@@ -45,23 +36,6 @@ _K_SPACE_MIN_ANALYTIC_DEPTH = 16
 _K_SPACE_MIN_ANALYTIC_PLANE_SIZE = 128
 _MOTION_MIN_TORCH_ELEMENTS = 1_048_576
 _RICIAN_MIN_TORCH_ELEMENTS = 1_048_576
-
-
-def _float32_working_image(img: ImageType) -> tuple[NDArray[np.float32], np.dtype]:
-    input_dtype = img.dtype
-    if input_dtype.type is np.uint8:
-        return to_float(cast("NDArray[np.uint8]", img)), input_dtype
-    if input_dtype.type is np.float16:
-        return img.astype(np.float32), input_dtype
-    return cast("NDArray[np.float32]", img), input_dtype
-
-
-def _restore_working_dtype(img: NDArray[np.float32], input_dtype: np.dtype) -> ImageType:
-    if input_dtype.type is np.uint8:
-        return from_float(img, np.uint8)
-    if input_dtype.type is np.float16:
-        return from_float(img, np.float16)
-    return img
 
 
 __all__ = [
@@ -88,7 +62,9 @@ __all__ = [
 ]
 
 
-def gibbs_ringing(img: ImageType, retained_fraction: float) -> ImageType:
+def gibbs_ringing(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], retained_fraction: float
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Truncate a channel-last image or volume spectrum to a conjugate-symmetric central box.
 
     Spatial axes use signed frequency bins with abs(k) <= floor(retained_fraction * length / 2).
@@ -96,11 +72,12 @@ def gibbs_ringing(img: ImageType, retained_fraction: float) -> ImageType:
     Strong truncation transforms only retained last-axis frequencies over the remaining axes.
     The full owned spectrum is reused before the final real inverse, limiting temporary storage.
     """
-    img, input_dtype = _float32_working_image(img)
+    input_dtype = img.dtype
+    img = convert_dtype(img, np.float32)
     spatial_shape = img.shape[:-1]
     cutoffs = tuple(int(retained_fraction * size / 2) for size in spatial_shape)
     if all(cutoff >= size // 2 for cutoff, size in zip(cutoffs, spatial_shape, strict=True)):
-        return _restore_working_dtype(clip(img, img.dtype), input_dtype)
+        return convert_dtype(clip(img, img.dtype), input_dtype)
 
     axes = tuple(range(len(spatial_shape)))
     if retained_fraction <= 0.5:
@@ -120,12 +97,17 @@ def gibbs_ringing(img: ImageType, retained_fraction: float) -> ImageType:
         spectrum[..., : cutoffs[-1] + 1, :] = reconstructed
     else:
         spectrum = reconstructed
-    return _restore_working_dtype(
+    return convert_dtype(
         clip(fft.irfft(spectrum, n=spatial_shape[-1], axis=axes[-1], workers=1), img.dtype), input_dtype
     )
 
 
-def bias_field(img: ImageType, coarse_field: np.ndarray, *, is_batch: bool = False) -> ImageType:
+def bias_field(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+    coarse_field: np.ndarray,
+    *,
+    is_batch: bool = False,
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Upsample a Gaussian log-gain grid, exponentiate it, and multiply image or volume intensities.
 
     The coarse grid has spatial axes followed by channels. A leading image/volume batch axis in `img`
@@ -154,7 +136,9 @@ def bias_field(img: ImageType, coarse_field: np.ndarray, *, is_batch: bool = Fal
     return _apply_bias_gain(img, field)
 
 
-def _bias_field_volume(img: ImageType, coarse_field: np.ndarray) -> ImageType:
+def _bias_field_volume(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], coarse_field: np.ndarray
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Interpolate depth on the coarse grid and apply each XY gain without a full-volume field."""
     depth_field = resize3d(coarse_field, (img.shape[0], coarse_field.shape[1], coarse_field.shape[2]), cv2.INTER_LINEAR)
     result = np.empty_like(img)
@@ -164,20 +148,17 @@ def _bias_field_volume(img: ImageType, coarse_field: np.ndarray) -> ImageType:
     return result
 
 
-def _apply_bias_gain(img: ImageType, field: np.ndarray) -> ImageType:
+def _apply_bias_gain(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], field: np.ndarray
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Multiply normalized float32 intensities, clip, and restore the source dtype."""
     input_dtype = img.dtype
-    if input_dtype == np.uint8:
-        working = to_float(cast("NDArray[np.uint8]", img))
-    elif input_dtype == np.float16:
-        working = from_float(cast("NDArray[np.float16]", img), target_dtype=np.float32)
-    else:
-        working = cast("NDArray[np.float32]", img)
+    working = convert_dtype(img, np.float32)
     result = multiply(working, field)
     clip(result, out=result)
     if input_dtype == np.float32:
         return result
-    return from_float(result, target_dtype=input_dtype)
+    return convert_dtype(result, dtype=input_dtype)
 
 
 def generate_bias_field(coarse_field: np.ndarray, spatial_shape: tuple[int, ...]) -> np.ndarray:
@@ -197,12 +178,13 @@ def generate_bias_field(coarse_field: np.ndarray, spatial_shape: tuple[int, ...]
 
 
 def rician_noise(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     real_noise: np.ndarray,
     imaginary_noise: np.ndarray,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Apply sampled real and imaginary MRI noise fields through magnitude reconstruction."""
-    img, input_dtype = _float32_working_image(img)
+    input_dtype = img.dtype
+    img = convert_dtype(img, np.float32)
     result = np.add(img, real_noise)
     if (
         result.size >= _RICIAN_MIN_TORCH_ELEMENTS
@@ -215,18 +197,18 @@ def rician_noise(
         imaginary = torch.from_numpy(imaginary_noise)
         with torch.no_grad():
             working.square_().addcmul_(imaginary, imaginary).sqrt_().clamp_(0, 1)
-        return _restore_working_dtype(result, input_dtype)
+        return convert_dtype(result, input_dtype)
     np.multiply(result, result, out=result)
     np.add(result, np.square(imaginary_noise), out=result)
     np.sqrt(result, out=result)
-    return _restore_working_dtype(np.clip(result, 0.0, 1.0, out=result), input_dtype)
+    return convert_dtype(np.clip(result, 0.0, 1.0, out=result), input_dtype)
 
 
 def k_space_spike(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     spikes: np.ndarray,
     intensity: float,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Apply Hermitian MRI Fourier spikes to channel-last images and volumes.
 
     Each spike adds a real amplitude `intensity * max|F|` at its frequency bin and at the
@@ -304,15 +286,16 @@ def _k_space_spike_volume(
 
 
 def _k_space_spike_fft(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     injections: list[tuple[tuple[int, ...], int | None]],
     intensity: float,
     ndim: int,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Reconstruct general spike layouts with the original dtype-normalized real FFT operation."""
-    img, input_dtype = _float32_working_image(img)
+    input_dtype = img.dtype
+    img = convert_dtype(img, np.float32)
     if intensity == 0 or not injections:
-        return _restore_working_dtype(img, input_dtype)
+        return convert_dtype(img, input_dtype)
     is_batch = img.ndim == ndim + 2
     axes = tuple(range(1, ndim + 1)) if is_batch else tuple(range(ndim))
     axis_sizes = tuple(img.shape[axis] for axis in axes)
@@ -330,7 +313,7 @@ def _k_space_spike_fft(
             spectrum[index_for(bin_coords, channel)] += amplitude
 
     reconstructed = cast("np.ndarray", fft.irfftn(spectrum, s=axis_sizes, axes=axes, workers=1))
-    return _restore_working_dtype(np.clip(reconstructed, 0.0, 1.0), input_dtype)
+    return convert_dtype(np.clip(reconstructed, 0.0, 1.0), input_dtype)
 
 
 def _rfft_spike_bins(coords: tuple[int, ...], axis_sizes: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
@@ -381,30 +364,31 @@ def _spike_injections(spikes: np.ndarray) -> list[tuple[tuple[int, ...], int | N
 
 
 def ghosting_artifact(
-    volume: ImageType,
+    volume: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     num_ghosts: int,
     intensity: float,
     axis: int,
     restore: float,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Attenuate conjugate-symmetric periodic frequency planes outside a protected central band.
 
     The plane mask depends only on the selected spatial frequency. Transforms of the other axes cancel,
     so one axis-wise real FFT implements the full 3D spectral-plane filter without full-volume complex FFTs.
     """
-    volume, input_dtype = _float32_working_image(volume)
+    input_dtype = volume.dtype
+    volume = convert_dtype(volume, np.float32)
     length = volume.shape[axis]
     cutoff = int(restore * length / 2)
     start = (cutoff // num_ghosts + 1) * num_ghosts
     if intensity == 0 or start > length // 2:
-        return _restore_working_dtype(clip(volume, volume.dtype), input_dtype)
+        return convert_dtype(clip(volume, volume.dtype), input_dtype)
 
     spectrum = fft.rfft(volume, axis=axis, workers=1)
     index = [slice(None)] * volume.ndim
     index[axis] = slice(start, None, num_ghosts)
     spectrum[tuple(index)] *= 1 - intensity
     reconstructed = fft.irfft(spectrum, n=length, axis=axis, workers=1, overwrite_x=True)
-    return _restore_working_dtype(clip(np.abs(reconstructed, out=reconstructed), volume.dtype), input_dtype)
+    return convert_dtype(clip(np.abs(reconstructed, out=reconstructed), volume.dtype), input_dtype)
 
 
 def motion_artifact(
@@ -422,10 +406,11 @@ def motion_artifact(
     Large writable single-channel volumes use CPU Tensor FFTs. Only one moved volume and its spectrum
     are retained at a time, and the combined spectrum is reused for the inverse.
     """
-    volume, input_dtype = _float32_working_image(volume)
+    input_dtype = volume.dtype
+    volume = convert_dtype(volume, np.float32)
     identity = np.eye(4, dtype=np.float32)
     if matrices.size == 0 or np.all(matrices == identity):
-        return _restore_working_dtype(clip(volume, volume.dtype), input_dtype)
+        return convert_dtype(clip(volume, volume.dtype), input_dtype)
 
     spatial_shape = volume.shape[:3]
     use_torch = (
@@ -463,7 +448,7 @@ def motion_artifact(
             reconstructed = spectrum
         else:
             reconstructed = fft.ifft(spectrum, axis=axis, workers=1, overwrite_x=True)
-    return _restore_working_dtype(clip(np.abs(reconstructed), volume.dtype), input_dtype)
+    return convert_dtype(clip(np.abs(reconstructed), volume.dtype), input_dtype)
 
 
 def _replace_motion_segment(

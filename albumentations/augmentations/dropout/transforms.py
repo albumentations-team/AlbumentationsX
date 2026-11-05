@@ -9,6 +9,7 @@ in images, which can help models become more robust to occlusions and missing in
 from typing import Any, ClassVar, cast
 
 import numpy as np
+from numpy.typing import NDArray
 from pydantic import Field
 
 from albumentations.augmentations.dropout import functional as fdropout
@@ -32,7 +33,7 @@ from albumentations.core.transform_params import (
     requirements_for_views,
 )
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
-from albumentations.core.type_definitions import ALL_TARGETS, ImageType, Targets, VolumeType
+from albumentations.core.type_definitions import ALL_TARGETS, Targets, VolumeType
 
 __all__ = ["PixelDropout"]
 
@@ -187,19 +188,33 @@ class BaseDropout(DualTransform):
         self.fill = fill  # type: ignore[assignment]
         self.fill_mask = fill_mask
 
-    def _validate_fill_channel_count(self, data: ImageType | VolumeType, channel_ndims: set[int]) -> None:
+    def _validate_fill_channel_count(
+        self, data: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32] | VolumeType, channel_ndims: set[int]
+    ) -> None:
         num_channels = data.shape[-1] if data.ndim in channel_ndims else 1
 
         if self.fill in {"inpaint_telea", "inpaint_ns"} and num_channels not in {1, 3}:
             raise ValueError("Inpainting works only for 1 or 3 channel images")
 
-    def apply(self, img: ImageType, holes: np.ndarray, seed: int, **params: Any) -> ImageType:
+    def apply(
+        self,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+        holes: np.ndarray,
+        seed: int,
+        **params: Any,
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if holes.size == 0:
             return img
         self._validate_fill_channel_count(img, {2, 3})
         return cutout(img, holes, self.fill, np.random.default_rng(seed))
 
-    def apply_to_images(self, images: ImageType, holes: np.ndarray, seed: int, **params: Any) -> ImageType:
+    def apply_to_images(
+        self,
+        images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+        holes: np.ndarray,
+        seed: int,
+        **params: Any,
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if holes.size == 0:
             return images
         self._validate_fill_channel_count(images, {4})
@@ -216,7 +231,13 @@ class BaseDropout(DualTransform):
             return mask3d
         return cutout_on_volume(mask3d, holes, self.fill_mask, np.random.default_rng(seed))
 
-    def apply_to_mask(self, mask: ImageType, holes: np.ndarray, seed: int, **params: Any) -> ImageType:
+    def apply_to_mask(
+        self,
+        mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+        holes: np.ndarray,
+        seed: int,
+        **params: Any,
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if self.fill_mask is None or holes.size == 0:
             return mask
         return cutout(mask, holes, self.fill_mask, np.random.default_rng(seed))
@@ -360,31 +381,31 @@ class PixelDropout(DualTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         drop_mask: np.ndarray | None,
         drop_values: np.ndarray | None,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if drop_mask is None or drop_values is None:
             return img
         return fpixel.pixel_dropout(img, drop_mask, drop_values)
 
     def apply_to_images(
         self,
-        images: ImageType,
+        images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         drop_mask: np.ndarray | None,
         drop_values: np.ndarray | None,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self.apply(images, drop_mask, drop_values, **params)
 
     def apply_to_mask(
         self,
-        mask: ImageType,
+        mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         drop_mask: np.ndarray | None,
         drop_values: np.ndarray | None,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if self.mask_drop_value is None or drop_mask is None or drop_values is None:
             return mask
 

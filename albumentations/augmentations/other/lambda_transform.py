@@ -26,10 +26,10 @@ from types import LambdaType
 from typing import Any
 
 import numpy as np
+from numpy.typing import NDArray
 
 from albumentations.augmentations.pixel import functional as fpixel
 from albumentations.core.transforms_interface import BaseTransformInitSchema, NoOp
-from albumentations.core.type_definitions import ImageType
 from albumentations.core.utils import format_args
 
 __all__ = ["Lambda"]
@@ -102,11 +102,15 @@ class Lambda(NoOp):
 
                 self.custom_apply_fns[target_name] = custom_apply_fn
 
-    def apply(self, img: ImageType, **params: Any) -> ImageType:
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         fn = self.custom_apply_fns["image"]
         return fn(img, **params)
 
-    def apply_to_mask(self, mask: ImageType, **params: Any) -> ImageType:
+    def apply_to_mask(
+        self, mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         fn = self.custom_apply_fns["mask"]
         return fn(mask, **params)
 

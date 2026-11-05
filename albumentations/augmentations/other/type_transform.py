@@ -9,10 +9,7 @@ network outputs back to standard image formats (FromFloat).
 from typing import Any, Literal, Self, cast, overload
 
 import numpy as np
-from albucore import (
-    get_max_value,
-    to_float,
-)
+from albucore import get_max_value
 from numpy.typing import NDArray
 from pydantic import (
     model_validator,
@@ -23,7 +20,6 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
 )
-from albumentations.core.type_definitions import ImageType
 
 __all__ = [
     "FromFloat",
@@ -94,8 +90,10 @@ class ToFloat(ImageOnlyTransform):
     @overload
     def apply(self, img: NDArray[np.uint8] | NDArray[np.float32], **params: Any) -> NDArray[np.float32]: ...
 
-    def apply(self, img: ImageType, **params: Any) -> NDArray[np.float16] | NDArray[np.float32]:
-        return to_float(img, self.max_value)
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.float16] | NDArray[np.float32]:
+        return ftype.to_float(img, self.max_value)
 
     @overload
     def apply_to_images(self, images: NDArray[np.float16], **params: Any) -> NDArray[np.float16]: ...
@@ -105,8 +103,10 @@ class ToFloat(ImageOnlyTransform):
         self, images: NDArray[np.uint8] | NDArray[np.float32], **params: Any
     ) -> NDArray[np.float32]: ...
 
-    def apply_to_images(self, images: ImageType, **params: Any) -> NDArray[np.float16] | NDArray[np.float32]:
-        return to_float(images, self.max_value)
+    def apply_to_images(
+        self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.float16] | NDArray[np.float32]:
+        return ftype.to_float(images, self.max_value)
 
 
 class FromFloat(ImageOnlyTransform):
@@ -125,14 +125,12 @@ class FromFloat(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        float32
+        float16, float32
 
     Note:
         - This is the inverse transform for ToFloat.
         - Input images are expected to be in floating point format with values in the range [0, 1].
         - Output is uint8 with values scaled to [0, 255].
-        - The transform uses the `from_float` function internally, which ensures output values
-          are within the valid range for the specified dtype.
 
     Examples:
         >>> import numpy as np
@@ -167,8 +165,12 @@ class FromFloat(ImageOnlyTransform):
         self.dtype = dtype
         self.max_value = max_value
 
-    def apply(self, img: ImageType, **params: Any) -> ImageType:
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return ftype.from_float(img, cast("float", self.max_value))
 
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+    def apply_to_images(
+        self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self.apply(images, **params)

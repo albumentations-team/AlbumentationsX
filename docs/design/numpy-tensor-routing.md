@@ -179,7 +179,9 @@ A skipped leaf performs no conversion. Two consecutive fallback leaves may each 
 for Tensor input when its primary data argument includes `torch.Tensor`:
 
 ```python
-def apply(self, image: ImageType | torch.Tensor, **params: Any) -> ImageType | torch.Tensor: ...
+def apply(
+    self, image: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32] | torch.Tensor, **params: Any
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32] | torch.Tensor: ...
 ```
 
 A helper that preserves image dtype and container can use Albucore `ImageInputT`. A native handler can declare

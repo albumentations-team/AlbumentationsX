@@ -10,13 +10,13 @@ from typing import Any
 
 import numpy as np
 import torch
+from numpy.typing import NDArray
 
 from albumentations.core.transforms_interface import BaseTransformInitSchema, BasicTransform
 from albumentations.core.type_definitions import (
     MONO_CHANNEL_DIMENSIONS,
     NUM_MULTI_CHANNEL_DIMENSIONS,
     NUM_VOLUME_DIMENSIONS,
-    ImageType,
     StackedMasks4D,
     Targets,
     VolumeType,
@@ -62,7 +62,9 @@ class ToTensorV2(BaseTensorTransform):
         super().__init__(p=p)
         self.transpose_mask = transpose_mask
 
-    def apply(self, img: ImageType, *args: Any, **params: Any) -> torch.Tensor:
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], *args: Any, **params: Any
+    ) -> torch.Tensor:
         if img.ndim not in {MONO_CHANNEL_DIMENSIONS, NUM_MULTI_CHANNEL_DIMENSIONS}:
             msg = "Albumentations only supports images in HW or HWC format"
             raise ValueError(msg)
@@ -71,7 +73,9 @@ class ToTensorV2(BaseTensorTransform):
 
         return torch.from_numpy(_native_contiguous_array(image.transpose(2, 0, 1)))
 
-    def apply_to_mask(self, mask: ImageType, **params: Any) -> torch.Tensor:
+    def apply_to_mask(
+        self, mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> torch.Tensor:
         if self.transpose_mask and mask.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
             mask = mask.transpose(2, 0, 1)
         return torch.from_numpy(_native_contiguous_array(mask))
@@ -82,7 +86,9 @@ class ToTensorV2(BaseTensorTransform):
             arr = np.transpose(arr, (0, 3, 1, 2))  # -> (N, C, H, W)
         return torch.from_numpy(_native_contiguous_array(arr))
 
-    def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> torch.Tensor:
+    def apply_to_images(
+        self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], *args: Any, **params: Any
+    ) -> torch.Tensor:
         return torch.from_numpy(_native_contiguous_array(images.transpose(0, 3, 1, 2)))  # -> (N,C,H,W)
 
 

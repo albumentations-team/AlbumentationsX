@@ -44,6 +44,10 @@ Record the command, exact ASV filter, baseline SHA, candidate SHA, environment,
 and results in the PR description. Do not report a one-revision run as a speed
 comparison.
 
+Keep generated reports, measurements and profiles in ignored local directories
+or external artifacts. Do not commit them. Historical measurements are preserved
+in the [benchmark data archive](https://github.com/albumentations-team/AlbumentationsX/releases/download/2.5.1/albumentationsx-benchmark-data-20261105.zip).
+
 ## Explicit hosted-runner reproduction
 
 The Performance workflow runs only when a maintainer applies `run-performance`
@@ -58,7 +62,7 @@ workflow is separate and unscheduled.
 
 ```bash
 uv run python -m tools.benchmark_coverage check
-uv run python -m tools.benchmark_coverage details --output benchmark-coverage-detail.json
+uv run python -m tools.benchmark_coverage details --output _internal/benchmark-coverage-detail.json
 ```
 
 Add benchmark ownership when a public transform family needs a new route. Do not

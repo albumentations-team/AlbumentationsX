@@ -58,13 +58,7 @@ from albumentations.core.transform_params import (
 from albumentations.core.validation import ValidatedTransformMeta
 
 from .serialization import Serializable, SerializableMeta, get_shortest_class_fullname
-from .type_definitions import (
-    ALL_TARGETS,
-    ImageType,
-    StackedMasks4D,
-    Targets,
-    VolumeType,
-)
+from .type_definitions import ALL_TARGETS, StackedMasks4D, Targets, VolumeType
 from .utils import format_args, get_volume_shape, get_volumes_shape
 
 _ArrayTargetT = TypeVar("_ArrayTargetT", bound=NDArray[np.generic] | torch.Tensor)
@@ -1184,7 +1178,9 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         state.update(self.get_transform_init_args())
         return f"{self.__class__.__name__}({format_args(state)})"
 
-    def apply(self, img: ImageType, *args: Any, **params: Any) -> ImageType | torch.Tensor:
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], *args: Any, **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32] | torch.Tensor:
         """Applies an image with invocation-supplied parameters. Subclasses implement pixel kernels while sampling stays
         outside execution.
         """
@@ -1292,22 +1288,31 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
     def apply_to_images(
         self,
-        images: ImageType,
+        images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         *args: Any,
         **params: Any,
-    ) -> ImageType | torch.Tensor | TargetResult[ImageType]:
+    ) -> (
+        NDArray[np.uint8]
+        | NDArray[np.float16]
+        | NDArray[np.float32]
+        | torch.Tensor
+        | TargetResult[NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]]
+    ):
         """Apply transform on images. Input shape (N, H, W, C); uses _apply_to_batch with per-image
         apply. Returns same format. Batch API.
 
         Args:
-            images (ImageType): Input images as numpy array of shape:
+            images (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input images as numpy array of
+                shape:
                 - (num_images, height, width, channels)
                 - (num_images, height, width) for grayscale
             *args (Any): Additional positional arguments
             **params (Any): Additional parameters specific to the transform
 
         Returns:
-            ImageType | torch.Tensor | TargetResult[ImageType]: Transformed array or Tensor; array results may
+            NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32] | torch.Tensor |
+                TargetResult[NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]]: Transformed array or
+                Tensor; array results may
                 carry updated binding IDs.
 
         """
@@ -1333,7 +1338,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
     def apply_to_volumes(
         self,
-        volumes: Annotated[ImageType, torch.Tensor],
+        volumes: Annotated[NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], torch.Tensor],
         *args: Any,
         **params: Any,
     ) -> NDArray[np.generic] | torch.Tensor:
@@ -1654,7 +1659,8 @@ class DualTransform(BasicTransform):
 
             Returns Transformed image of the same shape as input.
 
-        apply_to_images(images: ImageType, **params: Any) -> ImageType:
+        apply_to_images(images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any) ->
+            NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
             Apply the transform to multiple images.
 
             images: Input images of shape (N, H, W, C).
@@ -1662,7 +1668,8 @@ class DualTransform(BasicTransform):
 
             Returns Transformed images in the same format as input.
 
-        apply_to_mask(mask: ImageType, **params: Any) -> ImageType:
+        apply_to_mask(mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any) ->
+            NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
             Apply the transform to a mask.
 
             mask: Input mask of shape (H, W), (H, W, C) for multi-channel masks
@@ -1670,7 +1677,8 @@ class DualTransform(BasicTransform):
 
             Returns Transformed mask in the same format as input.
 
-        apply_to_masks(masks: ImageType, **params: Any) -> ImageType:
+        apply_to_masks(masks: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any) ->
+            NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
             Apply the transform to multiple masks.
 
             masks: Array of shape (N, H, W) or (N, H, W, C) where N is number of masks
@@ -1771,8 +1779,10 @@ class DualTransform(BasicTransform):
     def apply_to_bboxes(self, bboxes: np.ndarray, *args: Any, **params: Any) -> np.ndarray:
         raise NotImplementedError(f"BBoxes not implemented for {self.__class__.__name__}")
 
-    def apply_to_mask(self, mask: ImageType, *args: Any, **params: Any) -> ImageType:
-        return cast("ImageType", self.apply(mask, *args, **params))
+    def apply_to_mask(
+        self, mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], *args: Any, **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
+        return cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", self.apply(mask, *args, **params))
 
     def apply_to_masks(self, masks: StackedMasks4D, *args: Any, **params: Any) -> StackedMasks4D:
         """Apply the per-row mask transform to a `StackedMasks4D` `(N, H, W, C)` and return a
@@ -2146,13 +2156,23 @@ class NoOp(DualTransform):
     def apply_to_bboxes(self, bboxes: np.ndarray, **params: Any) -> np.ndarray:
         return bboxes
 
-    def apply(self, img: Annotated[ImageType, torch.Tensor], **params: Any) -> ImageType:
+    def apply(
+        self, img: Annotated[NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], torch.Tensor], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return img
 
-    def apply_to_images(self, images: Annotated[ImageType, torch.Tensor], **params: Any) -> ImageType:
+    def apply_to_images(
+        self,
+        images: Annotated[NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], torch.Tensor],
+        **params: Any,
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return images
 
-    def apply_to_mask(self, mask: Annotated[ImageType, torch.Tensor], **params: Any) -> ImageType:
+    def apply_to_mask(
+        self,
+        mask: Annotated[NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], torch.Tensor],
+        **params: Any,
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return mask
 
     def apply_to_masks(self, masks: Annotated[StackedMasks4D, torch.Tensor], **params: Any) -> StackedMasks4D:

@@ -10,6 +10,7 @@ from typing import Annotated, Any, ClassVar, Literal, Self, TypeAlias, cast
 import cv2
 import numpy as np
 from albucore import clip, multiply, resize3d
+from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.functional_validators import AfterValidator
 
@@ -32,11 +33,7 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
 )
-from albumentations.core.type_definitions import (
-    CV2_BORDER_REFLECT_101,
-    PAIR,
-    ImageType,
-)
+from albumentations.core.type_definitions import CV2_BORDER_REFLECT_101, PAIR
 
 __all__ = [
     "AdditiveNoise",
@@ -219,7 +216,9 @@ class StochasticConvolution(_FullVolumeNoiseTransform):
         self.per_channel = per_channel
         self.border_mode = border_mode
 
-    def apply(self, img: ImageType, kernel: np.ndarray, **params: Any) -> ImageType:
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], kernel: np.ndarray, **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.convolve(img, kernel=kernel, border_mode=self.border_mode)
 
     @staticmethod
@@ -335,21 +334,26 @@ class GaussNoise(_FullVolumeNoiseTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         noise_map: np.ndarray,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.add_noise(img, noise_map)
 
-    def apply_to_images(self, images: ImageType, noise_map: np.ndarray, **params: Any) -> ImageType:
+    def apply_to_images(
+        self,
+        images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+        noise_map: np.ndarray,
+        **params: Any,
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.add_noise(images, noise_map)
 
     def apply_to_volume(
         self,
-        volume: ImageType,
+        volume: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         noise_map: np.ndarray,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.add_noise(volume, noise_map)
 
     def sample_parameters(
@@ -468,12 +472,12 @@ class ISONoise(_FullVolumeNoiseTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         color_shift: float,
         intensity: float,
         random_seed: int,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         non_rgb_error(img)
         return fpixel.iso_noise(
             img,
@@ -484,12 +488,12 @@ class ISONoise(_FullVolumeNoiseTransform):
 
     def apply_to_images(
         self,
-        images: ImageType,
+        images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         color_shift: float,
         intensity: float,
         random_seed: int,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.iso_noise_images(
             images,
             color_shift,
@@ -499,12 +503,12 @@ class ISONoise(_FullVolumeNoiseTransform):
 
     def apply_to_volume(
         self,
-        volume: ImageType,
+        volume: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         color_shift: float,
         intensity: float,
         random_seed: int,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.iso_noise_volume(
             volume,
             color_shift,
@@ -615,22 +619,27 @@ class MultiplicativeNoise(ImageOnlyTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         multiplier: float | np.ndarray,
         **kwargs: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         result = multiply(img, multiplier)
         return clip(result, out=result) if img.dtype in (np.float16, np.float32) else result
 
-    def apply_to_images(self, images: ImageType, multiplier: float | np.ndarray, **kwargs: Any) -> ImageType:
+    def apply_to_images(
+        self,
+        images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+        multiplier: float | np.ndarray,
+        **kwargs: Any,
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self.apply(images, multiplier, **kwargs)
 
     def apply_to_volume(
         self,
-        volume: ImageType,
+        volume: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         multiplier: float | np.ndarray,
         **kwargs: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self.apply(volume, multiplier, **kwargs)
 
     def sample_parameters(
@@ -760,20 +769,20 @@ class ShotNoise(_FullVolumeNoiseTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         scale: float,
         random_seed: int,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.shot_noise(img, scale, np.random.default_rng(random_seed))
 
     def apply_to_volume(
         self,
-        volume: ImageType,
+        volume: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         scale: float,
         random_seed: int,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.shot_noise(volume, scale, np.random.default_rng(random_seed))
 
     def sample_parameters(
@@ -1066,24 +1075,26 @@ class AdditiveNoise(ImageOnlyTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         noise_map: np.ndarray,
         patches: np.ndarray | None,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if patches is not None:
             return fpixel.add_noise_by_patches(img, noise_map, patches)
         return fpixel.add_noise(img, noise_map)
 
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+    def apply_to_images(
+        self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self.apply(images, **params)
 
     def apply_to_volume(
         self,
-        volume: ImageType,
+        volume: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         noise_map: np.ndarray,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self.apply(volume, noise_map, **params)
 
     def sample_parameters(
@@ -1337,23 +1348,25 @@ class SaltAndPepper(_FullVolumeNoiseTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         salt_mask: np.ndarray,
         pepper_mask: np.ndarray,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.apply_salt_and_pepper(img, salt_mask, pepper_mask)
 
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+    def apply_to_images(
+        self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self.apply(images, **params)
 
     def apply_to_volume(
         self,
-        volume: ImageType,
+        volume: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         salt_mask: np.ndarray,
         pepper_mask: np.ndarray,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self.apply(volume, salt_mask, pepper_mask, **params)
 
 
@@ -1427,23 +1440,25 @@ class FilmGrain(_FullVolumeNoiseTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         grain: np.ndarray,
         intensity: float,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.apply_film_grain(img, grain, intensity)
 
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+    def apply_to_images(
+        self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
     def apply_to_volume(
         self,
-        volume: ImageType,
+        volume: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         grain: np.ndarray,
         intensity: float,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self.apply(volume, grain, intensity, **params)
 
     def sample_parameters(

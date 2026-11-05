@@ -20,14 +20,13 @@ from ._functional_shared import (
     MULTICHANNEL_LUT_MEDIUM_IMAGE_PIXELS,
     NUM_MULTI_CHANNEL_DIMENSIONS,
     ImageFloat32,
-    ImageType,
     ImageUInt8,
     add,
     add_weighted,
     apply_uint8_lut,
     clip,
+    convert_dtype,
     cv2,
-    from_float,
     get_num_channels,
     math,
     mean,
@@ -35,7 +34,6 @@ from ._functional_shared import (
     np,
     reduce_sum,
     restore_uint8_working_image,
-    to_float,
     to_uint8_working_image,
 )
 
@@ -126,34 +124,32 @@ def generate_plasma_pattern(
 
 
 def apply_plasma_brightness_contrast(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     brightness_factor: float,
     contrast_factor: float,
     plasma_pattern: np.ndarray,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Modulate brightness and contrast with a plasma pattern. brightness_factor,
     contrast_factor scale effect. Use for spatially varying lighting.
 
     This function applies plasma-based brightness and contrast adjustments to an image.
 
     Args:
-        img (ImageType): The image to apply the brightness and contrast adjustments to.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): The image to apply the brightness and
+            contrast adjustments to.
         brightness_factor (float): The brightness factor to apply.
         contrast_factor (float): The contrast factor to apply.
         plasma_pattern (np.ndarray): The plasma pattern to use for the brightness and contrast adjustments.
 
     Returns:
-        ImageType: The image with the brightness and contrast adjustments applied.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: The image with the brightness and contrast
+            adjustments applied.
 
     """
     input_dtype = img.dtype
-    img = (
-        from_float(cast("NDArray[np.float16]", img), target_dtype=np.float32)
-        if input_dtype == np.float16
-        else to_float(cast("NDArray[np.uint8] | NDArray[np.float32]", img))
-    )
+    img = convert_dtype(img, np.float32)
     if brightness_factor == 0 and contrast_factor == 0:
-        result = img if input_dtype == np.float32 else from_float(img, target_dtype=input_dtype)
+        result = img if input_dtype == np.float32 else convert_dtype(img, dtype=input_dtype)
         return result if input_dtype == np.uint8 else clip(result, input_dtype)
 
     if img.ndim > MONO_CHANNEL_DIMENSIONS:
@@ -172,11 +168,13 @@ def apply_plasma_brightness_contrast(
         mean_factor = img_mean * (1.0 - contrast_weights)
         img = add(img, mean_factor, out=img)
 
-    result = img if input_dtype == np.float32 else from_float(img, target_dtype=input_dtype)
+    result = img if input_dtype == np.float32 else convert_dtype(img, dtype=input_dtype)
     return result if input_dtype == np.uint8 else clip(result, input_dtype)
 
 
-def _plasma_pattern_for_batch(images: ImageType, plasma_pattern: np.ndarray) -> np.ndarray:
+def _plasma_pattern_for_batch(
+    images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], plasma_pattern: np.ndarray
+) -> np.ndarray:
     """Expand a shared plasma pattern once for a batch with an explicit channel axis."""
     if images.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
         return plasma_pattern
@@ -187,12 +185,17 @@ def _plasma_pattern_for_batch(images: ImageType, plasma_pattern: np.ndarray) -> 
     return np.broadcast_to(channel_pattern, (*plasma_pattern.shape, images.shape[-1])).copy()
 
 
-def _finish_plasma_brightness_contrast_batch(work: ImageFloat32, output_dtype: np.dtype[Any]) -> ImageType:
-    """Clip and restore an owned float32 batch to the public dtype and contiguous layout."""
+def _finish_plasma_brightness_contrast_batch(
+    work: NDArray[np.float16] | ImageFloat32,
+    output_dtype: np.dtype[Any],
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
+    """Clip and restore an owned floating batch to the public dtype and contiguous layout."""
     if output_dtype.type in (np.float16, np.float32):
         np.clip(work, 0.0, 1.0, out=work, dtype=np.float32, casting="unsafe")
-        return cast("ImageType", np.ascontiguousarray(work.astype(output_dtype, copy=False)))
-    return cast("ImageType", np.ascontiguousarray(from_float(work, target_dtype=output_dtype)))
+    return cast(
+        "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]",
+        np.ascontiguousarray(convert_dtype(work, output_dtype)),
+    )
 
 
 def _apply_plasma_brightness_contrast_dedicated(
@@ -200,7 +203,7 @@ def _apply_plasma_brightness_contrast_dedicated(
     brightness_factor: float,
     contrast_factor: float,
     plasma_pattern: np.ndarray,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Apply brightness and contrast to a small float32 batch using one mean per image."""
     work = np.ascontiguousarray(images)
     image_pattern = _plasma_pattern_for_batch(images, plasma_pattern)
@@ -245,11 +248,11 @@ def _apply_plasma_brightness_float16_batch(
 
 
 def _apply_plasma_brightness_contrast_loop(
-    images: ImageType,
+    images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     brightness_factor: float,
     contrast_factor: float,
     plasma_pattern: np.ndarray,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Apply shared plasma maps in a preallocated loop for larger batches and uint8 input."""
     output_dtype = images.dtype
     result = np.empty(images.shape, dtype=output_dtype)
@@ -269,8 +272,10 @@ def _apply_plasma_brightness_contrast_loop(
     )
 
     for index, image in enumerate(images):
-        work: ImageFloat32 = (
-            cast("ImageFloat32", image) if output_dtype == np.float32 else to_float(cast("ImageUInt8", image))
+        work = (
+            convert_dtype(image, np.float32)
+            if output_dtype == np.uint8
+            else cast("NDArray[np.float16] | ImageFloat32", image)
         )
 
         if brightness_map is not None:
@@ -287,18 +292,18 @@ def _apply_plasma_brightness_contrast_loop(
             work = add(work, mean_factor)
         result[index] = _finish_plasma_brightness_contrast_batch(work, output_dtype)
 
-    return cast("ImageType", result)
+    return cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", result)
 
 
 def _apply_plasma_brightness_contrast_per_image(
-    images: ImageType,
+    images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     brightness_factor: float,
     contrast_factor: float,
     plasma_pattern: np.ndarray,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Use the single-image implementation for small, high-resolution uint8 brightness-only batches."""
     return cast(
-        "ImageType",
+        "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]",
         np.stack(
             [
                 apply_plasma_brightness_contrast(
@@ -314,11 +319,11 @@ def _apply_plasma_brightness_contrast_per_image(
 
 
 def apply_plasma_brightness_contrast_batch(
-    images: ImageType,
+    images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     brightness_factor: float,
     contrast_factor: float,
     plasma_pattern: np.ndarray,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Apply one plasma lighting pattern to an image batch while retaining independent image means and
     reusing shared spatial setup for efficient lighting augmentation.
 
@@ -326,13 +331,14 @@ def apply_plasma_brightness_contrast_batch(
     preserve identity; zero-effect batches are independent copies, with floating-point values clipped to `[0, 1]`.
 
     Args:
-        images (ImageType): Image batch in `(N, H, W, C)` format, or `(N, H, W)` for direct grayscale calls.
+        images (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Image batch in `(N, H, W, C)` format, or
+            `(N, H, W)` for direct grayscale calls.
         brightness_factor (float): Strength of the spatial brightness adjustment.
         contrast_factor (float): Strength of the spatial contrast adjustment.
         plasma_pattern (np.ndarray): Shared `(H, W)` plasma pattern with values in `[0, 1]`.
 
     Returns:
-        ImageType: Transformed batch with the input shape and dtype.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Transformed batch with the input shape and dtype.
 
     Examples:
         >>> images = np.full((2, 8, 8, 3), 0.5, dtype=np.float32)
@@ -347,7 +353,7 @@ def apply_plasma_brightness_contrast_batch(
 
     if brightness_factor == 0 and contrast_factor == 0:
         if images.dtype.type in (np.float16, np.float32):
-            result: ImageType = np.empty_like(images, order="C")
+            result: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32] = np.empty_like(images, order="C")
             np.clip(images, 0.0, 1.0, out=result, dtype=np.float32, casting="unsafe")
         else:
             result = cast("ImageUInt8", np.array(images, copy=True, order="C"))
@@ -387,7 +393,7 @@ def apply_plasma_brightness_contrast_batch(
 
     if images.dtype == np.float16 and contrast_factor == 0:
         result = cast(
-            "ImageType",
+            "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]",
             _apply_plasma_brightness_float16_batch(
                 cast("NDArray[np.float16]", images), brightness_factor, plasma_pattern
             ),
@@ -403,20 +409,20 @@ def apply_plasma_brightness_contrast_batch(
 
 
 def apply_plasma_shadow(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     intensity: float,
     plasma_pattern: np.ndarray,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Darken image in regions defined by a plasma pattern. intensity controls strength. Use for
     soft shadows or vignette-like effects. Same dtype and channels.
 
     Args:
-        img (ImageType): Input image
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image
         intensity (float): Shadow intensity
         plasma_pattern (np.ndarray): Plasma pattern to use
 
     Returns:
-        ImageType: Image with plasma shadow
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Image with plasma shadow
 
     """
     # Scale plasma pattern by intensity first (scalar operation)
@@ -426,7 +432,7 @@ def apply_plasma_shadow(
     if img.ndim > MONO_CHANNEL_DIMENSIONS:
         scaled_pattern = scaled_pattern[..., np.newaxis]
 
-    result = cast("ImageType", img * (1 - scaled_pattern))
+    result = cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", img * (1 - scaled_pattern))
     output_dtype = img.dtype if isinstance(img, np.ndarray) else np.dtype(str(img.dtype).removeprefix("torch."))
     return clip(result, output_dtype)
 
@@ -620,24 +626,24 @@ def create_gaussian_illumination_gradient_from_spots(
     return gradient
 
 
-def apply_linear_illumination(img: ImageType, intensity: float, angle: float) -> ImageType:
+def apply_linear_illumination(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], intensity: float, angle: float
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Apply linear illumination gradient to the image. Adds a signed gradient; intensity and angle
     control direction and strength. Uses float32 working arithmetic and restores the input dtype.
 
     Args:
-        img (ImageType): Input image
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image
         intensity (float): Illumination intensity
         angle (float): Illumination angle in radians
 
     Returns:
-        ImageType: Image with linear illumination
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Image with linear illumination
 
     """
     input_dtype = img.dtype
-    if input_dtype.type is np.uint8:
-        img = to_float(img)
-    elif input_dtype.type is np.float16:
-        img = img.astype(np.float32)
+    if input_dtype.type is np.uint8 or input_dtype.type is np.float16:
+        img = convert_dtype(img, np.float32)
     else:
         img = cast("ImageFloat32", img)
 
@@ -657,18 +663,18 @@ def apply_linear_illumination(img: ImageType, intensity: float, angle: float) ->
 
     result = img + gradient
     clip(result, out=result)
-    return _restore_linear_illumination_dtype(cast("ImageFloat32", result), input_dtype)
+    return _restore_linear_illumination_dtype(result, input_dtype)
 
 
-def apply_linear_illumination_batch(images: ImageType, intensity: float, angle: float, **params: Any) -> ImageType:
+def apply_linear_illumination_batch(
+    images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], intensity: float, angle: float, **params: Any
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Applies one sampled linear gradient to every `(N, H, W, C)` image, matching the single-image kernel's
     normalization, clipping, and dtype-conversion semantics.
     """
     input_dtype = images.dtype
-    if input_dtype.type is np.uint8:
-        images = to_float(images)
-    elif input_dtype.type is np.float16:
-        images = images.astype(np.float32)
+    if input_dtype.type is np.uint8 or input_dtype.type is np.float16:
+        images = convert_dtype(images, np.float32)
     else:
         images = cast("ImageFloat32", images)
 
@@ -678,34 +684,36 @@ def apply_linear_illumination_batch(images: ImageType, intensity: float, angle: 
     batch_gradient = gradient if images.ndim == NUM_MULTI_CHANNEL_DIMENSIONS else gradient[..., np.newaxis]
     result = images + batch_gradient
     clip(result, out=result)
-    return _restore_linear_illumination_dtype(cast("ImageFloat32", result), input_dtype)
+    return _restore_linear_illumination_dtype(result, input_dtype)
 
 
-def _restore_linear_illumination_dtype(img: ImageFloat32, input_dtype: np.dtype) -> ImageType:
+def _restore_linear_illumination_dtype(
+    img: ImageFloat32, input_dtype: np.dtype
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     if input_dtype.type is np.uint8:
-        return from_float(img, np.uint8)
+        return convert_dtype(img, np.uint8)
     if input_dtype.type is np.float16:
-        return from_float(img, np.float16)
+        return convert_dtype(img, np.float16)
     return img
 
 
 def _apply_clipped_illumination_batch(
-    images: ImageType,
+    images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     gradient: np.ndarray,
     implicit_grayscale: bool,
     num_channels: int,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Multiply float32 illumination batches into preallocated output and upper-clip factors of at least one without
     a second full-batch pass.
 
     Args:
-        images (ImageType): Input float32 image batch.
+        images (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input float32 image batch.
         gradient (np.ndarray): Shared multiplicative illumination gradient.
         implicit_grayscale (bool): Whether the batch omits an explicit channel dimension.
         num_channels (int): Number of image channels.
 
     Returns:
-        ImageType: Multiplied and upper-clipped image batch.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Multiplied and upper-clipped image batch.
 
     """
     result = np.empty_like(images)
@@ -726,20 +734,21 @@ def _apply_clipped_illumination_batch(
 
 
 def apply_illumination_batch(
-    images: ImageType,
+    images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     mode: Literal["linear", "corner", "gaussian"],
     **params: Any,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Apply one sampled illumination pattern to an image batch, with empty-input handling, gradient reuse, kernel
     routing, and clipping in one functional operation.
 
     Args:
-        images (ImageType): Input batch in `(N, H, W, C)` format, or `(N, H, W)` for direct implicit-grayscale calls.
+        images (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input batch in `(N, H, W, C)` format, or
+            `(N, H, W)` for direct implicit-grayscale calls.
         mode (Literal['linear', 'corner', 'gaussian']): Illumination pattern.
         **params (Any): Sampled parameters for the selected mode.
 
     Returns:
-        ImageType: Illuminated batch with the input shape and dtype.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Illuminated batch with the input shape and dtype.
 
     """
     if images.shape[0] == 0:
@@ -775,20 +784,20 @@ def apply_illumination_batch(
 
 
 def apply_corner_illumination(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     intensity: float,
     corner: Literal[0, 1, 2, 3],
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Apply corner illumination (darkened corners) to the image. Gradient from center; intensity and
     corner (0-3) control strength and which corner. Floating results are clipped to the input dtype range.
 
     Args:
-        img (ImageType): Input image
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image
         intensity (float): Illumination intensity
         corner (Literal[0, 1, 2, 3]): The corner to apply the illumination to.
 
     Returns:
-        ImageType: Image with corner illumination applied.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Image with corner illumination applied.
 
     """
     if intensity == 0:
@@ -806,16 +815,16 @@ def apply_corner_illumination(
 
 
 def apply_gaussian_illumination(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     intensity: float,
     center: tuple[float, float],
     sigma: float,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Add a Gaussian-shaped bright or dark spot; intensity, center, and sigma define the falloff.
     Use for spotlight or vignette effects. Same channel count; floating results are clipped to the input range.
 
     Args:
-        img (ImageType): Input image
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image
         intensity (float): Illumination intensity
         center (tuple[float, float]): The center of the illumination.
         sigma (float): The sigma of the illumination.
@@ -836,9 +845,9 @@ def apply_gaussian_illumination(
 
 
 def apply_gaussian_illumination_spots(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     spots: Sequence[tuple[float, float, float, float]],
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Apply a multiplicatively combined field of independently parameterized Gaussian spots to an image and preserve
     its input dtype.
     """
@@ -972,22 +981,22 @@ def _should_use_auto_contrast_multichannel_lut(
 
 
 def auto_contrast(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     cutoff: float,
     ignore: int | None,
     method: Literal["cdf", "pil"],
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Apply automatic contrast enhancement. Stretches histogram to full range. cutoff, ignore, method
     (cdf or pil) limit clip. uint8 I/O.
 
     Args:
-        img (ImageType): Input image
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image
         cutoff (float): Cutoff percentage for histogram
         ignore (int | None): Value to ignore in histogram
         method (Literal['cdf', 'pil']): Method to use for contrast enhancement
 
     Returns:
-        ImageType: Image with enhanced contrast
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Image with enhanced contrast
 
     """
     img, input_dtype = to_uint8_working_image(img)
@@ -1275,22 +1284,22 @@ def _create_vignette_mask(
 
 
 def apply_vignette(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     intensity: float,
     center_x: float,
     center_y: float,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Apply vignetting by darkening corners with radial gradient. intensity, center_x, center_y
     control strength and center. Supports (H,W) or (H,W,C).
 
     Args:
-        img (ImageType): Input image of shape (H, W) or (H, W, C).
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image of shape (H, W) or (H, W, C).
         intensity (float): Strength of darkening at corners, in [0, 1].
         center_x (float): Horizontal center of the vignette as fraction of width, in [0, 1].
         center_y (float): Vertical center of the vignette as fraction of height, in [0, 1].
 
     Returns:
-        ImageType: Image with vignetting applied.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Image with vignetting applied.
 
     """
     height, width = img.shape[:2]
@@ -1301,22 +1310,22 @@ def apply_vignette(
 
 
 def apply_film_grain(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     grain: np.ndarray,
     intensity: float,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Apply film grain noise to an image (2D or 3D). Luminance-dependent and
     spatially correlated; params control grain size and intensity.
 
     Film grain is luminance-dependent and spatially correlated, unlike simple Gaussian noise.
 
     Args:
-        img (ImageType): Input image, shape (H, W, C) or (H, W, 1).
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image, shape (H, W, C) or (H, W, 1).
         grain (np.ndarray): Pre-generated grain pattern, shape (H, W), float32.
         intensity (float): Grain strength multiplier.
 
     Returns:
-        ImageType: Image with film grain applied.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Image with film grain applied.
 
     """
     num_channels = img.shape[-1]
@@ -1334,20 +1343,20 @@ def apply_film_grain(
 
 
 def apply_halftone(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     dot_size: int,
     blend: float,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Convert image to halftone dot pattern. Simulates printed halftone; dot size
     varies by intensity. Params: scale, dot_shape.
 
     Args:
-        img (ImageType): Input image (H, W, C), uint8 or float32.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image (H, W, C), uint8 or float32.
         dot_size (int): Size of each halftone grid cell in pixels.
         blend (float): Blend factor between halftone and original. 0 = pure halftone, 1 = original.
 
     Returns:
-        ImageType: Image with halftone effect applied.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Image with halftone effect applied.
 
     """
     img, input_dtype = to_uint8_working_image(img)
@@ -1415,18 +1424,18 @@ def apply_halftone(
 
 
 def apply_lens_flare(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     flare_center: tuple[int, int],
     ghosts: list[tuple[int, int, int, float]],
     starburst_angles: np.ndarray,
     starburst_intensity: float,
     bloom_radius: int,
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Apply realistic lens flare with ghosts and starburst. Params control position,
     intensity, and number of ghosts. RGB input.
 
     Args:
-        img (ImageType): Input image (H, W, C), must be 3-channel.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image (H, W, C), must be 3-channel.
         flare_center (tuple[int, int]): (x, y) position of the flare source.
         ghosts (list[tuple[int, int, int, float]]): List of (x, y, radius, alpha) for each ghost circle.
         starburst_angles (np.ndarray): Array of angles in radians for starburst rays.
@@ -1434,13 +1443,11 @@ def apply_lens_flare(
         bloom_radius (int): Gaussian blur radius for bloom effect.
 
     Returns:
-        ImageType: Image with lens flare applied.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Image with lens flare applied.
 
     """
     height, width = img.shape[:2]
     max_val = MAX_VALUES_BY_DTYPE[img.dtype]
-    result = img.copy()
-
     flare_layer = np.zeros((height, width), dtype=np.float32)
 
     fx, fy = flare_center
@@ -1468,7 +1475,7 @@ def apply_lens_flare(
 
     flare_3d = flare_layer[:, :, np.newaxis] * max_val
 
-    return clip(cast("ImageFloat32", result.astype(np.float32) + flare_3d), result.dtype)
+    return clip(np.add(img, flare_3d, dtype=np.float32), img.dtype)
 
 
 def generate_water_displacement_maps(

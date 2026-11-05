@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from albucore import from_float, to_float
+from albucore import convert_dtype
 from scipy import fft
 
 import albumentations as A
@@ -590,7 +590,9 @@ def test_uint8_volume_keeps_half_spectrum_rounding(shape: tuple[int, int, int, i
 
 def _boundary_plane_spike_reference(volume: np.ndarray, spikes: np.ndarray, intensity: float) -> np.ndarray:
     """Reference only DC/Nyquist-plane spikes with the legacy float32 FFT rounding."""
-    spectrum = fft.rfftn(volume if volume.dtype == np.float32 else to_float(volume), axes=(0, 1, 2), workers=1)
+    spectrum = fft.rfftn(
+        volume if volume.dtype == np.float32 else convert_dtype(volume, np.float32), axes=(0, 1, 2), workers=1
+    )
     amplitude = intensity * float(np.abs(spectrum).max())
     for spike in spikes:
         coordinate = tuple(int(value) for value in spike)
@@ -600,7 +602,7 @@ def _boundary_plane_spike_reference(volume: np.ndarray, spikes: np.ndarray, inte
             spectrum[mirror] += amplitude
     signal = fft.irfftn(spectrum, s=volume.shape[:3], axes=(0, 1, 2), workers=1)
     result = np.clip(signal, 0, 1)
-    return result if volume.dtype == np.float32 else from_float(result, np.uint8)
+    return result if volume.dtype == np.float32 else convert_dtype(result, np.uint8)
 
 
 @pytest.mark.parametrize("intensity", [8.0, 1024.0])
@@ -626,7 +628,7 @@ def test_unnormalized_float32_volume_keeps_fft_roundoff() -> None:
 @pytest.mark.parametrize("empty_spikes", [False, True])
 def test_functional_noop_preserves_dtype_specific_output_ownership(dtype: type[np.generic], empty_spikes: bool) -> None:
     raw = np.random.default_rng(137).integers(0, 256, (5, 9, 11, 3), dtype=np.uint8)
-    volume = raw if dtype == np.uint8 else to_float(raw)
+    volume = raw if dtype == np.uint8 else convert_dtype(raw, np.float32)
     spikes = np.empty((0, 3), dtype=np.int64) if empty_spikes else np.array([[1, 3, 0]])
     intensity = 0.25 if empty_spikes else 0.0
 

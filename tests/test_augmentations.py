@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 import pytest
-from albucore import from_float, to_float
+from albucore import convert_dtype
 
 import albumentations as A
 from albumentations.augmentations.pixel import _functional_weather as fweather
@@ -907,7 +907,7 @@ def test_pad_if_needed_position(params, image_shape):
 )
 def test_augmentations_match_uint8_float32(augmentation_cls, params):
     image_uint8 = RECTANGULAR_UINT8_IMAGE
-    image_float32 = to_float(image_uint8)
+    image_float32 = convert_dtype(image_uint8, np.float32)
 
     transform = A.Compose([augmentation_cls(p=1, **params)], seed=137, strict=True)
 
@@ -929,7 +929,7 @@ def test_augmentations_match_uint8_float32(augmentation_cls, params):
     transform.set_random_seed(137)
     transformed_float32 = transform(**data)["image"]
 
-    np.testing.assert_array_almost_equal(to_float(transformed_uint8), transformed_float32, decimal=2)
+    np.testing.assert_array_almost_equal(convert_dtype(transformed_uint8, np.float32), transformed_float32, decimal=2)
 
 
 def test_solarize_threshold():
@@ -2256,8 +2256,8 @@ def _median_blur_reference(image: np.ndarray, kernel: int) -> np.ndarray:
         return _median_blur_uint8_reference(image, kernel)
     if kernel in (3, 5):
         return _restore_median_blur_channel_axis(cv2.medianBlur(image, kernel), image.shape[-1])
-    quantized = from_float(image, np.dtype(np.uint8))
-    return to_float(_median_blur_uint8_reference(quantized, kernel))
+    quantized = convert_dtype(image, np.dtype(np.uint8))
+    return convert_dtype(_median_blur_uint8_reference(quantized, kernel), np.float32)
 
 
 @pytest.mark.parametrize(
@@ -2326,7 +2326,7 @@ def test_median_blur_native_float32_preserves_sub_uint8_precision(kernel: int) -
 
     result = transform(image=image)["image"]
     native = _restore_median_blur_channel_axis(cv2.medianBlur(image, kernel), 1)
-    legacy = to_float(_median_blur_uint8_reference(from_float(image, np.dtype(np.uint8)), kernel))
+    legacy = convert_dtype(_median_blur_uint8_reference(convert_dtype(image, np.dtype(np.uint8)), kernel), np.float32)
 
     np.testing.assert_array_equal(result, native)
     assert not np.array_equal(result, legacy)
@@ -2832,17 +2832,19 @@ def test_random_shadow_apply_to_images_preserves_per_image_float32_conversion_wo
         [transform.apply(image, vertices_list=vertices_list, intensities=intensities) for image in images],
     )
     conversion_sizes: list[int] = []
-    original_from_float = fweather.from_float
+    original_convert_dtype = fweather.convert_dtype
 
-    def tracked_from_float(
+    def tracked_convert_dtype(
         image: np.ndarray,
-        target_dtype: np.dtype[np.generic],
+        dtype: np.dtype[np.generic],
+        *,
         max_value: float | None = None,
     ) -> np.ndarray:
-        conversion_sizes.append(image.size)
-        return original_from_float(image, target_dtype=target_dtype, max_value=max_value)
+        if np.dtype(dtype) == np.uint8:
+            conversion_sizes.append(image.size)
+        return original_convert_dtype(image, dtype=dtype, max_value=max_value)
 
-    monkeypatch.setattr(fweather, "from_float", tracked_from_float)
+    monkeypatch.setattr(fweather, "convert_dtype", tracked_convert_dtype)
 
     actual = transform.apply_to_images(images, vertices_list=vertices_list, intensities=intensities)
 

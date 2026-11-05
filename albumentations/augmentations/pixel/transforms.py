@@ -39,7 +39,7 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
 )
-from albumentations.core.type_definitions import CV2_INTER_LINEAR, FullInterpolationType, ImageType, VolumeType
+from albumentations.core.type_definitions import CV2_INTER_LINEAR, FullInterpolationType, VolumeType
 
 __all__ = [
     "Dithering",
@@ -211,7 +211,9 @@ class Normalize(ImageOnlyTransform):
         self.normalization = normalization
         self.clip_range = clip_range
 
-    def apply(self, img: ImageType, **params: Any) -> ImageType:
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if self.normalization == "standard":
             normalized = normalize(
                 img,
@@ -227,7 +229,9 @@ class Normalize(ImageOnlyTransform):
             return normalized.clip(*self.clip_range)
         return np.clip(normalized, *self.clip_range, out=normalized)
 
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+    def apply_to_images(
+        self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self.apply(images, **params)
 
     def apply_to_volume(self, volume: VolumeType, **params: Any) -> VolumeType:
@@ -273,10 +277,14 @@ class InvertImg(ImageOnlyTransform):
 
     """
 
-    def apply(self, img: ImageType, **params: Any) -> ImageType:
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.invert(img)
 
-    def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
+    def apply_to_images(
+        self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], *args: Any, **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self.apply(images, *args, **params)
 
 
@@ -463,11 +471,11 @@ class Sharpen(ImageOnlyTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         alpha: float,
         sharpening_matrix: np.ndarray | None,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if self.method == "kernel":
             if sharpening_matrix is None:
                 msg = "sharpening_matrix must be initialized when method is 'kernel'"
@@ -475,7 +483,9 @@ class Sharpen(ImageOnlyTransform):
             return fpixel.convolve(img, sharpening_matrix)
         return fpixel.sharpen_gaussian(img, alpha, self.kernel_size, self.sigma)
 
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+    def apply_to_images(
+        self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
 
@@ -580,10 +590,10 @@ class Emboss(ImageOnlyTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         emboss_matrix: np.ndarray,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.convolve(img, emboss_matrix)
 
 
@@ -695,13 +705,15 @@ class Enhance(ImageOnlyTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         enhance_matrix: np.ndarray,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.convolve(img, enhance_matrix)
 
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+    def apply_to_images(
+        self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
 
@@ -842,11 +854,11 @@ class Superpixels(ImageOnlyTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         replace_samples: Sequence[bool],
         n_segments: int,
         **kwargs: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.superpixels(
             img,
             n_segments,
@@ -988,7 +1000,9 @@ class RingingOvershoot(ImageOnlyTransform):
         sampling.applied_overrides.update({"blur_range": ksize, "cutoff_range": cutoff})
         return SampledParams(params={"kernel": kernel})
 
-    def apply(self, img: ImageType, kernel: np.ndarray, **params: Any) -> ImageType:
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], kernel: np.ndarray, **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.convolve(img, kernel)
 
 
@@ -1108,12 +1122,12 @@ class UnsharpMask(ImageOnlyTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         ksize: int,
         sigma: int,
         alpha: float,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.unsharp_mask(
             img,
             ksize,
@@ -1124,12 +1138,12 @@ class UnsharpMask(ImageOnlyTransform):
 
     def apply_to_images(
         self,
-        images: ImageType,
+        images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         ksize: int,
         sigma: int,
         alpha: float,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.unsharp_mask_images(
             images,
             ksize,
@@ -1322,7 +1336,12 @@ class Dithering(ImageOnlyTransform):
         self.serpentine = serpentine
         self.noise_range = noise_range
 
-    def apply(self, img: ImageType, random_noise: np.ndarray | None, **params: Any) -> ImageType:
+    def apply(
+        self,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+        random_noise: np.ndarray | None,
+        **params: Any,
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         from albumentations.augmentations.pixel import dithering_functional as fdither
 
         return fdither.apply_dithering(
@@ -1398,11 +1417,11 @@ class Dithering(ImageOnlyTransform):
 
     def apply_to_images(
         self,
-        images: ImageType,
+        images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         random_noise: np.ndarray | None,
         *args: Any,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if isinstance(random_noise, np.ndarray) and random_noise.ndim == images.ndim:
             result = np.empty_like(images)
             for index, image in enumerate(images):
@@ -1480,14 +1499,16 @@ class Halftone(ImageOnlyTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         dot_size: int,
         blend: float,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.apply_halftone(img, dot_size, blend)
 
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+    def apply_to_images(
+        self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
     def sample_parameters(
@@ -1617,14 +1638,14 @@ class LensFlare(ImageOnlyTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         flare_center: tuple[int, int],
         ghosts: list[tuple[int, int, int, float]],
         starburst_angles: np.ndarray,
         starburst_intensity: float,
         bloom_radius: int,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         non_rgb_error(img)
         return fpixel.apply_lens_flare(
             img,
@@ -1635,7 +1656,9 @@ class LensFlare(ImageOnlyTransform):
             bloom_radius,
         )
 
-    def apply_to_images(self, images: ImageType, **params: Any) -> ImageType:
+    def apply_to_images(
+        self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
     def sample_parameters(

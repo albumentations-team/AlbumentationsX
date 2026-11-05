@@ -12,14 +12,7 @@ from warnings import warn
 
 import cv2
 import numpy as np
-from albucore import (
-    clip,
-    from_float,
-    reduce_sum,
-    remap,
-    to_float,
-    warp_perspective,
-)
+from albucore import clip, convert_dtype, reduce_sum, remap, warp_perspective
 from albucore import (
     copy_make_border as albucore_copy_make_border,
 )
@@ -32,6 +25,7 @@ from albucore import (
 from albucore import (
     vflip as albucore_vflip,
 )
+from numpy.typing import NDArray
 
 from albumentations.augmentations.utils import angle_2pi_range, handle_empty_array
 from albumentations.core.bbox_utils import (
@@ -51,7 +45,6 @@ from albumentations.core.type_definitions import (
     NUM_MULTI_CHANNEL_DIMENSIONS,
     REFLECT_BORDER_MODES,
     ArrayT,
-    ImageType,
 )
 
 __all__ = [
@@ -61,7 +54,6 @@ __all__ = [
     "NUM_MULTI_CHANNEL_DIMENSIONS",
     "REFLECT_BORDER_MODES",
     "Any",
-    "ImageType",
     "Literal",
     "Mapping",
     "Sequence",
@@ -72,10 +64,10 @@ __all__ = [
     "bboxes_to_mask",
     "cast",
     "clip_if_interpolation_can_overshoot",
+    "convert_dtype",
     "cv2",
     "defaultdict",
     "denormalize_bboxes",
-    "from_float",
     "handle_empty_array",
     "hflip",
     "lru_cache",
@@ -89,7 +81,6 @@ __all__ = [
     "polygons_to_obb",
     "reduce_sum",
     "remap",
-    "to_float",
     "vflip",
     "warn",
     "warp_perspective",
@@ -114,11 +105,11 @@ def vflip(img: ArrayT) -> ArrayT:
 
 
 def clip_if_interpolation_can_overshoot(
-    image: ImageType,
+    image: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     interpolation: int,
     *,
-    source: ImageType | None = None,
-) -> ImageType:
+    source: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32] | None = None,
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Clip new floating samples after cubic or Lanczos interpolation to [0, 1].
     Pass the original source to leave unresampled identity and shared-storage views untouched.
     Use it for images, not masks.

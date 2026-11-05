@@ -10,26 +10,26 @@ from numpy.typing import NDArray
 
 from albumentations.augmentations.pixel._functional_shared import (
     MAX_VALUES_BY_DTYPE,
-    ImageType,
     clip,
+    convert_dtype,
     cv2,
-    from_float,
     np,
     reduce_sum,
-    to_float,
 )
 
 _Cv2InPlaceOp = Callable[..., np.ndarray]
 _SPARSE_TISSUE_MAX_FRACTION = 0.4
 
 
-def rgb_to_optical_density(img: ImageType, eps: float = 1e-6) -> np.ndarray:
+def rgb_to_optical_density(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], eps: float = 1e-6
+) -> np.ndarray:
     """Convert RGB image to optical density (-log). eps avoids log(0). Expects uint8, float16, or float32 in
     [0,1]. Returns (N*H*W, 3) float32. For stain normalization.
 
 
     Args:
-        img (ImageType): Input image.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image.
         eps (float): Epsilon value.
 
     Returns:
@@ -37,7 +37,12 @@ def rgb_to_optical_density(img: ImageType, eps: float = 1e-6) -> np.ndarray:
 
     """
     max_value = MAX_VALUES_BY_DTYPE[img.dtype]
-    pixel_matrix = np.ascontiguousarray(img.reshape(-1, 3)).astype(np.float32, copy=True)
+    pixels = img.reshape(-1, 3)
+    pixel_matrix = (
+        convert_dtype(pixels, np.float32)
+        if img.dtype.type is np.float16 and pixels.flags.c_contiguous
+        else np.ascontiguousarray(pixels).astype(np.float32, copy=True)
+    )
     multiply = cast("_Cv2InPlaceOp", cv2.multiply)
     max_op = cast("_Cv2InPlaceOp", cv2.max)
     multiply(pixel_matrix, 1.0 / max_value, dst=pixel_matrix)
@@ -86,13 +91,13 @@ class StainNormalizer:
     def __init__(self) -> None:
         self.stain_matrix_target: np.ndarray | None = None
 
-    def fit(self, img: ImageType) -> None:
+    def fit(self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]) -> None:
         """Fit the stain normalizer to a reference image. Learns stain matrix from img; call transform
         on target images after. Subclass implements the actual extraction.
 
 
         Args:
-            img (ImageType): Input image.
+            img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image.
 
         """
         raise NotImplementedError
@@ -261,13 +266,13 @@ class VahadaneNormalizer(StainNormalizer):
 
     """
 
-    def fit(self, img: ImageType) -> None:
+    def fit(self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]) -> None:
         """Fit the Vahadane stain normalizer to a reference image. Runs NMF on OD
         matrix; call transform on target images for normalization.
 
 
         Args:
-            img (ImageType): Input image.
+            img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image.
 
         """
         optical_density = rgb_to_optical_density(img)
@@ -295,13 +300,15 @@ class MacenkoNormalizer(StainNormalizer):
         super().__init__()
         self.angular_percentile = angular_percentile
 
-    def fit(self, img: ImageType, angular_percentile: float = 99) -> None:
+    def fit(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], angular_percentile: float = 99
+    ) -> None:
         """Fit the Macenko stain normalizer to a reference image. SVD-based;
         call transform on target images for H&E normalization.
 
 
         Args:
-            img (ImageType): Input image.
+            img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image.
             angular_percentile (float): Angular percentile.
 
         """
@@ -385,12 +392,14 @@ class MacenkoNormalizer(StainNormalizer):
         self.stain_matrix_target = stain_vectors if stain_vectors[0, 0] > stain_vectors[1, 0] else stain_vectors[::-1]
 
 
-def get_tissue_mask(img: ImageType, threshold: float = 0.85) -> np.ndarray:
+def get_tissue_mask(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], threshold: float = 0.85
+) -> np.ndarray:
     """Get tissue mask from image (exclude background). threshold for intensity-based masking of
     non-tissue. Returns 1D bool mask.
 
     Args:
-        img (ImageType): Input image
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image
         threshold (float): Threshold for tissue detection. Default: 0.85
 
     Returns:
@@ -474,7 +483,7 @@ def _build_residual_stain_matrix(stain_matrix: np.ndarray, tolerance: float) -> 
 
 
 def _apply_project_stain_affine(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     optical_density: np.ndarray,
     stain_matrix: np.ndarray,
     scale_factors: np.ndarray,
@@ -510,7 +519,7 @@ def _apply_project_stain_affine(
 
 
 def _apply_residual_stain_affine(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     optical_density: np.ndarray,
     reconstruction_matrix: np.ndarray,
     scale_factors: np.ndarray,
@@ -545,13 +554,13 @@ def _apply_residual_stain_affine(
 
 
 def apply_he_stain_augmentation(
-    img: ImageType,
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     stain_matrix: np.ndarray,
     scale_factors: np.ndarray,
     shift_values: np.ndarray,
     augment_background: bool,
     residual_mode: Literal["project", "preserve", "augment"] = "project",
-) -> ImageType:
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Perturb stain concentrations in optical-density space with a two-stain H&E basis or an explicit
     three-stain basis for histology augmentation.
 
@@ -559,7 +568,8 @@ def apply_he_stain_augmentation(
     product. A three-row matrix supplies the third stain directly for full-basis operations such as HED jitter.
 
     Args:
-        img (ImageType): RGB image with values in the dtype's standard range.
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): RGB image with values in the dtype's
+            standard range.
         stain_matrix (np.ndarray): Optical-density basis with shape `(2, 3)` for H&E or `(3, 3)` for an explicit
             three-stain basis. A three-row matrix must have full rank.
         scale_factors (np.ndarray): Per-component multiplicative factors. Supply two values for `"project"` and
@@ -571,7 +581,7 @@ def apply_he_stain_augmentation(
             unchanged. `"augment"` adjusts all three components.
 
     Returns:
-        ImageType: RGB image with the input shape and dtype.
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: RGB image with the input shape and dtype.
 
     Raises:
         ValueError: If the stain matrix, residual mode, or adjustment-vector shapes are invalid.
@@ -602,11 +612,7 @@ def apply_he_stain_augmentation(
 
     """
     input_dtype = img.dtype
-    img = (
-        from_float(cast("NDArray[np.float16]", img), target_dtype=np.float32)
-        if input_dtype == np.float16
-        else to_float(img)
-    )
+    img = convert_dtype(img, np.float32)
     stain_matrix, scale_factors, shift_values = _validate_stain_augmentation_inputs(
         stain_matrix,
         scale_factors,
@@ -646,7 +652,7 @@ def apply_he_stain_augmentation(
             )
 
     result = rgb_result.reshape(img.shape)
-    result = result if input_dtype == np.float32 else from_float(result, target_dtype=input_dtype)
+    result = result if input_dtype == np.float32 else convert_dtype(result, dtype=input_dtype)
     return result if input_dtype == np.uint8 else clip(result, input_dtype)
 
 

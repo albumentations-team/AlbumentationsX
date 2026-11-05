@@ -5,11 +5,7 @@ from math import isqrt
 import cv2
 import numpy as np
 import pytest
-from albucore import (
-    MAX_VALUES_BY_DTYPE,
-    clip,
-    to_float,
-)
+from albucore import MAX_VALUES_BY_DTYPE, clip, convert_dtype
 from sklearn.decomposition import NMF
 
 import albumentations.augmentations.blur.functional as fblur
@@ -958,7 +954,7 @@ def test_random_tone_curve(image, num_channels):
 def test_iso_noise(image, color_shift, intensity):
     """Test that iso_noise produces expected noise levels."""
     # Convert image to float and back
-    float_image = to_float(image)
+    float_image = convert_dtype(image, np.float32)
 
     # Generate noise using the same random state instance
     rng = np.random.default_rng(42)
@@ -978,7 +974,7 @@ def test_iso_noise(image, color_shift, intensity):
     )
 
     # Convert float result back to uint8
-    result_float = fpixel.from_float(result_float, target_dtype=np.uint8)
+    result_float = fpixel.convert_dtype(result_float, dtype=np.uint8)
 
     # Calculate noise
     noise = result_uint8.astype(np.float32) - image.astype(np.float32)
@@ -3993,12 +3989,12 @@ class TestPosterizeBitwise:
     def test_scalar_bits_float32(self):
         rng = np.random.default_rng(137)
         img_uint8 = rng.integers(0, 256, (16, 16, 3), dtype=np.uint8)
-        img_float32 = to_float(img_uint8)
+        img_float32 = convert_dtype(img_uint8, np.float32)
         mask = ~np.uint8(2 ** (8 - 4) - 1)
 
         result = fpixel.posterize(img_float32, 4)
 
-        np.testing.assert_allclose(result, to_float(img_uint8 & mask), atol=1 / 255)
+        np.testing.assert_allclose(result, convert_dtype(img_uint8 & mask, np.float32), atol=1 / 255)
 
     def test_per_channel_bits_uint8(self):
         rng = np.random.default_rng(137)

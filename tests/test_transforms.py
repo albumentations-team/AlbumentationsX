@@ -8,7 +8,7 @@ from typing import Any
 import cv2
 import numpy as np
 import pytest
-from albucore import MAX_VALUES_BY_DTYPE, clip, from_float, to_float
+from albucore import MAX_VALUES_BY_DTYPE, clip, convert_dtype
 
 import albumentations as A
 import albumentations.augmentations.geometric.functional as fgeometric
@@ -372,10 +372,10 @@ def test_image_invert(seed):
     np.random.seed(seed)
     cv2.setRNGSeed(seed)
     image1 = cv2.randu(np.zeros((100, 100, 3), dtype=np.uint8), 0, 255)
-    image2 = to_float(image1)
+    image2 = convert_dtype(image1, np.float32)
     r_int = fpixel.invert(fpixel.invert(image1))
     r_float = fpixel.invert(fpixel.invert(image2))
-    r_to_float = to_float(r_int)
+    r_to_float = convert_dtype(r_int, np.float32)
     np.testing.assert_allclose(r_float, r_to_float, atol=0.01, rtol=1e-5, equal_nan=False)
 
 
@@ -3655,9 +3655,9 @@ def test_posterize_compose_keeps_explicit_channels_and_dtype(dtype, container, c
     assert type(result) is type(source)
     actual = tensor_to_numpy_spatial(result, "image") if container == "tensor" else result
     preserved = tensor_to_numpy_spatial(source, "image") if container == "tensor" else source
-    uint8_input = image if dtype is np.uint8 else from_float(image, np.dtype(np.uint8))
+    uint8_input = image if dtype is np.uint8 else convert_dtype(image, np.dtype(np.uint8))
     expected_uint8 = np.bitwise_and(uint8_input, np.uint8(0xF0))
-    expected = expected_uint8 if dtype is np.uint8 else to_float(expected_uint8).astype(dtype)
+    expected = expected_uint8 if dtype is np.uint8 else convert_dtype(expected_uint8, np.float32).astype(dtype)
     assert actual.shape == image.shape
     assert actual.dtype == dtype
     np.testing.assert_array_equal(actual, expected)

@@ -17,6 +17,7 @@ from typing import Any, ClassVar, Literal, Self
 
 import cv2
 import numpy as np
+from numpy.typing import NDArray
 from pydantic import (
     Field,
     model_validator,
@@ -32,7 +33,7 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
 )
-from albumentations.core.type_definitions import ALL_TARGETS, CV2_BORDER_CONSTANT, BorderModeType, ImageType
+from albumentations.core.type_definitions import ALL_TARGETS, CV2_BORDER_CONSTANT, BorderModeType
 
 from . import functional as fgeometric
 
@@ -202,13 +203,13 @@ class Pad(DualTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         pad_top: int,
         pad_bottom: int,
         pad_left: int,
         pad_right: int,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fgeometric.pad_with_params(
             img,
             pad_top,
@@ -221,13 +222,13 @@ class Pad(DualTransform):
 
     def apply_to_mask(
         self,
-        mask: ImageType,
+        mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         pad_top: int,
         pad_bottom: int,
         pad_left: int,
         pad_right: int,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fgeometric.pad_with_params(
             mask,
             pad_top,
@@ -289,13 +290,13 @@ class Pad(DualTransform):
 
     def apply_to_images(
         self,
-        images: ImageType,
+        images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         pad_top: int,
         pad_bottom: int,
         pad_left: int,
         pad_right: int,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fgeometric.pad_images_with_params(
             images,
             pad_top,

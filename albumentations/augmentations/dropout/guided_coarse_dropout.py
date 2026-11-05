@@ -3,6 +3,7 @@
 from typing import Annotated, Any, cast
 
 import numpy as np
+from numpy.typing import NDArray
 from pydantic import AfterValidator, Field
 
 import albumentations.augmentations.dropout.functional as fdropout
@@ -12,7 +13,7 @@ from albumentations.core.invocation import SamplingContext
 from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
 from albumentations.core.transform_params import SampledParams, TargetSet
-from albumentations.core.type_definitions import ImageType, Targets
+from albumentations.core.type_definitions import Targets
 
 __all__ = ["GuidedCoarseDropout"]
 
@@ -258,12 +259,12 @@ class GuidedCoarseDropout(BaseDropout):
 
     def apply(  # type: ignore[override]  # pyrefly: ignore[bad-override]
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         holes: np.ndarray,
         seed: int,
         dropout_mask: np.ndarray | None,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if dropout_mask is None:
             return img
         self._validate_fill_channel_count(img, {2, 3})
@@ -271,12 +272,12 @@ class GuidedCoarseDropout(BaseDropout):
 
     def apply_to_images(  # type: ignore[override]  # pyrefly: ignore[bad-override]
         self,
-        images: ImageType,
+        images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         holes: np.ndarray,
         seed: int,
         dropout_mask: np.ndarray | None,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if dropout_mask is None:
             return images
         if not isinstance(self.fill, str):
@@ -291,12 +292,12 @@ class GuidedCoarseDropout(BaseDropout):
 
     def apply_to_mask(  # type: ignore[override]  # pyrefly: ignore[bad-override]
         self,
-        mask: ImageType,
+        mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         holes: np.ndarray,
         seed: int,
         dropout_mask: np.ndarray | None,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if dropout_mask is None or self.fill_mask is None:
             return mask
         return fdropout.fill_masked_pixels(mask, dropout_mask, self.fill_mask)

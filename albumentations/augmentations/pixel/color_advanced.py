@@ -2,6 +2,8 @@
 
 from typing import Annotated, Any, Literal, Self, TypedDict, cast
 
+from numpy.typing import NDArray
+
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import (
     SampledParams,
@@ -18,7 +20,6 @@ from ._color_shared import (
     Field,
     FullInterpolationType,
     ImageOnlyTransform,
-    ImageType,
     check_range_bounds,
     fpixel,
     is_grayscale_image,
@@ -182,20 +183,22 @@ class ColorJitter(ImageOnlyTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         brightness: float,
         contrast: float,
         saturation: float,
         hue: float,
         order: list[str],
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if not is_rgb_image(img) and not is_grayscale_image(img):
             msg = "ColorJitter transformation expects 1-channel or 3-channel images."
             raise TypeError(msg)
         return fpixel.apply_color_jitter(img, brightness, contrast, saturation, hue, order)
 
-    def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
+    def apply_to_images(
+        self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], *args: Any, **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
 
@@ -288,13 +291,13 @@ class ChromaticAberration(ImageOnlyTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         primary_distortion_red: float,
         secondary_distortion_red: float,
         primary_distortion_blue: float,
         secondary_distortion_blue: float,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         non_rgb_error(img)
         return fpixel.chromatic_aberration(
             img,
@@ -537,11 +540,15 @@ class PlanckianJitter(ImageOnlyTransform):
         self.temperature_range = cast("tuple[int, int]", temperature_range)
         self.sampling_method = sampling_method
 
-    def apply(self, img: ImageType, temperature: int, **params: Any) -> ImageType:
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], temperature: int, **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         non_rgb_error(img)
         return fpixel.planckian_jitter(img, temperature, mode=self.mode)
 
-    def apply_to_images(self, images: ImageType, temperature: int, **params: Any) -> ImageType:
+    def apply_to_images(
+        self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], temperature: int, **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         non_rgb_error(images)
         return self.apply(images, temperature, **params)
 
@@ -943,7 +950,7 @@ class PhotoMetricDistort(ImageOnlyTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         brightness_factor: float | None,
         contrast_factor: float | None,
         saturation_factor: float | None,
@@ -951,7 +958,7 @@ class PhotoMetricDistort(ImageOnlyTransform):
         contrast_before: bool,
         channel_permutation: list[int] | None,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if not is_rgb_image(img) and not is_grayscale_image(img):
             msg = "PhotoMetricDistort expects 1-channel or 3-channel images."
             raise TypeError(msg)
@@ -965,7 +972,9 @@ class PhotoMetricDistort(ImageOnlyTransform):
             channel_permutation,
         )
 
-    def apply_to_images(self, images: ImageType, *args: Any, **params: Any) -> ImageType:
+    def apply_to_images(
+        self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], *args: Any, **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self._apply_to_batch_same_shape(images, lambda image: self.apply(image, **params))
 
 

@@ -5,6 +5,8 @@ Transforms that simulate image compression artifacts and resolution loss.
 
 from typing import Annotated, Any, Literal
 
+import numpy as np
+from numpy.typing import NDArray
 from pydantic import BaseModel
 from pydantic.functional_validators import AfterValidator
 
@@ -19,7 +21,7 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
 )
-from albumentations.core.type_definitions import CV2_INTER_NEAREST, FullInterpolationType, ImageType
+from albumentations.core.type_definitions import CV2_INTER_NEAREST, FullInterpolationType
 
 __all__ = [
     "Downscale",
@@ -104,11 +106,11 @@ class ImageCompression(ImageOnlyTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         quality: int,
         image_type: Literal[".jpg", ".webp"],
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.image_compression(img, quality, image_type)
 
     def sample_parameters(
@@ -217,7 +219,9 @@ class Downscale(ImageOnlyTransform):
         self.scale_range = scale_range
         self.interpolation_pair = interpolation_pair
 
-    def apply(self, img: ImageType, scale: float, **params: Any) -> ImageType:
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], scale: float, **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fpixel.downscale(
             img,
             scale=scale,

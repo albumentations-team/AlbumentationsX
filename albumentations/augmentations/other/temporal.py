@@ -5,6 +5,7 @@ from typing import Annotated, Any
 
 import numpy as np
 import torch
+from numpy.typing import NDArray
 from pydantic import Field
 
 from albumentations.augmentations.other import temporal_functional as ftemporal
@@ -12,7 +13,7 @@ from albumentations.core.binding import TargetResult
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.transforms_interface import BaseTransformInitSchema, BasicTransform
-from albumentations.core.type_definitions import ImageType, StackedMasks4D, Targets
+from albumentations.core.type_definitions import StackedMasks4D, Targets
 
 __all__ = ["UniformTemporalSubsample"]
 
@@ -100,11 +101,16 @@ class UniformTemporalSubsample(BasicTransform):
 
     def apply_to_images(
         self,
-        images: Annotated[ImageType, torch.Tensor],
+        images: Annotated[NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], torch.Tensor],
         frame_indices: Sequence[int],
         source_frame_ids: np.ndarray | None,
         **params: Any,
-    ) -> ImageType | TargetResult[ImageType]:
+    ) -> (
+        NDArray[np.uint8]
+        | NDArray[np.float16]
+        | NDArray[np.float32]
+        | TargetResult[NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]]
+    ):
         values = ftemporal.uniform_temporal_subsample(images, frame_indices)
         return (
             values

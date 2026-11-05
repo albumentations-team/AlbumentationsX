@@ -33,7 +33,6 @@ from albumentations.core.type_definitions import (
     CV2_INTER_NEAREST,
     LENGTH_RAW_BBOX,
     FullInterpolationType,
-    ImageType,
     StackedMasks4D,
     Targets,
 )
@@ -53,7 +52,6 @@ __all__ = [
     "DualTransform",
     "Field",
     "FullInterpolationType",
-    "ImageType",
     "KeypointsProcessor",
     "Literal",
     "Self",

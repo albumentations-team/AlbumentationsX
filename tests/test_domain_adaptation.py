@@ -16,6 +16,27 @@ from albumentations.augmentations.mixing.domain_adaptation_functional import mat
 from albumentations.core.tensor import numpy_to_tensor_spatial, tensor_to_numpy_spatial
 
 
+def test_pixel_distribution_half_reference_matches_float32_workspace() -> None:
+    image = np.random.default_rng(137).random((16, 20, 3), dtype=np.float32)
+    reference = np.random.default_rng(138).random(image.shape, dtype=np.float32).astype(np.float16)
+    original = reference.copy()
+
+    def run(donor: np.ndarray) -> np.ndarray:
+        pipeline = A.Compose(
+            [A.PixelDistributionAdaptation(transform_type="standard", blend_ratio=(0.5, 0.5), p=1)],
+            strict=True,
+            seed=137,
+        )
+        return pipeline(image=image, pda_metadata=[donor])["image"]
+
+    actual = run(reference)
+    expected = run(reference.astype(np.float32))
+
+    assert actual.dtype == np.float32
+    np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(reference, original)
+
+
 @pytest.mark.parametrize(
     "feature_range, data, expected",
     [

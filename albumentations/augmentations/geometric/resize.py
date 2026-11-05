@@ -9,6 +9,7 @@ from typing import Any, Literal, Self
 
 import cv2
 import numpy as np
+from numpy.typing import NDArray
 from pydantic import Field, model_validator
 
 from albumentations.core.bbox_utils import denormalize_bboxes, normalize_bboxes
@@ -21,7 +22,6 @@ from albumentations.core.type_definitions import (
     CV2_INTER_LINEAR,
     CV2_INTER_NEAREST,
     FullInterpolationType,
-    ImageType,
 )
 
 from . import functional as fgeometric
@@ -223,11 +223,11 @@ class RandomScale(DualTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         scale_x: float,
         scale_y: float,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         is_downscale = scale_x < 1.0 or scale_y < 1.0
         interpolation = self.interpolation
         if self.area_for_downscale in ["image", "image_mask"] and is_downscale:
@@ -238,11 +238,11 @@ class RandomScale(DualTransform):
 
     def apply_to_mask(
         self,
-        mask: ImageType,
+        mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         scale_x: float,
         scale_y: float,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         is_downscale = scale_x < 1.0 or scale_y < 1.0
         interpolation = self.mask_interpolation
         if self.area_for_downscale == "image_mask" and is_downscale:
@@ -421,10 +421,10 @@ class BaseMaxSizeTransform(DualTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         scale: float,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         height, width = img.shape[:2]
         new_height, new_width = max(1, round(height * scale)), max(1, round(width * scale))
 
@@ -437,10 +437,10 @@ class BaseMaxSizeTransform(DualTransform):
 
     def apply_to_mask(
         self,
-        mask: ImageType,
+        mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         scale: float,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         height, width = mask.shape[:2]
         new_height, new_width = max(1, round(height * scale)), max(1, round(width * scale))
 
@@ -834,7 +834,9 @@ class Resize(DualTransform):
         self.mask_interpolation = mask_interpolation
         self.area_for_downscale = area_for_downscale
 
-    def apply(self, img: ImageType, **params: Any) -> ImageType:
+    def apply(
+        self, img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         height, width = img.shape[:2]
         is_downscale = (self.height < height) or (self.width < width)
 
@@ -845,7 +847,9 @@ class Resize(DualTransform):
         result = fgeometric.resize(img, (self.height, self.width), interpolation=interpolation)
         return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation, source=img)
 
-    def apply_to_mask(self, mask: ImageType, **params: Any) -> ImageType:
+    def apply_to_mask(
+        self, mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         height, width = mask.shape[:2]
         is_downscale = (self.height < height) or (self.width < width)
 
@@ -972,7 +976,7 @@ class LetterBox(DualTransform):
 
     def apply(
         self,
-        img: ImageType,
+        img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         new_height: int,
         new_width: int,
         pad_top: int,
@@ -980,7 +984,7 @@ class LetterBox(DualTransform):
         pad_left: int,
         pad_right: int,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         resized = fgeometric.resize(img, (new_height, new_width), interpolation=self.interpolation)
         result = fgeometric.pad_with_params(
             resized,
@@ -995,7 +999,7 @@ class LetterBox(DualTransform):
 
     def apply_to_mask(
         self,
-        mask: ImageType,
+        mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         new_height: int,
         new_width: int,
         pad_top: int,
@@ -1003,7 +1007,7 @@ class LetterBox(DualTransform):
         pad_left: int,
         pad_right: int,
         **params: Any,
-    ) -> ImageType:
+    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         resized = fgeometric.resize(
             mask,
             (new_height, new_width),

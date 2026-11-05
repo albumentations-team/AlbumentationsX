@@ -34,9 +34,9 @@ class InputNormalizer(nn.Module):
             "per_sample" standardizes each channel of each sample independently.
             "per_sample_nonzero" uses only nonzero positions and keeps zeros as padding.
         output_precision (ComputePrecision): Output dtype, selected after FP32 normalization.
-        mean (float | Sequence[float] | None): Scalar or per-channel means for fixed normalization.
-        standard_deviation (float | Sequence[float] | None): Positive scalar or per-channel standard deviations
-            for fixed normalization.
+        mean (float | Sequence[float] | Tensor | None): Scalar or per-channel means for fixed normalization.
+        standard_deviation (float | Sequence[float] | Tensor | None): Positive scalar or per-channel standard
+            deviations for fixed normalization.
         input_scale (float): Positive divisor applied before normalization.
 
     """
@@ -46,11 +46,11 @@ class InputNormalizer(nn.Module):
         mode: InputNormalizationMode,
         *,
         output_precision: ComputePrecision,
-        mean: float | Sequence[float] | None = None,
-        standard_deviation: float | Sequence[float] | None = None,
+        mean: float | Sequence[float] | Tensor | None = None,
+        standard_deviation: float | Sequence[float] | Tensor | None = None,
         input_scale: float = 1.0,
     ) -> None:
-        """Register fixed statistics as buffers that follow the module to its device."""
+        """Copy fixed statistics into buffers that follow the module to its device."""
         super().__init__()
         if mode not in {"none", "fixed", "per_sample", "per_sample_nonzero"}:
             message = f"Unsupported input normalization mode {mode!r}."
@@ -69,8 +69,10 @@ class InputNormalizer(nn.Module):
             if mean is None or standard_deviation is None:
                 message = "Fixed input normalization requires mean and standard_deviation."
                 raise ValueError(message)
-            mean_tensor = torch.as_tensor(mean, dtype=torch.float32).detach().reshape(-1)
-            standard_deviation_tensor = torch.as_tensor(standard_deviation, dtype=torch.float32).detach().reshape(-1)
+            mean_tensor = torch.asarray(mean, dtype=torch.float32, copy=True).detach().reshape(-1)
+            standard_deviation_tensor = (
+                torch.asarray(standard_deviation, dtype=torch.float32, copy=True).detach().reshape(-1)
+            )
             if mean_tensor.numel() == 0 or mean_tensor.numel() != standard_deviation_tensor.numel():
                 message = "Fixed input normalization statistics must have the same nonzero length."
                 raise ValueError(message)

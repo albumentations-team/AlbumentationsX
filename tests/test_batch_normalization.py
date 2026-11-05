@@ -72,6 +72,18 @@ def test_fixed_mode_broadcasts_channel_statistics_over_a_batch() -> None:
     torch.testing.assert_close(result, expected)
 
 
+def test_fixed_mode_owns_its_statistics() -> None:
+    mean = torch.tensor([1.0, 10.0], requires_grad=True)
+    standard_deviation = torch.tensor([2.0, 4.0], requires_grad=True)
+    normalizer = InputNormalizer("fixed", output_precision="fp32", mean=mean, standard_deviation=standard_deviation)
+    with torch.no_grad():
+        mean.zero_()
+        standard_deviation.fill_(1.0)
+
+    values = torch.tensor([3.0, 18.0]).reshape(1, 2, 1, 1)
+    torch.testing.assert_close(normalizer(values).flatten(), torch.tensor([1.0, 2.0]))
+
+
 def test_per_sample_mode_vectorizes_statistics_over_batch_and_channels() -> None:
     values = torch.tensor(
         [

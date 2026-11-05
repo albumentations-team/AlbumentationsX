@@ -56,6 +56,8 @@ coverage.xml
 .benchmarks/
 
 # Benchmark and profiling artifacts
+benchmark/results/
+.asv/
 bench_*.json
 benchmark_results.json
 profile*.json

@@ -22,7 +22,7 @@ The profile verified on 2026-11-02 used NumPy 2.4.6, OpenCV 5.0.0.93, PyTorch 2.
 record the complete package inventory and imported Core/AX source paths. A newer Python or stale project lock does not
 replace this profile. The full compatibility matrix on Python 3.12–3.14 remains additional evidence.
 
-The [November 2 benchmark data](https://github.com/albumentations-team/AlbumentationsX/releases/download/2.5.1/albumentationsx-benchmark-data-20261105.zip) records 16 core runtime cases
+The [archived November 2 benchmark data](https://github.com/albumentations-team/AlbumentationsX/releases/download/2.5.1/albumentationsx-benchmark-data-20261105.zip) records 16 core runtime cases
 and 90 image-matrix comparisons against `45a1afe`. Both versions use the same input storage and allocator in one
 process. Scalar normalization controls keep the 1/3/5-channel matrix valid. The selected numerical and geometry routes
 do not replace the transform-wide release gates below. Cheap Flip calls retain about 0.2 microseconds of overhead;

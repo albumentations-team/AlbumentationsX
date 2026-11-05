@@ -69,6 +69,7 @@ def test_mixup_preserves_uint8_transport_contract_with_explicit_rounding() -> No
 def test_mixup_bounds_workspace_without_changing_values(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dtype: torch.dtype
 ) -> None:
+    """Force multiple blocks and compare against one full-tensor interpolation."""
     values = (torch.arange(9 * 2 * 3 * 64 * 65) % 251).reshape(9, 2, 3, 64, 65).to(dtype).transpose(-1, -2)
     original = values.clone()
     plan = MixUpPlan(torch.tensor([8, 0, 7, 1, 6, 2, 5, 3, 4]), torch.linspace(0, 1, len(values)))
@@ -114,6 +115,17 @@ def test_mixup_preserves_empty_input_gradients() -> None:
     torch.testing.assert_close(values.grad, torch.empty_like(values))
 
 
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float64])
+def test_mixup_converts_weights_to_fp32_and_preserves_their_gradients(dtype: torch.dtype) -> None:
+    values = torch.tensor([0.0, 4.0], dtype=torch.float32)
+    lambdas = torch.tensor([0.75, 0.25], dtype=dtype, requires_grad=True)
+    result = apply_mixup(values, MixUpPlan(torch.tensor([1, 0]), lambdas))
+    result.sum().backward()
+
+    torch.testing.assert_close(result, torch.tensor([1.0, 1.0], dtype=torch.float32))
+    torch.testing.assert_close(lambdas.grad, torch.tensor([-4.0, 4.0], dtype=dtype))
+
+
 @pytest.mark.parametrize(
     ("targets", "expected"),
     [
@@ -150,3 +162,40 @@ def test_mixup_beta_sampling_returns_finite_batch_lambdas() -> None:
 
     assert torch.isfinite(plan.lambdas).all()
     assert torch.all((plan.lambdas >= 0) & (plan.lambdas <= 1))
+
+
+@pytest.mark.parametrize("alpha", [float("nan"), float("inf"), -float("inf")])
+def test_mixup_rejects_nonfinite_alpha(alpha: float) -> None:
+    with pytest.raises(ValueError, match="finite positive alpha"):
+        sample_mixup(
+            batch_size=2,
+            alpha=alpha,
+            device=torch.device("cpu"),
+            generator=torch.Generator().manual_seed(137),
+        )
+
+
+@pytest.mark.parametrize("alpha", [0.01, 1e-40])
+def test_mixup_small_alpha_concentrates_weights_at_both_endpoints(alpha: float) -> None:
+    plan = sample_mixup(
+        batch_size=4096,
+        alpha=alpha,
+        device=torch.device("cpu"),
+        generator=torch.Generator().manual_seed(137),
+    )
+    low_fraction = (plan.lambdas <= 0.01).float().mean()
+    high_fraction = (plan.lambdas >= 0.99).float().mean()
+
+    assert 0.45 < low_fraction < 0.55
+    assert 0.45 < high_fraction < 0.55
+
+
+def test_mixup_large_finite_alpha_rounds_to_the_midpoint() -> None:
+    plan = sample_mixup(
+        batch_size=2,
+        alpha=1e300,
+        device=torch.device("cpu"),
+        generator=torch.Generator().manual_seed(137),
+    )
+
+    torch.testing.assert_close(plan.lambdas, torch.full((2,), 0.5))

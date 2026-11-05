@@ -10,6 +10,8 @@ import torch
 
 MixingMode = Literal["pair", "element", "batch"]
 _MIXUP_WORKSPACE_BYTES: Final = 64 * 1024**2
+_BETA_LOG_DOMAIN_THRESHOLD: Final = 0.1
+_FP32: Final = torch.finfo(torch.float32)
 
 
 @dataclass(frozen=True)
@@ -27,7 +29,7 @@ def sample_mixup(
 
     Args:
         batch_size (int): Number of samples in the batch.
-        alpha (float): Positive concentration for the symmetric Beta distribution.
+        alpha (float): Finite positive concentration for the symmetric Beta distribution.
         device (torch.device): Device of the input batch and generator.
         generator (torch.Generator): Random generator used for both pairing and weights.
         mode (MixingMode): "pair" swaps randomly paired samples with independent weights,
@@ -39,14 +41,14 @@ def sample_mixup(
         MixUpPlan: Donor indices and weights on the specified device.
 
     Raises:
-        ValueError: If the batch size or alpha is nonpositive or the mode is unsupported.
+        ValueError: If the batch size is nonpositive, alpha is invalid, or the mode is unsupported.
 
     """
-    if batch_size < 1 or alpha <= 0 or mode not in {"pair", "element", "batch"}:
-        raise ValueError("Mixing requires a positive batch size and alpha with a supported mode.")
+    if batch_size < 1 or not math.isfinite(alpha) or alpha <= 0 or mode not in {"pair", "element", "batch"}:
+        raise ValueError("Mixing requires a positive batch size, finite positive alpha, and a supported mode.")
     permutation = _permutation(batch_size, device, generator, mode)
     if batch_size == 1:
-        return MixUpPlan(permutation, torch.ones(1, device=device))
+        return MixUpPlan(permutation, torch.ones(1, dtype=torch.float32, device=device))
     count = 1 if mode == "batch" else batch_size
     lambdas = _sample_beta(alpha, count, generator, device)
     if mode == "batch":
@@ -72,7 +74,7 @@ def apply_mixup(values: torch.Tensor, plan: MixUpPlan) -> torch.Tensor:
     """
     if values.ndim < 1 or len(values) != len(plan.permutation) or len(values) != len(plan.lambdas):
         raise ValueError("Mixing plan batch size must match values.")
-    weight = (1 - plan.lambdas).view((len(values),) + (1,) * (values.ndim - 1))
+    weight = (1 - plan.lambdas.float()).view((len(values),) + (1,) * (values.ndim - 1))
     if not len(values):
         source = values.float()
         return torch.lerp(source, source, weight).to(values.dtype)
@@ -95,6 +97,7 @@ def apply_mixup(values: torch.Tensor, plan: MixUpPlan) -> torch.Tensor:
 
 
 def _permutation(batch_size: int, device: torch.device, generator: torch.Generator, mode: MixingMode) -> torch.Tensor:
+    """Assign donors by shuffling or swapping disjoint pairs."""
     order = torch.randperm(batch_size, generator=generator, device=device)
     if mode == "element":
         return torch.roll(order, 1)
@@ -106,8 +109,23 @@ def _permutation(batch_size: int, device: torch.device, generator: torch.Generat
 
 
 def _sample_beta(alpha: float, count: int, generator: torch.Generator, device: torch.device) -> torch.Tensor:
-    concentration = torch.full((count,), alpha, dtype=torch.float32, device=device)
-    standard_gamma = torch.ops.aten._standard_gamma.default  # noqa: SLF001 - generator-aware vectorized Beta sampling.
+    """Draw symmetric Beta weights while preserving both FP32 tails."""
+    if alpha > _FP32.max / 4:
+        # At these concentrations even many standard deviations round to 0.5 in FP32.
+        return torch.full((count,), 0.5, dtype=torch.float32, device=device)
+
+    # Below this threshold the probability of clipping both Gamma draws rises rapidly.
+    use_log_domain = alpha < _BETA_LOG_DOMAIN_THRESHOLD
+    concentration = torch.full((count,), alpha + 1 if use_log_domain else alpha, dtype=torch.float32, device=device)
+    # The supported Torch 2.13 API has no generator argument on Gamma.sample.
+    standard_gamma = torch.ops.aten._standard_gamma.default  # noqa: SLF001
     first = standard_gamma(concentration, generator=generator)
     second = standard_gamma(concentration, generator=generator)
+    if use_log_domain:
+        # log(Gamma(a)) has the distribution log(Gamma(a + 1)) - Exp(1) / a.
+        # Form the log ratio before scaling to avoid subtracting two overflowed values.
+        first_exponential = torch.empty_like(first).exponential_(generator=generator)
+        second_exponential = torch.empty_like(second).exponential_(generator=generator)
+        log_uniform_ratio = second_exponential.sub_(first_exponential).div_(max(alpha, _FP32.tiny))
+        return first.log_().sub_(second.log_()).add_(log_uniform_ratio).sigmoid_()
     return first / (first + second)

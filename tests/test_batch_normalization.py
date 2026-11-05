@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from typing import TYPE_CHECKING, cast
+from unittest.mock import patch
 
 import pytest
 import torch
@@ -237,6 +238,7 @@ def test_normalization_keeps_one_fp32_workspace(
 
 @pytest.mark.parametrize("mode", ["none", "fixed", "per_sample", "per_sample_nonzero"])
 def test_normalization_preserves_gradients_and_fp32_input_ownership(mode: InputNormalizationMode) -> None:
+    """Differentiate a reference that selects valid voxels before computing statistics."""
     values = (torch.arange(2 * 2 * 3 * 5).float() % 9 - 4).reshape(2, 2, 3, 5).transpose(-1, -2)
     original = values.clone()
     values.requires_grad_()
@@ -259,8 +261,7 @@ def test_normalization_preserves_gradients_and_fp32_input_ownership(mode: InputN
                 mask = channel != 0 if mode == "per_sample_nonzero" else torch.ones_like(channel, dtype=torch.bool)
                 selected = channel[mask] / 2
                 output = torch.zeros_like(channel)
-                mean = channel.sum() / (2 * mask.sum())
-                centered = selected - mean
+                centered = selected - selected.mean()
                 variance = centered.square().mean()
                 output[mask] = centered * torch.rsqrt(variance.clamp_min(torch.finfo(channel.dtype).eps))
                 outputs.append(output)
@@ -303,18 +304,11 @@ def test_fixed_mode_rejects_channel_count_mismatch() -> None:
         normalizer(torch.zeros((1, 1, 2, 2, 2)))
 
 
-def test_already_disabled_autocast_does_not_clear_shared_cache(monkeypatch: pytest.MonkeyPatch) -> None:
-    clears: list[None] = []
-    original = torch.clear_autocast_cache
-
-    def counted_clear() -> None:
-        clears.append(None)
-        original()
-
-    monkeypatch.setattr(torch, "clear_autocast_cache", counted_clear)
+def test_normalization_leaves_an_already_disabled_autocast_context_alone() -> None:
     normalizer = InputNormalizer("fixed", output_precision="fp32", mean=(0.25,), standard_deviation=(0.5,))
     values = torch.tensor([[[[0.0, 0.25, 0.5, 1.0]]]], dtype=torch.float16)
     assert not torch.is_autocast_enabled("cpu")
-    actual = normalizer(values)
+    with patch.object(torch, "autocast", wraps=torch.autocast) as autocast:
+        actual = normalizer(values)
     torch.testing.assert_close(actual, (values.float() - 0.25) / 0.5)
-    assert clears == []
+    autocast.assert_not_called()

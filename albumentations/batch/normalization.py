@@ -30,7 +30,7 @@ class InputNormalizer(nn.Module):
     Args:
         mode (InputNormalizationMode): "none" only scales and casts. "fixed" uses supplied statistics.
             "per_sample" standardizes each channel of each sample independently.
-            "per_sample_nonzero" uses only nonzero positions and keeps zeros as padding.
+            "per_sample_nonzero" uses only nonzero positions and keeps zeros as padding with zero gradient.
         output_precision (ComputePrecision): Output dtype, selected after FP32 normalization.
         mean (float | Sequence[float] | None): Scalar or per-channel means for fixed normalization.
         standard_deviation (float | Sequence[float] | None): Positive scalar or per-channel standard deviations
@@ -48,6 +48,7 @@ class InputNormalizer(nn.Module):
         standard_deviation: float | Sequence[float] | None = None,
         input_scale: float = 1.0,
     ) -> None:
+        """Register fixed statistics as buffers that follow the module to its device."""
         super().__init__()
         if mode not in {"none", "fixed", "per_sample", "per_sample_nonzero"}:
             message = f"Unsupported input normalization mode {mode!r}."
@@ -120,6 +121,7 @@ class InputNormalizer(nn.Module):
         return normalized.to(dtype=self.output_dtype)
 
     def _normalize(self, data: Tensor) -> Tensor:
+        """Compute normalization in owned FP32 storage."""
         if self.mode in {"per_sample", "per_sample_nonzero"} and data.ndim < _MIN_BATCHED_IMAGE_DIMENSIONS:
             message = "Per-sample normalization requires a BCHW or BCDHW tensor."
             raise ValueError(message)
@@ -135,8 +137,13 @@ class InputNormalizer(nn.Module):
             )
             if self.input_scale != 1.0:
                 result.div_(self.input_scale)
+            padding = data == 0
+            if result.requires_grad:
+                # Mask before the mean so padding cannot receive its gradient.
+                result.masked_fill_(padding, 0.0)
             mean = result.sum(dim=spatial_dimensions, keepdim=True) / count
-            centered = result.sub_(mean).masked_fill_(data == 0, 0.0)
+            centered = result.sub_(mean).masked_fill_(padding, 0.0)
+            del padding
             spatial_variance, residual_mean = torch.var_mean(
                 centered, dim=spatial_dimensions, correction=0, keepdim=True
             )
@@ -165,5 +172,6 @@ class InputNormalizer(nn.Module):
 
 
 def _standardize(centered: Tensor, variance: Tensor) -> Tensor:
+    """Scale centered data with a variance floor for constant channels."""
     inverse = torch.rsqrt(variance.clamp_min(torch.finfo(centered.dtype).eps))
     return centered * inverse if centered.requires_grad else centered.mul_(inverse)

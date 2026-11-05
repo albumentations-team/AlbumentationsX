@@ -14,6 +14,17 @@ sibling Albucore checkout.
 
 For eager CPU PyTorch candidates, also follow Albucore's `docs/torch-performance-optimization.md` workflow.
 
+## Albucore benchmark scope
+
+For Albucore performance work, benchmark only Albucore public operations. Include Core dispatch, dtype and layout
+conversion, allocation, clipping, output restoration, and NumPy/Tensor bridges owned by Core. Apply the same boundary
+to memory measurements. Use the affected operations and relevant routing boundaries to choose the measurement matrix.
+
+AX functional calls, transforms, Compose, and DataLoader performance campaigns require an explicit user request for
+AX performance validation. Do not prepare an AX checkout, build AX benchmark adapters, or add AX performance gates
+to an Albucore-only change because AX consumes Core. An AX benchmark is never an automatic acceptance requirement
+for Albucore.
+
 ## Acceptance environment
 
 Run correctness, performance, and memory acceptance on Python 3.11, the lowest supported Python minor shared by
@@ -184,9 +195,10 @@ globally fastest:
   including dispatch, bridges, allocations, casts, and output restoration. Float16-versus-float32 comparisons are
   mandatory diagnostics, not an independent migration blocker. Pursue missing upstream kernels when useful; do not
   remove dtype support or hide a slow route behind a kernel-only benchmark.
-- A substantial simplification may cost at most 5% on an individual public operation only when accuracy is preserved,
-  memory does not grow, and the complete AlbumentationsX path has no sustained slowdown. Verify these conditions
+- A substantial simplification may cost at most 5% on an individual public operation only when accuracy is preserved
+  and memory does not grow. For Albucore, assess this on Core public operations alone. Verify these conditions
   independently on Linux x86-64 and macOS ARM64; gains on one platform cannot compensate for regressions on another.
+  If the user explicitly requests AX performance validation, its complete path must also have no sustained slowdown.
 
 ### 6a. Escalate missing backend capabilities
 
@@ -262,14 +274,14 @@ measurements.
 
 ### 11. Measure dispatch and pipeline overhead
 
-An isolated kernel speedup may disappear behind transform dispatch, input/output conversions, target routing, or
-`Compose`. Benchmark the layer users execute.
+For Albucore, benchmark the complete Core public router, including its dispatch, conversions, allocation, clipping,
+layout repair and output restoration. Include non-square inputs, supported dtypes, 1/3/high-channel cases, and relevant
+batch or volume ranks. Core timing and memory evidence determine acceptance of a Core change.
 
-For AlbumentationsX, measure both the direct functional call and the transform through `Compose`. For batch-capable
-transforms, compare per-image dispatch with `apply_to_images` and include setup reuse.
-
-For Albucore, benchmark the public router, not only its private backend. Include non-square inputs, supported dtypes,
-1/3/high-channel cases, and relevant batch or volume ranks.
+Run AlbumentationsX functional, transform, Compose or DataLoader performance measurements only when the user
+explicitly requests AX performance validation. In that scope, measure the direct functional call and the transform
+through Compose; for batch-capable transforms, compare per-image dispatch with `apply_to_images` and include setup
+reuse. These AX measurements do not become a default requirement for Albucore work.
 
 ## Reuse existing Albucore routes
 
@@ -356,3 +368,10 @@ Every performance task should report:
 - safe explicit-output and aliasing opportunities;
 - correctness evidence;
 - benchmark matrix, wins, regressions, and rejected candidates.
+
+## Generated benchmark artifacts
+
+Keep generated benchmark reports, CSV/JSON/GZ data, profiler output and run logs outside Git. Local outputs may
+use ignored results directories. Never force-add them, including when publishing a PR or preserving evidence.
+Keep reproducible benchmark code and concise current route decisions in the existing documentation. Preserve raw
+measurements as external artifacts and link them from PR descriptions or the archive index in benchmarks/README.md.

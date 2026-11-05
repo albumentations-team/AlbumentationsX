@@ -18,6 +18,9 @@ Final Core/AX acceptance runs on Python 3.11 with the newest stable dependencies
 the target platform. The recorded CPU PyTorch version is 2.15.0. Verify installed versions and imported source paths;
 a newer Python or stale lockfile does not satisfy this gate.
 
+For Albucore performance tasks, benchmark Core public operations only. Do not apply this skill's AX functional or
+Compose benchmark workflow to Core changes unless the user explicitly requests AX performance validation.
+
 ## Workflow
 
 1. Establish correctness and performance baselines before editing.
@@ -26,8 +29,8 @@ a newer Python or stale lockfile does not satisfy this gate.
    hypothesis.
 4. Check the repository boundary. Move a reusable image-processing atom into Albucore instead of duplicating it in
    transforms.
-5. Read `../benchmark/SKILL.md` completely and benchmark both the isolated kernel and the `Compose` route on its
-   required size, channel, and dtype matrix.
+5. For requested AX performance work, read `../benchmark/SKILL.md` completely and benchmark both the isolated kernel
+   and the `Compose` route on its required size, channel, and dtype matrix.
 6. Add correctness tests before accepting a faster path. Preserve shapes, dtypes, values, annotations, aliasing, and
    seeded-replay contracts unless the change explicitly documents a compatibility break.
 7. Run the project validation workflow after the final implementation.

@@ -197,33 +197,6 @@ def test_nonzero_support_is_counted_before_fp32_conversion() -> None:
     torch.testing.assert_close(result, expected)
 
 
-def test_nonzero_statistics_preserve_input_gradients() -> None:
-    values = torch.tensor([1.0, 2.0, 4.0]).reshape(1, 1, 1, 3).requires_grad_()
-    reference = values.detach().clone().requires_grad_()
-    expected = (reference - reference.mean()) / reference.std(correction=0)
-    (expected * torch.tensor([1.0, -2.0, 3.0])).sum().backward()
-
-    result = InputNormalizer("per_sample_nonzero", output_precision="fp32")(values)
-    (result * torch.tensor([1.0, -2.0, 3.0])).sum().backward()
-
-    torch.testing.assert_close(result, expected)
-    torch.testing.assert_close(values.grad, reference.grad)
-
-
-def test_nonzero_normalization_excludes_padding_from_forward_derivatives() -> None:
-    values = torch.tensor([0.0, 1.0, 2.0, 4.0]).reshape(1, 1, 2, 2)
-    tangent = torch.tensor([1.0, 2.0, -1.0, 0.5]).reshape_as(values)
-    normalizer = InputNormalizer("per_sample_nonzero", output_precision="fp32")
-
-    _, actual_tangent = torch.func.jvp(normalizer, (values,), (tangent,))
-    _, selected_tangent = torch.func.jvp(
-        lambda selected: (selected - selected.mean()) / selected.std(correction=0),
-        (values.flatten()[1:],),
-        (tangent.flatten()[1:],),
-    )
-    torch.testing.assert_close(actual_tangent.flatten(), torch.cat((torch.zeros(1), selected_tangent)))
-
-
 @pytest.mark.parametrize("mode", ["none", "fixed", "per_sample", "per_sample_nonzero"])
 @pytest.mark.parametrize("input_scale", [1.0, 255.0])
 @pytest.mark.parametrize(("output_precision", "output_dtype"), [("fp32", torch.float32), ("bf16", torch.bfloat16)])
@@ -252,42 +225,19 @@ def test_normalization_keeps_one_fp32_workspace(
 
 
 @pytest.mark.parametrize("mode", ["none", "fixed", "per_sample", "per_sample_nonzero"])
-def test_normalization_preserves_gradients_and_fp32_input_ownership(mode: InputNormalizationMode) -> None:
-    """Differentiate a reference that selects valid voxels before computing statistics."""
-    values = (torch.arange(2 * 2 * 3 * 5).float() % 9 - 4).reshape(2, 2, 3, 5).transpose(-1, -2)
-    original = values.clone()
-    values.requires_grad_()
-    reference = original.clone().requires_grad_()
+def test_normalization_returns_owned_storage_without_gradients(mode: InputNormalizationMode) -> None:
+    values = torch.arange(60, dtype=torch.float32).reshape(2, 2, 3, 5).transpose(-1, -2).requires_grad_()
+    original = values.detach().clone()
     normalizer = InputNormalizer(
         mode,
         output_precision="fp32",
-        input_scale=2.0,
         **({"mean": 0.2, "standard_deviation": 1.1} if mode == "fixed" else {}),
     )
-    if mode == "none":
-        expected = reference / 2
-    elif mode == "fixed":
-        expected = (reference / 2 - 0.2) / 1.1
-    else:
-        channels = []
-        for sample in reference:
-            outputs = []
-            for channel in sample:
-                mask = channel != 0 if mode == "per_sample_nonzero" else torch.ones_like(channel, dtype=torch.bool)
-                selected = channel[mask] / 2
-                output = torch.zeros_like(channel)
-                centered = selected - selected.mean()
-                variance = centered.square().mean()
-                output[mask] = centered * torch.rsqrt(variance.clamp_min(torch.finfo(channel.dtype).eps))
-                outputs.append(output)
-            channels.append(torch.stack(outputs))
-        expected = torch.stack(channels)
-    weights = torch.linspace(-1, 2, values.numel()).reshape_as(values)
+
     result = normalizer(values)
-    (result * weights).sum().backward()
-    (expected * weights).sum().backward()
-    torch.testing.assert_close(result, expected)
-    torch.testing.assert_close(values.grad, reference.grad)
+
+    assert not result.requires_grad
+    result.zero_()
     torch.testing.assert_close(values, original)
 
 

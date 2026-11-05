@@ -27,10 +27,12 @@ _OUTPUT_DTYPES: Final[dict[ComputePrecision, torch.dtype]] = {
 class InputNormalizer(nn.Module):
     """Normalize image or volume batches on their device.
 
+    Normalization runs outside autograd.
+
     Args:
         mode (InputNormalizationMode): "none" only scales and casts. "fixed" uses supplied statistics.
             "per_sample" standardizes each channel of each sample independently.
-            "per_sample_nonzero" uses only nonzero positions and keeps zeros as padding with zero gradient.
+            "per_sample_nonzero" uses only nonzero positions and keeps zeros as padding.
         output_precision (ComputePrecision): Output dtype, selected after FP32 normalization.
         mean (float | Sequence[float] | None): Scalar or per-channel means for fixed normalization.
         standard_deviation (float | Sequence[float] | None): Positive scalar or per-channel standard deviations
@@ -67,8 +69,8 @@ class InputNormalizer(nn.Module):
             if mean is None or standard_deviation is None:
                 message = "Fixed input normalization requires mean and standard_deviation."
                 raise ValueError(message)
-            mean_tensor = torch.as_tensor(mean, dtype=torch.float32).reshape(-1)
-            standard_deviation_tensor = torch.as_tensor(standard_deviation, dtype=torch.float32).reshape(-1)
+            mean_tensor = torch.as_tensor(mean, dtype=torch.float32).detach().reshape(-1)
+            standard_deviation_tensor = torch.as_tensor(standard_deviation, dtype=torch.float32).detach().reshape(-1)
             if mean_tensor.numel() == 0 or mean_tensor.numel() != standard_deviation_tensor.numel():
                 message = "Fixed input normalization statistics must have the same nonzero length."
                 raise ValueError(message)
@@ -92,6 +94,7 @@ class InputNormalizer(nn.Module):
         self.register_buffer("mean", mean_tensor)
         self.register_buffer("standard_deviation", standard_deviation_tensor)
 
+    @torch.no_grad()
     def forward(self, data: Tensor) -> Tensor:
         """Return normalized values on the input device.
 
@@ -105,6 +108,7 @@ class InputNormalizer(nn.Module):
         if data.ndim < _UNBATCHED_IMAGE_DIMENSIONS:
             message = f"Input must have channel and spatial dimensions, got {tuple(data.shape)!r}."
             raise ValueError(message)
+        data = data.detach()
         if (
             self.mode == "none"
             and self.input_scale == 1.0
@@ -131,19 +135,12 @@ class InputNormalizer(nn.Module):
             count_data = data if data.dtype == torch.float64 or data.is_complex() else result
             # Zero-order norm counts support without materializing an integer mask cast.
             count = (
-                torch.linalg.vector_norm(count_data.detach(), ord=0, dim=spatial_dimensions, keepdim=True)
-                .float()
-                .clamp_min(1)
+                torch.linalg.vector_norm(count_data, ord=0, dim=spatial_dimensions, keepdim=True).float().clamp_min(1)
             )
             if self.input_scale != 1.0:
                 result.div_(self.input_scale)
-            padding = data == 0
-            if result.requires_grad or torch.autograd.forward_ad.unpack_dual(result).tangent is not None:
-                # Exclude padding from derivatives of the mean in both AD modes.
-                result.masked_fill_(padding, 0.0)
             mean = result.sum(dim=spatial_dimensions, keepdim=True) / count
-            centered = result.sub_(mean).masked_fill_(padding, 0.0)
-            del padding
+            centered = result.sub_(mean).masked_fill_(data == 0, 0.0)
             spatial_variance, residual_mean = torch.var_mean(
                 centered, dim=spatial_dimensions, correction=0, keepdim=True
             )
@@ -157,8 +154,7 @@ class InputNormalizer(nn.Module):
         if self.mode == "per_sample":
             spatial_dimensions = tuple(range(2, data.ndim))
             variance, mean = torch.var_mean(result, dim=spatial_dimensions, correction=0, keepdim=True)
-            centered = result - mean if result.requires_grad else result.sub_(mean)
-            return _standardize(centered, variance)
+            return _standardize(result.sub_(mean), variance)
         mean = cast("Tensor", self.mean)
         standard_deviation = cast("Tensor", self.standard_deviation)
         channel_dimension = 0 if data.ndim == _UNBATCHED_IMAGE_DIMENSIONS else 1
@@ -174,4 +170,4 @@ class InputNormalizer(nn.Module):
 def _standardize(centered: Tensor, variance: Tensor) -> Tensor:
     """Scale centered data with a variance floor for constant channels."""
     inverse = torch.rsqrt(variance.clamp_min(torch.finfo(centered.dtype).eps))
-    return centered * inverse if centered.requires_grad else centered.mul_(inverse)
+    return centered.mul_(inverse)

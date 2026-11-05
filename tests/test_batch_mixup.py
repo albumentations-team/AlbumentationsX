@@ -8,7 +8,7 @@ import pytest
 import torch
 
 import albumentations.batch.mixup as mixing
-from albumentations.batch import MixUpPlan, apply_mixup, sample_mixup
+from albumentations.batch import InputNormalizer, MixUpPlan, apply_mixup, sample_mixup
 from tests.helpers.tensor_memory import measure_peak_tensor_bytes
 
 if TYPE_CHECKING:
@@ -65,7 +65,7 @@ def test_mixup_preserves_uint8_transport_contract_with_explicit_rounding() -> No
     assert mixed.flatten().tolist() == [128, 128]
 
 
-@pytest.mark.parametrize("dtype", [torch.uint8, torch.float16, torch.bfloat16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.uint8, torch.float16, torch.bfloat16, torch.float32, torch.float64])
 def test_mixup_bounds_workspace_without_changing_values(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dtype: torch.dtype
 ) -> None:
@@ -79,51 +79,53 @@ def test_mixup_bounds_workspace_without_changing_values(
     reference = torch.lerp(reference_float, reference_float[plan.permutation], (1 - plan.lambdas).view(-1, 1, 1, 1, 1))
     expected = reference.round().clamp(0, 255).to(dtype) if dtype == torch.uint8 else reference.to(dtype)
     result, peak_bytes = measure_peak_tensor_bytes(lambda: apply_mixup(values, plan), tmp_path / "memory.json")
-    assert peak_bytes <= result.numel() * result.element_size() + 3 * workspace + 4096
+    workspace_blocks = 1 if dtype is torch.float32 else 3
+    assert peak_bytes <= result.numel() * result.element_size() + workspace_blocks * workspace + 4096
     torch.testing.assert_close(result, expected)
     torch.testing.assert_close(values, original)
 
 
-@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
-def test_mixup_preserves_input_and_lambda_gradients_across_blocks(
-    monkeypatch: pytest.MonkeyPatch, dtype: torch.dtype
-) -> None:
-    values = (torch.arange(5 * 2 * 3 * 7).reshape(5, 2, 3, 7) / 13).to(dtype).requires_grad_()
-    reference = values.detach().clone().requires_grad_()
-    lambdas = torch.linspace(0, 1, 5).requires_grad_()
-    reference_lambdas = lambdas.detach().clone().requires_grad_()
-    permutation = torch.tensor([3, 3, 1, 0, 4])
-    monkeypatch.setattr(mixing, "_MIXUP_WORKSPACE_BYTES", values[0].numel() * 4)
-    reference_float = reference.float()
-    expected = torch.lerp(reference_float, reference_float[permutation], (1 - reference_lambdas).view(-1, 1, 1, 1))
-    expected = expected.to(dtype)
-    result = apply_mixup(values, MixUpPlan(permutation, lambdas))
-    weights = torch.linspace(-1, 2, values.numel()).reshape_as(values)
-    (expected * weights).sum().backward()
-    (result * weights).sum().backward()
-    torch.testing.assert_close(result, expected)
-    torch.testing.assert_close(values.grad, reference.grad)
-    torch.testing.assert_close(lambdas.grad, reference_lambdas.grad)
+def test_batch_operations_return_training_inputs_outside_autograd() -> None:
+    """Check graph isolation and the model's ability to save the outputs for backward."""
+    values = torch.arange(8, dtype=torch.float32).reshape(2, 1, 2, 2).requires_grad_()
+    lambdas = torch.tensor([0.75, 0.25], requires_grad=True)
+    permutation = torch.tensor([1, 0])
+    normalizer = InputNormalizer("per_sample_nonzero", output_precision="fp32")
+
+    with torch.autograd.forward_ad.dual_level():
+        dual_values = torch.autograd.forward_ad.make_dual(values, torch.ones_like(values))
+        dual_lambdas = torch.autograd.forward_ad.make_dual(lambdas, torch.ones_like(lambdas))
+        mixed = apply_mixup(dual_values, MixUpPlan(permutation, dual_lambdas))
+        normalized = normalizer(dual_values)
+        for output in (mixed, normalized):
+            assert torch.autograd.forward_ad.unpack_dual(output).tangent is None
+            assert not output.requires_grad
+            assert not output.is_inference()
+
+    model = torch.nn.Linear(4, 1, bias=False)
+    batch = normalized.flatten(1) + mixed.flatten(1)
+    model(batch).sum().backward()
+    torch.testing.assert_close(model.weight.grad, batch.sum(dim=0, keepdim=True))
+    assert values.grad is None
+    assert lambdas.grad is None
 
 
-def test_mixup_preserves_empty_input_gradients() -> None:
-    values = torch.empty((0, 2, 3, 7), requires_grad=True)
+def test_mixup_supports_an_empty_batch() -> None:
+    values = torch.empty((0, 2, 3, 7), dtype=torch.float16)
     plan = MixUpPlan(torch.empty(0, dtype=torch.int64), torch.empty(0))
+
     result = apply_mixup(values, plan)
-    result.sum().backward()
-    assert result.shape == values.shape
-    torch.testing.assert_close(values.grad, torch.empty_like(values))
+
+    torch.testing.assert_close(result, values)
 
 
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float64])
-def test_mixup_converts_weights_to_fp32_and_preserves_their_gradients(dtype: torch.dtype) -> None:
+def test_mixup_interpolates_with_weights_in_other_float_dtypes(dtype: torch.dtype) -> None:
     values = torch.tensor([0.0, 4.0], dtype=torch.float32)
-    lambdas = torch.tensor([0.75, 0.25], dtype=dtype, requires_grad=True)
+    lambdas = torch.tensor([0.75, 0.25], dtype=dtype)
     result = apply_mixup(values, MixUpPlan(torch.tensor([1, 0]), lambdas))
-    result.sum().backward()
 
     torch.testing.assert_close(result, torch.tensor([1.0, 1.0], dtype=torch.float32))
-    torch.testing.assert_close(lambdas.grad, torch.tensor([-4.0, 4.0], dtype=dtype))
 
 
 @pytest.mark.parametrize(

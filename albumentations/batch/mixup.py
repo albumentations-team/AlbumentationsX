@@ -57,8 +57,11 @@ def sample_mixup(
     return MixUpPlan(permutation, lambdas)
 
 
+@torch.no_grad()
 def apply_mixup(values: torch.Tensor, plan: MixUpPlan) -> torch.Tensor:
     """Interpolate each sample with its donor along the batch axis.
+
+    MixUp runs outside autograd.
 
     Args:
         values (torch.Tensor): Tensor with the batch axis first, such as BCHW or BCDHW.
@@ -74,25 +77,28 @@ def apply_mixup(values: torch.Tensor, plan: MixUpPlan) -> torch.Tensor:
     """
     if values.ndim < 1 or len(values) != len(plan.permutation) or len(values) != len(plan.lambdas):
         raise ValueError("Mixing plan batch size must match values.")
-    weight = (1 - plan.lambdas.float()).view((len(values),) + (1,) * (values.ndim - 1))
+    values = values.detach()
+    result = torch.empty_like(values)
     if not len(values):
-        source = values.float()
-        return torch.lerp(source, source, weight).to(values.dtype)
+        return result
+    weight = (1 - plan.lambdas.detach().float()).view((len(values),) + (1,) * (values.ndim - 1))
     # Limit the FP32 block to 64 MiB, or one sample if it exceeds that size.
     sample_bytes = math.prod(values.shape[1:]) * torch.float32.itemsize
     block_size = max(1, _MIXUP_WORKSPACE_BYTES // max(sample_bytes, 1))
-    # Cast once when backward must accumulate all source contributions in FP32.
-    source = values.float() if torch.is_grad_enabled() and values.requires_grad else values
-    result = torch.empty_like(values)
     for start in range(0, len(values), block_size):
         stop = start + block_size
-        mixed = source[start:stop].to(dtype=torch.float32, copy=True)
-        paired = source[plan.permutation[start:stop]].float()
-        mixed.lerp_(paired, weight[start:stop])
-        if values.dtype is torch.uint8:
-            mixed.round_().clamp_(0, 255)
-        result[start:stop].copy_(mixed)
-        del mixed, paired
+        paired = values[plan.permutation[start:stop]].float()
+        destination = result[start:stop]
+        if values.dtype is torch.float32:
+            torch.lerp(values[start:stop], paired, weight[start:stop], out=destination)
+        else:
+            mixed = values[start:stop].float()
+            mixed.lerp_(paired, weight[start:stop])
+            if values.dtype is torch.uint8:
+                mixed.round_().clamp_(0, 255)
+            destination.copy_(mixed)
+            del mixed
+        del paired
     return result
 
 

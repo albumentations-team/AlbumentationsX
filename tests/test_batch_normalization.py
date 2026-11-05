@@ -171,6 +171,7 @@ def test_nonzero_statistics_support_scaled_uint8_inputs() -> None:
 def test_nonzero_statistics_match_selected_voxels_on_strided_inputs(
     spatial_shape: tuple[int, ...], input_dtype: torch.dtype
 ) -> None:
+    """Use explicit voxel selection as the reference for non-contiguous inputs."""
     values = (torch.arange(4 * math.prod(spatial_shape)) % 9 - 4).reshape(2, 2, *spatial_shape)
     values = values.to(dtype=input_dtype).transpose(-1, -2)
     original = values.clone()
@@ -207,6 +208,20 @@ def test_nonzero_statistics_preserve_input_gradients() -> None:
 
     torch.testing.assert_close(result, expected)
     torch.testing.assert_close(values.grad, reference.grad)
+
+
+def test_nonzero_normalization_excludes_padding_from_forward_derivatives() -> None:
+    values = torch.tensor([0.0, 1.0, 2.0, 4.0]).reshape(1, 1, 2, 2)
+    tangent = torch.tensor([1.0, 2.0, -1.0, 0.5]).reshape_as(values)
+    normalizer = InputNormalizer("per_sample_nonzero", output_precision="fp32")
+
+    _, actual_tangent = torch.func.jvp(normalizer, (values,), (tangent,))
+    _, selected_tangent = torch.func.jvp(
+        lambda selected: (selected - selected.mean()) / selected.std(correction=0),
+        (values.flatten()[1:],),
+        (tangent.flatten()[1:],),
+    )
+    torch.testing.assert_close(actual_tangent.flatten(), torch.cat((torch.zeros(1), selected_tangent)))
 
 
 @pytest.mark.parametrize("mode", ["none", "fixed", "per_sample", "per_sample_nonzero"])

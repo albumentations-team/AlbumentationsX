@@ -138,8 +138,8 @@ class InputNormalizer(nn.Module):
             if self.input_scale != 1.0:
                 result.div_(self.input_scale)
             padding = data == 0
-            if result.requires_grad:
-                # Mask before the mean so padding cannot receive its gradient.
+            if result.requires_grad or torch.autograd.forward_ad.unpack_dual(result).tangent is not None:
+                # Exclude padding from derivatives of the mean in both AD modes.
                 result.masked_fill_(padding, 0.0)
             mean = result.sum(dim=spatial_dimensions, keepdim=True) / count
             centered = result.sub_(mean).masked_fill_(padding, 0.0)

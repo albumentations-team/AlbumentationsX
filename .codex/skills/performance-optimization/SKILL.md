@@ -29,8 +29,8 @@ Compose benchmark workflow to Core changes unless the user explicitly requests A
    hypothesis.
 4. Check the repository boundary. Move a reusable image-processing atom into Albucore instead of duplicating it in
    transforms.
-5. For requested AX performance work, read `../benchmark/SKILL.md` completely and benchmark both the isolated kernel
-   and the `Compose` route on its required size, channel, and dtype matrix.
+5. For AX runtime changes that can alter executed work, read `../benchmark/SKILL.md` completely and benchmark the
+   affected functional and `Compose` routes using its required workload matrix.
 6. Add correctness tests before accepting a faster path. Preserve shapes, dtypes, values, annotations, aliasing, and
    seeded-replay contracts unless the change explicitly documents a compatibility break.
 7. Run the project validation workflow after the final implementation.

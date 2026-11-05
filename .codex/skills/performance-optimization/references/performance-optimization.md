@@ -20,10 +20,10 @@ For Albucore performance work, benchmark only Albucore public operations. Includ
 conversion, allocation, clipping, output restoration, and NumPy/Tensor bridges owned by Core. Apply the same boundary
 to memory measurements. Use the affected operations and relevant routing boundaries to choose the measurement matrix.
 
-AX functional calls, transforms, Compose, and DataLoader performance campaigns require an explicit user request for
-AX performance validation. Do not prepare an AX checkout, build AX benchmark adapters, or add AX performance gates
-to an Albucore-only change because AX consumes Core. An AX benchmark is never an automatic acceptance requirement
-for Albucore.
+For Albucore-only changes, downstream AX functional, transform, Compose, and DataLoader performance campaigns
+require an explicit user request for AX performance validation. Do not prepare an AX checkout, build AX benchmark
+adapters, or add AX performance gates to an Albucore-only change because AX consumes Core. An AX benchmark is never
+an automatic acceptance requirement for Albucore.
 
 ## Acceptance environment
 
@@ -198,7 +198,9 @@ globally fastest:
 - A substantial simplification may cost at most 5% on an individual public operation only when accuracy is preserved
   and memory does not grow. For Albucore, assess this on Core public operations alone. Verify these conditions
   independently on Linux x86-64 and macOS ARM64; gains on one platform cannot compensate for regressions on another.
-  If the user explicitly requests AX performance validation, its complete path must also have no sustained slowdown.
+  For AX runtime changes that can alter executed work, the complete AX path must also have no sustained slowdown.
+  For Albucore-only changes, this AX condition applies only when the user explicitly requests downstream AX
+  performance validation.
 
 ### 6a. Escalate missing backend capabilities
 
@@ -278,10 +280,12 @@ For Albucore, benchmark the complete Core public router, including its dispatch,
 layout repair and output restoration. Include non-square inputs, supported dtypes, 1/3/high-channel cases, and relevant
 batch or volume ranks. Core timing and memory evidence determine acceptance of a Core change.
 
-Run AlbumentationsX functional, transform, Compose or DataLoader performance measurements only when the user
-explicitly requests AX performance validation. In that scope, measure the direct functional call and the transform
-through Compose; for batch-capable transforms, compare per-image dispatch with `apply_to_images` and include setup
-reuse. These AX measurements do not become a default requirement for Albucore work.
+For AlbumentationsX runtime changes that can alter executed work, follow AX's affected-route benchmark requirements.
+Measure the direct functional call and the transform through Compose when both are affected; for batch-capable
+transforms, compare per-image dispatch with `apply_to_images` and include setup reuse.
+
+For Albucore-only changes, run downstream AX functional, transform, Compose, or DataLoader performance measurements
+only when the user explicitly requests AX performance validation.
 
 ## Reuse existing Albucore routes
 

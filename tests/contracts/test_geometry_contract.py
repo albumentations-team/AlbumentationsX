@@ -4,7 +4,23 @@ import pytest
 
 import albumentations as A
 from albumentations.augmentations.geometric import _functional_images
+from albumentations.core.transform_params import SampledParams
 from tests.helpers import obb_corners_equivalent
+
+
+def _replay_with_params(pipeline, data, params):
+    record = A.to_dict(pipeline)["transform"]
+    record.update(applied=True, params=None)
+    record["transforms"][0].update(applied=True, params=SampledParams(params).to_dict())
+    return A.ReplayCompose.replay(record, **data)
+
+
+def _assert_labeled_obb(result, expected_corners):
+    cx, cy, width, height, angle, metadata = result["bboxes"][0]
+    actual = cv2.boxPoints(((cx, cy), (width, height), angle))
+    assert obb_corners_equivalent(actual, expected_corners, atol=1e-4)
+    assert result["labels"] == [137]
+    assert metadata == 23
 
 
 @pytest.mark.parametrize(
@@ -109,7 +125,6 @@ def test_crop_resize_refits_obb_in_output_pixels(transform, input_shape, output_
     result = pipeline(image=image, bboxes=[[*bbox, 23]], labels=[137])
 
     assert result["image"].shape == output_shape
-    assert result["labels"] == [137]
     recorded = result["replay"]["transforms"][0]["params"]["params"]
     if isinstance(transform, A.CropAndPad):
         offset = (3, -4)
@@ -123,10 +138,7 @@ def test_crop_resize_refits_obb_in_output_pixels(transform, input_shape, output_
     assert scales[0] != scales[1]
     corners = cv2.boxPoints((bbox[:2], bbox[2:4], bbox[4]))
     expected = cv2.boxPoints(cv2.minAreaRect(((corners + offset) * scales).astype(np.float32)))
-    center_x, center_y, box_width, box_height, angle, metadata = result["bboxes"][0]
-    actual = cv2.boxPoints(((center_x, center_y), (box_width, box_height), angle))
-    assert obb_corners_equivalent(actual, expected, atol=1e-4)
-    assert metadata == 23
+    _assert_labeled_obb(result, expected)
 
 
 @pytest.mark.parametrize("keep_size", [False, True])
@@ -149,11 +161,7 @@ def test_perspective_refits_obb_in_pixels_on_rectangular_frame(keep_size, fit_ou
     mapped = cv2.perspectiveTransform(corners[:, None, :], recorded["matrix"])[:, 0, :]
     mapped *= (width / recorded["max_width"], height / recorded["max_height"])
     expected = cv2.boxPoints(cv2.minAreaRect(mapped))
-    center_x, center_y, box_width, box_height, angle, metadata = result["bboxes"][0]
-    actual = cv2.boxPoints(((center_x, center_y), (box_width, box_height), angle))
-    assert obb_corners_equivalent(actual, expected, atol=1e-4)
-    assert result["labels"] == [137]
-    assert metadata == 23
+    _assert_labeled_obb(result, expected)
 
 
 @pytest.mark.parametrize(
@@ -188,14 +196,8 @@ def test_perspective_keep_size_shares_output_matrix(mocker, recorded_shape):
             "shape": recorded_shape,
             "bbox_type": "hbb",
         }
-        record = A.to_dict(pipeline)["transform"]
-        record.update(applied=True, params=None)
-        record["transforms"][0].update(
-            applied=True,
-            params={"parameter_schema": 3, "target_schema": None, "target_params": [], "params": recorded},
-        )
         sample = mocker.spy(A.Perspective, "sample_parameters")
-        result = A.ReplayCompose.replay(record, **data)
+        result = _replay_with_params(pipeline, data, recorded)
         sample.assert_not_called()
     else:
         result = pipeline(**data)
@@ -248,10 +250,7 @@ def test_resize_replay_maps_keypoints_to_current_frame(transform, output_shape, 
         ),
     ],
 )
-@pytest.mark.parametrize("target", ["bboxes", "keypoints"])
-def test_fixed_resize_replay_preserves_output_geometry_and_maps_current_annotations(
-    transform, pad_top, pad_bottom, target
-):
+def test_fixed_resize_replay_preserves_output_geometry_and_maps_current_annotations(transform, pad_top, pad_bottom):
     pipeline = A.ReplayCompose(
         [transform],
         bbox_params=A.BboxParams(coord_format="cxcywh", bbox_type="obb", label_fields=["labels"]),
@@ -287,18 +286,12 @@ def test_fixed_resize_replay_preserves_output_geometry_and_maps_current_annotati
     )
 
     scale_x, scale_y = 24 / 18, 9 / 24
-    if target == "keypoints":
-        expected = [[(x + 0.5) * scale_x - 0.5, (y + 0.5) * scale_y - 0.5 + pad_top, angle, scale * scale_x]]
-        np.testing.assert_allclose(result["keypoints"], expected, atol=1e-5)
-    else:
-        corners = cv2.boxPoints((bbox[:2], bbox[2:4], bbox[4]))
-        mapped = corners * (scale_x, scale_y) + (0, pad_top)
-        expected = cv2.boxPoints(cv2.minAreaRect(mapped.astype(np.float32)))
-        cx, cy, width, height, output_angle, metadata = result["bboxes"][0]
-        actual = cv2.boxPoints(((cx, cy), (width, height), output_angle))
-        assert obb_corners_equivalent(actual, expected, atol=1e-4)
-        assert result["labels"] == [137]
-        assert metadata == 23
+    expected_keypoints = [[(x + 0.5) * scale_x - 0.5, (y + 0.5) * scale_y - 0.5 + pad_top, angle, scale * scale_x]]
+    np.testing.assert_allclose(result["keypoints"], expected_keypoints, atol=1e-5)
+
+    corners = cv2.boxPoints((bbox[:2], bbox[2:4], bbox[4]))
+    mapped = corners * (scale_x, scale_y) + (0, pad_top)
+    _assert_labeled_obb(result, cv2.boxPoints(cv2.minAreaRect(mapped.astype(np.float32))))
 
 
 def test_identity_remap_preserves_fractional_obb():
@@ -332,11 +325,7 @@ def test_remap_refits_obb_to_warped_rotated_support():
 
     assert not np.array_equal(result["mask"], mask)
     expected = cv2.boxPoints(cv2.minAreaRect(cv2.findNonZero(result["mask"])))
-    cx, cy, width, height, angle, metadata = result["bboxes"][0]
-    actual = cv2.boxPoints(((cx, cy), (width, height), angle))
-    assert obb_corners_equivalent(actual, expected, atol=1e-4)
-    assert result["labels"] == [137]
-    assert metadata == 23
+    _assert_labeled_obb(result, expected)
 
 
 @pytest.mark.parametrize(
@@ -379,32 +368,22 @@ def test_grid_elastic_shares_cell_matrices_across_targets(mocker, legacy_replay)
     fit_matrix = mocker.spy(cv2, "getPerspectiveTransform")
 
     if legacy_replay:
-        record = A.to_dict(pipeline)["transform"]
-        record.update(applied=True, params=None)
-        record["transforms"][0].update(
-            applied=True,
-            params={
-                "parameter_schema": 3,
-                "target_schema": None,
-                "target_params": [],
-                "params": {
-                    "generated_mesh": np.array(
-                        [
-                            [0, 0, 8, 6, 0, 0, 8, 0, 7, 5, 0, 6],
-                            [8, 0, 16, 6, 8, 0, 16, 0, 16, 6, 7, 5],
-                            [0, 6, 8, 12, 0, 6, 7, 5, 8, 12, 0, 12],
-                            [8, 6, 16, 12, 7, 5, 16, 6, 16, 12, 8, 12],
-                        ],
-                        dtype=np.float32,
-                    ),
-                    "shape": (12, 16, 1),
-                    "interpolation": cv2.INTER_NEAREST,
-                    "bbox_type": "hbb",
-                },
-            },
-        )
+        params = {
+            "generated_mesh": np.array(
+                [
+                    [0, 0, 8, 6, 0, 0, 8, 0, 7, 5, 0, 6],
+                    [8, 0, 16, 6, 8, 0, 16, 0, 16, 6, 7, 5],
+                    [0, 6, 8, 12, 0, 6, 7, 5, 8, 12, 0, 12],
+                    [8, 6, 16, 12, 7, 5, 16, 6, 16, 12, 8, 12],
+                ],
+                dtype=np.float32,
+            ),
+            "shape": (12, 16, 1),
+            "interpolation": cv2.INTER_NEAREST,
+            "bbox_type": "hbb",
+        }
         sample = mocker.spy(A.GridElasticDeform, "sample_parameters")
-        result = A.ReplayCompose.replay(record, **data)
+        result = _replay_with_params(pipeline, data, params)
         sample.assert_not_called()
     else:
         result = pipeline(**data)

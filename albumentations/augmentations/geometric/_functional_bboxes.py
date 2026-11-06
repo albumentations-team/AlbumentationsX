@@ -257,16 +257,10 @@ def perspective_bboxes(
     keep_size: bool,
     bbox_type: Literal["hbb", "obb"],
 ) -> np.ndarray:
-    """Apply perspective transformation to bounding boxes. matrix, image_shape,
-    max_width, max_height, keep_size. HBB and OBB supported; OBB via corners.
-
-    This function transforms bounding boxes using the given perspective transformation matrix.
-    It handles bounding boxes with additional attributes beyond the standard coordinates.
+    """Project box corners in pixels and fit normalized boxes in the output frame.
 
     Args:
-        bboxes (np.ndarray): An array of bounding boxes with shape (num_bboxes, 4+).
-                             Each row represents a bounding box (x_min, y_min, x_max, y_max, ...).
-                             Additional columns beyond the first 4 are preserved unchanged.
+        bboxes (np.ndarray): Normalized boxes, with an angle column for OBBs.
         image_shape (tuple[int, int]): The shape of the image (height, width).
         matrix (np.ndarray): The perspective transformation matrix.
         max_width (int): The maximum width of the output image.
@@ -275,20 +269,7 @@ def perspective_bboxes(
         bbox_type (Literal['hbb', 'obb']): Bounding box type; OBB path uses polygons.
 
     Returns:
-        np.ndarray: An array of transformed bounding boxes with the same shape as input.
-                    The first 4 columns contain the transformed coordinates, and any
-                    additional columns are preserved from the input.
-
-    Note:
-        - This function modifies only the coordinate columns (first 4) of the input bounding boxes.
-        - Any additional attributes (columns beyond the first 4) are kept unchanged.
-        - The function handles denormalization and renormalization of coordinates internally.
-
-    Examples:
-        >>> bboxes = np.array([[0.1, 0.1, 0.3, 0.3, 1], [0.5, 0.5, 0.8, 0.8, 2]])
-        >>> image_shape = (100, 100)
-        >>> matrix = np.array([[1.5, 0.2, -20], [-0.1, 1.3, -10], [0.002, 0.001, 1]])
-        >>> transformed_bboxes = perspective_bboxes(bboxes, image_shape, matrix, 150, 150, False)
+        np.ndarray: Transformed boxes with refitted OBB angles and unchanged metadata.
 
     """
     output_shape = (max_height, max_width)

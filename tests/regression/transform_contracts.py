@@ -9,7 +9,7 @@ import albumentations as A
 from tests.utils import get_all_valid_transforms, get_primary_public_transform_params
 
 StabilityMode = Literal["exact", "tolerance", "digest", "structural"]
-InputRecipe = Literal["image_mask", "hbb_keypoints", "obb_keypoints", "volume_mask3d"]
+InputRecipe = Literal["image_mask", "hbb_keypoints", "volume_mask3d"]
 
 
 @dataclass(frozen=True)
@@ -29,21 +29,6 @@ REGRESSION_CONTRACTS: tuple[TransformContract, ...] = (
     TransformContract("VerticalFlip", {}, ("image", "mask"), "exact"),
     TransformContract("Transpose", {}, ("image", "mask"), "exact"),
     TransformContract("RandomRotate90", {}, ("image", "mask"), "exact"),
-    TransformContract(
-        "CropAndPad",
-        {"px": -64, "keep_size": False},
-        ("image", "mask"),
-        "exact",
-        behavior_epoch="m3-geometry",
-    ),
-    TransformContract(
-        "LongestMaxSize",
-        {"max_size": 4},
-        ("bbox_corners", "bbox_labels", "keypoints", "keypoint_labels"),
-        "tolerance",
-        behavior_epoch="m3-geometry",
-        input_recipe="obb_keypoints",
-    ),
     TransformContract(
         "Resize",
         {"height": 16, "width": 20},

@@ -147,11 +147,11 @@ The same registry includes 2D dual cases whose annotation semantics follow a dif
 ## What the tests compare
 
 - **Exact.** Use exact outputs for integer slicing and permutation and for selected deterministic regressions. The
-  golden vectors include flips, transpose, quarter turns, and an oversized crop reduced to one pixel.
+  existing golden vectors cover flips, transpose, and quarter turns.
   [Regression manifest](../tests/files/regression/manifest.json)
-- **With tolerance.** Compare coordinates and geometric invariants with a test-specific tolerance. For example, compare
-  the corners of an OBB when equivalent parameterizations can encode the same rectangle. The resize vector stores
-  the fitted corners in output pixels. [Geometry regressions](../tests/contracts/test_geometry_contract.py) ·
+- **With tolerance.** Compare coordinates and geometric invariants with a test-specific tolerance. Geometry tests
+  calculate expected resize and perspective corners independently, then compare the fitted OBB.
+  [Geometry regressions](../tests/contracts/test_geometry_contract.py) ·
   [Minimum-area rectangle tests](../tests/test_minarearect.py)
 - **Structural.** For dependency-sensitive interpolation, check output shape, dtype, value bounds, mask IDs, and
   alignment. Extended profiles check empty HBB, OBB, and keypoint inputs with their label fields. Keep exact

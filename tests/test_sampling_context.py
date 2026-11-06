@@ -145,18 +145,17 @@ def test_explicit_call_does_not_advance_configured_stream(manual: bool) -> None:
     assert probe.draws[1] == (random.Random(271).random(), np.random.default_rng(271).random())
 
 
-@pytest.mark.parametrize("failure", ["before_draw", "after_probability", "after_sampler"])
+@pytest.mark.parametrize("failure", ["before_draw", "mismatched_shape", "after_sampler"])
 def test_errors_preserve_exact_draw_consumption_and_retry(failure: str) -> None:
     probe = _DrawProbe()
-    probability = 0.5 if failure == "after_probability" else 1
+    probability = 0.5 if failure == "mismatched_shape" else 1
     pipeline = A.Compose([probe], p=probability, seed=137, save_applied_params=True)
     image = np.ones((17, 19), np.float32)
     python_oracle, numpy_oracle = random.Random(137), np.random.default_rng(137)
     if failure == "before_draw":
         data = {"image": image, "frame_annotations": [{}]}
-    elif failure == "after_probability":
+    elif failure == "mismatched_shape":
         data = {"image": image, "mask": np.ones((2, 3), np.uint8)}
-        assert python_oracle.random() < probability
     else:
         data = {"image": image}
         probe.fail = True

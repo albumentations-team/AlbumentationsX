@@ -309,10 +309,10 @@ def test_named_args():
     image = np.empty([100, 100, 3], dtype=np.uint8)
     aug = A.HorizontalFlip(p=1)
 
-    with pytest.raises(KeyError) as exc_info:
+    with pytest.raises(TypeError) as exc_info:
         aug(image)
     assert str(exc_info.value) == (
-        "'You have to pass data to augmentations as named arguments, for example: aug(image=image)'"
+        "You have to pass data to augmentations as named arguments, for example: aug(image=image)"
     )
 
 
@@ -352,13 +352,13 @@ def test_targets_type_check(targets, additional_targets, err_message):
 
     with pytest.raises(TypeError) as exc_info:
         aug(**targets)
-    assert str(exc_info.value) == err_message
+    assert str(exc_info.value).startswith(err_message)
 
     aug = Compose([A.NoOp()], strict=True)
     aug.add_targets(additional_targets)
     with pytest.raises(TypeError) as exc_info:
         aug(**targets)
-    assert str(exc_info.value) == err_message
+    assert str(exc_info.value).startswith(err_message)
 
 
 @pytest.mark.parametrize(
@@ -760,7 +760,12 @@ def test_single_transform_compose(
 ):
     compose_cls, compose_kwargs = compose_transform
     cls, kwargs = inner_transform
-    transform = cls(transforms=[], **kwargs) if issubclass(cls, BaseCompose) else cls(**kwargs)
+    if cls is OneOrOther:
+        transform = cls(A.NoOp(), A.NoOp(), **kwargs)
+    elif issubclass(cls, BaseCompose):
+        transform = cls(transforms=[], **kwargs)
+    else:
+        transform = cls(**kwargs)
 
     with pytest.warns(UserWarning):
         res_transform = compose_cls(transforms=transform, **compose_kwargs)  # type: ignore
@@ -954,11 +959,9 @@ def test_compose_image_mask_equal_size(targets):
     with pytest.raises(ValueError) as exc_info:
         transforms(**targets)
 
-    assert str(exc_info.value).startswith(
-        "Height and Width of image, mask or masks should be equal. "
-        "You can disable shapes check by setting a parameter is_check_shapes=False "
-        "of Compose class (do it only if you are sure about your data consistency).",
-    )
+    assert "image (20, 20)" in str(exc_info.value)
+    assert "(30, 20) must match" in str(exc_info.value)
+    assert "is_check_shapes=False" in str(exc_info.value)
     # test after disabling shapes check
     transforms = Compose([A.NoOp()], is_check_shapes=False)
     transforms(**targets)
@@ -2365,7 +2368,7 @@ def test_grayscale_shape_check_with_strict():
     # Create mask with different H,W - should fail
     wrong_mask = np.random.rand(150, 200).astype(np.float32)
 
-    with pytest.raises(ValueError, match="Height and Width of image, mask or masks should be equal"):
+    with pytest.raises(ValueError, match=r"image \(100, 200\).*mask \(150, 200\)"):
         transform(image=grayscale_image, mask=wrong_mask)
 
 

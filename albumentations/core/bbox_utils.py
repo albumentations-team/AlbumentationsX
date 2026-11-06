@@ -350,24 +350,9 @@ class BboxProcessor(DataProcessor[BboxParams]):
         """
         return self.params.make_empty_bboxes_array()
 
-    def ensure_data_valid(self, data: dict[str, Any]) -> None:
-        """Validate that data contains all params.label_fields; raises ValueError if any are
-        missing. Called at apply time by Compose.
-
-        Checks that:
-        - Bounding boxes have labels (either in the bbox array or in label_fields)
-        - All specified label_fields exist in the data
-
-        Args:
-            data (dict[str, Any]): Dict with bounding boxes and optional label fields.
-
-        Raises:
-            ValueError: If bounding boxes don't have labels or if label_fields are invalid.
-
-        """
-        if self.params.label_fields and not all(i in data for i in self.params.label_fields):
-            msg = "Your 'label_fields' are not valid - them must have same names as params in dict"
-            raise ValueError(msg)
+    @property
+    def _coordinate_count(self) -> int:
+        return NUM_BBOXES_COLUMNS_IN_ALBUMENTATIONS if self.params.bbox_type == "hbb" else BBOX_OBB_MIN_COLUMNS
 
     def ensure_transforms_valid(self, transforms: Sequence[object]) -> None:
         """Validate that all transforms support configured bbox_type (e.g. OBB). Raises if any
@@ -1031,19 +1016,18 @@ def check_bboxes(bboxes: np.ndarray) -> None:
         ValueError: If any bounding box is invalid.
 
     """
-    in_range = (bboxes[:, :4] >= 0) & (bboxes[:, :4] <= 1)
-    close_to_zero = np.isclose(bboxes[:, :4], 0)
-    close_to_one = np.isclose(bboxes[:, :4], 1)
-    valid_range = in_range | close_to_zero | close_to_one
-
+    coordinates = bboxes[:, :4]
+    valid_range = (coordinates >= 0) & (coordinates <= 1)
     if not np.all(valid_range):
-        invalid_idx = np.where(~np.all(valid_range, axis=1))[0][0]
-        invalid_bbox = bboxes[invalid_idx]
-        invalid_coord = ["x_min", "y_min", "x_max", "y_max"][np.where(~valid_range[invalid_idx])[0][0]]
-        invalid_value = invalid_bbox[np.where(~valid_range[invalid_idx])[0][0]]
-        raise ValueError(
-            f"Expected {invalid_coord} for bbox {invalid_bbox} to be in the range [0.0, 1.0], got {invalid_value}.",
-        )
+        valid_range |= np.isclose(coordinates, 0) | np.isclose(coordinates, 1)
+        if not np.all(valid_range):
+            row, column = np.unravel_index(valid_range.argmin(), valid_range.shape)
+            invalid_bbox = bboxes[row]
+            invalid_coord = ("x_min", "y_min", "x_max", "y_max")[column]
+            raise ValueError(
+                f"Expected {invalid_coord} for bbox {invalid_bbox} to be in the range [0.0, 1.0], "
+                f"got {coordinates[row, column]}.",
+            )
 
     valid_order = (bboxes[:, 2] > bboxes[:, 0]) & (bboxes[:, 3] > bboxes[:, 1])
 

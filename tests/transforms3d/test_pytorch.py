@@ -57,13 +57,13 @@ error_test_cases = [
     pytest.param(
         (64, 64),  # 2D array
         TypeError,
-        "volume must be 3D or 4D array",
+        r"volume must have shape \(D, H, W\) or \(D, H, W, C\), got",
         id="2d_array",
     ),
     pytest.param(
         (64, 64, 64, 3, 1),  # 5D array
         TypeError,
-        "volume must be 3D or 4D array",
+        r"volume must have shape \(D, H, W\) or \(D, H, W, C\), got",
         id="5d_array",
     ),
 ]

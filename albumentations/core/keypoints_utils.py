@@ -247,20 +247,9 @@ class KeypointsProcessor(DataProcessor[KeypointParams]):
     def _create_empty_array(self) -> np.ndarray:
         return self.params.make_empty_keypoints_array()
 
-    def ensure_data_valid(self, data: dict[str, Any]) -> None:
-        """Validate that data has all params.label_fields; raises ValueError if any are
-        missing. Call at pipeline apply time before running transforms.
-
-        Args:
-            data (dict[str, Any]): The data dictionary to validate.
-
-        Raises:
-            ValueError: If any label field specified in params is missing from the data.
-
-        """
-        if self.params.label_fields and not all(i in data for i in self.params.label_fields):
-            msg = "Your 'label_fields' are not valid - them must have same names as params in 'keypoint_params' dict"
-            raise ValueError(msg)
+    @property
+    def _coordinate_count(self) -> int:
+        return len(self.params.coord_format)
 
     def filter(
         self,

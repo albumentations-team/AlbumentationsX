@@ -470,13 +470,19 @@ jobs:
           python -m pytest -q tests/regression tests/property \
             --hypothesis-profile=ci-fast \
             --junitxml="${RUNNER_TEMP}/release-bundle/evidence/junit-release.xml"
+          python -m pytest -q tests/contracts/test_validation_contract.py \
+            --junitxml="${RUNNER_TEMP}/release-bundle/evidence/junit-validation-contract.xml"
       - name: Summarize release pytest results
         if: always()
-        run: >-
-          python tools/pytest_summary.py
-          --junit "${RUNNER_TEMP}/release-bundle/evidence/junit-release.xml"
-          --output "${RUNNER_TEMP}/release-bundle/evidence/pytest-summary-release.json"
-          --allow-incomplete
+        run: |
+          python tools/pytest_summary.py \
+            --junit "${RUNNER_TEMP}/release-bundle/evidence/junit-release.xml" \
+            --output "${RUNNER_TEMP}/release-bundle/evidence/pytest-summary-release.json" \
+            --allow-incomplete
+          python tools/pytest_summary.py \
+            --junit "${RUNNER_TEMP}/release-bundle/evidence/junit-validation-contract.xml" \
+            --output "${RUNNER_TEMP}/release-bundle/evidence/validation-contract.json" \
+            --allow-incomplete
       - name: Collect core benchmark coverage evidence
         run: |
           python -m tools.benchmark_coverage summary \

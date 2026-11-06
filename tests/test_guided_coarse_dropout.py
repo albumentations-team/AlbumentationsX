@@ -128,9 +128,9 @@ def test_dropout_region_is_required() -> None:
         transform(image=np.zeros((8, 8, 3), dtype=np.uint8))
 
 
-@pytest.mark.parametrize("margin", [-0.1, (0.1, 0.1)])
-def test_protection_margin_must_be_a_nonnegative_float(margin: object) -> None:
-    with pytest.raises(ValueError, match="protection_margin"):
+@pytest.mark.parametrize(("margin", "error"), [(-0.1, ValueError), ((0.1, 0.1), TypeError)])
+def test_protection_margin_must_be_a_nonnegative_float(margin: object, error: type[Exception]) -> None:
+    with pytest.raises(error, match="protection_margin"):
         A.GuidedCoarseDropout(protection_margin=margin)  # type: ignore[arg-type]
 
 

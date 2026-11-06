@@ -344,7 +344,7 @@ def test_unactivated_compose_preserves_shape_validation_for_explicit_channel_tar
     """Mismatched explicit-channel targets must not bypass the root shape contract."""
     compose = A.Compose([A.NoOp(p=1.0)])
 
-    with pytest.raises(ValueError, match="Height and Width of image, mask or masks should be equal"):
+    with pytest.raises(ValueError, match=r"image \(5, 7\).*mask \(4, 7\)"):
         compose(
             image=np.zeros((5, 7, 3), dtype=np.uint8),
             mask=np.zeros((4, 7, 1), dtype=np.uint8),

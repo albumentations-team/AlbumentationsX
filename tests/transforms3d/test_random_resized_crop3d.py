@@ -94,9 +94,12 @@ def test_random_resized_crop3d_numeric_ratio_respects_the_pre_rounding_policy(sa
         assert max(crop_shape) / min(crop_shape) <= 4.0 / 3.0 + 1.0 / min(crop_shape)
 
 
-@pytest.mark.parametrize("ratio", ((1.0, 1.0), 0.5, float("inf"), float("nan")))
-def test_random_resized_crop3d_rejects_invalid_ratio(ratio: object) -> None:
-    with pytest.raises(ValueError):
+@pytest.mark.parametrize(
+    ("ratio", "error"),
+    [((1.0, 1.0), TypeError), (0.5, ValueError), (float("inf"), ValueError), (float("nan"), ValueError)],
+)
+def test_random_resized_crop3d_rejects_invalid_ratio(ratio: object, error: type[Exception]) -> None:
+    with pytest.raises(error, match="ratio"):
         A.RandomResizedCrop3D(size=(32, 64, 64), ratio=ratio)  # type: ignore[arg-type]
 
 

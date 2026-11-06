@@ -258,13 +258,18 @@ class DataProcessor(ABC, Generic[ParamsT]):
                 self.data_fields.append(k)
 
     def ensure_data_valid(self, data: dict[str, Any]) -> None:
-        """Validate that input data dict has required keys and structure before processing.
-        Override in subclasses. Called at pipeline apply time.
+        """Check that labels configured for this processor were supplied."""
+        missing = [name for name in self.params.label_fields or () if name not in data]
+        if missing:
+            raise ValueError(
+                f"{self.default_data_name} requires label_fields {missing!r}. "
+                "Pass these fields with the annotations or remove them from label_fields.",
+            )
 
-        Args:
-            data (dict[str, Any]): Input data dictionary to validate.
-
-        """
+    @property
+    @abstractmethod
+    def _coordinate_count(self) -> int:
+        """Number of coordinate columns required by the configured format."""
 
     def ensure_transforms_valid(self, transforms: Sequence[object]) -> None:
         """Validate that the transform list is compatible with this processor (e.g. bbox_type).
@@ -342,16 +347,42 @@ class DataProcessor(ABC, Generic[ParamsT]):
         """
         shape = get_shape(data)
 
-        for data_name in set(self.data_fields) & set(data.keys()):
-            if isinstance(data[data_name], Sequence) and not isinstance(data[data_name], np.ndarray):
-                if len(data[data_name]) > 0:
-                    data[data_name] = np.array(data[data_name], dtype=np.float32)
-                else:
-                    data[data_name] = self._create_empty_array()
+        active_fields = data.keys() & self.data_fields
+        for data_name in active_fields:
+            data[data_name] = self._prepare_coordinates(data_name, data[data_name])
 
         data = self.add_label_fields_to_data(data)
-        for data_name in set(self.data_fields) & set(data.keys()):
+        for data_name in active_fields:
             data[data_name] = self.check_and_convert(data[data_name], shape, direction="to")
+
+    def _prepare_coordinates(self, name: str, value: Any) -> np.ndarray:
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+            if not len(value):
+                return self._create_empty_array()
+            try:
+                value = np.asarray(value, dtype=np.float32)
+            except (TypeError, ValueError) as error:
+                raise ValueError(f"{name} must contain rectangular rows of numeric coordinates.") from error
+        if not isinstance(value, np.ndarray):
+            raise TypeError(f"{name} must be an annotation array or a sequence of rows, got {type(value).__name__}")
+        if value.shape == (0,):
+            return self._create_empty_array()
+        if value.ndim != 2:
+            raise TypeError(f"{name} must have shape (rows, columns), got {value.shape}")
+        required = self._coordinate_count
+        if value.shape[1] < required:
+            raise ValueError(f"{name} needs at least {required} coordinate columns, got shape {value.shape}")
+        if value.dtype.kind not in "uif":
+            raise TypeError(f"{name} must have a real numeric dtype, got {value.dtype}")
+        coordinates = value[:, :required]
+        finite = np.isfinite(coordinates)
+        if not finite.all():
+            row, column = np.unravel_index(finite.argmin(), finite.shape)
+            raise ValueError(
+                f"{name} must have finite coordinates. Got {coordinates[row, column]} at {name}[{row}, {column}]. "
+                "Replace that coordinate or remove its row.",
+            )
+        return value
 
     def check_and_convert(
         self,
@@ -515,7 +546,7 @@ class DataProcessor(ABC, Generic[ParamsT]):
         if data_length != label_length:
             raise ValueError(
                 f"The lengths of {data_name} and {label_field} do not match. "
-                f"Got {data_length} and {label_length} respectively.",
+                f"Got {data_length} and {label_length} respectively. Supply one label per annotation row.",
             )
 
     def remove_label_fields_from_data(self, data: dict[str, Any]) -> dict[str, Any]:

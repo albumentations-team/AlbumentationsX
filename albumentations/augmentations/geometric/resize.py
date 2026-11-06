@@ -971,7 +971,6 @@ class LetterBox(DualTransform):
     _targets = ALL_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
     _runtime_param_materializer = staticmethod(_materialize_fixed_resize_params)
-    _accepts_direct_hbb = True
 
     class InitSchema(BaseTransformInitSchema):
         size: tuple[int, int]

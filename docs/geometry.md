@@ -18,7 +18,9 @@ CPU Tensor layouts differ. Both use the same spatial conventions. [Target layout
 | Oriented bounding box (OBB) | The center, side lengths, and angle describe a rotated rectangle. In the internal box format the first four fields encode center ± half side lengths before rotation. The fifth field is the width-edge angle in degrees, measured from positive x toward positive y. Convert normalized coordinates back to pixels before reconstructing the corners of a box on a non-square frame. A box fitted from corners chooses the more horizontal edge as its width and represents the angle in `[-90, 90)`. A transform that preserves the rectangle can retain its original angle representation. |
 
 Set `BboxParams.coord_format` for the incoming box format and `bbox_type="obb"` for oriented boxes. Extra columns can
-carry metadata and do not select the box type. The crop window `(x_min, y_min, x_max, y_max)` uses half-open intervals
+carry metadata and do not select the box type. A transform called directly with boxes expects normalized HBB
+coordinates. Use `Compose` with `BboxParams` for other formats or oriented boxes. The crop window
+`(x_min, y_min, x_max, y_max)` uses half-open intervals
 and selects `image[y_min:y_max, x_min:x_max]`. [Box formats](design/bounding_boxes.md) ·
 [Coordinate tests](../tests/test_keypoint.py) · [Box tests](../tests/test_bbox.py)
 

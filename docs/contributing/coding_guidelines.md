@@ -43,9 +43,9 @@ rules are listed in `[tool.ax-rules.rules]` in `pyproject.toml`; set an entry to
 each enabled rule runs only for the files in its own scope; `uv run python -m tools.ax_rules` without filenames runs
 every enabled rule. The `coding-guidance` rule emits `AXG001`–`AXG026` diagnostics for transform API, sampling, schema, naming,
 performance-shape, documentation, bbox propagation, and target-specific sampling contracts. The public
-`BboxParams.__init__(bbox_type="hbb")` compatibility default is intentional. For transforms that already accept
-normalized HBBs on direct calls, `BasicTransform` supplies the type at the call boundary. All internal transform,
-processor, and functional calls must pass `bbox_type` explicitly. Keep design judgment and benchmark interpretation in the relevant
+`BboxParams.__init__(bbox_type="hbb")` compatibility default is intentional. At the call boundary, `BasicTransform`
+treats box targets as normalized HBBs when no bounding-box processor is configured. Internal transform, processor,
+and functional calls must pass `bbox_type` explicitly. Keep design judgment and benchmark interpretation in the relevant
 review skill rather than duplicating these mechanical checks. `AGENTS.md`, `.codex/rules/`, and `.codex/skills/` point
 to this document and the hook instead of restating the AXG catalog.
 

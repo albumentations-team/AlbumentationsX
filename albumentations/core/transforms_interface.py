@@ -413,7 +413,6 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
     _runtime_param_materializer: ClassVar[_RuntimeParamMaterializer | None] = None
     _runtime_generated_params: ClassVar[frozenset[str]] = frozenset()
     _runtime_binding_params: ClassVar[Mapping[str, None]] = {}
-    _accepts_direct_hbb: ClassVar[bool] = False
     _preserves_input_image_range: ClassVar[bool] = True  # image targets retain the input dtype's normalized range
     _removed_sampling_hooks: ClassVar[frozenset[str]] = frozenset({"get_params", "get_params_dependent_on_data"})
 
@@ -1006,6 +1005,16 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         sampled_params = SampledParams.from_dict(deepcopy(self._replay_params))
         targets = self._build_target_set(kwargs)
         self._validate_spatial_targets(targets)
+        if (
+            "bbox_type" not in sampled_params.params
+            and not sampled_params.target_params
+            and targets.by_canonical_type("bboxes")
+            and self.get_processor("bboxes") is None
+        ):
+            sampled_params = SampledParams(
+                {**sampled_params.params, "bbox_type": "hbb"},
+                target_schema=sampled_params.target_schema,
+            )
         sampled_params.validate(
             targets,
             {
@@ -1417,7 +1426,16 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         bbox_processor = None if invocation is None else invocation.get_processor("bboxes")
         if isinstance(bbox_processor, BboxProcessor):
             params["bbox_type"] = bbox_processor.params.bbox_type
-        elif self._accepts_direct_hbb and targets is not None and targets.by_canonical_type("bboxes"):
+        elif "bboxes" in self._key2func and (
+            data.get("bboxes") is not None
+            or (
+                self._additional_targets
+                and any(
+                    target == "bboxes" and data.get(name) is not None
+                    for name, target in self._additional_targets.items()
+                )
+            )
+        ):
             params["bbox_type"] = "hbb"
 
         # Add transform-specific params

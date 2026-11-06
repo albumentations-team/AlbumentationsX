@@ -699,7 +699,6 @@ class _BaseRandomSizedCrop(DualTransform):
     """
 
     InitSchema: ClassVar[type[BaseTransformInitSchema]] = _BaseRandomSizedCropInitSchema
-    _accepts_direct_hbb = True
 
     def __init__(
         self,

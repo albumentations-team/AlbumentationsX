@@ -792,7 +792,6 @@ class CropAndPad(DualTransform):
 
     _targets = ALL_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
-    _accepts_direct_hbb = True
 
     class InitSchema(BaseTransformInitSchema):
         px: PxType | None

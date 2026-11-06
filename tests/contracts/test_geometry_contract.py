@@ -59,6 +59,29 @@ def test_direct_crop_and_resize_keep_normalized_hbb_support(transform, expected)
     np.testing.assert_allclose(result["bboxes"], [[*expected, 137]], atol=1e-6, rtol=0)
 
 
+def test_direct_flip_maps_normalized_hbb_alias():
+    transform = A.HorizontalFlip(p=1)
+    transform.add_targets({"boxes": "bboxes"})
+    boxes = np.array([[0.125, 0.25, 0.5, 0.75, 137]], dtype=np.float32)
+
+    result = transform(image=np.zeros((8, 12, 3), dtype=np.uint8), boxes=boxes)
+
+    np.testing.assert_array_equal(result["boxes"], [[0.5, 0.25, 0.875, 0.75, 137]])
+
+
+def test_legacy_crop_and_pad_replays_normalized_hbb_without_bbox_params():
+    transform = A.ReplayCompose([A.CropAndPad(px=(0, 0, 0, -2), p=1)])
+    image = np.zeros((8, 12, 3), dtype=np.uint8)
+    boxes = np.array([[0.25, 0.25, 0.75, 0.75, 137]], dtype=np.float32)
+    result = transform(image=image, bboxes=boxes)
+    replay = result["replay"]
+    del replay["transforms"][0]["params"]["params"]["bbox_type"]
+
+    replayed = A.ReplayCompose.replay(replay, image=image, bboxes=boxes)
+
+    np.testing.assert_array_equal(replayed["bboxes"], result["bboxes"])
+
+
 @pytest.mark.parametrize(
     ("transform", "input_shape", "output_shape"),
     [

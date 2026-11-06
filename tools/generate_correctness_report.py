@@ -53,17 +53,19 @@ def _format_test_summary(summaries: list[dict[str, Any]]) -> str:
     if not summaries:
         return "- Test summary artifacts: not provided in this evidence bundle"
 
-    lines = []
-    for index, summary in enumerate(summaries, start=1):
-        totals = summary.get("totals", {})
-        status = summary.get("status", "ok")
-        status_text = f"status {status}; " if status != "ok" or summary.get("missing") else ""
-        lines.append(
-            "- Test summary "
-            f"{index}: {status_text}{totals.get('passed', 0)} passed, {totals.get('failures', 0)} failed, "
-            f"{totals.get('errors', 0)} errors, {totals.get('skipped', 0)} skipped",
-        )
-    return "\n".join(lines)
+    return "\n".join(
+        f"- Test summary {index}: {_format_test_counts(summary)}" for index, summary in enumerate(summaries, start=1)
+    )
+
+
+def _format_test_counts(summary: dict[str, Any]) -> str:
+    totals = summary.get("totals", {})
+    status = summary.get("status", "ok")
+    status_text = f"status {status}, " if status != "ok" or summary.get("missing") else ""
+    return (
+        f"{status_text}{totals.get('passed', 0)} passed, {totals.get('failures', 0)} failed, "
+        f"{totals.get('errors', 0)} errors, {totals.get('skipped', 0)} skipped"
+    )
 
 
 def _format_environment_summary(environments: list[dict[str, Any]]) -> str:
@@ -330,6 +332,7 @@ def generate_report(evidence_dir: Path | None = None, allow_missing_evidence: bo
     pytest_summaries = _read_json_files(evidence_dir, "pytest-summary*.json")
     benchmark_summaries = _read_json_files(evidence_dir, "benchmark*.json")
     security_summaries = _read_json_files(evidence_dir, "security*.json")
+    validation_summaries = _read_json_files(evidence_dir, "validation-contract.json")
 
     _validate_required_evidence(
         environments,
@@ -338,6 +341,17 @@ def generate_report(evidence_dir: Path | None = None, allow_missing_evidence: bo
         security_summaries,
         allow_missing_evidence=allow_missing_evidence,
     )
+    validation = validation_summaries[0] if validation_summaries else None
+    if not allow_missing_evidence:
+        if validation is None:
+            raise ValueError("Missing required release evidence artifact: validation-contract.json")
+        if issue := _pytest_summary_issue(validation):
+            raise ValueError(f"Release validation contract evidence is incomplete or failing: {issue}")
+        totals = validation["totals"]
+        passed = totals.get("passed")
+        if not isinstance(passed, int) or passed <= 0 or totals.get("skipped"):
+            raise ValueError("Release validation contract evidence must show a nonempty suite with no skipped tests")
+    validation_result = _format_test_counts(validation) if validation else "evidence unavailable"
 
     version = _project_version()
     generated_at = datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -375,6 +389,7 @@ Dependency sets tracked by the support policy: {dependency_sets}
 
 {_format_test_summary(pytest_summaries)}
 
+- Validation contract: {validation_result}
 - Test inventory: {test_file_count} `test*.py` files under `tests/`
 - Public transform-like API coverage routes: {covered_public_api_count} / {public_api_count}
 - Parameterized transform sweep coverage: {transform_sweep_count} runtime transforms

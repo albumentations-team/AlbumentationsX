@@ -1352,14 +1352,14 @@ def test_affine_scale_ratio(params):
 
 
 @pytest.mark.parametrize(
-    "params",
+    ("params", "error"),
     [
-        {"scale": {"x": (0.5, 1.0), "y": (1.0, 1.5)}, "keep_ratio": True},
-        {"scale": {"x": 0.5, "y": 1.0}, "keep_ratio": True},
+        ({"scale": {"x": (0.5, 1.0), "y": (1.0, 1.5)}, "keep_ratio": True}, ValueError),
+        ({"scale": {"x": 0.5, "y": 1.0}, "keep_ratio": True}, TypeError),
     ],
 )
-def test_affine_incorrect_scale_range(params):
-    with pytest.raises(ValueError):
+def test_affine_incorrect_scale_range(params, error):
+    with pytest.raises(error, match="scale"):
         A.Affine(**params)
 
 

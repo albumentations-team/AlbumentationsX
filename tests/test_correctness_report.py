@@ -104,6 +104,13 @@ def test_generate_report_accepts_required_release_evidence(tmp_path) -> None:
     (tmp_path / "benchmark-baseline-ref.txt").write_text("2.4.2\n")
     (tmp_path / "benchmark-candidate-ref.txt").write_text("release-head\n")
     _write_json(tmp_path / "security-local.json", {})
+    validation_path = tmp_path / "validation-contract.json"
+    validation_summary = {
+        "source": "junit-validation-contract.xml",
+        "status": "ok",
+        "totals": {"passed": 35, "failures": 0, "errors": 0, "skipped": 0},
+    }
+    _write_json(validation_path, validation_summary)
 
     report = generate_report(tmp_path)
 
@@ -111,12 +118,22 @@ def test_generate_report_accepts_required_release_evidence(tmp_path) -> None:
     assert "Benchmark coverage diff" in report
     assert "Performance budget" in report
     assert "10 passed, 0 failed, 0 errors, 1 skipped" in report
+    assert "Validation contract: 35 passed, 0 failed, 0 errors, 0 skipped" in report
     assert "batch: covered=1, tracked_without_dedicated_matrix=2" in report
     assert "memory: covered_advisory=1" in report
     assert "0 coverage contract failure(s)" in report
     assert "Security summary: provided" in report
     assert "CodeQL: managed through path-scoped advanced workflows" in report
     assert "ASV comparison refs: `2.4.2` -> `release-head`" in report
+
+    validation_summary["totals"]["skipped"] = 1
+    _write_json(validation_path, validation_summary)
+    with pytest.raises(ValueError, match="validation contract evidence must show a nonempty suite with no skipped"):
+        generate_report(tmp_path)
+
+    validation_path.unlink()
+    with pytest.raises(ValueError, match=r"Missing required release evidence artifact: validation-contract\.json"):
+        generate_report(tmp_path)
 
 
 @pytest.mark.parametrize(

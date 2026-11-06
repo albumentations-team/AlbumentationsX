@@ -698,12 +698,12 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             Any: Transformed data (dict of transformed inputs).
 
         Raises:
-            KeyError: If positional arguments are provided.
+            TypeError: If positional arguments are provided.
 
         """
         if args:
             msg = "You have to pass data to augmentations as named arguments, for example: aug(image=image)"
-            raise KeyError(msg)
+            raise TypeError(msg)
         invocation = get_current_invocation()
         if invocation is None:
             if self.can_apply_without_invocation(force_apply=force_apply):
@@ -760,7 +760,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         """
         if args:
             msg = "You have to pass data to augmentations as named arguments, for example: aug(image=image)"
-            raise KeyError(msg)
+            raise TypeError(msg)
         if getattr(self, "_is_tensor_terminal", False):
             self._tensor_fallback_route(kwargs)
         if not self.replay_mode and not force_apply and self.p <= 0.0:
@@ -1160,8 +1160,8 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         replay (e.g. TTA). Returns self for chaining.
         """
         if save_key == "params":
-            msg = "params save_key is reserved"
-            raise KeyError(msg)
+            msg = "save_key='params' is reserved. Choose another name, for example 'replay'."
+            raise ValueError(msg)
 
         self.deterministic = flag
         if self.deterministic and self.targets_as_params:

@@ -14,8 +14,9 @@ import warnings
 from collections import defaultdict
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from numbers import Real
 from time import perf_counter_ns
-from typing import Any, ClassVar, Protocol, Union, cast
+from typing import Any, Protocol, Union, cast
 
 import cv2
 import numpy as np
@@ -42,11 +43,12 @@ from .invocation import (
 from .keypoints_utils import KeypointParams, KeypointsProcessor
 from .label_manager import LabelReplayRecord
 from .serialization import (
-    SERIALIZABLE_REGISTRY,
     Serializable,
     get_shortest_class_fullname,
     instantiate_nonserializable,
     register_additional_transforms,
+    require_serialized_fields,
+    resolve_serialized_class,
 )
 from .tensor import (
     TENSOR_ANNOTATION_TARGETS,
@@ -62,7 +64,7 @@ from .tensor import (
 from .tracing import TraceOptions, TraceResult, _ExecutionTrace
 from .transforms_interface import BasicTransform, DualTransform
 from .type_definitions import StackedMasks4D, Targets
-from .utils import DataProcessor, format_args, get_shape, get_volume_shape, get_volumes_shape
+from .utils import DataProcessor, format_args, get_shape
 
 __all__ = [
     "BaseCompose",
@@ -97,9 +99,11 @@ class _TensorBoundaryState:
 
     has_tensor_inputs: bool = False
     annotation_targets: tuple[tuple[str, str], ...] = ()
+    needs_numpy_channel_axis: bool = False
 
 
 _EMPTY_TENSOR_BOUNDARY_STATE = _TensorBoundaryState()
+_NUMPY_CHANNEL_AXIS_BOUNDARY_STATE = _TensorBoundaryState(needs_numpy_channel_axis=True)
 
 
 def _normalize_semantic_mask_label(label: Any, label_kind: str) -> int:
@@ -272,10 +276,19 @@ MASK_KEYS = (
 
 # Keys related to image data
 IMAGE_KEYS = {"image", "images"}
-CHECK_BBOX_PARAM = {"bboxes"}
-CHECK_KEYPOINTS_PARAM = {"keypoints"}
-VOLUME_KEYS = {"volume", "volumes"}
-_SPATIAL_ADDITIONAL_TARGETS = frozenset((*IMAGE_KEYS, *MASK_KEYS, *VOLUME_KEYS))
+_SPATIAL_AXES = {
+    "image": ("H", "W"),
+    "mask": ("H", "W"),
+    "images": ("N", "H", "W"),
+    "masks": ("N", "H", "W"),
+    "volume": ("D", "H", "W"),
+    "mask3d": ("D", "H", "W"),
+    "volumes": ("N", "D", "H", "W"),
+    "masks3d": ("N", "D", "H", "W"),
+}
+_OPTIONAL_CHANNEL_RANKS = {target: len(axes) for target, axes in _SPATIAL_AXES.items()}
+_VOLUMETRIC_TARGETS = frozenset(target for target, axes in _SPATIAL_AXES.items() if "D" in axes)
+_CANONICAL_TARGETS = frozenset((*AVAILABLE_KEYS, *_SPATIAL_AXES))
 
 _VALID_INSTANCE_BINDING_TARGETS = frozenset({"mask", "masks", "bboxes", "keypoints"})
 # Distinct ferry-key constants used to shuttle per-row instance ids through `data`
@@ -394,6 +407,10 @@ class BaseCompose(InvocationRngOwner, Serializable):
             )
             transforms = [transforms]
 
+        if not isinstance(p, (int, float, Real)):
+            raise TypeError(f"p must be a real number in [0, 1], got {type(p).__name__}")
+        if not 0.0 <= p <= 1.0:
+            raise ValueError(f"p must be in [0, 1], got {p}")
         self.transforms = tuple(transforms)
         self._compile_execution_plan()
         self.p = p
@@ -952,6 +969,31 @@ class BaseCompose(InvocationRngOwner, Serializable):
                 If None, no additional targets will be added.
 
         """
+        if additional_targets is not None and not isinstance(additional_targets, Mapping):
+            raise TypeError(f"additional_targets must be a mapping, got {type(additional_targets).__name__}")
+        if additional_targets:
+            for alias, target in additional_targets.items():
+                if not isinstance(alias, str) or not isinstance(target, str):
+                    raise TypeError(
+                        f"additional_targets must map string names to string target kinds, got {alias!r}: {target!r}",
+                    )
+                if target not in _CANONICAL_TARGETS and not self._has_target_handler(self.transforms, target):
+                    raise ValueError(
+                        f"additional_targets[{alias!r}] refers to unknown target {target!r}. "
+                        "Use a supported target such as 'image' or 'mask'.",
+                    )
+        self._add_targets(additional_targets)
+
+    @staticmethod
+    def _has_target_handler(transforms: TransformsSeqType, target: str) -> bool:
+        return any(
+            BaseCompose._has_target_handler(transform.transforms, target)
+            if isinstance(transform, BaseCompose)
+            else target in transform.available_keys
+            for transform in transforms
+        )
+
+    def _add_targets(self, additional_targets: dict[str, str] | None) -> None:
         if additional_targets:
             for k, v in additional_targets.items():
                 if k in self._additional_targets and v != self._additional_targets[k]:
@@ -961,7 +1003,10 @@ class BaseCompose(InvocationRngOwner, Serializable):
                     )
             self._additional_targets.update(additional_targets)
             for t in self.transforms:
-                t.add_targets(additional_targets)
+                if isinstance(t, BaseCompose) and type(t).add_targets is BaseCompose.add_targets:
+                    BaseCompose._add_targets(t, additional_targets)
+                else:
+                    t.add_targets(additional_targets)
             for proc in self.processors.values():
                 proc.add_targets(additional_targets)
         self._set_keys()
@@ -1784,7 +1829,7 @@ class Compose(BaseCompose, HubMixin):
         >>> without_flip = pipeline - A.HorizontalFlip  # Remove by class
 
     Note:
-        - The class checks the validity of input data and shapes if is_check_args and is_check_shapes are True.
+        - Input containers and ranks are checked on every call. is_check_shapes controls cross-target alignment.
         - When bbox_params or keypoint_params are provided, it sets up the corresponding processors.
         - The transform can handle additional targets specified in the additional_targets dictionary.
         - Semantic-mask mappings replace class IDs simultaneously, so paired swaps do not overwrite one another.
@@ -1856,7 +1901,6 @@ class Compose(BaseCompose, HubMixin):
         if self._frame_binding == ("images", "frame_annotations"):
             self._available_keys.add("frame_annotations")
 
-        self.is_check_args = True
         self.strict = strict
         self.is_check_shapes = is_check_shapes
         self.check_each_transform = tuple(  # processors that check after each transform
@@ -1901,24 +1945,28 @@ class Compose(BaseCompose, HubMixin):
         bbox_params: dict[str, Any] | BboxParams | None,
         keypoint_params: dict[str, Any] | KeypointParams | None,
     ) -> None:
-        if bbox_params:
+        if bbox_params is not None:
             if isinstance(bbox_params, dict):
+                if "coord_format" not in bbox_params:
+                    raise ValueError("bbox_params must include coord_format, for example 'pascal_voc'")
                 b_params = BboxParams(**bbox_params)
             elif isinstance(bbox_params, BboxParams):
                 b_params = bbox_params
             else:
-                msg = "unknown format of bbox_params, please use `dict` or `BboxParams`"
-                raise ValueError(msg)
+                raise TypeError(f"bbox_params must be a dict or BboxParams, got {type(bbox_params).__name__}")
             self.processors["bboxes"] = BboxProcessor(b_params)
 
-        if keypoint_params:
+        if keypoint_params is not None:
             if isinstance(keypoint_params, dict):
+                if "coord_format" not in keypoint_params:
+                    raise ValueError("keypoint_params must include coord_format, for example 'xy'")
                 k_params = KeypointParams(**keypoint_params)
             elif isinstance(keypoint_params, KeypointParams):
                 k_params = keypoint_params
             else:
-                msg = "unknown format of keypoint_params, please use `dict` or `KeypointParams`"
-                raise ValueError(msg)
+                raise TypeError(
+                    f"keypoint_params must be a dict or KeypointParams, got {type(keypoint_params).__name__}",
+                )
             self.processors["keypoints"] = KeypointsProcessor(k_params)
 
     def _maybe_send_telemetry(self, telemetry: bool) -> None:
@@ -2056,10 +2104,9 @@ class Compose(BaseCompose, HubMixin):
                 transform.disable_check_args_private()
 
     def disable_check_args_private(self) -> None:
-        """Disable argument checking. Sets is_check_args=False, strict=False, main_compose=False.
+        """Disable strict argument checking and root preprocessing for configured nested compositions.
         Called for nested Compose so only top-level validates.
         """
-        self.is_check_args = False
         self.strict = False
         self.main_compose = False
 
@@ -2083,12 +2130,12 @@ class Compose(BaseCompose, HubMixin):
             dict[str, Any]: Dictionary with transformed data.
 
         Raises:
-            KeyError: If positional arguments are provided.
+            TypeError: If positional arguments are provided.
 
         """
         if args:
             msg = "You have to pass data to augmentations as named arguments, for example: aug(image=image)"
-            raise KeyError(msg)
+            raise TypeError(msg)
         return self._execute_root(
             data,
             force_apply=force_apply,
@@ -2103,23 +2150,27 @@ class Compose(BaseCompose, HubMixin):
         invocation_seed: int | None,
         trace: _ExecutionTrace | None = None,
     ) -> dict[str, Any]:
-        """Execute a public Compose call through one root boundary so normal and traced requests share
-        validation, randomness, graph dispatch, and finalization.
-
-        Ordinary and traced calls share validation, probability, preprocessing,
-        dispatch, postprocessing, and tensor restoration.  Tracing only attaches an
-        observer to this route; it does not own a second interpreter.
-        """
+        """Run the shared root boundary for ordinary and traced calls."""
         # Public calls never expose a completed observation from an earlier sample,
         # including when input validation fails before an invocation can open.
         clear_completed_observation()
         tensor_boundary_state = self._prepare_root_input(data)
-        if not (force_apply or self.p > 0.0):
-            clear_completed_observation()
+        if self.save_applied_params and self.main_compose:
+            data["applied_transforms"] = []
+        may_skip = not force_apply and self.p < 1.0
+        preprocess_before_draw = (
+            may_skip
+            and self.main_compose
+            and (
+                bool(self._configured_processors)
+                or self._instance_binding is not None
+                or self._frame_binding == ("images", "frame_annotations")
+            )
+        )
+        if may_skip and self.p == 0.0 and not preprocess_before_draw:
             if trace is not None:
                 self._emit_skipped_trace_subtree(trace, self, (), _TRACE_STATUS_SKIPPED_PROBABILITY)
             return data
-        active_invocation = get_current_invocation()
         if (
             trace is None
             and type(self) is Compose
@@ -2129,15 +2180,16 @@ class Compose(BaseCompose, HubMixin):
             and "applied_transforms" not in data
             and not self._configured_processors
             and not self._instance_binding
-            and active_invocation is None
-            and self._can_execute_unactivated_ordinary_basic(data, tensor_boundary_state)
+            and get_current_invocation() is None
+            and not tensor_boundary_state.has_tensor_inputs
+            and not tensor_boundary_state.needs_numpy_channel_axis
         ):
             context = self._new_invocation_context(
                 collect_applied=False,
                 invocation_seed=invocation_seed,
-                prime_py_random=not force_apply and self.p < 1.0,
+                prime_py_random=may_skip,
             )
-            context.has_tensor_inputs = tensor_boundary_state.has_tensor_inputs
+            context.has_tensor_inputs = False
             if not self._should_apply_in_context(context, force_apply=force_apply):
                 return data
             return self._apply_unactivated_compiled_transforms(data, context)
@@ -2145,18 +2197,44 @@ class Compose(BaseCompose, HubMixin):
         context = self._new_invocation_context(
             collect_applied=True if trace is not None else None,
             invocation_seed=invocation_seed,
-            prime_py_random=not force_apply and self.p < 1.0,
+            prime_py_random=may_skip and not preprocess_before_draw,
         )
         context.has_tensor_inputs = tensor_boundary_state.has_tensor_inputs
         context.trace_session = trace
         with context:
-            if not self._should_apply_in_context(context, force_apply=force_apply):
-                if trace is not None:
-                    self._emit_trace_skip(trace, _TRACE_STATUS_SKIPPED_PROBABILITY)
-                return data
-            result = self._apply_prepared_transforms(data, tensor_boundary_state, context)
-            self._emit_trace_composition(trace)
-            return result
+            return self._execute_with_preprocessing(
+                data,
+                tensor_boundary_state,
+                context,
+                force_apply=force_apply,
+                preprocess_before_draw=preprocess_before_draw,
+            )
+
+    def _execute_with_preprocessing(
+        self,
+        data: dict[str, Any],
+        tensor_boundary_state: _TensorBoundaryState,
+        invocation: InvocationContext,
+        *,
+        force_apply: bool,
+        preprocess_before_draw: bool,
+    ) -> dict[str, Any]:
+        prepared_data = data
+        if preprocess_before_draw:
+            # A skipped call returns the original targets, including unconverted annotations.
+            prepared_data = data.copy()
+            self.preprocess(prepared_data, tensor_boundary_state)
+        if not self._should_apply_in_context(invocation, force_apply=force_apply):
+            self._emit_trace_skip(invocation.trace_session, _TRACE_STATUS_SKIPPED_PROBABILITY)
+            return data
+        if not preprocess_before_draw:
+            self.preprocess(prepared_data, tensor_boundary_state)
+        self._ensure_contiguous(prepared_data)
+        result = self.postprocess(self._apply_children(prepared_data, invocation))
+        if tensor_boundary_state.annotation_targets:
+            self._restore_tensor_annotations(result, tensor_boundary_state)
+        self._emit_trace_composition(invocation.trace_session)
+        return result
 
     def apply_in_invocation(
         self,
@@ -2175,7 +2253,7 @@ class Compose(BaseCompose, HubMixin):
         """
         if args:
             msg = "You have to pass data to augmentations as named arguments, for example: aug(image=image)"
-            raise KeyError(msg)
+            raise TypeError(msg)
         self.validate_nested_boundary(data, invocation)
         trace = invocation.trace_session
         if not self._should_apply_in_context(invocation, force_apply=force_apply):
@@ -2183,19 +2261,6 @@ class Compose(BaseCompose, HubMixin):
             return data
         result = self._apply_children(data, invocation)
         self._emit_trace_composition(trace)
-        return result
-
-    def _apply_prepared_transforms(
-        self,
-        data: dict[str, Any],
-        tensor_boundary_state: _TensorBoundaryState,
-        invocation: InvocationContext | None,
-    ) -> dict[str, Any]:
-        """Execute a validated root graph through its one public boundary."""
-        self.preprocess(data, tensor_boundary_state)
-        result = self.postprocess(self._apply_children(data, invocation))
-        if tensor_boundary_state.annotation_targets:
-            self._restore_tensor_annotations(result, tensor_boundary_state)
         return result
 
     def _apply_unactivated_compiled_transforms(
@@ -2211,7 +2276,6 @@ class Compose(BaseCompose, HubMixin):
         and containers receive `invocation` directly, so activating it would only
         add two `ContextVar` operations and make repeated training slower.
         """
-        self._validate_data(data)
         self._ensure_contiguous(data)
         if self._unactivated_basic_children is not None:
             for transform in self._unactivated_basic_children:
@@ -2227,41 +2291,6 @@ class Compose(BaseCompose, HubMixin):
             return True
         return self.p > 0.0 and context.py_random.random() < self.p
 
-    def _can_execute_unactivated_ordinary_basic(
-        self,
-        data: dict[str, Any],
-        tensor_boundary_state: _TensorBoundaryState,
-    ) -> bool:
-        """Recognize a compiled native loop that needs an invocation but no ContextVar, selecting it only when
-        repair, processors, tracing, and observation are absent.
-
-        The loop passes its invocation to every built-in edge and sampler explicitly.
-        Its only root-local state would be grayscale repair, Tensor validation,
-        annotation processors, or shape validation, all of which select another
-        executor.
-        """
-        if not self._unactivated_compiled_graph or tensor_boundary_state.has_tensor_inputs:
-            return False
-
-        shape_checked_inputs = 0
-        for key, value in data.items():
-            canonical_key = self._additional_targets.get(key, key)
-            if not isinstance(value, np.ndarray):
-                continue
-
-            expected_ndim = self._GRAYSCALE_KEYS.get(canonical_key)
-            if expected_ndim is not None and value.ndim == expected_ndim:
-                return False
-            if not self.is_check_shapes or canonical_key not in self._GRAYSCALE_KEYS or value.size == 0:
-                continue
-
-            if expected_ndim is not None and expected_ndim >= 3 and value.ndim != expected_ndim + 1:
-                return False
-            shape_checked_inputs += 1
-            if shape_checked_inputs > 1:
-                return False
-        return True
-
     def validate_nested_boundary(self, data: dict[str, Any], invocation: InvocationContext | None = None) -> None:
         """Runs nested policy validation without a second boundary, preserving root Tensor conversion and preprocessing
         while checking aliases and shape consistency.
@@ -2269,8 +2298,7 @@ class Compose(BaseCompose, HubMixin):
         if self._additional_targets:
             self._validate_additional_target_sources(data)
         if self.is_check_shapes:
-            shapes, volume_shapes = self._gather_shapes_from_data(data, invocation)
-            self._check_shape_consistency(shapes, volume_shapes)
+            self._validate_spatial_inputs(data, invocation)
 
     def run_with_trace(
         self,
@@ -2322,9 +2350,18 @@ class Compose(BaseCompose, HubMixin):
         return invocation.compose_state(self)
 
     def _prepare_root_input(self, data: dict[str, Any]) -> _TensorBoundaryState:
-        """Validates one public input boundary and initializes observation storage before sampling, so invalid target
-        combinations fail before random state advances.
-        """
+        """Validate inputs and identify required conversions before drawing randomness."""
+        if (
+            len(data) == 1
+            and self._frame_binding is None
+            and not self._additional_targets
+            and isinstance(image := data.get("image"), np.ndarray)
+        ):
+            if image.ndim == 3:
+                return _EMPTY_TENSOR_BOUNDARY_STATE
+            if image.ndim == 2:
+                return _NUMPY_CHANNEL_AXIS_BOUNDARY_STATE
+
         if self._additional_targets:
             self._validate_additional_target_sources(data)
         has_frame_tensors = (
@@ -2333,8 +2370,10 @@ class Compose(BaseCompose, HubMixin):
             else False
         )
         tensor_boundary_state = self._validate_tensor_inputs(data, has_frame_tensors)
-        if self.save_applied_params and self.main_compose:
-            data["applied_transforms"] = []
+        self._validate_data_keys(data)
+        needs_channel_axis = self._validate_spatial_inputs(data)
+        if needs_channel_axis and not tensor_boundary_state.has_tensor_inputs:
+            return _NUMPY_CHANNEL_AXIS_BOUNDARY_STATE
         return tensor_boundary_state
 
     def _validate_frame_binding_data(
@@ -2468,7 +2507,7 @@ class Compose(BaseCompose, HubMixin):
         input boundary for each invocation.
         """
         for alias, target in self._additional_targets.items():
-            if target in _SPATIAL_ADDITIONAL_TARGETS and data.get(alias) is not None and data.get(target) is None:
+            if target in _SPATIAL_AXES and data.get(alias) is not None and data.get(target) is None:
                 msg = f"Additional target '{alias}' requires canonical target '{target}' to be present."
                 raise ValueError(msg)
 
@@ -2575,7 +2614,7 @@ class Compose(BaseCompose, HubMixin):
         register_additional_transforms()
         transforms = []
         for class_name, config in applied_transforms:
-            cls = SERIALIZABLE_REGISTRY[class_name]
+            cls = resolve_serialized_class(class_name, "applied_transforms")
 
             replay_config = _normalize_config_for_replay(cls, config)
             replay_config["p"] = 1.0
@@ -2588,32 +2627,21 @@ class Compose(BaseCompose, HubMixin):
         return Compose(transforms, p=1.0, **compose_kwargs)
 
     def preprocess(self, data: Any, tensor_boundary_state: _TensorBoundaryState | None = None) -> None:
-        """Preprocess input data before applying transforms. Validates shapes (if
-        is_check_shapes), validates data keys (if strict), ensures contiguous, adds channels.
-        """
+        """Prepare validated targets for dispatch and expose any bound annotations."""
         invocation = get_current_invocation()
         if self.main_compose and self._frame_binding == ("images", "frame_annotations"):
-            if self.strict:
-                self._validate_data(data)
             if data.get("frame_annotations") is not None:
                 self._flatten_frame_annotations(data)
+                self._validate_spatial_inputs(data, invocation)
         elif self._instance_binding and "instances" in data and self.main_compose:
             self._unpack_instances(data)
+            self._validate_spatial_inputs(data, invocation)
         elif self._instance_binding and self.main_compose and isinstance(data, dict):
             self._require_instance_binding_data_present(data)
 
-        # Always validate shapes if is_check_shapes is True, regardless of strict mode
-        if self.is_check_shapes:
-            shapes, volume_shapes = self._gather_shapes_from_data(data, invocation)
-            self._check_shape_consistency(shapes, volume_shapes)
-
-        # Do strict validation only if enabled
-        if self.strict and self._frame_binding != ("images", "frame_annotations"):
-            self._validate_data(data)
-
         # Add channel dimensions first, before processors run
         tensor_boundary_state = tensor_boundary_state or _EMPTY_TENSOR_BOUNDARY_STATE
-        self._preprocess_arrays(data)
+        self._add_grayscale_channels(data)
         if (
             self.main_compose
             and self._frame_binding == ("images", "masks")
@@ -2680,14 +2708,15 @@ class Compose(BaseCompose, HubMixin):
             if canonical in {"mask", "masks"}:
                 self._flatten_frame_masks(data, state, name, canonical, entries)
             elif canonical in {"bboxes", "keypoints"}:
+                processor = self.processors[canonical]
                 arrays = [
-                    tensor_to_numpy_annotation(value, canonical)
-                    if isinstance(value, torch.Tensor)
-                    else np.asarray(value, dtype=np.float32)
-                    for _, value in entries
+                    processor.prepare_coordinates(
+                        f"frame_annotations[{index}].{name}",
+                        tensor_to_numpy_annotation(value, canonical) if isinstance(value, torch.Tensor) else value,
+                    ).astype(np.float32, copy=False)
+                    for index, value in entries
                 ]
                 nonempty = [array for array in arrays if len(array)]
-                processor = self.processors[canonical]
                 data[name] = (
                     np.concatenate(nonempty)
                     if nonempty
@@ -2697,12 +2726,8 @@ class Compose(BaseCompose, HubMixin):
                         else processor.params.make_empty_keypoints_array()
                     )
                 )
-                row_owners = np.concatenate(
-                    [
-                        np.full(len(array), index, dtype=np.intp)
-                        for (index, _), array in zip(entries, arrays, strict=True)
-                    ]
-                )
+                frame_indices = np.array([index for index, _ in entries], dtype=np.intp)
+                row_owners = np.repeat(frame_indices, [len(array) for array in arrays])
                 data[name] = self._attach_frame_ids(data[name], row_owners)
                 state.frame_columns[name] = -len(processor.params.label_fields or []) - 1
                 if processor.params.label_fields:
@@ -2765,117 +2790,63 @@ class Compose(BaseCompose, HubMixin):
             if isinstance(value, torch.Tensor):
                 data[data_name] = tensor_to_numpy_annotation(value, canonical_name)
 
-    def _gather_shapes_from_data(
+    def _validate_spatial_inputs(
         self,
         data: dict[str, Any],
         invocation: InvocationContext | None = None,
-    ) -> tuple[list[tuple[int, ...]], list[tuple[int, ...]]]:
-        """Gather shapes from data for validation. Collects (H,W) or (D,H,W) from
-        image, mask, images, volume. For preprocess shape check.
-
-        Args:
-            data (dict[str, Any]): Data dictionary containing various arrays
-            invocation (InvocationContext | None): Explicit call state for flattened target routes.
-
-        Returns:
-            tuple[list[tuple[int, ...]], list[tuple[int, ...]]]: Tuple of (2D shapes list, 3D shapes list).
-
-        """
-        shapes: list[tuple[int, ...]] = []  # For H,W checks
-        volume_shapes: list[tuple[int, ...]] = []  # For D,H,W checks
-
+    ) -> bool:
+        """Check target containers and ranks, then compare spatial metadata when enabled."""
+        shapes: list[tuple[str, tuple[int, ...]]] = []
+        volume_shapes: list[tuple[str, tuple[int, ...]]] = []
         routes = {} if invocation is None or invocation.frame_state is None else invocation.frame_state.routes
-
-        # List of targets to check shapes for
-        shape_check_targets = {"image", "mask", "images", "volume", "volumes", "mask3d", "masks3d", "masks"}
-
-        for data_name, data_value in data.items():
-            # Resolve aliases via additional_targets so e.g. {'custom_image_key': 'image'}
-            # gets the same shape-consistency check as the canonical 'image' key.
-            canonical = routes.get(data_name, self._additional_targets.get(data_name, data_name))
-            if canonical not in shape_check_targets:
+        needs_channel_axis = False
+        for name, value in data.items():
+            canonical = routes.get(name, self._additional_targets.get(name, name))
+            optional_rank = _OPTIONAL_CHANNEL_RANKS.get(canonical)
+            if optional_rank is None:
                 continue
-
-            # Skip empty data
-            if data_value is None or not isinstance(data_value, (np.ndarray, torch.Tensor)):
+            if value is None and not self.strict and canonical in MASK_KEYS:
                 continue
+            if isinstance(value, np.ndarray):
+                needs_channel_axis |= value.ndim == optional_rank
+                shape = self._numpy_spatial_shape(name, canonical, value, optional_rank)
+            elif isinstance(value, torch.Tensor):
+                shape = tuple(value.shape[-3:]) if self.is_check_shapes and value.numel() else ()
+            else:
+                raise TypeError(f"{name} must be a NumPy array or torch.Tensor, got {type(value).__name__}")
+            if shape:
+                shapes.append((name, shape[-2:]))
+                if canonical in _VOLUMETRIC_TARGETS:
+                    volume_shapes.append((name, shape[-3:]))
 
-            if isinstance(data_value, np.ndarray):
-                if data_value.size == 0:
-                    continue
-            elif data_value.numel() == 0:
-                continue
+        self._check_shape_consistency(shapes, volume_shapes)
+        return needs_channel_axis
 
-            self._process_data_shape(canonical, data_value, shapes, volume_shapes)
-
-        return shapes, volume_shapes
-
-    def _process_data_shape(
+    def _numpy_spatial_shape(
         self,
-        data_name: str,
-        data_value: np.ndarray | torch.Tensor,
-        shapes: list[tuple[int, ...]],
-        volume_shapes: list[tuple[int, ...]],
-    ) -> None:
-        """Process shape of a single data item. Appends (H,W) or (D,H,W) to shapes or
-        volume_shapes depending on data_name (image, mask, images, volume, etc.).
-        """
-        if isinstance(data_value, torch.Tensor):
-            self._process_tensor_data_shape(data_name, data_value, shapes, volume_shapes)
-            return
+        name: str,
+        canonical: str,
+        value: np.ndarray,
+        optional_rank: int,
+    ) -> tuple[int, ...]:
+        if not optional_rank <= value.ndim <= optional_rank + 1:
+            if canonical in {"masks", "masks3d"} and value.shape == (0,):
+                return ()
+            dims = ", ".join(_SPATIAL_AXES[canonical])
+            raise TypeError(f"{name} must have shape ({dims}) or ({dims}, C), got {value.shape}")
+        return value.shape[:optional_rank] if self.is_check_shapes and value.size else ()
 
-        # Handle 2D single data
-        if data_name in {"image", "mask"}:
-            shapes.append(data_value.shape[:2])  # H,W
-
-        # Handle 2D batch data
-        elif data_name in {"images", "masks"}:
-            if data_value.ndim not in {3, 4}:  # (N,H,W) or (N,H,W,C)
-                raise TypeError(f"{data_name} must be 3D or 4D array")
-            shapes.append(data_value.shape[1:3])  # H,W from (N,H,W)
-
-        # Handle 3D single data
-        elif data_name in {"volume", "mask3d"}:
-            if data_value.ndim not in {3, 4}:  # (D,H,W) or (D,H,W,C)
-                raise TypeError(f"{data_name} must be 3D or 4D array")
-            shapes.append(data_value.shape[1:3])  # H,W
-            volume_shapes.append(get_volume_shape(data_value))
-        elif data_name in {"volumes", "masks3d"}:
-            if data_value.ndim not in {4, 5}:  # (N,D,H,W) or (N,D,H,W,C)
-                raise TypeError(f"{data_name} must be 4D or 5D array")
-            shapes.append(data_value.shape[2:4])  # H,W from (N,D,H,W)
-            volume_shapes.append(get_volumes_shape(data_value))
-
-    @staticmethod
-    def _process_tensor_data_shape(
-        data_name: str,
-        data_value: torch.Tensor,
-        shapes: list[tuple[int, ...]],
-        volume_shapes: list[tuple[int, ...]],
-    ) -> None:
-        """Append shape metadata for a validated Tensor target without converting its public
-        channel-first image or channel-free mask layout to a NumPy representation.
-        """
-        if data_name in {"image", "images", "mask", "masks", "volume", "volumes", "mask3d", "masks3d"}:
-            shapes.append(tuple(data_value.shape[-2:]))
-        if data_name in {"volume", "mask3d"}:
-            volume_shapes.append(get_volume_shape(data_value))
-        elif data_name in {"volumes", "masks3d"}:
-            volume_shapes.append(get_volumes_shape(data_value))
-
-    def _validate_data(self, data: dict[str, Any]) -> None:
-        """Validate input data keys and arguments. When strict, checks every key is in
-        _available_keys and runs _check_args. Raises ValueError on invalid key.
-        """
+    def _validate_data_keys(self, data: dict[str, Any]) -> None:
         if not self.strict:
             return
-
-        for data_name in data:
-            if not self._is_valid_key(data_name):
-                raise ValueError(f"Key {data_name} is not in available keys.")
-
-        if self.is_check_args:
-            self._check_args(**data)
+        for name in data:
+            if not self._is_valid_key(name):
+                raise ValueError(f"Key {name} is not in available keys.")
+            canonical = self._additional_targets.get(name, name)
+            if canonical == "bboxes" and canonical not in self._configured_processors:
+                raise ValueError("bbox_params must be specified for bbox transformations")
+            if canonical == "keypoints" and canonical not in self._configured_processors:
+                raise ValueError("keypoint_params must be specified for keypoint transformations")
 
     def _is_valid_key(self, key: str) -> bool:
         """Check if the key is valid for processing. True if key is in _available_keys,
@@ -2910,32 +2881,10 @@ class Compose(BaseCompose, HubMixin):
         for processor in active:
             processor.preprocess(data)
 
-    def _preprocess_arrays(self, data: dict[str, Any]) -> None:
-        """Ensure arrays are contiguous and add channel dims to grayscale data.
-        Calls _ensure_contiguous then _add_grayscale_channels. Call during preprocess.
-        """
-        self._ensure_contiguous(data)
-        self._add_grayscale_channels(data)
-
     def _ensure_contiguous(self, data: dict[str, Any]) -> None:
-        """Ensure all numpy arrays are contiguous. Replaces non-C-contiguous arrays in data
-        with np.ascontiguousarray copies. Called by _preprocess_arrays.
-        """
         for key, value in data.items():
             if isinstance(value, np.ndarray) and not value.flags["C_CONTIGUOUS"]:
                 data[key] = np.ascontiguousarray(value)
-
-    # Maps canonical grayscale-bearing target -> expected ndim *without* the channel dim.
-    _GRAYSCALE_KEYS: ClassVar[dict[str, int]] = {
-        "image": 2,  # (H, W) => (H, W, 1)
-        "images": 3,  # (N, H, W) => (N, H, W, 1)
-        "mask": 2,  # (H, W) => (H, W, 1)
-        "masks": 3,  # (N, H, W) => (N, H, W, 1)
-        "volume": 3,  # (D, H, W) => (D, H, W, 1)
-        "mask3d": 3,  # (D, H, W) => (D, H, W, 1)
-        "volumes": 4,  # (N, D, H, W) => (N, D, H, W, 1)
-        "masks3d": 4,  # (N, D, H, W) => (N, D, H, W, 1)
-    }
 
     def _add_grayscale_channels(
         self,
@@ -2945,7 +2894,7 @@ class Compose(BaseCompose, HubMixin):
         """Normalize optional-channel public targets before transform dispatch."""
         for key, value in data.items():
             canonical = self._additional_targets.get(key, key)
-            expected_ndim = self._GRAYSCALE_KEYS.get(canonical)
+            expected_ndim = _OPTIONAL_CHANNEL_RANKS.get(canonical)
             if expected_ndim is None:
                 continue
             if not isinstance(value, (np.ndarray, torch.Tensor)) or value.ndim != expected_ndim:
@@ -3793,101 +3742,20 @@ class Compose(BaseCompose, HubMixin):
         return super().get_dict_with_id()
 
     @staticmethod
-    def _check_single_data(data_name: str, data: Any) -> tuple[int, int]:
-        if not isinstance(data, np.ndarray):
-            raise TypeError(f"{data_name} must be numpy array type")
-        return data.shape[:2]
-
-    @staticmethod
-    def _check_multi_data(data_name: str, data: Any) -> tuple[int, int]:
-        """Check multi-item data format and return shape. Validates (N,H,W) or (N,H,W,C);
-        returns (H,W) of first item. Raises TypeError if not ndarray or wrong ndim.
-
-        Args:
-            data_name (str): Name of the data field being checked
-            data (Any): Input numpy array of shape (N, H, W, C) or (N, H, W)
-
-        Returns:
-            tuple[int, int]: (height, width) of the first item
-        Raises:
-            TypeError: If data format is invalid
-
-        """
-        if not isinstance(data, np.ndarray):
-            raise TypeError(f"{data_name} must be numpy array type")
-        if data.ndim not in {3, 4}:  # (N,H,W) or (N,H,W,C)
-            raise TypeError(f"{data_name} must be 3D or 4D array")
-        return data.shape[1:3]  # Return (H,W)
-
-    @staticmethod
-    def _check_bbox_keypoint_params(internal_data_name: str, processors: dict[str, Any]) -> None:
-        if internal_data_name in CHECK_BBOX_PARAM and processors.get("bboxes") is None:
-            raise ValueError("bbox_params must be specified for bbox transformations")
-        if internal_data_name in CHECK_KEYPOINTS_PARAM and processors.get("keypoints") is None:
-            raise ValueError("keypoints_params must be specified for keypoint transformations")
-
-    @staticmethod
-    def _check_shapes(shapes: list[tuple[int, ...]], is_check_shapes: bool) -> None:
-        if is_check_shapes and shapes and shapes.count(shapes[0]) != len(shapes):
-            raise ValueError(
-                "Height and Width of image, mask or masks should be equal. You can disable shapes check "
-                "by setting a parameter is_check_shapes=False of Compose class (do it only if you are sure "
-                "about your data consistency).",
-            )
-
-    def _check_args(self, **kwargs: Any) -> None:
-        shapes: list[tuple[int, ...]] = []  # For H,W checks
-        volume_shapes: list[tuple[int, ...]] = []  # For D,H,W checks
-
-        for data_name, data in kwargs.items():
-            internal_name = self._additional_targets.get(data_name, data_name)
-
-            # Always check bbox/keypoint params for all data items
-            self._check_bbox_keypoint_params(internal_name, self.processors)
-
-            # Process and validate the data
-            self._check_and_process_single_arg(data_name, internal_name, data, shapes, volume_shapes)
-
-        self._check_shape_consistency(shapes, volume_shapes)
-
-    def _check_and_process_single_arg(
-        self,
-        data_name: str,
-        internal_name: str,
-        data: Any,
-        shapes: list[tuple[int, ...]],
-        volume_shapes: list[tuple[int, ...]],
+    def _check_shape_consistency(
+        shapes: list[tuple[str, tuple[int, ...]]],
+        volume_shapes: list[tuple[str, tuple[int, ...]]],
     ) -> None:
-        """Check and process a single argument from _check_args. Validates type and shape
-        for image, mask, images, volume, etc.; appends to shapes/volume_shapes.
-        """
-        shape_check_targets = {"image", "mask", "images", "volume", "volumes", "mask3d", "masks3d", "masks"}
-        if internal_name not in shape_check_targets:
-            return
-
-        if not isinstance(data, (np.ndarray, torch.Tensor)):
-            raise TypeError(f"{data_name} must be a NumPy array or torch.Tensor")
-
-        if isinstance(data, np.ndarray):
-            if data.size == 0:
-                return
-        elif data.numel() == 0:
-            return
-
-        # Process the shape based on data type
-        self._process_data_shape(internal_name, data, shapes, volume_shapes)
-
-    def _check_shape_consistency(self, shapes: list[tuple[int, ...]], volume_shapes: list[tuple[int, ...]]) -> None:
-        """Check consistency of shapes. When is_check_shapes, ensures all 2D shapes match
-        and all 3D shapes match. Raises ValueError if inconsistent.
-        """
-        self._check_shapes(shapes, self.is_check_shapes)
-
-        if self.is_check_shapes and volume_shapes and volume_shapes.count(volume_shapes[0]) != len(volume_shapes):
-            raise ValueError(
-                "Depth, Height and Width of volume and mask3d should be equal. "
-                "You can disable shapes check by setting is_check_shapes=False.",
-            )
+        for targets, dimensions in ((shapes, "Height and Width"), (volume_shapes, "Depth, Height and Width")):
+            if len(targets) < 2:
+                continue
+            first_name, first_shape = targets[0]
+            for name, shape in targets[1:]:
+                if shape != first_shape:
+                    raise ValueError(
+                        f"{dimensions} of {first_name} {first_shape} and {name} {shape} must match. "
+                        "Align the input targets or set is_check_shapes=False for intentionally different shapes.",
+                    )
 
 
 class OneOf(BaseCompose):
@@ -3906,6 +3774,8 @@ class OneOf(BaseCompose):
         super().__init__(transforms=transforms, p=p)
         transforms_ps = [t.p for t in self.transforms]
         s = sum(transforms_ps)
+        if transforms_ps and s == 0:
+            raise ValueError("OneOf requires at least one transform with p > 0, got all zero weights")
         self.transforms_ps = [t / s for t in transforms_ps]
 
     def __call__(self, *args: Any, force_apply: bool = False, **data: Any) -> dict[str, Any]:
@@ -3921,7 +3791,7 @@ class OneOf(BaseCompose):
             dict[str, Any]: Dictionary with transformed data.
 
         Raises:
-            KeyError: If positional arguments are provided.
+            TypeError: If positional arguments are provided.
 
         """
         invocation = get_current_invocation()
@@ -4209,8 +4079,14 @@ class OneOrOther(BaseCompose):
                 raise ValueError(msg)
             transforms = [first, second]
         super().__init__(transforms=transforms, p=p)
-        if len(self.transforms) != NUM_ONEOF_TRANSFORMS:
-            warnings.warn("Length of transforms is not equal to 2.", stacklevel=2)
+        if len(self.transforms) == 1:
+            warnings.warn(
+                "OneOrOther received one transform, so it always selects that transform. "
+                "Supply two branches or use Compose with a single transform.",
+                stacklevel=2,
+            )
+        elif len(self.transforms) != NUM_ONEOF_TRANSFORMS:
+            raise ValueError(f"OneOrOther requires exactly two transforms, got {len(self.transforms)}")
 
     def __call__(self, *args: Any, force_apply: bool = False, **data: Any) -> dict[str, Any]:
         """Apply one or another transform to the input data. With probability p applies
@@ -4656,16 +4532,23 @@ class ReplayCompose(Compose):
             lambda_transforms (dict[str, Any] | None): Optional dict of Lambda instances keyed by transform name.
 
         """
+        require_serialized_fields(transform_dict, "replay", "__class_fullname__", "applied", "params")
         applied = transform_dict["applied"]
         params = transform_dict["params"]
+        if not isinstance(applied, bool):
+            raise TypeError(f"replay.applied must be a bool, got {type(applied).__name__}")
+        if params is not None and not isinstance(params, dict):
+            raise TypeError(f"replay.params must be a dict or None, got {type(params).__name__}")
         lmbd = instantiate_nonserializable(transform_dict, lambda_transforms)
-        if lmbd:
+        if lmbd is not None:
             transform = lmbd
         else:
             name = transform_dict["__class_fullname__"]
             args = {k: v for k, v in transform_dict.items() if k not in ["__class_fullname__", "applied", "params"]}
-            cls = SERIALIZABLE_REGISTRY[name]
+            cls = resolve_serialized_class(name, "replay")
             if "transforms" in args:
+                if not isinstance(args["transforms"], (list, tuple)):
+                    raise TypeError("replay.transforms must be a list or tuple of serialized transforms")
                 args["transforms"] = [
                     ReplayCompose._restore_for_replay(t, lambda_transforms=lambda_transforms)
                     for t in args["transforms"]
@@ -4675,8 +4558,10 @@ class ReplayCompose(Compose):
         if isinstance(transform, ReplayCompose) and params is not None:
             transform._replay_label_state = params.get("label_metadata")
         transform = cast("BasicTransform", transform)
-        if isinstance(transform, BasicTransform):
+        if isinstance(transform, BasicTransform) and params is not None:
             transform.params = params
+        elif isinstance(transform, BasicTransform) and applied:
+            raise ValueError("replay.params is required for an applied transform. Use the original replay record.")
         transform.replay_mode = True
         transform.applied_in_replay = applied
         return transform

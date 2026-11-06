@@ -1,13 +1,7 @@
-"""Module containing validation mechanisms for transform parameters.
-This module provides a metaclass that enables parameter validation for transforms using
-Pydantic models. It intercepts the initialization of transform classes to validate their
-parameters against schema definitions, raising appropriate errors for invalid values and
-providing type conversion capabilities. This validation layer helps prevent runtime errors
-by catching configuration issues at initialization time.
-"""
+"""Transform constructor validation."""
 
 from collections.abc import Callable
-from inspect import Parameter, signature
+from inspect import Signature, signature
 from typing import Any
 from warnings import warn
 
@@ -15,81 +9,42 @@ from pydantic import BaseModel, ValidationError
 
 
 class ValidatedTransformMeta(type):
-    """Metaclass that validates transform parameters during instantiation using Pydantic.
-    Wraps __init__ to enforce InitSchema before object creation.
-
-    This metaclass enables automatic validation of transform parameters using Pydantic models,
-    ensuring proper typing and constraints are enforced before object creation.
-
-    Args:
-        original_init (Callable[..., Any]): Original __init__ method of the class.
-        args (tuple[Any, ...]): Positional arguments passed to the __init__ method.
-        kwargs (dict[str, Any]): Keyword arguments passed to the __init__ method.
-
-    """
+    """Validate constructor arguments with the transform's InitSchema before calling __init__."""
 
     @staticmethod
     def _process_init_parameters(
-        original_init: Callable[..., Any],
+        init_signature: Signature,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
     ) -> tuple[dict[str, Any], list[str], bool]:
-        init_params = signature(original_init).parameters
-        param_names = list(init_params.keys())[1:]  # Exclude 'self'
-        # Note: Cannot use strict=True here because args may be shorter than param_names (defaults)
-        full_kwargs: dict[str, Any] = dict(zip(param_names, args)) | kwargs  # noqa: B905
-
-        strict = full_kwargs.pop("strict", False)
-
-        # Add default values if not provided
-        for parameter_name, parameter in init_params.items():
-            if (
-                parameter_name != "self"
-                and parameter_name not in full_kwargs
-                and parameter.default is not Parameter.empty
-            ):
-                full_kwargs[parameter_name] = parameter.default
-
-        return full_kwargs, param_names, strict
+        param_names = list(init_signature.parameters)[1:]
+        strict = kwargs.get("strict", False)
+        if not isinstance(strict, bool):
+            raise TypeError(f"strict must be a bool, got {type(strict).__name__}")
+        known_kwargs = {key: value for key, value in kwargs.items() if key in param_names and key != "strict"}
+        try:
+            bound = init_signature.bind_partial(None, *args, **known_kwargs)
+        except TypeError as error:
+            raise TypeError(f"Invalid transform arguments ({error}). Check the constructor signature.") from error
+        bound.apply_defaults()
+        arguments = {key: value for key, value in bound.arguments.items() if key in param_names and key != "strict"}
+        return arguments, param_names, strict
 
     @staticmethod
     def _validate_parameters(
         schema_cls: type[BaseModel],
         full_kwargs: dict[str, Any],
-        param_names: list[str],
         strict: bool,
     ) -> dict[str, Any]:
         try:
-            # Include strict parameter for schema validation
-            schema_kwargs = {k: v for k, v in full_kwargs.items() if k in param_names}
-            schema_kwargs["strict"] = strict
-            config = schema_cls(**schema_kwargs)
-            validated_kwargs = config.model_dump()
-            validated_kwargs.pop("strict", None)
-        except ValidationError as e:
-            raise ValueError(str(e)) from e
-        except Exception as e:
-            if strict:
-                raise ValueError(str(e)) from e
-            warn(str(e), stacklevel=2)
-            return {}
-        else:
-            return validated_kwargs
-
-    @staticmethod
-    def _get_default_values(init_params: dict[str, Parameter]) -> dict[str, Any]:
-        validated_kwargs = {}
-        for param_name, param in init_params.items():
-            if param_name in {"self", "strict"}:
-                continue
-            if param.default is not Parameter.empty:
-                validated_kwargs[param_name] = param.default
-        return validated_kwargs
+            config = schema_cls(**full_kwargs, strict=strict)
+        except ValidationError as error:
+            errors = error.errors(include_url=False, include_input=False, include_context=False)
+            error_type = TypeError if all(item["type"].endswith("_type") for item in errors) else ValueError
+            raise error_type(str(error)) from error
+        return config.model_dump(exclude={"strict"})
 
     def __new__(cls: type[Any], name: str, bases: tuple[type, ...], dct: dict[str, Any]) -> type[Any]:
-        """Build new class; validate InitSchema parameters at class instantiation and wrap
-        __init__ with validation. Transform base classes use this metaclass.
-        """
         if "InitSchema" in dct and issubclass(dct["InitSchema"], BaseModel):
             original_init: Callable[..., Any] | None = dct.get("__init__")
             if original_init is None:
@@ -99,46 +54,20 @@ class ValidatedTransformMeta(type):
             original_sig = signature(original_init)
 
             def custom_init(self: Any, *args: Any, **kwargs: Any) -> None:
-                """Wrapped __init__ that validates parameters against InitSchema (Pydantic);
-                then calls original __init__. strict controls ValidationError handling.
-
-                This method wraps the original __init__ to add parameter validation
-                using the InitSchema Pydantic model. It processes arguments, validates
-                them against the schema, and handles invalid arguments based on the
-                strict mode setting.
-
-                Args:
-                    self (Any): The instance being initialized.
-                    *args (Any): Positional arguments passed to __init__.
-                    **kwargs (Any): Keyword arguments passed to __init__, including optional
-                        'strict' parameter for validation mode.
-
-                Raises:
-                    ValueError: If parameters fail validation or if invalid arguments
-                        are provided in strict mode.
-
-                """
-                full_kwargs, param_names, strict = cls._process_init_parameters(original_init, args, kwargs)
-
-                validated_kwargs = cls._validate_parameters(
-                    dct["InitSchema"],
-                    full_kwargs,
-                    param_names,
-                    strict,
-                ) or cls._get_default_values(signature(original_init).parameters)
-
-                # Store and check invalid args
-                invalid_args = [name_arg for name_arg in kwargs if name_arg not in param_names and name_arg != "strict"]
-                original_init(self, **validated_kwargs)
-                self.invalid_args = invalid_args
-
+                full_kwargs, param_names, strict = cls._process_init_parameters(original_sig, args, kwargs)
+                validated_kwargs = cls._validate_parameters(dct["InitSchema"], full_kwargs, strict)
+                invalid_args = [key for key in kwargs if key not in param_names and key != "strict"]
                 if invalid_args:
-                    message = f"Argument(s) '{', '.join(invalid_args)}' are not valid for transform {name}"
+                    message = (
+                        f"Argument(s) '{', '.join(invalid_args)}' are not valid for transform {name}. "
+                        "Remove them or use the documented parameter names."
+                    )
                     if strict:
                         raise ValueError(message)
                     warn(message, stacklevel=2)
+                original_init(self, **validated_kwargs)
+                self.invalid_args = invalid_args
 
-            # Preserve the original signature and docstring
             custom_init_with_signature: Any = custom_init
             custom_init_with_signature.__signature__ = original_sig
             custom_init.__doc__ = original_init.__doc__

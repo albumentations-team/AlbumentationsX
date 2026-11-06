@@ -28,12 +28,9 @@ def _get_torch_worker_seed() -> int | None:
     """Return PyTorch's current DataLoader worker seed inside worker processes, or None when
     the call happens outside DataLoader workers.
     """
-    try:
-        if torch.utils.data.get_worker_info() is None:
-            return None
-        return torch.initial_seed() % _UINT32_MODULUS
-    except AttributeError:
+    if torch.utils.data.get_worker_info() is None:
         return None
+    return torch.initial_seed() % _UINT32_MODULUS
 
 
 def _derive_effective_seed(base_seed: int | None, worker_seed: int | None) -> int | None:

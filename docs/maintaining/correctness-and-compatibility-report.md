@@ -11,8 +11,8 @@ which limitations are known.
    release where available.
 2. Compatibility matrix: Python versions, operating systems, and dependency
    sets tested.
-3. Test summary: unit, regression, property, serialization/replay, 3D,
-   bbox/keypoint, and OBB coverage.
+3. Test summary covering unit, regression, property, serialization/replay, 3D,
+   bbox/keypoint, and OBB tests. Record the [validation contract](../validation.md) result separately.
 4. Correctness contracts: determinism, dtype and shape, target alignment,
    label integrity, volume semantics, and serialization behavior.
 5. Known limitations: dependency-sensitive exactness, advisory optional-extra
@@ -38,6 +38,6 @@ uv run python tools/generate_correctness_report.py \
 
 The version-bump release preflight should omit `--allow-missing-evidence` and
 provide at least one environment JSON artifact, passing pytest summary JSON,
-benchmark coverage summary/detail JSON, benchmark performance-budget JSON, and
-security JSON evidence. Local dry runs may use `--allow-missing-evidence` when
+the passing `validation-contract.json` suite result, benchmark coverage summary/detail JSON,
+benchmark performance-budget JSON, and security JSON evidence. Local dry runs may use `--allow-missing-evidence` when
 those artifacts are not available.

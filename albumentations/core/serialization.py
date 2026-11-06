@@ -186,19 +186,45 @@ def to_dict(transform: Serializable, on_not_implemented_error: str = "raise") ->
     return transform.to_dict(on_not_implemented_error)
 
 
+def require_serialized_fields(payload: Any, name: str, *fields: str) -> None:
+    if not isinstance(payload, Mapping):
+        raise TypeError(f"{name} must be a mapping, got {type(payload).__name__}")
+    missing = [field for field in fields if field not in payload]
+    if missing:
+        raise ValueError(
+            f"{name} is missing required fields {missing!r}. Use a complete serialized pipeline or replay.",
+        )
+
+
+def resolve_serialized_class(name: Any, payload: str) -> SerializableMeta:
+    if not isinstance(name, str):
+        raise TypeError(f"{payload}.__class_fullname__ must be a string, got {type(name).__name__}")
+    cls = SERIALIZABLE_REGISTRY.get(shorten_class_name(name))
+    if cls is None:
+        raise ValueError(
+            f"{payload} references unknown transform {name!r}. "
+            "Import the custom transform or use a compatible version.",
+        )
+    return cls
+
+
 def instantiate_nonserializable(
-    transform: dict[str, Any],
+    transform: Mapping[str, Any],
     nonserializable: dict[str, Any] | None = None,
 ) -> Serializable | None:
-    if transform.get("__class_fullname__") in NON_SERIALIZABLE_REGISTRY:
+    name = transform.get("__class_fullname__")
+    if isinstance(name, str) and shorten_class_name(name) in NON_SERIALIZABLE_REGISTRY:
+        require_serialized_fields(transform, "non-serializable transform", "__name__")
         name = transform["__name__"]
-        if nonserializable is None:
-            msg = f"To deserialize a non-serializable transform with name {name} you need to pass a dict with"
-            "this transform as the `lambda_transforms` argument"
-            raise ValueError(msg)
-        result_transform = nonserializable.get(name)
-        if transform is None:
-            raise ValueError(f"Non-serializable transform with {name} was not found in `nonserializable`")
+        if not isinstance(name, str):
+            raise TypeError(f"non-serializable transform __name__ must be a string, got {type(name).__name__}")
+        result_transform = None if nonserializable is None else nonserializable.get(name)
+        if result_transform is None:
+            raise ValueError(f"Pass the non-serializable transform {name!r} in the nonserializable mapping.")
+        if not isinstance(result_transform, Serializable):
+            raise TypeError(
+                f"nonserializable[{name!r}] must be a transform, got {type(result_transform).__name__}",
+            )
         return result_transform
     return None
 
@@ -206,7 +232,7 @@ def instantiate_nonserializable(
 def from_dict(
     transform_dict: dict[str, Any],
     nonserializable: dict[str, Any] | None = None,
-) -> Serializable | None:
+) -> Serializable:
     """Restore a transform (or pipeline) from a serialized dict. Pass nonserializable
     for Lambda/custom transforms keyed by name.
 
@@ -215,19 +241,23 @@ def from_dict(
         nonserializable (dict[str, Any] | None): Optional dict of non-serializable transforms keyed by name.
 
     """
+    require_serialized_fields(transform_dict, "transform_dict", "transform")
     transform_dict = deserialize_mapping_keys(transform_dict)
     register_additional_transforms()
     transform = transform_dict["transform"]
+    require_serialized_fields(transform, "transform_dict.transform", "__class_fullname__")
     lmbd = instantiate_nonserializable(transform, nonserializable)
-    if lmbd:
+    if lmbd is not None:
         return lmbd
     name = transform["__class_fullname__"]
     args = {k: v for k, v in transform.items() if k != "__class_fullname__"}
 
-    cls = SERIALIZABLE_REGISTRY[shorten_class_name(name)]
+    cls = resolve_serialized_class(name, "transform_dict.transform")
 
     # Handle nested transforms
     if "transforms" in args:
+        if not isinstance(args["transforms"], (list, tuple)):
+            raise TypeError("transform_dict.transform.transforms must be a list or tuple of serialized transforms")
         args["transforms"] = [from_dict({"transform": t}, nonserializable=nonserializable) for t in args["transforms"]]
 
     return cls(**args)

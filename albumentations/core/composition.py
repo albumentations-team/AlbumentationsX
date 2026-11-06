@@ -16,7 +16,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from numbers import Real
 from time import perf_counter_ns
-from typing import Any, ClassVar, Protocol, Union, cast
+from typing import Any, Protocol, Union, cast
 
 import cv2
 import numpy as np
@@ -276,12 +276,19 @@ MASK_KEYS = (
 
 # Keys related to image data
 IMAGE_KEYS = {"image", "images"}
-CHECK_BBOX_PARAM = {"bboxes"}
-CHECK_KEYPOINTS_PARAM = {"keypoints"}
-VOLUME_KEYS = {"volume", "volumes"}
-_VOLUMETRIC_TARGETS = VOLUME_KEYS | {"mask3d", "masks3d"}
-_SPATIAL_ADDITIONAL_TARGETS = frozenset((*IMAGE_KEYS, *MASK_KEYS, *VOLUME_KEYS))
-_CANONICAL_TARGETS = _SPATIAL_ADDITIONAL_TARGETS | frozenset(AVAILABLE_KEYS)
+_SPATIAL_AXES = {
+    "image": ("H", "W"),
+    "mask": ("H", "W"),
+    "images": ("N", "H", "W"),
+    "masks": ("N", "H", "W"),
+    "volume": ("D", "H", "W"),
+    "mask3d": ("D", "H", "W"),
+    "volumes": ("N", "D", "H", "W"),
+    "masks3d": ("N", "D", "H", "W"),
+}
+_OPTIONAL_CHANNEL_RANKS = {target: len(axes) for target, axes in _SPATIAL_AXES.items()}
+_VOLUMETRIC_TARGETS = frozenset(target for target, axes in _SPATIAL_AXES.items() if "D" in axes)
+_CANONICAL_TARGETS = frozenset((*AVAILABLE_KEYS, *_SPATIAL_AXES))
 
 _VALID_INSTANCE_BINDING_TARGETS = frozenset({"mask", "masks", "bboxes", "keypoints"})
 # Distinct ferry-key constants used to shuttle per-row instance ids through `data`
@@ -970,12 +977,21 @@ class BaseCompose(InvocationRngOwner, Serializable):
                     raise TypeError(
                         f"additional_targets must map string names to string target kinds, got {alias!r}: {target!r}",
                     )
-                if target not in _CANONICAL_TARGETS and target not in self._available_keys:
+                if target not in _CANONICAL_TARGETS and not self._has_target_handler(self.transforms, target):
                     raise ValueError(
                         f"additional_targets[{alias!r}] refers to unknown target {target!r}. "
                         "Use a supported target such as 'image' or 'mask'.",
                     )
         self._add_targets(additional_targets)
+
+    @staticmethod
+    def _has_target_handler(transforms: TransformsSeqType, target: str) -> bool:
+        return any(
+            BaseCompose._has_target_handler(transform.transforms, target)
+            if isinstance(transform, BaseCompose)
+            else target in transform.available_keys
+            for transform in transforms
+        )
 
     def _add_targets(self, additional_targets: dict[str, str] | None) -> None:
         if additional_targets:
@@ -2134,13 +2150,7 @@ class Compose(BaseCompose, HubMixin):
         invocation_seed: int | None,
         trace: _ExecutionTrace | None = None,
     ) -> dict[str, Any]:
-        """Execute a public Compose call through one root boundary so normal and traced requests share
-        validation, randomness, graph dispatch, and finalization.
-
-        Ordinary and traced calls share validation, probability, preprocessing,
-        dispatch, postprocessing, and tensor restoration.  Tracing only attaches an
-        observer to this route; it does not own a second interpreter.
-        """
+        """Run the shared root boundary for ordinary and traced calls."""
         # Public calls never expose a completed observation from an earlier sample,
         # including when input validation fails before an invocation can open.
         clear_completed_observation()
@@ -2148,7 +2158,7 @@ class Compose(BaseCompose, HubMixin):
         if self.save_applied_params and self.main_compose:
             data["applied_transforms"] = []
         may_skip = not force_apply and self.p < 1.0
-        validate_before_probability = (
+        preprocess_before_draw = (
             may_skip
             and self.main_compose
             and (
@@ -2157,12 +2167,10 @@ class Compose(BaseCompose, HubMixin):
                 or self._frame_binding == ("images", "frame_annotations")
             )
         )
-        if may_skip and self.p == 0.0 and not validate_before_probability:
-            clear_completed_observation()
+        if may_skip and self.p == 0.0 and not preprocess_before_draw:
             if trace is not None:
                 self._emit_skipped_trace_subtree(trace, self, (), _TRACE_STATUS_SKIPPED_PROBABILITY)
             return data
-        active_invocation = get_current_invocation()
         if (
             trace is None
             and type(self) is Compose
@@ -2172,7 +2180,7 @@ class Compose(BaseCompose, HubMixin):
             and "applied_transforms" not in data
             and not self._configured_processors
             and not self._instance_binding
-            and active_invocation is None
+            and get_current_invocation() is None
             and not tensor_boundary_state.has_tensor_inputs
             and not tensor_boundary_state.needs_numpy_channel_axis
         ):
@@ -2181,7 +2189,7 @@ class Compose(BaseCompose, HubMixin):
                 invocation_seed=invocation_seed,
                 prime_py_random=may_skip,
             )
-            context.has_tensor_inputs = tensor_boundary_state.has_tensor_inputs
+            context.has_tensor_inputs = False
             if not self._should_apply_in_context(context, force_apply=force_apply):
                 return data
             return self._apply_unactivated_compiled_transforms(data, context)
@@ -2189,7 +2197,7 @@ class Compose(BaseCompose, HubMixin):
         context = self._new_invocation_context(
             collect_applied=True if trace is not None else None,
             invocation_seed=invocation_seed,
-            prime_py_random=may_skip and not validate_before_probability,
+            prime_py_random=may_skip and not preprocess_before_draw,
         )
         context.has_tensor_inputs = tensor_boundary_state.has_tensor_inputs
         context.trace_session = trace
@@ -2199,7 +2207,7 @@ class Compose(BaseCompose, HubMixin):
                 tensor_boundary_state,
                 context,
                 force_apply=force_apply,
-                validate_before_probability=validate_before_probability,
+                preprocess_before_draw=preprocess_before_draw,
             )
 
     def _execute_with_preprocessing(
@@ -2209,17 +2217,19 @@ class Compose(BaseCompose, HubMixin):
         invocation: InvocationContext,
         *,
         force_apply: bool,
-        validate_before_probability: bool,
+        preprocess_before_draw: bool,
     ) -> dict[str, Any]:
         prepared_data = data
-        if validate_before_probability:
+        if preprocess_before_draw:
+            # A skipped call returns the original targets, including unconverted annotations.
             prepared_data = data.copy()
             self.preprocess(prepared_data, tensor_boundary_state)
         if not self._should_apply_in_context(invocation, force_apply=force_apply):
             self._emit_trace_skip(invocation.trace_session, _TRACE_STATUS_SKIPPED_PROBABILITY)
             return data
-        if not validate_before_probability:
+        if not preprocess_before_draw:
             self.preprocess(prepared_data, tensor_boundary_state)
+        self._ensure_contiguous(prepared_data)
         result = self.postprocess(self._apply_children(prepared_data, invocation))
         if tensor_boundary_state.annotation_targets:
             self._restore_tensor_annotations(result, tensor_boundary_state)
@@ -2340,9 +2350,7 @@ class Compose(BaseCompose, HubMixin):
         return invocation.compose_state(self)
 
     def _prepare_root_input(self, data: dict[str, Any]) -> _TensorBoundaryState:
-        """Validates one public input boundary and initializes observation storage before sampling, so invalid target
-        combinations fail before random state advances.
-        """
+        """Validate inputs and identify required conversions before drawing randomness."""
         if (
             len(data) == 1
             and self._frame_binding is None
@@ -2499,7 +2507,7 @@ class Compose(BaseCompose, HubMixin):
         input boundary for each invocation.
         """
         for alias, target in self._additional_targets.items():
-            if target in _SPATIAL_ADDITIONAL_TARGETS and data.get(alias) is not None and data.get(target) is None:
+            if target in _SPATIAL_AXES and data.get(alias) is not None and data.get(target) is None:
                 msg = f"Additional target '{alias}' requires canonical target '{target}' to be present."
                 raise ValueError(msg)
 
@@ -2633,7 +2641,7 @@ class Compose(BaseCompose, HubMixin):
 
         # Add channel dimensions first, before processors run
         tensor_boundary_state = tensor_boundary_state or _EMPTY_TENSOR_BOUNDARY_STATE
-        self._preprocess_arrays(data)
+        self._add_grayscale_channels(data)
         if (
             self.main_compose
             and self._frame_binding == ("images", "masks")
@@ -2700,14 +2708,15 @@ class Compose(BaseCompose, HubMixin):
             if canonical in {"mask", "masks"}:
                 self._flatten_frame_masks(data, state, name, canonical, entries)
             elif canonical in {"bboxes", "keypoints"}:
+                processor = self.processors[canonical]
                 arrays = [
-                    tensor_to_numpy_annotation(value, canonical)
-                    if isinstance(value, torch.Tensor)
-                    else np.asarray(value, dtype=np.float32)
-                    for _, value in entries
+                    processor.prepare_coordinates(
+                        f"frame_annotations[{index}].{name}",
+                        tensor_to_numpy_annotation(value, canonical) if isinstance(value, torch.Tensor) else value,
+                    ).astype(np.float32, copy=False)
+                    for index, value in entries
                 ]
                 nonempty = [array for array in arrays if len(array)]
-                processor = self.processors[canonical]
                 data[name] = (
                     np.concatenate(nonempty)
                     if nonempty
@@ -2717,12 +2726,8 @@ class Compose(BaseCompose, HubMixin):
                         else processor.params.make_empty_keypoints_array()
                     )
                 )
-                row_owners = np.concatenate(
-                    [
-                        np.full(len(array), index, dtype=np.intp)
-                        for (index, _), array in zip(entries, arrays, strict=True)
-                    ]
-                )
+                frame_indices = np.array([index for index, _ in entries], dtype=np.intp)
+                row_owners = np.repeat(frame_indices, [len(array) for array in arrays])
                 data[name] = self._attach_frame_ids(data[name], row_owners)
                 state.frame_columns[name] = -len(processor.params.label_fields or []) - 1
                 if processor.params.label_fields:
@@ -2797,7 +2802,7 @@ class Compose(BaseCompose, HubMixin):
         needs_channel_axis = False
         for name, value in data.items():
             canonical = routes.get(name, self._additional_targets.get(name, name))
-            optional_rank = self._GRAYSCALE_KEYS.get(canonical)
+            optional_rank = _OPTIONAL_CHANNEL_RANKS.get(canonical)
             if optional_rank is None:
                 continue
             if value is None and not self.strict and canonical in MASK_KEYS:
@@ -2824,10 +2829,10 @@ class Compose(BaseCompose, HubMixin):
         value: np.ndarray,
         optional_rank: int,
     ) -> tuple[int, ...]:
-        if value.shape == (0,) and canonical in {"masks", "masks3d"}:
-            return ()
         if not optional_rank <= value.ndim <= optional_rank + 1:
-            dims = self._NUMPY_SPATIAL_AXES[canonical]
+            if canonical in {"masks", "masks3d"} and value.shape == (0,):
+                return ()
+            dims = ", ".join(_SPATIAL_AXES[canonical])
             raise TypeError(f"{name} must have shape ({dims}) or ({dims}, C), got {value.shape}")
         return value.shape[:optional_rank] if self.is_check_shapes and value.size else ()
 
@@ -2838,9 +2843,9 @@ class Compose(BaseCompose, HubMixin):
             if not self._is_valid_key(name):
                 raise ValueError(f"Key {name} is not in available keys.")
             canonical = self._additional_targets.get(name, name)
-            if canonical in CHECK_BBOX_PARAM and "bboxes" not in self._configured_processors:
+            if canonical == "bboxes" and canonical not in self._configured_processors:
                 raise ValueError("bbox_params must be specified for bbox transformations")
-            if canonical in CHECK_KEYPOINTS_PARAM and "keypoints" not in self._configured_processors:
+            if canonical == "keypoints" and canonical not in self._configured_processors:
                 raise ValueError("keypoint_params must be specified for keypoint transformations")
 
     def _is_valid_key(self, key: str) -> bool:
@@ -2876,43 +2881,10 @@ class Compose(BaseCompose, HubMixin):
         for processor in active:
             processor.preprocess(data)
 
-    def _preprocess_arrays(self, data: dict[str, Any]) -> None:
-        """Ensure arrays are contiguous and add channel dims to grayscale data.
-        Calls _ensure_contiguous then _add_grayscale_channels. Call during preprocess.
-        """
-        self._ensure_contiguous(data)
-        self._add_grayscale_channels(data)
-
     def _ensure_contiguous(self, data: dict[str, Any]) -> None:
-        """Ensure all numpy arrays are contiguous. Replaces non-C-contiguous arrays in data
-        with np.ascontiguousarray copies. Called by _preprocess_arrays.
-        """
         for key, value in data.items():
             if isinstance(value, np.ndarray) and not value.flags["C_CONTIGUOUS"]:
                 data[key] = np.ascontiguousarray(value)
-
-    # Maps canonical grayscale-bearing target -> expected ndim *without* the channel dim.
-    _GRAYSCALE_KEYS: ClassVar[dict[str, int]] = {
-        "image": 2,  # (H, W) => (H, W, 1)
-        "images": 3,  # (N, H, W) => (N, H, W, 1)
-        "mask": 2,  # (H, W) => (H, W, 1)
-        "masks": 3,  # (N, H, W) => (N, H, W, 1)
-        "volume": 3,  # (D, H, W) => (D, H, W, 1)
-        "mask3d": 3,  # (D, H, W) => (D, H, W, 1)
-        "volumes": 4,  # (N, D, H, W) => (N, D, H, W, 1)
-        "masks3d": 4,  # (N, D, H, W) => (N, D, H, W, 1)
-    }
-
-    _NUMPY_SPATIAL_AXES: ClassVar[dict[str, str]] = {
-        "image": "H, W",
-        "mask": "H, W",
-        "images": "N, H, W",
-        "masks": "N, H, W",
-        "volume": "D, H, W",
-        "mask3d": "D, H, W",
-        "volumes": "N, D, H, W",
-        "masks3d": "N, D, H, W",
-    }
 
     def _add_grayscale_channels(
         self,
@@ -2922,7 +2894,7 @@ class Compose(BaseCompose, HubMixin):
         """Normalize optional-channel public targets before transform dispatch."""
         for key, value in data.items():
             canonical = self._additional_targets.get(key, key)
-            expected_ndim = self._GRAYSCALE_KEYS.get(canonical)
+            expected_ndim = _OPTIONAL_CHANNEL_RANKS.get(canonical)
             if expected_ndim is None:
                 continue
             if not isinstance(value, (np.ndarray, torch.Tensor)) or value.ndim != expected_ndim:

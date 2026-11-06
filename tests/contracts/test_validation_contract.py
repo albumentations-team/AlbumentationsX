@@ -97,6 +97,11 @@ def test_alias_can_reference_a_custom_target_in_one_branch() -> None:
     np.testing.assert_array_equal(pipeline(image=image, aux=image)["aux"], image[:, ::-1])
 
 
+def test_alias_cannot_reference_transform_metadata() -> None:
+    with pytest.raises(ValueError, match=r"additional_targets.*aux.*unknown target 'refs'"):
+        A.Compose([A.HistogramMatching(metadata_key="refs")], additional_targets={"aux": "refs"})
+
+
 @pytest.mark.parametrize("use_tensor", [False, True], ids=["numpy", "cpu-tensor"])
 @pytest.mark.parametrize("strict", [False, True])
 def test_incompatible_shapes_fail_even_when_compose_would_skip(use_tensor: bool, strict: bool) -> None:
@@ -144,6 +149,7 @@ def test_validation_error_preserves_next_seeded_augmentation(trace: bool) -> Non
     [
         ({"bboxes": [[0, 0, 2, 2]]}, ValueError, r"bboxes requires label_fields.*class_ids.*Pass these fields"),
         ({"bboxes": [[0, 0, 2, 2]], "class_ids": []}, ValueError, r"lengths of bboxes and class_ids.*"),
+        ({"bboxes": [], "class_ids": [1]}, ValueError, r"lengths of bboxes and class_ids.*Got 0 and 1"),
         (
             {"bboxes": [[0, 0, np.nan, 2]], "class_ids": [1]},
             ValueError,
@@ -199,6 +205,31 @@ def test_skipped_bbox_pipeline_returns_unprocessed_targets() -> None:
     assert result["image"] is image
     assert result["bboxes"] is boxes
     assert result["class_ids"] is class_ids
+
+
+def test_skipped_bbox_pipeline_does_not_copy_strided_image(monkeypatch: pytest.MonkeyPatch) -> None:
+    pipeline = A.Compose([A.NoOp()], p=0, bbox_params=A.BboxParams(coord_format="pascal_voc"))
+    image = np.zeros((5, 7, 3), dtype=np.uint8)[:, ::-1]
+    ascontiguousarray = np.ascontiguousarray
+
+    def check_copy(array: Any, *args: Any, **kwargs: Any) -> np.ndarray:
+        assert array is not image
+        return ascontiguousarray(array, *args, **kwargs)
+
+    monkeypatch.setattr(np, "ascontiguousarray", check_copy)
+
+    assert pipeline(image=image, bboxes=[[0, 0, 2, 2]])["image"] is image
+
+
+def test_frame_ids_cannot_fill_missing_bbox_coordinates() -> None:
+    pipeline = A.Compose(
+        [A.HorizontalFlip()],
+        p=0,
+        frame_binding=["images", "frame_annotations"],
+        bbox_params=A.BboxParams(coord_format="pascal_voc"),
+    )
+    with pytest.raises(ValueError, match=r"frame_annotations\[1\]\.bboxes needs at least 4.*\(1, 3\)"):
+        pipeline(images=np.zeros((2, 5, 7, 3), dtype=np.uint8), frame_annotations=[{}, {"bboxes": [[0, 0, 2]]}])
 
 
 @pytest.mark.parametrize(

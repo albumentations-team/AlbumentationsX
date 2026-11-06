@@ -13,8 +13,8 @@ first place. This also applies when the pipeline's probability is zero and when 
 | `RuntimeError` | Report a failed execution invariant if it occurs through a supported call. Include the pipeline, input shapes and dtypes, and traceback. |
 | Compatibility warning | Follow the replacement in the warning. A deprecation notice gives the condition for removing the old behavior. |
 
-Input errors identify the argument, target, or field, the expected contract, and the received value, kind, or shape
-where safe. They give you a correction without requiring you to inspect the implementation.
+Input errors name the failing argument or target and show what to pass. They include the received kind, value, or shape
+where safe.
 
 ## Where validation happens
 
@@ -36,7 +36,7 @@ follow the input contract of the selected operation.
 - `Compose(strict=True)` checks transform keywords and rejects unknown sample keys. With `strict=False`,
   unrelated sample keys can pass through and `None` on an optional mask target means the mask is absent.
 - `is_check_shapes=False` permits deliberately different spatial sizes. Container and rank checks still apply.
-- A skipped valid call returns its original targets. Configuring a probability of zero still runs the input checks.
+- A skipped call with valid inputs returns its original targets.
 
 If you handle errors from an older version, catch `TypeError` for positional augmentation inputs and
 `ValueError` for missing replay fields or unknown serialized transform names. Pass inputs as named arguments

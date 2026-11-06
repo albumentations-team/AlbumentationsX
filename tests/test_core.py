@@ -751,7 +751,13 @@ def test_bbox_params_is_not_set(image, bboxes):
     [
         (A.Normalize, {}),
         (A.Resize, {"height": 100, "width": 100}),
-        *get_primary_filtered_transform_params((BaseCompose,), custom_arguments={SomeOf: {"n": 1}}),
+        *get_primary_filtered_transform_params(
+            (BaseCompose,),
+            custom_arguments={
+                SomeOf: {"n": 1},
+                OneOrOther: {"transforms": [A.NoOp(), A.NoOp()]},
+            },
+        ),
     ],  # type: ignore
 )
 def test_single_transform_compose(
@@ -760,12 +766,10 @@ def test_single_transform_compose(
 ):
     compose_cls, compose_kwargs = compose_transform
     cls, kwargs = inner_transform
-    if cls is OneOrOther:
-        transform = cls(A.NoOp(), A.NoOp(), **kwargs)
-    elif issubclass(cls, BaseCompose):
-        transform = cls(transforms=[], **kwargs)
-    else:
-        transform = cls(**kwargs)
+    kwargs = TransformTestHelper.safe_copy_params(kwargs)
+    if issubclass(cls, BaseCompose):
+        kwargs.setdefault("transforms", [])
+    transform = cls(**kwargs)
 
     with pytest.warns(UserWarning):
         res_transform = compose_cls(transforms=transform, **compose_kwargs)  # type: ignore

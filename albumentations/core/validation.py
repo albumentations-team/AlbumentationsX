@@ -1,10 +1,4 @@
-"""Module containing validation mechanisms for transform parameters.
-This module provides a metaclass that enables parameter validation for transforms using
-Pydantic models. It intercepts the initialization of transform classes to validate their
-parameters against schema definitions, raising appropriate errors for invalid values and
-providing type conversion capabilities. This validation layer helps prevent runtime errors
-by catching configuration issues at initialization time.
-"""
+"""Transform constructor validation."""
 
 from collections.abc import Callable
 from inspect import Signature, signature
@@ -15,18 +9,7 @@ from pydantic import BaseModel, ValidationError
 
 
 class ValidatedTransformMeta(type):
-    """Metaclass that validates transform parameters during instantiation using Pydantic.
-    Wraps __init__ to enforce InitSchema before object creation.
-
-    This metaclass enables automatic validation of transform parameters using Pydantic models,
-    ensuring proper typing and constraints are enforced before object creation.
-
-    Args:
-        original_init (Callable[..., Any]): Original __init__ method of the class.
-        args (tuple[Any, ...]): Positional arguments passed to the __init__ method.
-        kwargs (dict[str, Any]): Keyword arguments passed to the __init__ method.
-
-    """
+    """Validate constructor arguments with the transform's InitSchema before calling __init__."""
 
     @staticmethod
     def _process_init_parameters(
@@ -62,9 +45,6 @@ class ValidatedTransformMeta(type):
         return config.model_dump(exclude={"strict"})
 
     def __new__(cls: type[Any], name: str, bases: tuple[type, ...], dct: dict[str, Any]) -> type[Any]:
-        """Build new class; validate InitSchema parameters at class instantiation and wrap
-        __init__ with validation. Transform base classes use this metaclass.
-        """
         if "InitSchema" in dct and issubclass(dct["InitSchema"], BaseModel):
             original_init: Callable[..., Any] | None = dct.get("__init__")
             if original_init is None:
@@ -88,7 +68,6 @@ class ValidatedTransformMeta(type):
                 original_init(self, **validated_kwargs)
                 self.invalid_args = invalid_args
 
-            # Preserve the original signature and docstring
             custom_init_with_signature: Any = custom_init
             custom_init_with_signature.__signature__ = original_sig
             custom_init.__doc__ = original_init.__doc__

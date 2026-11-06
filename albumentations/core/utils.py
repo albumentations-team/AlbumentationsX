@@ -349,13 +349,16 @@ class DataProcessor(ABC, Generic[ParamsT]):
 
         active_fields = data.keys() & self.data_fields
         for data_name in active_fields:
-            data[data_name] = self._prepare_coordinates(data_name, data[data_name])
+            coordinates = self.prepare_coordinates(data_name, data[data_name])
+            self._validate_finite_coordinates(data_name, coordinates)
+            data[data_name] = coordinates
 
         data = self.add_label_fields_to_data(data)
         for data_name in active_fields:
             data[data_name] = self.check_and_convert(data[data_name], shape, direction="to")
 
-    def _prepare_coordinates(self, name: str, value: Any) -> np.ndarray:
+    def prepare_coordinates(self, name: str, value: Any) -> np.ndarray:
+        """Validate annotation row structure before adding labels or frame IDs."""
         if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
             if not len(value):
                 return self._create_empty_array()
@@ -374,7 +377,12 @@ class DataProcessor(ABC, Generic[ParamsT]):
             raise ValueError(f"{name} needs at least {required} coordinate columns, got shape {value.shape}")
         if value.dtype.kind not in "uif":
             raise TypeError(f"{name} must have a real numeric dtype, got {value.dtype}")
-        coordinates = value[:, :required]
+        return value
+
+    def _validate_finite_coordinates(self, name: str, value: np.ndarray) -> None:
+        if not len(value):
+            return
+        coordinates = value[:, : self._coordinate_count]
         finite = np.isfinite(coordinates)
         if not finite.all():
             row, column = np.unravel_index(finite.argmin(), finite.shape)
@@ -382,7 +390,6 @@ class DataProcessor(ABC, Generic[ParamsT]):
                 f"{name} must have finite coordinates. Got {coordinates[row, column]} at {name}[{row}, {column}]. "
                 "Replace that coordinate or remove its row.",
             )
-        return value
 
     def check_and_convert(
         self,
@@ -500,14 +507,9 @@ class DataProcessor(ABC, Generic[ParamsT]):
             return data
 
         processed = False
-        for data_name in set(self.data_fields) & set(data.keys()):
-            # Skip empty sequences (will be converted to proper empty arrays in check_and_convert)
-            if isinstance(data[data_name], Sequence) and len(data[data_name]) == 0:
-                continue
-            if isinstance(data[data_name], np.ndarray) and not data[data_name].size:
-                continue
+        for data_name in data.keys() & self.data_fields:
             data[data_name] = self._process_label_fields(data, data_name)
-            processed = True
+            processed |= len(data[data_name]) > 0
         if processed and self.label_data is None:
             for label_field in self.params.label_fields:
                 del data[label_field]
@@ -520,12 +522,16 @@ class DataProcessor(ABC, Generic[ParamsT]):
             return data_array
 
         labels = data if self.label_data is None else self.label_data[data_name]
+        num_rows = len(data_array)
         encoded_columns: list[np.ndarray] = []
         for label_field in label_fields:
             if self.label_data is None:
-                self.validate_label_field_length(len(data_array), len(labels[label_field]), data_name, label_field)
-            encoded_columns.append(self.label_manager.process_field(data_name, label_field, labels[label_field]))
+                self.validate_label_field_length(num_rows, len(labels[label_field]), data_name, label_field)
+            if num_rows:
+                encoded_columns.append(self.label_manager.process_field(data_name, label_field, labels[label_field]))
 
+        if not num_rows:
+            return data_array
         result = np.empty(
             (data_array.shape[0], data_array.shape[1] + len(encoded_columns)),
             dtype=np.result_type(data_array, *encoded_columns),

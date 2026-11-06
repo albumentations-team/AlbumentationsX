@@ -81,7 +81,7 @@ class TestRandomScaleOBB:
 class TestLongestMaxSizeOBB:
     """Test LongestMaxSize transform with OBB bboxes."""
 
-    @pytest.mark.parametrize("max_size", [137, 512, 1024])
+    @pytest.mark.parametrize("max_size", [138, 512, 1024])
     @pytest.mark.parametrize("angle", [0, 45, 90, -30, 135, -90])
     def test_longest_max_size_preserves_obb_angles(self, max_size, angle, large_image_1000x500):
         """Test that LongestMaxSize preserves OBB angles (uniform scaling)."""

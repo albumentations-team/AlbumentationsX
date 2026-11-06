@@ -13,6 +13,7 @@ from typing import Any
 from tests.regression.transform_contracts import coverage_summary
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY_URL = "https://github.com/albumentations-team/AlbumentationsX"
 
 try:
     from tools.ci_matrix import DEPENDENCY_SETS, SUPPORTED_PYTHONS, TIER_1_OSES
@@ -82,6 +83,11 @@ def _format_environment_summary(environments: list[dict[str, Any]]) -> str:
             f"{index}: Python {python.get('version', 'unknown')} on {os_info.get('platform', 'unknown')}; "
             f"NumPy {packages.get('numpy')}; OpenCV {environment.get('opencv_runtime_version')}",
         )
+        run_id = environment.get("github", {}).get("run_id")
+        if isinstance(run_id, str) and run_id.isdecimal():
+            lines.append(f"  [CI run {run_id}]({REPOSITORY_URL}/actions/runs/{run_id})")
+        if commit := environment.get("git_commit"):
+            lines.append(f"  Tested commit `{commit}`")
     return "\n".join(lines)
 
 
@@ -327,12 +333,27 @@ def _regression_manifest_case_count() -> int:
     return len(cases) if isinstance(cases, list) else 0
 
 
+def _contract_result(evidence_dir: Path | None, name: str, allow_missing_evidence: bool) -> str:
+    filename = f"{name}-contract.json"
+    summaries = _read_json_files(evidence_dir, filename)
+    summary = summaries[0] if summaries else None
+    if not allow_missing_evidence:
+        if summary is None:
+            raise ValueError(f"Missing required release evidence artifact: {filename}")
+        if issue := _pytest_summary_issue(summary):
+            raise ValueError(f"Release {name} contract evidence is incomplete or failing: {issue}")
+        totals = summary.get("totals", {})
+        passed = totals.get("passed")
+        if not isinstance(passed, int) or passed <= 0 or totals.get("skipped"):
+            raise ValueError(f"Release {name} contract evidence must show a nonempty suite with no skipped tests")
+    return _format_test_counts(summary) if summary else "evidence unavailable"
+
+
 def generate_report(evidence_dir: Path | None = None, allow_missing_evidence: bool = False) -> str:
     environments = _read_json_files(evidence_dir, "environment*.json")
     pytest_summaries = _read_json_files(evidence_dir, "pytest-summary*.json")
     benchmark_summaries = _read_json_files(evidence_dir, "benchmark*.json")
     security_summaries = _read_json_files(evidence_dir, "security*.json")
-    validation_summaries = _read_json_files(evidence_dir, "validation-contract.json")
 
     _validate_required_evidence(
         environments,
@@ -341,17 +362,13 @@ def generate_report(evidence_dir: Path | None = None, allow_missing_evidence: bo
         security_summaries,
         allow_missing_evidence=allow_missing_evidence,
     )
-    validation = validation_summaries[0] if validation_summaries else None
-    if not allow_missing_evidence:
-        if validation is None:
-            raise ValueError("Missing required release evidence artifact: validation-contract.json")
-        if issue := _pytest_summary_issue(validation):
-            raise ValueError(f"Release validation contract evidence is incomplete or failing: {issue}")
-        totals = validation["totals"]
-        passed = totals.get("passed")
-        if not isinstance(passed, int) or passed <= 0 or totals.get("skipped"):
-            raise ValueError("Release validation contract evidence must show a nonempty suite with no skipped tests")
-    validation_result = _format_test_counts(validation) if validation else "evidence unavailable"
+    validation_result = _contract_result(evidence_dir, "validation", allow_missing_evidence)
+    geometry_result = _contract_result(evidence_dir, "geometry", allow_missing_evidence)
+    source_revision = next(
+        (environment["git_commit"] for environment in environments if environment.get("git_commit")),
+        "main",
+    )
+    docs_url = f"{REPOSITORY_URL}/blob/{source_revision}/docs"
 
     version = _project_version()
     generated_at = datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -390,6 +407,7 @@ Dependency sets tracked by the support policy: {dependency_sets}
 {_format_test_summary(pytest_summaries)}
 
 - Validation contract: {validation_result}
+- [2D geometry contract]({docs_url}/geometry.md): {geometry_result}
 - Test inventory: {test_file_count} `test*.py` files under `tests/`
 - Public transform-like API coverage routes: {covered_public_api_count} / {public_api_count}
 - Parameterized transform sweep coverage: {transform_sweep_count} runtime transforms
@@ -406,6 +424,10 @@ Dependency sets tracked by the support policy: {dependency_sets}
 - Image outputs preserve documented dtype and channel semantics.
 - Bbox and keypoint label fields remain aligned with surviving annotations.
 - Compose-level compatibility checks fail at pipeline creation where applicable.
+
+## Behavior Changes and Migration
+
+See the [release notes]({docs_url}/release-notes/unreleased.md) for behavior changes and migration steps.
 
 ## Known Limitations
 

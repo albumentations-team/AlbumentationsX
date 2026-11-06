@@ -2526,7 +2526,7 @@ def test_user_data_survives_multi_transform_pipeline() -> None:
 
 
 def test_user_data_none_passthrough() -> None:
-    """user_data=None passes through cleanly (apply_with_params skips None values)."""
+    """None-valued user_data passes through target dispatch."""
     image = np.zeros((100, 100, 3), dtype=np.uint8)
     transform = A.Compose([A.HorizontalFlip(p=1.0)])
     result = transform(image=image, user_data=None)

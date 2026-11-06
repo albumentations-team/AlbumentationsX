@@ -767,6 +767,27 @@ def rule_removed_sampling(index: SourceIndex) -> list[Diagnostic]:
     return result
 
 
+def rule_sampled_dispatch_override(index: SourceIndex) -> list[Diagnostic]:
+    result: list[Diagnostic] = []
+    for info in index.classes.values():
+        if info.file.key == "albumentations/core/transforms_interface.py" and info.name == "DualTransform":
+            continue
+        if not index.is_descendant(info, TRANSFORM_ROOTS):
+            continue
+        result.extend(
+            _d(
+                "AXG026",
+                info,
+                info.methods[name],
+                "Sampled-parameter dispatch belongs to the framework. Use sample_parameters and target handlers.",
+                f"{info.name}.{name}",
+            )
+            for name in ("apply_with_params", "_apply_with_params")
+            if name in info.methods
+        )
+    return result
+
+
 def rule_serialization_override(index: SourceIndex) -> list[Diagnostic]:
     result: list[Diagnostic] = []
     for info in index.classes.values():
@@ -1407,6 +1428,7 @@ def run_all(index: SourceIndex) -> list[Diagnostic]:
         rule_fill_naming,
         rule_range_annotations,
         rule_removed_sampling,
+        rule_sampled_dispatch_override,
         rule_serialization_override,
         rule_cv2,
         rule_bbox_defaults,

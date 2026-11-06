@@ -38,8 +38,9 @@ composition/tensor route, or a deliberate golden compatibility contract.
 - Randomness contract: fixed seeds reproduce tested outputs.
 - Label contract: bbox and keypoint labels stay aligned with surviving
   annotations.
-- Bounds contract: geometric outputs remain finite and inside image or volume
-  bounds after Compose filtering.
+- Geometry and bounds contract. The [2D geometry contract](../geometry.md)
+  describes coordinate systems, target alignment, and the bounds enforced by
+  the configured annotation filters.
 - Serialization contract: supported transforms round-trip through
   serialization and replay checks.
 

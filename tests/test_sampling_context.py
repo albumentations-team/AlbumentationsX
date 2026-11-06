@@ -82,6 +82,11 @@ def test_declaring_an_unsupported_sampling_hook_fails_without_an_invocation(hook
         type("UnsupportedTransform", (A.ImageOnlyTransform,), {hook_name: lambda self: {}})
 
 
+def test_declaring_the_old_sampled_dispatch_hook_fails() -> None:
+    with pytest.raises(TypeError, match=r"overrides apply_with_params\. Use sample_parameters and target handlers"):
+        type("CustomFlip", (A.HorizontalFlip,), {"apply_with_params": lambda self, params: {}})
+
+
 class _DrawProbe(A.ImageOnlyTransform):
     def __init__(self) -> None:
         super().__init__(p=1)

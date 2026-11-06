@@ -10,9 +10,11 @@ annotation geometry tests, 3D tests, and property tests. They should be added
 when exact or structured output stability is important to review explicitly,
 not as a mechanical duplicate of every transform test.
 
-The initial sentinel set covers exact deterministic 2D geometry, a
-tolerance-based bbox/keypoint resize contract, and an exact 3D volume/mask3d
-crop contract. Each manifest case records the transform, params, seed, input
+The sentinel set covers exact deterministic 2D geometry, including oversized
+crop, tolerance-based HBB and OBB resize, and exact 3D volume/mask3d crop.
+The OBB resize vector stores ordered corners in output pixels so equivalent
+width, height, and angle representations compare as the same rectangle.
+Each manifest case records the transform, params, seed, input
 recipe, environment, behavior epoch, targets, stability mode, tolerance, and
 output metadata.
 

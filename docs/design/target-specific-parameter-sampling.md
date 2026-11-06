@@ -423,7 +423,9 @@ channels or dtype.
 
 ## Application Dispatch
 
-`apply_with_params` receives validated sampled parameters and keeps two execution paths.
+The framework dispatches validated `SampledParams` through two execution paths.
+When a transform records compact geometry, the framework can prepare its
+runtime values once before dispatch and share them across target handlers.
 
 The uniform-parameter path performs the current loop with `sampled_params.params`. It checks once that
 `sampled_params.target_params` is empty and performs no per-target lookup.
@@ -600,8 +602,8 @@ in channel count and dtype.
 - Update replay fixtures and tests.
 - Document the intentional incompatibility with flat execution-param payloads.
 
-**Completion condition**: replay reproduces exact outputs for mixed representations without invoking random sampling or
-materialization code.
+**Completion condition**: replay reproduces exact outputs for mixed representations without invoking random sampling.
+Runtime geometry derived deterministically from a compact record can be prepared before dispatch.
 
 ### Phase 5: Delete legacy machinery — complete
 

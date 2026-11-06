@@ -12,9 +12,11 @@ which limitations are known.
 2. Compatibility matrix: Python versions, operating systems, and dependency
    sets tested.
 3. Test summary covering unit, regression, property, serialization/replay, 3D,
-   bbox/keypoint, and OBB tests. Record the [validation contract](../validation.md) result separately.
+   bbox/keypoint, and OBB tests. Record separate results for the [validation contract](../validation.md)
+   and the [2D geometry contract](../geometry.md).
 4. Correctness contracts: determinism, dtype and shape, target alignment,
-   label integrity, volume semantics, and serialization behavior.
+   label integrity, [2D geometry](../geometry.md), volume semantics, and
+   serialization behavior.
 5. Known limitations: dependency-sensitive exactness, advisory optional-extra
    coverage, and platform caveats.
 6. Performance summary: benchmark status, coverage-contract status,
@@ -24,6 +26,7 @@ which limitations are known.
    status, SBOM, checksums, and PyPI provenance.
 8. Reproducibility details: CI runs, lockfile hash, environment artifacts, and
    commands.
+9. Behavior changes and migration guidance linked to the release notes for the tested revision.
 
 Reports must avoid internal funding or grant context. They should describe the
 library guarantees in language useful to downstream users.
@@ -38,6 +41,6 @@ uv run python tools/generate_correctness_report.py \
 
 The version-bump release preflight should omit `--allow-missing-evidence` and
 provide at least one environment JSON artifact, passing pytest summary JSON,
-the passing `validation-contract.json` suite result, benchmark coverage summary/detail JSON,
+passing `validation-contract.json` and `geometry-contract.json` suite results, benchmark coverage summary/detail JSON,
 benchmark performance-budget JSON, and security JSON evidence. Local dry runs may use `--allow-missing-evidence` when
 those artifacts are not available.

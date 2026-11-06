@@ -41,10 +41,11 @@ We use pre-commit hooks to maintain consistent code quality. These hooks automat
 AX repository checks run through one configurable hook: `pre-commit run check-ax-rules --all-files`. Its enabled
 rules are listed in `[tool.ax-rules.rules]` in `pyproject.toml`; set an entry to `false` to disable it. On commit,
 each enabled rule runs only for the files in its own scope; `uv run python -m tools.ax_rules` without filenames runs
-every enabled rule. The `coding-guidance` rule emits `AXG001`–`AXG025` diagnostics for transform API, sampling, schema, naming,
+every enabled rule. The `coding-guidance` rule emits `AXG001`–`AXG026` diagnostics for transform API, sampling, schema, naming,
 performance-shape, documentation, bbox propagation, and target-specific sampling contracts. The public
-`BboxParams.__init__(bbox_type="hbb")` compatibility default is intentional; all internal transform, processor, and
-functional calls must pass `bbox_type` explicitly. Keep design judgment and benchmark interpretation in the relevant
+`BboxParams.__init__(bbox_type="hbb")` compatibility default is intentional. For transforms that already accept
+normalized HBBs on direct calls, `BasicTransform` supplies the type at the call boundary. All internal transform,
+processor, and functional calls must pass `bbox_type` explicitly. Keep design judgment and benchmark interpretation in the relevant
 review skill rather than duplicating these mechanical checks. `AGENTS.md`, `.codex/rules/`, and `.codex/skills/` point
 to this document and the hook instead of restating the AXG catalog.
 
@@ -522,6 +523,11 @@ target-sensitive values from first-target `params["shape"]` or legacy shape help
 use semantic parameter names; target routing belongs in `TargetParams` entries rather than names such as `volume_noise_map`
 (`AXG023`). When choosing among canonical image targets, samplers use `TargetSet` rather than selecting `image`,
 `images`, or `volume` from `data` (`AXG024`).
+
+`BasicTransform` and `DualTransform` own dispatch of sampled parameters. Define
+`sample_parameters` and the applicable target handlers in transform classes.
+The checker rejects overrides of `apply_with_params` and `_apply_with_params`,
+including overrides in shared transform bases (`AXG026`).
 
 #### No `get_transform_init_args_names` Override
 

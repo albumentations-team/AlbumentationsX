@@ -7,6 +7,7 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import Enum, auto
+from functools import partial
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -18,7 +19,7 @@ from albumentations.core.utils import get_volume_shape, get_volumes_shape
 from tests.helpers.contract_data import (
     TARGET_VOLUME_SHAPE,
     ContractDataFactory,
-    make_target_empty_hbb_data,
+    make_target_empty_bbox_data,
     make_target_empty_keypoint_data,
     make_target_float_image_mask_data,
     make_target_grayscale_image_mask_data,
@@ -77,8 +78,6 @@ def _assert_bbox_fields(source: dict[str, Any], result: dict[str, Any], geometry
         source,
         ("bbox_labels", "bbox_scores"),
     )
-    if len(bboxes) == 0:
-        return
     assert bboxes.ndim == 2
     assert bboxes.shape[1] == geometry_columns
     assert np.isfinite(bboxes).all()
@@ -350,7 +349,7 @@ TARGET_CONTRACT_PROFILES = (
     TargetProfile(
         profile_id="empty-hbb",
         required_targets=frozenset({"image", "mask", "bboxes"}),
-        data_factory=make_target_empty_hbb_data,
+        data_factory=partial(make_target_empty_bbox_data, geometry_columns=4),
         assert_result=_assert_hbb,
         compose_kwargs={
             "bbox_params": A.BboxParams(
@@ -360,6 +359,22 @@ TARGET_CONTRACT_PROFILES = (
         },
         cost=ProfileCost.EXTENDED,
         bbox_type="hbb",
+        empty_targets=frozenset({"bboxes"}),
+    ),
+    TargetProfile(
+        profile_id="empty-obb",
+        required_targets=frozenset({"image", "mask", "bboxes"}),
+        data_factory=partial(make_target_empty_bbox_data, geometry_columns=5),
+        assert_result=_assert_obb,
+        compose_kwargs={
+            "bbox_params": A.BboxParams(
+                coord_format="albumentations",
+                bbox_type="obb",
+                label_fields=["bbox_labels", "bbox_scores"],
+            ),
+        },
+        cost=ProfileCost.EXTENDED,
+        bbox_type="obb",
         empty_targets=frozenset({"bboxes"}),
     ),
     TargetProfile(

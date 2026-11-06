@@ -21,6 +21,7 @@ Supported Python versions: 3.11, 3.12, 3.13, 3.14
 ## Correctness Coverage
 
 - Unit and functional tests: `<count/result>`
+- [2D geometry contract](../geometry.md): `<count/result/CI run>`
 - Public transform-like API coverage routes: `<covered>/<total>`
 - Parameterized transform sweep coverage: `<count/result>`
 - Golden regression vectors: `<manifest-count>/<registered-contract-count>/<result>`
@@ -36,6 +37,10 @@ Supported Python versions: 3.11, 3.12, 3.13, 3.14
 - Image outputs preserve documented dtype and channel semantics.
 - Bbox and keypoint label fields remain aligned with surviving annotations.
 - Compose-level compatibility checks fail at pipeline creation where applicable.
+
+## Behavior Changes and Migration
+
+- Release notes and migration guidance for the tested revision: `<link>`
 
 ## Known Limitations
 

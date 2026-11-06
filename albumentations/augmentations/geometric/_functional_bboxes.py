@@ -8,6 +8,9 @@ from typing import Literal, cast
 from numpy.typing import NDArray
 
 from ._functional_grid import (
+    GridElasticGeometry,
+    compose_perspective_output_scale,
+    prepare_grid_elastic_geometry,
     swap_tiles_on_image,
 )
 from ._functional_images import (
@@ -288,30 +291,21 @@ def perspective_bboxes(
         >>> transformed_bboxes = perspective_bboxes(bboxes, image_shape, matrix, 150, 150, False)
 
     """
-    height, width = image_shape[:2]
-    transformed_bboxes = bboxes.copy()
+    output_shape = (max_height, max_width)
+    if keep_size:
+        matrix = compose_perspective_output_scale(matrix, output_shape, image_shape[:2])
+        output_shape = image_shape[:2]
+
     if bbox_type == "obb":
-        polygons, extras = _split_polygons_and_extras(bboxes)
-        polygons = polygons.copy()
-        polygons[..., 0] *= width
-        polygons[..., 1] *= height
+        polygons = obb_to_polygons(denormalize_bboxes(bboxes, image_shape))
+        extras = bboxes[:, 5:] if bboxes.shape[1] > BBOX_OBB_MIN_COLUMNS else None
         transformed = cast(
             "NDArray[np.float32]",
             cv2.perspectiveTransform(polygons.reshape(-1, 1, 2).astype(np.float32), matrix),
         )
-        transformed = transformed.reshape(polygons.shape)
-
-        if keep_size:
-            scale_x, scale_y = width / max_width, height / max_height
-            transformed[..., 0] *= scale_x
-            transformed[..., 1] *= scale_y
-            output_shape = image_shape
-        else:
-            output_shape = (max_height, max_width)
-
-        transformed[..., 0] /= output_shape[1]
-        transformed[..., 1] /= output_shape[0]
-        return polygons_to_obb(transformed, extra_fields=extras)
+        fitted = polygons_to_obb(transformed.reshape(polygons.shape), extra_fields=extras)
+        fitted[:, :4] = normalize_bboxes(fitted[:, :4], output_shape)
+        return fitted
 
     denormalized_coords = denormalize_bboxes(bboxes[:, :4], image_shape)
 
@@ -336,16 +330,8 @@ def perspective_bboxes(
         ],
     )
 
-    if keep_size:
-        scale_x, scale_y = width / max_width, height / max_height
-        new_coords[:, [0, 2]] *= scale_x
-        new_coords[:, [1, 3]] *= scale_y
-        output_shape = image_shape
-    else:
-        output_shape = (max_height, max_width)
-
-    normalized_coords = normalize_bboxes(new_coords, output_shape)
-    transformed_bboxes[:, :4] = normalized_coords
+    transformed_bboxes = bboxes.copy()
+    transformed_bboxes[:, :4] = normalize_bboxes(new_coords, output_shape)
 
     return transformed_bboxes
 
@@ -641,6 +627,40 @@ def bboxes_transpose(bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"]) -> np
     return transposed_bboxes
 
 
+def _is_identity_remap(map_x: np.ndarray, map_y: np.ndarray, image_shape: tuple[int, int]) -> bool:
+    height, width = image_shape[:2]
+    if map_x.shape != (height, width) or map_y.shape != (height, width) or not map_x.size:
+        return False
+    if any(map_x[y, x] != x or map_y[y, x] != y for y, x in ((0, 0), (height // 2, width // 2))):
+        return False
+    return bool(
+        np.all(map_x == np.arange(width, dtype=np.float32))
+        and np.all(map_y == np.arange(height, dtype=np.float32)[:, None]),
+    )
+
+
+def _rasterize_obb_masks(bboxes: np.ndarray, image_shape: tuple[int, int]) -> np.ndarray:
+    height, width = image_shape[:2]
+    masks = np.zeros((height, width, len(bboxes)), dtype=np.uint8)
+    polygons = np.rint(obb_to_polygons(bboxes)).astype(np.int32)
+    if len(bboxes) == 1:
+        cv2.fillConvexPoly(masks[..., 0], polygons[0], 1)
+        return masks
+
+    plane = np.empty((height, width), dtype=np.uint8)
+    for index, polygon in enumerate(polygons):
+        x, y, box_width, box_height = cv2.boundingRect(polygon)
+        x_min, y_min = max(0, x), max(0, y)
+        x_max, y_max = min(width, x + box_width), min(height, y + box_height)
+        if x_min >= x_max or y_min >= y_max:
+            continue
+        support = plane[: y_max - y_min, : x_max - x_min]
+        support.fill(0)
+        cv2.fillConvexPoly(support, polygon - np.array((x_min, y_min), dtype=np.int32), 1)
+        masks[y_min:y_max, x_min:x_max, index] = support
+    return masks
+
+
 @handle_empty_array("bboxes")
 def remap_bboxes(
     bboxes: np.ndarray,
@@ -648,9 +668,13 @@ def remap_bboxes(
     map_y: np.ndarray,
     image_shape: tuple[int, int],
     bbox_type: Literal["hbb", "obb"],
+    *,
+    normalized: bool = False,
 ) -> np.ndarray:
-    """Remap bounding boxes using displacement maps. map_x, map_y; bbox_type hbb/obb.
-    Converts bboxes to mask, remaps, converts back. For distortion transforms.
+    """Remap box masks with nearest-neighbor sampling, then fit boxes to their support.
+
+    OBB masks use the rotated corners in pixels. Exact identity maps preserve
+    OBB coordinates without rasterizing the box.
 
     Args:
         bboxes (np.ndarray): Bounding boxes array
@@ -658,15 +682,24 @@ def remap_bboxes(
         map_y (np.ndarray): Y displacement map
         image_shape (tuple[int, int]): Image shape (height, width)
         bbox_type (Literal['hbb', 'obb']): Type of bounding box - "hbb" for axis-aligned or "obb" for oriented
+        normalized (bool): Accept and return normalized boxes. Otherwise use pixel coordinates.
 
     Returns:
         np.ndarray: Remapped bounding boxes.
 
     """
-    bbox_masks = bboxes_to_mask(bboxes, image_shape)
+    if bbox_type == "obb" and _is_identity_remap(map_x, map_y, image_shape):
+        return bboxes.copy()
 
-    map_x = map_x.astype(np.float32)
-    map_y = map_y.astype(np.float32)
+    pixel_boxes = denormalize_bboxes(bboxes, image_shape) if normalized else bboxes
+    bbox_masks = (
+        _rasterize_obb_masks(pixel_boxes, image_shape)
+        if bbox_type == "obb"
+        else bboxes_to_mask(pixel_boxes, image_shape)
+    )
+
+    map_x = map_x.astype(np.float32, copy=False)
+    map_y = map_y.astype(np.float32, copy=False)
 
     transformed_masks = remap(
         bbox_masks,
@@ -677,7 +710,8 @@ def remap_bboxes(
         border_value=0,
     )
 
-    return mask_to_bboxes(transformed_masks, bboxes, bbox_type=bbox_type)
+    result = mask_to_bboxes(transformed_masks, pixel_boxes, bbox_type=bbox_type)
+    return normalize_bboxes(result, image_shape) if normalized else result
 
 
 @handle_empty_array("bboxes")
@@ -902,29 +936,26 @@ def flip_bboxes(
 @handle_empty_array("bboxes")
 def bbox_distort_image(
     bboxes: np.ndarray,
-    generated_mesh: np.ndarray,
+    generated_mesh: np.ndarray | GridElasticGeometry,
     image_shape: tuple[int, int],
 ) -> np.ndarray:
-    """Distort bounding boxes based on a generated mesh. Each bbox warped per mesh
-    cell; image_shape for clipping. For PiecewiseAffine with bboxes.
-
-    This function applies a perspective transformation to each bounding box based on the provided generated mesh.
-    It ensures that the bounding boxes are clipped to the image boundaries after transformation.
+    """Fit horizontal boxes around their binary masks warped through an elastic grid.
 
     Args:
         bboxes (np.ndarray): The bounding boxes to distort.
-        generated_mesh (np.ndarray): The generated mesh to distort the bounding boxes with.
+        generated_mesh (np.ndarray | GridElasticGeometry): The sampled mesh or its prepared geometry.
         image_shape (tuple[int, int]): The shape of the image as (height, width).
 
     Returns:
         np.ndarray: The distorted bounding boxes.
 
     """
+    geometry = prepare_grid_elastic_geometry(generated_mesh)
     bboxes = bboxes.copy()
     masks = masks_from_bboxes(bboxes, image_shape)
 
     transformed_masks = cv2.merge(
-        [distort_image(mask, generated_mesh, cv2.INTER_NEAREST) for mask in masks],
+        [distort_image(mask, geometry, cv2.INTER_NEAREST) for mask in masks],
     )
 
     if transformed_masks.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:

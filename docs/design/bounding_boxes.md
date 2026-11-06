@@ -46,7 +46,7 @@ No requirement that width >= height (like HBB). The stored `(x_min, y_min, x_max
 
 **OBB corner-based invariance**
 
-We use `cv2.minAreaRect` only to obtain the 4 corners via `cv2.boxPoints`; we derive `(w, h, angle)` from corners via `_corners_to_obb_params`. This makes us **OpenCV-version-invariant**: minAreaRect's raw angle range has changed across versions (pre-4.5.1: [-90, 0); 4.5.1–4.12: [0, 90]; 4.13+: [-90, 0)) — we ignore all of that.
+`cv2.minAreaRect` fits each rectangle and `cv2.boxPoints` returns its corners. We derive the side lengths and angle from two adjacent edges, using the edge closer to horizontal as the width. The OBB convention is defined by the fitted corners regardless of how OpenCV labels the sides in its result tuple.
 
 **Why angle is [-90, 90) and not [0, 180]?** The width edge is an undirected line. Two angles that differ by 180° describe the same line (e.g., 0° = horizontal right, 180° = horizontal left). We canonicalize to [-90, 90) to avoid redundancy.
 

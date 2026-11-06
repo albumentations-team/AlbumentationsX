@@ -112,7 +112,7 @@ Extended profiles run one primary mode per class:
 - float32, one-channel, and five-channel image/mask data;
 - `images` and `masks` batches;
 - `volumes` and `masks3d` collections, checking lengths, spatial synchronization, channel layout, and dtype;
-- empty HBB and keypoint collections;
+- empty HBB, OBB, and keypoint collections with aligned label fields;
 - non-contiguous image/mask views; and
 - read-only image/mask arrays.
 

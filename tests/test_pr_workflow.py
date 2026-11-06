@@ -140,6 +140,8 @@ def test_release_preflight_retains_clean_install_and_strict_release_evidence() -
     assert "--profile release-core" in run_text
     assert "--require-comparison" in run_text
     assert "--fail-on-release-blockers" in run_text
+    assert "tests/contracts/test_geometry_contract.py" in run_text
+    assert "/evidence/geometry-contract.json" in run_text
     assert "asv --config asv.conf.json check" not in run_text
     assert "--allow-missing" not in run_text
 

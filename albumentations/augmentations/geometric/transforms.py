@@ -6,6 +6,7 @@ transformations like grid shuffling and thin plate splines.
 """
 
 import random
+from collections.abc import Mapping
 from typing import Annotated, Any, ClassVar, Literal, Self, TypeVar, cast
 
 import cv2
@@ -31,9 +32,10 @@ from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
 )
-from albumentations.core.transform_params import SampledParams, TargetSet
+from albumentations.core.transform_params import SampledParams, SampledParamsError, TargetSet
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
+    BasicTransform,
     DualTransform,
 )
 from albumentations.core.type_definitions import (
@@ -47,6 +49,7 @@ from albumentations.core.type_definitions import (
 )
 
 from . import functional as fgeometric
+from ._functional_grid import GridElasticGeometry, compose_perspective_output_scale, prepare_grid_elastic_geometry
 
 __all__ = [
     "Affine",
@@ -62,6 +65,26 @@ NUM_PADS_ALL_SIDES = 4
 RangeValueT = TypeVar("RangeValueT", int, float)
 
 
+def _materialize_perspective_params(
+    params: Mapping[str, Any],
+    targets: TargetSet,
+    transform: BasicTransform,
+) -> Mapping[str, Any]:
+    shape = targets.aligned_spatial_shape(2) or params["shape"][:2]
+    try:
+        warp_shape = (params["max_height"], params["max_width"])
+        matrix = params["matrix"]
+    except KeyError as exc:
+        msg = f"Perspective is missing parameter {exc.args[0]!r}. Use the original replay record."
+        raise SampledParamsError(msg) from exc
+    if cast("Perspective", transform).keep_size:
+        matrix = compose_perspective_output_scale(matrix, warp_shape, shape)
+        output_shape = shape
+    else:
+        output_shape = warp_shape
+    return {**params, "shape": shape, "output_matrix": matrix, "output_shape": output_shape}
+
+
 class Perspective(DualTransform):
     """Apply random four-point perspective transformation. Params: scale, keep_size, border_mode,
     fill, interpolation. Supports image, mask, bboxes, keypoints.
@@ -70,9 +93,8 @@ class Perspective(DualTransform):
         scale (tuple of float): Standard deviation range `(low, high)` for the normal distribution
             used to sample random corner displacements (as a fraction of image size).
             Must be a non-decreasing 2-tuple of non-negative floats. Default: (0.05, 0.1).
-        keep_size (bool): Whether to resize image back to its original size after applying the perspective transform.
-            If set to False, the resulting images may end up having different shapes.
-            Default: True.
+        keep_size (bool): Whether to keep the input dimensions by composing an output scale into the warp.
+            If False, use the dimensions of the perspective frame. Default: True.
         border_mode (OpenCV flag): OpenCV border mode used for padding.
             Default: cv2.BORDER_CONSTANT.
         fill (tuple[float, ...] | float): Padding value if border_mode is cv2.BORDER_CONSTANT.
@@ -80,8 +102,8 @@ class Perspective(DualTransform):
         fill_mask (tuple[float, ...] | float): Padding value for mask if border_mode is
             cv2.BORDER_CONSTANT. Default: 0.
         fit_output (bool): If True, the image plane size and position will be adjusted to still capture
-            the whole image after perspective transformation. This is followed by image resizing if keep_size is set
-            to True. If False, parts of the transformed image may be outside of the image plane.
+            the whole image after perspective transformation. With keep_size=True the warp maps that frame back
+            to the input dimensions. If False, parts of the transformed image may be outside of the image plane.
             This setting should not be set to True when using large scale values as it could lead to very large images.
             Default: False.
         interpolation (int): Interpolation method to be used for image transformation. Should be one
@@ -157,6 +179,8 @@ class Perspective(DualTransform):
 
     _targets = ALL_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+    _runtime_generated_params = frozenset({"output_matrix", "output_shape"})
+    _runtime_param_materializer = staticmethod(_materialize_perspective_params)
 
     class InitSchema(BaseTransformInitSchema):
         scale: Annotated[
@@ -197,19 +221,18 @@ class Perspective(DualTransform):
     def apply(
         self,
         img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
-        matrix: np.ndarray,
-        max_height: int,
-        max_width: int,
+        output_matrix: np.ndarray,
+        output_shape: tuple[int, int],
         **params: Any,
     ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         result = fgeometric.perspective(
             img,
-            matrix,
-            max_width,
-            max_height,
+            output_matrix,
+            output_shape[1],
+            output_shape[0],
             self.fill,
             self.border_mode,
-            self.keep_size,
+            False,
             self.interpolation,
         )
         return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation, source=img)
@@ -217,19 +240,18 @@ class Perspective(DualTransform):
     def apply_to_images(
         self,
         images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
-        matrix: np.ndarray,
-        max_height: int,
-        max_width: int,
+        output_matrix: np.ndarray,
+        output_shape: tuple[int, int],
         **params: Any,
     ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         result = fgeometric.perspective_images(
             images,
-            matrix,
-            max_width,
-            max_height,
+            output_matrix,
+            output_shape[1],
+            output_shape[0],
             self.fill,
             self.border_mode,
-            self.keep_size,
+            False,
             self.interpolation,
         )
         return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation, source=images)
@@ -237,28 +259,26 @@ class Perspective(DualTransform):
     def apply_to_mask(
         self,
         mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
-        matrix: np.ndarray,
-        max_height: int,
-        max_width: int,
+        output_matrix: np.ndarray,
+        output_shape: tuple[int, int],
         **params: Any,
     ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fgeometric.perspective(
             mask,
-            matrix,
-            max_width,
-            max_height,
+            output_matrix,
+            output_shape[1],
+            output_shape[0],
             self.fill_mask,
             self.border_mode,
-            self.keep_size,
+            False,
             self.mask_interpolation,
         )
 
     def apply_to_bboxes(
         self,
         bboxes: np.ndarray,
-        matrix_bbox: np.ndarray,
-        max_height: int,
-        max_width: int,
+        output_matrix: np.ndarray,
+        output_shape: tuple[int, int],
         shape: tuple[int, int],
         bbox_type: Literal["hbb", "obb"],
         **params: Any,
@@ -266,10 +286,10 @@ class Perspective(DualTransform):
         return fgeometric.perspective_bboxes(
             bboxes,
             shape,
-            matrix_bbox,
-            max_width,
-            max_height,
-            self.keep_size,
+            output_matrix,
+            output_shape[1],
+            output_shape[0],
+            False,
             bbox_type=bbox_type,
         )
 
@@ -277,6 +297,7 @@ class Perspective(DualTransform):
         self,
         keypoints: np.ndarray,
         matrix: np.ndarray,
+        output_matrix: np.ndarray,
         max_height: int,
         max_width: int,
         shape: tuple[int, int],
@@ -289,6 +310,7 @@ class Perspective(DualTransform):
             max_width,
             max_height,
             self.keep_size,
+            output_matrix=output_matrix,
         )
 
     def sample_parameters(
@@ -326,7 +348,7 @@ class Perspective(DualTransform):
                 "matrix": matrix,
                 "max_height": max_height,
                 "max_width": max_width,
-                "matrix_bbox": matrix,
+                "matrix_bbox": matrix,  # Retain the replay field for older readers.
             }
         )
 
@@ -1030,6 +1052,14 @@ class ShiftScaleRotate(Affine):
         }
 
 
+def _materialize_grid_elastic_params(
+    params: Mapping[str, Any],
+    _targets: TargetSet,
+    _transform: BasicTransform,
+) -> Mapping[str, Any]:
+    return {**params, "generated_mesh": prepare_grid_elastic_geometry(params["generated_mesh"])}
+
+
 class GridElasticDeform(DualTransform):
     """Elastic deformations via a grid: displace control points and interpolate. num_grid_xy
     and magnitude control density and strength. Good for local stretching.
@@ -1111,6 +1141,7 @@ class GridElasticDeform(DualTransform):
     """
 
     _targets = ALL_TARGETS
+    _runtime_param_materializer = staticmethod(_materialize_grid_elastic_params)
 
     _supported_channel_counts: frozenset[int] = frozenset({1, 3})
 
@@ -1181,7 +1212,7 @@ class GridElasticDeform(DualTransform):
     def apply(
         self,
         img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
-        generated_mesh: np.ndarray,
+        generated_mesh: GridElasticGeometry,
         **params: Any,
     ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         if not is_rgb_image(img) and not is_grayscale_image(img):
@@ -1192,7 +1223,7 @@ class GridElasticDeform(DualTransform):
     def apply_to_mask(
         self,
         mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
-        generated_mesh: np.ndarray,
+        generated_mesh: GridElasticGeometry,
         **params: Any,
     ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fgeometric.distort_image(mask, generated_mesh, self.mask_interpolation)
@@ -1200,7 +1231,7 @@ class GridElasticDeform(DualTransform):
     def apply_to_bboxes(
         self,
         bboxes: np.ndarray,
-        generated_mesh: np.ndarray,
+        generated_mesh: GridElasticGeometry,
         shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:
@@ -1217,7 +1248,7 @@ class GridElasticDeform(DualTransform):
     def apply_to_keypoints(
         self,
         keypoints: np.ndarray,
-        generated_mesh: np.ndarray,
+        generated_mesh: GridElasticGeometry,
         shape: tuple[int, int],
         **params: Any,
     ) -> np.ndarray:

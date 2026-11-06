@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import cv2
 import numpy as np
 
 import albumentations
@@ -35,6 +36,14 @@ INPUT_RECIPES: dict[str, dict[str, Any]] = {
         "bbox_labels": [3, 7],
         "keypoints": [[2.0, 3.0], [8.0, 6.0]],
         "keypoint_labels": [11, 13],
+    },
+    "obb_keypoints": {
+        "image_shape": [7, 11, 3],
+        "image_dtype": "uint8",
+        "bboxes": [[5.5, 3.5, 4.0, 1.5, 33.0]],
+        "bbox_labels": [3],
+        "keypoints": [[4.0, 2.0]],
+        "keypoint_labels": [11],
     },
     "volume_mask3d": {
         "volume_shape": [6, 8, 10, 1],
@@ -83,18 +92,11 @@ def _array_metadata(array: np.ndarray) -> dict[str, Any]:
 
 
 def _environment_metadata() -> dict[str, str | None]:
-    try:
-        import cv2
-    except ImportError:
-        opencv_version = None
-    else:
-        opencv_version = cv2.__version__
-
     return {
         "python": platform.python_version(),
         "platform": platform.platform(),
         "numpy": np.__version__,
-        "opencv": opencv_version,
+        "opencv": cv2.__version__,
         "albumentations": albumentations.__version__,
     }
 
@@ -112,7 +114,7 @@ def _build_image_mask_data(recipe: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _build_hbb_keypoint_data(recipe: dict[str, Any]) -> dict[str, Any]:
+def _build_bbox_keypoint_data(recipe: dict[str, Any]) -> dict[str, Any]:
     seed = int(recipe["seed"])
     return {
         "bbox_labels": list(recipe["bbox_labels"]),
@@ -141,8 +143,8 @@ def _base_data(contract: TransformContract) -> dict[str, Any]:
     recipe = _input_recipe_for_contract(contract)
     if contract.input_recipe == "image_mask":
         return _build_image_mask_data(recipe)
-    if contract.input_recipe == "hbb_keypoints":
-        return _build_hbb_keypoint_data(recipe)
+    if contract.input_recipe in {"hbb_keypoints", "obb_keypoints"}:
+        return _build_bbox_keypoint_data(recipe)
     if contract.input_recipe == "volume_mask3d":
         return _build_volume_mask3d_data(recipe)
     msg = f"Unsupported regression input recipe: {contract.input_recipe}"
@@ -151,11 +153,12 @@ def _base_data(contract: TransformContract) -> dict[str, Any]:
 
 def _compose_kwargs(contract: TransformContract) -> dict[str, Any]:
     kwargs: dict[str, Any] = {"seed": contract.seed, "strict": True}
-    if contract.input_recipe == "hbb_keypoints":
+    if contract.input_recipe in {"hbb_keypoints", "obb_keypoints"}:
+        oriented = contract.input_recipe == "obb_keypoints"
         kwargs["bbox_params"] = albumentations.BboxParams(
-            coord_format="pascal_voc",
+            coord_format="cxcywh" if oriented else "pascal_voc",
             label_fields=["bbox_labels"],
-            bbox_type="hbb",
+            bbox_type="obb" if oriented else "hbb",
         )
         kwargs["keypoint_params"] = albumentations.KeypointParams(
             coord_format="xy",
@@ -166,6 +169,14 @@ def _compose_kwargs(contract: TransformContract) -> dict[str, Any]:
     return kwargs
 
 
+def _sorted_box_corners(bboxes: np.ndarray) -> np.ndarray:
+    corners = np.empty((len(bboxes), 4, 2), dtype=np.float32)
+    for index, (x, y, width, height, angle) in enumerate(bboxes.tolist()):
+        points = cv2.boxPoints(((x, y), (width, height), angle))
+        corners[index] = points[np.lexsort((points[:, 1], points[:, 0]))]
+    return corners
+
+
 def _run_contract(contract: TransformContract) -> dict[str, np.ndarray]:
     transform_cls = getattr(albumentations, contract.name)
     transform = albumentations.Compose(
@@ -174,6 +185,8 @@ def _run_contract(contract: TransformContract) -> dict[str, np.ndarray]:
     )
     data = _base_data(contract)
     output = transform(**data)
+    if "bbox_corners" in contract.targets:
+        output["bbox_corners"] = _sorted_box_corners(output["bboxes"])
     return {target: _as_output_array(output[target]) for target in contract.targets}
 
 

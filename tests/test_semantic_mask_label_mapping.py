@@ -9,16 +9,6 @@ import albumentations as A
 from albumentations.core.transform_params import SampledParams, TargetSet
 
 
-class _ApplyWithParamsTrackingFlip(A.HorizontalFlip):
-    def __init__(self) -> None:
-        super().__init__(p=1.0)
-        self.apply_with_params_calls = 0
-
-    def apply_with_params(self, params: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
-        self.apply_with_params_calls += 1
-        return super().apply_with_params(params, *args, **kwargs)
-
-
 def test_semantic_mask_label_mapping_swaps_labels_after_horizontal_flip() -> None:
     image = np.zeros((1, 4, 3), dtype=np.uint8)
     mask = np.array([[2, 0, 3, 2]], dtype=np.uint8)
@@ -159,22 +149,6 @@ def test_semantic_mask_label_mapping_follows_realized_cubic_symmetry_operation(
         expected[source_labels == 3] = 2
     np.testing.assert_array_equal(result["mask3d"], expected)
     np.testing.assert_array_equal(result["mask3d_alias"], expected)
-
-
-def test_semantic_mask_label_mapping_preserves_custom_apply_with_params_hook() -> None:
-    image = np.zeros((1, 4, 3), dtype=np.uint8)
-    mask = np.array([[2, 0, 3, 2]], dtype=np.uint8)
-    flip = _ApplyWithParamsTrackingFlip()
-    transform = A.Compose(
-        [flip],
-        semantic_mask_label_mappings={"HorizontalFlip": {2: 3, 3: 2}},
-        telemetry=False,
-    )
-
-    result = transform(image=image, mask=mask)
-
-    assert flip.apply_with_params_calls == 1
-    np.testing.assert_array_equal(result["mask"], np.array([[3, 2, 0, 3]], dtype=np.uint8))
 
 
 def test_semantic_mask_label_mapping_preserves_nested_compose_configuration() -> None:

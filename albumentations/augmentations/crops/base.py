@@ -699,6 +699,7 @@ class _BaseRandomSizedCrop(DualTransform):
     """
 
     InitSchema: ClassVar[type[BaseTransformInitSchema]] = _BaseRandomSizedCropInitSchema
+    _accepts_direct_hbb = True
 
     def __init__(
         self,
@@ -765,9 +766,10 @@ class _BaseRandomSizedCrop(DualTransform):
         bboxes: np.ndarray,
         crop_coords: tuple[int, int, int, int],
         shape: tuple[int, int],
+        bbox_type: Literal["hbb", "obb"],
         **params: Any,
     ) -> np.ndarray:
-        return fcrops.crop_bboxes_by_coords(bboxes, crop_coords, shape)
+        return fcrops.crop_and_resize_bboxes(bboxes, crop_coords, shape, self.size, bbox_type)
 
     def apply_to_keypoints(
         self,

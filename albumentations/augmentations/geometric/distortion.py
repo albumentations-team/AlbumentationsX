@@ -27,6 +27,7 @@ type, and characteristics of the distortion, as well as interpolation methods fo
 target types.
 """
 
+from collections.abc import Mapping
 from typing import Annotated, Any, Literal, Self
 
 import numpy as np
@@ -42,10 +43,6 @@ from pydantic import (
 
 import albumentations.augmentations.pixel.functional as fpixel
 from albumentations.augmentations.utils import check_range
-from albumentations.core.bbox_utils import (
-    denormalize_bboxes,
-    normalize_bboxes,
-)
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import (
     check_range_bounds,
@@ -54,6 +51,7 @@ from albumentations.core.pydantic import (
 from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
+    BasicTransform,
     DualTransform,
 )
 from albumentations.core.type_definitions import (
@@ -161,16 +159,14 @@ class BaseRemapTransform(DualTransform):
         bbox_type: Literal["hbb", "obb"],
         **params: Any,
     ) -> np.ndarray:
-        image_shape = shape[:2]
-        bboxes_denorm = denormalize_bboxes(bboxes, image_shape)
-        bboxes_returned = fgeometric.remap_bboxes(
-            bboxes_denorm,
+        return fgeometric.remap_bboxes(
+            bboxes,
             map_x,
             map_y,
-            image_shape,
+            shape[:2],
             bbox_type=bbox_type,
+            normalized=True,
         )
-        return normalize_bboxes(bboxes_returned, image_shape)
 
     def apply_to_keypoints(
         self,
@@ -261,6 +257,26 @@ class BaseDistortion(BaseRemapTransform):
         return fgeometric.remap_keypoints_via_mask(keypoints, map_x, map_y, shape)
 
 
+def _materialize_elastic_params(
+    params: Mapping[str, Any],
+    targets: TargetSet,
+    transform: BasicTransform,
+) -> Mapping[str, Any] | None:
+    recorded_shape = tuple(params["shape"][:2])
+    if transform.replay_mode:
+        current_shape = targets.aligned_spatial_shape(2)
+        if current_shape is not None and current_shape != recorded_shape:
+            raise ValueError(
+                f"ElasticTransform replay requires the same spatial shape {recorded_shape}, got {current_shape}",
+            )
+    if not params["control_coefficients"]:
+        return None
+
+    control_coefficients = np.asarray(params["control_coefficients"], dtype=np.float32)
+    map_x, map_y = fgeometric.create_elastic_maps(control_coefficients, recorded_shape)
+    return {**params, "control_coefficients": control_coefficients, "map_x": map_x, "map_y": map_y}
+
+
 class ElasticTransform(BaseRemapTransform):
     """Apply bounded XY deformations from a compact control grid to images and annotations. Use it for
     shape variation in segmentation and medical imaging.
@@ -333,6 +349,7 @@ class ElasticTransform(BaseRemapTransform):
     """
 
     _runtime_generated_params = frozenset({"map_x", "map_y"})
+    _runtime_param_materializer = staticmethod(_materialize_elastic_params)
 
     class InitSchema(BaseRemapTransform.InitSchema):
         displacement_range: Annotated[
@@ -417,51 +434,6 @@ class ElasticTransform(BaseRemapTransform):
                 "control_coefficients": control_coefficients.tolist(),
             }
         )
-
-    def _apply_label_mappings_without_geometry(
-        self,
-        params: dict[str, Any],
-        data: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Preserve every target while applying configured keypoint and semantic-mask
-        label mappings for an exact identity deformation.
-        """
-        result = dict(data)
-        if "keypoints" in result and result["keypoints"] is not None:
-            result["keypoints"] = self._apply_label_mapping_to_keypoints(result["keypoints"], **params)
-        if self._semantic_mask_label_mappings:
-            result = self._apply_label_mapping_to_semantic_masks(result, **params)
-        return result
-
-    def apply_with_params(self, sampled_params: SampledParams, *args: Any, **kwargs: Any) -> dict[str, Any]:
-        """Build one dense map for the invocation and reject replay on another spatial shape before dispatching all
-        synchronized targets with exact map sharing.
-        """
-        params = dict(sampled_params.params_for("image"))
-        recorded_shape = tuple(params["shape"][:2])
-        if self.replay_mode:
-            current_targets = self._build_target_set(kwargs)
-            current_shape = current_targets.aligned_spatial_shape(2)
-            if current_shape is not None and current_shape != recorded_shape:
-                raise ValueError(
-                    f"ElasticTransform replay requires the same spatial shape {recorded_shape}, got {current_shape}",
-                )
-        if not params["control_coefficients"]:
-            return self._apply_label_mappings_without_geometry(params, kwargs)
-
-        runtime_params = dict(params)
-        control_coefficients = np.asarray(params["control_coefficients"], dtype=np.float32)
-        runtime_params["control_coefficients"] = control_coefficients
-        runtime_params["map_x"], runtime_params["map_y"] = fgeometric.create_elastic_maps(
-            control_coefficients,
-            recorded_shape,
-        )
-        runtime_sampled_params = SampledParams(
-            params=runtime_params,
-            target_params=sampled_params.target_params,
-            target_schema=sampled_params.target_schema,
-        )
-        return super().apply_with_params(runtime_sampled_params, *args, **kwargs)
 
     def apply_to_keypoints(
         self,

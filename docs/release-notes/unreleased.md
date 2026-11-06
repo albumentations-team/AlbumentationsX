@@ -12,6 +12,22 @@ Implementation: [validation #620](https://github.com/albumentations-team/Albumen
 
 ## Validation
 
+### Clear observations after rejected trace snapshot targets
+
+- Previous behavior: After an observed call, rejecting an unknown snapshot target in `Compose.run_with_trace()` or
+  `ReplayCompose.run_with_trace()` left the preceding sample's applied params and config visible through leaf getters.
+- New behavior: This rejection clears the caller's completed observation, so `get_applied_params()` and
+  `get_applied_config()` return empty dictionaries. Earlier returned results, other callers, and an active outer
+  invocation retain their data. The error and RNG continuation are unchanged. This corrects stale observation exposure.
+- Affected users: Callers inspecting applied params or config after catching an unknown trace snapshot-target error,
+  including nested Compose and ReplayCompose pipelines.
+- Migration: No pipeline configuration change is needed. Retain the previous returned result explicitly when it is
+  needed after a rejected call, for example `previous = pipeline(image=image)` before requesting another trace.
+- First affected version: unreleased
+- Contract: [Invocation observation ownership](../design/compose-greenfield-architecture.md#permanent-contracts).
+- Tests: [Trace rejection and retained artifacts](../../tests/test_composition_tracing.py),
+  [caller and active-invocation isolation](../../tests/test_compose_reentrancy.py).
+
 ### Constructor and graph errors
 
 - Previous behavior: Some schema errors could warn and substitute defaults; duplicate arguments could be overwritten.

@@ -30,6 +30,9 @@ approval is required.
 
 ### Behavior-change checklist
 
+Complete the inventory before opening the version-bump PR. The preflight checks below validate that evidence
+automatically when the version increases.
+
 1. Check every change since the release baseline against the [behavior inventory](../release-notes/unreleased.md).
    Include random sequences, replay and serialization, geometry, annotation handling, validation, defaults, and outputs.
 2. For each change, record previous and new behavior, affected users, a minimal migration example, first affected

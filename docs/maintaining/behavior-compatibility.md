@@ -35,9 +35,6 @@ retroactively create a warning period for earlier releases.
 The [unreleased notes](../release-notes/unreleased.md) are the behavior-change inventory for the next release. Each
 level-three heading is a change, under a level-two category. Use this format:
 
-Field values are wrapped prose with inline Markdown. Put longer code examples and multi-step guides in linked
-documents; the inventory keeps the minimal migration and its evidence together.
-
 ```text
 ### Short descriptive title
 
@@ -50,12 +47,16 @@ documents; the inventory keeps the minimal migration and its evidence together.
 - Tests: Relative Markdown links to the permanent tests.
 ```
 
+Field values are wrapped prose with inline Markdown. Put longer code examples and multi-step guides in linked
+documents; the inventory keeps the minimal migration and its evidence together.
+
 Keep the `Release baseline` at the last published version. Record `none` explicitly in categories with no observable
 change; do not omit a category or infer "none" from an empty section. Archive released notes under their version before
 starting a new inventory. Historical migration guidance is available in the [2.6.0 notes](../release-notes/2.6.0.md).
 
 `python -m tools.check_behavior_changes` checks the required fields, evidence links, categories, and links between this
-policy and the maintenance documents. The release report reads that same inventory; there is no second hand-written
+policy and the maintenance documents. Its pre-commit hook runs on every commit so deleting or renaming an evidence
+file cannot bypass the check. The release report reads that same inventory; there is no second hand-written
 change list. Release preflight resolves `unreleased` to the version being built and rejects a version at or below the
 baseline. Local report previews retain the unresolved version explicitly.
 

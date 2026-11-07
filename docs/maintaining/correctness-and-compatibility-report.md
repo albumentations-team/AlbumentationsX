@@ -49,6 +49,9 @@ benchmark coverage summary/detail JSON,
 benchmark performance-budget JSON, and security JSON evidence. Local dry runs may use `--allow-missing-evidence` when
 those artifacts are not available.
 
+`--allow-missing-evidence` selects a local preview: it permits missing test artifacts and a package version at or below
+the inventory baseline. Release preflight omits the flag and enforces both checks.
+
 The determinism artifact must cover the [composition audit](determinism-audit.md), including real spawned DataLoader
 workers with and without persistence. A missing, empty, failing, or skipped determinism suite blocks the release
 report. The report pins documentation to the tested source revision and links the CI run from environment evidence.

@@ -17,7 +17,7 @@ repos:
         entry: uv run python -m tools.check_behavior_changes
         language: system
         pass_filenames: false
-        files: ^(docs/|tools/(check_behavior_changes|generate_correctness_report)\.py|tests/test_behavior_changes\.py|pyproject\.toml|\.pre-commit-config\.yaml)
+        always_run: true
       - id: check-ax-rules
         name: Check AlbumentationsX rules
         entry: uv run python -m tools.ax_rules

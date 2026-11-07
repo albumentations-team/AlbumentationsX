@@ -123,6 +123,14 @@ def release_evidence(tmp_path):
             "totals": {"passed": 44, "failures": 0, "errors": 0, "skipped": 0},
         },
     )
+    _write_json(
+        tmp_path / "determinism-contract.json",
+        {
+            "source": "junit-determinism-contract.xml",
+            "status": "ok",
+            "totals": {"passed": 137, "failures": 0, "errors": 0, "skipped": 0},
+        },
+    )
     return tmp_path
 
 
@@ -136,6 +144,11 @@ def test_generate_report_accepts_required_release_evidence(release_evidence) -> 
     assert "Validation contract: 35 passed, 0 failed, 0 errors, 0 skipped" in report
     docs_path = f"https://github.com/albumentations-team/AlbumentationsX/blob/{'a' * 40}/docs"
     assert f"[2D geometry contract]({docs_path}/geometry.md): 44 passed, 0 failed, 0 errors, 0 skipped" in report
+    assert (
+        f"[Determinism and replay contract]({docs_path}/determinism.md): 137 passed, 0 failed, 0 errors, 0 skipped"
+        in report
+    )
+    assert f"[Composition audit and permanent tests]({docs_path}/maintaining/determinism-audit.md)" in report
     assert f"[release notes]({docs_path}/release-notes/unreleased.md)" in report
     assert "[CI run 137](https://github.com/albumentations-team/AlbumentationsX/actions/runs/137)" in report
     assert "batch: covered=1, tracked_without_dedicated_matrix=2" in report
@@ -157,30 +170,36 @@ def test_generate_report_accepts_required_release_evidence(release_evidence) -> 
         generate_report(release_evidence)
 
 
+@pytest.mark.parametrize("contract", ["geometry", "determinism"])
 @pytest.mark.parametrize(
     ("totals", "match"),
     [
-        pytest.param(None, r"Missing required release evidence artifact: geometry-contract\.json", id="missing"),
+        pytest.param(None, r"Missing required release evidence artifact: {contract}-contract\.json", id="missing"),
         pytest.param(
             {"passed": 0, "failures": 0, "errors": 0, "skipped": 0},
-            "geometry contract evidence must show a nonempty suite",
+            "{contract} contract evidence must show a nonempty suite",
             id="empty",
         ),
         pytest.param(
             {"passed": 43, "failures": 1, "errors": 0, "skipped": 0},
-            "geometry contract evidence is incomplete or failing",
+            "{contract} contract evidence is incomplete or failing",
             id="failing",
+        ),
+        pytest.param(
+            {"passed": 43, "failures": 0, "errors": 0, "skipped": 1},
+            "{contract} contract evidence must show a nonempty suite with no skipped tests",
+            id="skipped",
         ),
     ],
 )
-def test_generate_report_requires_passing_geometry_evidence(release_evidence, totals, match) -> None:
-    path = release_evidence / "geometry-contract.json"
+def test_generate_report_requires_passing_contract_evidence(release_evidence, contract, totals, match) -> None:
+    path = release_evidence / f"{contract}-contract.json"
     if totals is None:
         path.unlink()
     else:
-        _write_json(path, {"source": "junit-geometry-contract.xml", "status": "ok", "totals": totals})
+        _write_json(path, {"source": f"junit-{contract}-contract.xml", "status": "ok", "totals": totals})
 
-    with pytest.raises(ValueError, match=match):
+    with pytest.raises(ValueError, match=match.format(contract=contract)):
         generate_report(release_evidence)
 
 

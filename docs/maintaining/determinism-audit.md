@@ -1,0 +1,105 @@
+# Determinism audit and evidence
+
+The [public determinism and replay contract](../determinism.md) defines the supported guarantees. This audit maps
+the composition implementation and permanent tests to [#491](https://github.com/albumentations-team/AlbumentationsX/issues/491).
+It covers random sampling and sample identity; it does not promise cross-platform numerical equality for every kernel.
+
+## Composition audit
+
+Every configured child is dispatched through `BaseCompose._apply_child` with the enclosing `InvocationContext`.
+Transform samplers receive its `SamplingContext`. No audited composition samples from a separate instance generator.
+Standalone containers open a root invocation when there is no enclosing invocation.
+
+| Public composition | Random decisions | Shared path |
+| --- | --- | --- |
+| `Compose` | Root probability and leaf sampling | `_execute_root`, `_apply_children` |
+| `ReplayCompose` | Ordinary calls use Compose sources; replay uses stored decisions | `_execute_root`, `apply_in_invocation` |
+| `OneOf` | Probability and weighted child choice | `apply_in_invocation` |
+| `SomeOf` | Probability and child indices, including replacement | `apply_in_invocation`, `sample_indices` |
+| `RandomOrder` | SomeOf selection with sampled execution order | Inherited `apply_in_invocation`, overridden `sample_indices` |
+| `OneOrOther` | First/second branch choice | `apply_in_invocation` |
+| `Sequential` | Container and child probabilities | `apply_in_invocation` |
+| `SelectiveChannelTransform` | Container and child probabilities for selected channels | `apply_in_invocation` |
+
+Sources: [composition](../../albumentations/core/composition.py),
+[invocation and sampling state](../../albumentations/core/invocation.py), and
+[worker seed derivation](../../albumentations/core/random_utils.py).
+
+## Permanent coverage
+
+| Guarantee | Evidence |
+| --- | --- |
+| Fixed-seed sequences and ordinary/trace agreement for all eight nested composition types | `tests/property/test_determinism.py` |
+| Sample keys survive reordering and concurrent calls for all eight types | `tests/property/test_determinism.py` |
+| Explicit seeds leave the configured stream untouched; failures preserve exact draw consumption | `tests/test_sampling_context.py` |
+| Concurrent execution isolates generators, observations, processors, and target restoration | `tests/test_compose_reentrancy.py` |
+| Worker-count-independent samples, including persistent workers and epoch keys | `tests/test_dataloader_determinism.py` with real `spawn` workers at counts 0, 1, and 2 |
+| Ordinary workers reproduce a fixed loader setup, advance across epochs, and differ when worker count changes | `tests/test_dataloader_determinism.py` |
+| Pickle/unpickle rebuilds process-local RNG state | `tests/test_per_worker_seed.py` pickle contracts; spawned-worker tests |
+| Constructor persistence, ReplayCompose, applied configurations, and tracing | `tests/contracts/test_composition_serialization_contracts.py`, `tests/test_composition_tracing.py`, and `tests/property/test_applied_config_replay.py` |
+| Repeated/reordered child visits, per-visit parameters, nested selectors, channel scopes, annotations, and older replay records | `tests/test_composition_tracing.py` and the frozen record `tests/files/replay-someof-without-visits.json` |
+| Prohibited global sampling, mixin/instance RNG access, and helper/constructor-created independent sources are rejected | `tests/test_ax_coding_guidance.py` negative controls for `AXG005` and `AXG027` |
+
+The real-worker tests reproduce [#81](https://github.com/albumentations-team/AlbumentationsX/issues/81): ordinary
+augmentations may change when worker count changes. Stable sample-keyed `invocation_seed` values reproduce the same
+samples across worker counts, loader seeds, and persistence settings. The test includes epoch identity in requests
+sent to the workers, so persistent dataset copies do not depend on parent-process attribute updates.
+
+## CI and report evidence
+
+The [PR workflow](../../.github/workflows/pr.yml) runs the base/property contracts in compatibility jobs and the
+real-worker suite in its PyTorch job. The [nightly](../../.github/workflows/nightly.yml) and
+[release-candidate](../../.github/workflows/release-candidate.yml) PyTorch jobs run the same worker suite.
+The repository's `check-ax-rules` pre-commit hook enforces the RNG source checks.
+
+Version-bump release preflight produces `junit-determinism-contract.xml` and summarizes it as
+`determinism-contract.json`. The [Correctness & Compatibility Report](correctness-and-compatibility-report.md)
+requires a nonempty passing determinism suite with no skipped tests. Its contract and audit links use the tested
+source revision; environment artifacts identify the Python/dependency profile, commit, and CI run.
+
+Run the report's determinism suite locally with:
+
+```bash
+uv run pytest -q \
+  tests/test_sampling_context.py tests/test_compose_reentrancy.py \
+  tests/test_composition_tracing.py tests/test_dataloader_determinism.py \
+  tests/contracts/test_composition_serialization_contracts.py \
+  tests/property/test_determinism.py tests/property/test_applied_config_replay.py \
+  tests/test_per_worker_seed.py::test_unpickled_compose_resets_runtime_context \
+  tests/test_per_worker_seed.py::test_unpickled_basic_transform_resets_runtime_context \
+  --hypothesis-profile=ci-fast \
+  --junitxml=_internal/determinism-contract.xml
+```
+
+## Verification record: 2026-11-07
+
+Tested runtime source: [3d8777b](https://github.com/albumentations-team/AlbumentationsX/commit/3d8777b8b7b145e3cc254ff645f067158278c3e0).
+This record is added separately from the tested implementation. The local profile was macOS ARM64 (Apple M4 Max), Python 3.11.15,
+NumPy 2.4.6, OpenCV 5.0.0.93, Albucore 0.3.5, and CPU PyTorch 2.15.0, installed from the project lockfile.
+
+| Check | Local result |
+| --- | --- |
+| Determinism suite listed above, extracted from the full JUnit result | 165 passed, 0 skipped |
+| Full project suite, including real spawned workers | 25,153 passed, 34 skipped |
+| Real spawned-worker suite, included in the full run | 5 passed, 0 skipped |
+| Coding-guidance suite, including RNG factory exemption boundaries | 56 passed |
+| All six Python examples in the public contract | Passed, including the spawn example |
+| All pre-commit hooks, including mypy and Pyrefly | Passed |
+| CI matrix/shard consistency and workflow security audit | Passed |
+
+Runtime results refer to the implementation above; repository-check results cover the current PR, including the
+restriction of recorded-seed reconstruction to plain NumPy and Python generators.
+
+Paired measurements against `ca6ef95` covered 23 public routes with one native compute thread and NEON enabled.
+Ordinary Compose, tracing, Tensor, processor, concurrent-call, and flat Replay routes stayed within 5% of baseline.
+Measured selector-capture cases added 3.6–7.7 microseconds at `32×48×3` for complete visit metadata. SomeOf replay
+with four repeated selections now executes four visits instead of one; its timing includes that corrected work.
+
+Fresh-process checks for four repeated noise visits at `128×160×3`, in uint8 and float32, found peak traced allocation
+within 0.02% of baseline and no measured RSS increase. The record now retains all four required noise arrays once
+(983,040 bytes), where the old record retained only one (245,760 bytes). Record size therefore reflects the complete
+sampled operation rather than silently dropping visit parameters. Raw timings and memory observations remain outside Git.
+
+[Hosted PR CI evidence](https://github.com/albumentations-team/AlbumentationsX/actions/workflows/pr.yml?query=branch%3Acodex%2Fdeterministic-pipeline-contract)
+records the Linux, Windows, and macOS results separately from this local run. Raw generated reports, environment
+metadata, JUnit, and JSON evidence belong outside Git; release preflight retains them with its generated report.

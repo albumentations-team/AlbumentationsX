@@ -479,6 +479,8 @@ class ComposeInvocationState:
     instance_count: int | None = None
     repack_after_processors: bool = False
     replay_label_metadata: dict[str, LabelReplayState] | None = None
+    replay_visits: list[tuple[int, dict[str, Any]]] | None = None
+    replay_applied: bool = False
 
 
 @dataclass(slots=True)
@@ -531,6 +533,8 @@ class InvocationContext:
     _filtered_processor_ids: set[int] | None = None
     _sampling_context: SamplingContext | None = None
     trace_session: Any | None = None
+    replay_params: dict[object, dict[str, Any]] | None = None
+    replay_plans: dict[object, dict[str, Any]] | None = None
     _activation_token: Token[InvocationContext | None] | None = None
 
     def _random_streams(self) -> _ReservedRandomStreams:
@@ -601,7 +605,11 @@ class InvocationContext:
                 msg = "first transform key requires a state"
                 raise RuntimeError(msg)
             self._transform_states = {self._first_transform_key: first_state}
-        return self._transform_states.setdefault(key, TransformInvocationState())
+        cached_state = self._transform_states.get(key)
+        if cached_state is None:
+            cached_state = TransformInvocationState()
+            self._transform_states[key] = cached_state
+        return cached_state
 
     def get_transform_state(self, transform: InvocationOwner) -> TransformInvocationState | None:
         """Returns state without allocating a record for skipped leaves, keeping observing invocations cheap when
@@ -633,7 +641,11 @@ class InvocationContext:
                 msg = "first compose key requires a state"
                 raise RuntimeError(msg)
             self._compose_states = {self._first_compose_key: first_state}
-        return self._compose_states.setdefault(key, ComposeInvocationState())
+        cached_state = self._compose_states.get(key)
+        if cached_state is None:
+            cached_state = ComposeInvocationState()
+            self._compose_states[key] = cached_state
+        return cached_state
 
     def get_compose_state(self, compose: InvocationOwner) -> ComposeInvocationState | None:
         """Returns existing state for `compose` without allocating on no-op paths, so postprocessing can distinguish

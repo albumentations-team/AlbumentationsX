@@ -364,6 +364,7 @@ def generate_report(evidence_dir: Path | None = None, allow_missing_evidence: bo
     )
     validation_result = _contract_result(evidence_dir, "validation", allow_missing_evidence)
     geometry_result = _contract_result(evidence_dir, "geometry", allow_missing_evidence)
+    determinism_result = _contract_result(evidence_dir, "determinism", allow_missing_evidence)
     source_revision = next(
         (environment["git_commit"] for environment in environments if environment.get("git_commit")),
         "main",
@@ -408,6 +409,7 @@ Dependency sets tracked by the support policy: {dependency_sets}
 
 - Validation contract: {validation_result}
 - [2D geometry contract]({docs_url}/geometry.md): {geometry_result}
+- [Determinism and replay contract]({docs_url}/determinism.md): {determinism_result}
 - Test inventory: {test_file_count} `test*.py` files under `tests/`
 - Public transform-like API coverage routes: {covered_public_api_count} / {public_api_count}
 - Parameterized transform sweep coverage: {transform_sweep_count} runtime transforms
@@ -419,11 +421,24 @@ Dependency sets tracked by the support policy: {dependency_sets}
 
 ## Guaranteed Contracts
 
-- Fixed-seed Compose pipelines are deterministic for tested transforms.
+- Fixed-seed Compose sequences reproduce within the documented determinism boundary.
 - ReplayCompose reproduces tested transform parameters and outputs.
 - Image outputs preserve documented dtype and channel semantics.
 - Bbox and keypoint label fields remain aligned with surviving annotations.
 - Compose-level compatibility checks fail at pipeline creation where applicable.
+
+## Determinism and Replay
+
+- Sample-keyed `invocation_seed` values reproduce samples across worker counts and call schedules
+  without advancing configured streams.
+- Ordinary streams require the same loader seed, worker count, persistence, and sample assignment;
+  persistent workers advance across epochs.
+- Concurrent calls isolate execution state; scheduling does not define caller-to-stream assignment.
+- Root input rejection consumes no random draws; execution errors retain draws already consumed.
+- Constructor serialization, ReplayCompose, and applied-configuration replay have separate persistence contracts.
+- Cross-version exact pixels are limited to registered exact stability cases and their declared environments.
+- [Composition audit and permanent tests]({docs_url}/maintaining/determinism-audit.md).
+  CI runs and environments are recorded below.
 
 ## Behavior Changes and Migration
 

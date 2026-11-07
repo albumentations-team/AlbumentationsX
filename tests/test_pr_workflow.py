@@ -6,6 +6,7 @@ from itertools import product
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 from tools.ci_matrix import SUPPORTED_PYTHONS, TIER_1_OSES
@@ -142,8 +143,23 @@ def test_release_preflight_retains_clean_install_and_strict_release_evidence() -
     assert "--fail-on-release-blockers" in run_text
     assert "tests/contracts/test_geometry_contract.py" in run_text
     assert "/evidence/geometry-contract.json" in run_text
+    assert "tests/test_dataloader_determinism.py" in run_text
+    assert "/evidence/determinism-contract.json" in run_text
     assert "asv --config asv.conf.json check" not in run_text
     assert "--allow-missing" not in run_text
+
+
+@pytest.mark.parametrize(
+    ("filename", "job_name"),
+    [("pr.yml", "pytorch"), ("nightly.yml", "pytorch"), ("release-candidate.yml", "release_candidate_pytorch")],
+)
+def test_pytorch_jobs_include_real_dataloader_contracts(filename: str, job_name: str) -> None:
+    path = WORKFLOW_PATH.with_name(filename)
+    job = yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"][job_name]
+    commands = "\n".join(str(step.get("run", "")) for step in job["steps"])
+
+    assert "tests/test_dataloader_determinism.py" in commands
+    assert "-m pytorch" in commands
 
 
 def test_dependency_audit_scopes_licenses_to_base_and_keeps_extra_vulnerability_audit() -> None:

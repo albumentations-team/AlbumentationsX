@@ -554,37 +554,6 @@ def _chain(node: ast.expr) -> list[str] | None:
 
 
 def rule_random_usage(index: SourceIndex) -> list[Diagnostic]:
-    banned_numpy = {
-        "randint",
-        "rand",
-        "randn",
-        "random",
-        "choice",
-        "shuffle",
-        "permutation",
-        "uniform",
-        "normal",
-        "seed",
-        "RandomState",
-        "integers",
-        "standard_normal",
-        "standard_uniform",
-    }
-    banned_random = {
-        "randint",
-        "random",
-        "choice",
-        "shuffle",
-        "uniform",
-        "seed",
-        "sample",
-        "randrange",
-        "gauss",
-        "normalvariate",
-        "triangular",
-        "betavariate",
-        "expovariate",
-    }
     result: list[Diagnostic] = []
     for unit in index.units:
         aliases = unit.aliases
@@ -597,9 +566,10 @@ def rule_random_usage(index: SourceIndex) -> list[Diagnostic]:
             root = aliases.get(chain[0], chain[0])
             rest = chain[1:]
             canonical = ".".join((root, *rest)) if rest else root
-            numpy_method = canonical.rsplit(".", 1)[-1] if canonical.startswith("numpy.random.") else None
-            random_method = canonical.rsplit(".", 1)[-1] if canonical.startswith("random.") else None
-            if numpy_method in banned_numpy:
+            if canonical.startswith("numpy.random.") and canonical not in {
+                "numpy.random.default_rng",
+                "numpy.random.Generator",
+            }:
                 result.append(
                     _unit_d(
                         "AXG005",
@@ -609,7 +579,7 @@ def rule_random_usage(index: SourceIndex) -> list[Diagnostic]:
                         ".".join(chain),
                     )
                 )
-            elif random_method in banned_random:
+            elif canonical.startswith("random.") and canonical != "random.Random":
                 result.append(
                     _unit_d(
                         "AXG005",
@@ -645,6 +615,100 @@ def rule_sampling_rng(index: SourceIndex) -> list[Diagnostic]:
                             f"{info.name}.{name}",
                         )
                     )
+    return result
+
+
+def rule_instance_rng(index: SourceIndex) -> list[Diagnostic]:
+    result: list[Diagnostic] = []
+    execution_classes = {
+        info.qname: info
+        for info in index.classes.values()
+        if info.is_framework_root or index.is_descendant(info, FRAMEWORK_ROOTS)
+    }
+    for info in tuple(execution_classes.values()):
+        execution_classes.update((parent.qname, parent) for parent in index.ancestors(info))
+    for info in execution_classes.values():
+        for name, method in info.methods.items():
+            forwarded = {
+                id(argument)
+                for call in ast.walk(method)
+                if isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Attribute)
+                and call.func.attr == "set_random_state"
+                for argument in (*call.args, *(keyword.value for keyword in call.keywords))
+            }
+            for node in ast.walk(method):
+                instance_access = (
+                    isinstance(node, ast.Attribute)
+                    and dotted(node) in {"self.py_random", "self.random_generator"}
+                    and id(node) not in forwarded
+                )
+                if instance_access:
+                    result.append(
+                        _d(
+                            "AXG027",
+                            info,
+                            node,
+                            "built-in execution must use its SamplingContext or InvocationContext RNG",
+                            f"{info.name}.{name}",
+                        ),
+                    )
+    return result
+
+
+def _recorded_seed_factory(
+    factory: str, call: ast.Call, function: ast.FunctionDef | ast.AsyncFunctionDef | None
+) -> bool:
+    if (
+        factory not in {"numpy.random.default_rng", "random.Random"}
+        or function is None
+        or not (function.name == "apply" or function.name.startswith("apply_to_"))
+    ):
+        return False
+    seed = (
+        call.args[0] if call.args else next((item.value for item in call.keywords if item.arg in {"seed", "x"}), None)
+    )
+    return (
+        isinstance(seed, ast.Name)
+        and (seed.id == "seed" or seed.id.endswith("_seed"))
+        and seed.id in {argument.arg for argument in argument_nodes(function)}
+    )
+
+
+def rule_rng_factories(index: SourceIndex) -> list[Diagnostic]:
+    result: list[Diagnostic] = []
+    factories = {
+        "numpy.random.default_rng",
+        "numpy.random.Generator",
+        "numpy.random.RandomState",
+        "random.Random",
+        "albumentations.core.invocation.SamplingContext.from_seed",
+        "albumentations.core.invocation.SamplingContext.from_owner",
+    }
+    for unit in index.units:
+        if unit.key == "albumentations/core/invocation.py":
+            continue
+        parents = {child: node for node in ast.walk(unit.tree) for child in ast.iter_child_nodes(node)}
+        for node in ast.walk(unit.tree):
+            if not isinstance(node, ast.Call):
+                continue
+            factory = index.resolve_name(unit, dotted(node.func) or "")
+            if factory not in factories:
+                continue
+            parent = parents.get(node)
+            while parent is not None and not isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                parent = parents.get(parent)
+            function = parent if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)) else None
+            if not _recorded_seed_factory(factory, node, function):
+                result.append(
+                    _unit_d(
+                        "AXG027",
+                        unit,
+                        node,
+                        "RNG sources belong in invocation.py; kernels may reconstruct a recorded seed argument",
+                        dotted(node.func) or "",
+                    )
+                )
     return result
 
 
@@ -1424,6 +1488,8 @@ def run_all(index: SourceIndex) -> list[Diagnostic]:
         rule_sampling_plan_contract,
         rule_random_usage,
         rule_sampling_rng,
+        rule_instance_rng,
+        rule_rng_factories,
         rule_transform_names,
         rule_fill_naming,
         rule_range_annotations,

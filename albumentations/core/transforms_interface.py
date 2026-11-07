@@ -778,16 +778,15 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             raise TypeError(msg)
         if getattr(self, "_is_tensor_terminal", False):
             self._tensor_fallback_route(kwargs)
+        state = invocation.get_transform_state(self) if invocation.collect_applied else None
+        if state is not None:
+            state.params = None
+            state.applied_config = None
         if not self.replay_mode and not force_apply and self.p <= 0.0:
             return kwargs
         if self.replay_mode:
             state = invocation.transform_state(self) if invocation.collect_applied else None
             return self._apply_replay(state, invocation=invocation, **kwargs)
-
-        state = invocation.get_transform_state(self) if invocation.collect_applied else None
-        if state is not None:
-            state.params = None
-            state.applied_config = None
 
         if not self._should_apply_in_invocation(invocation, force_apply=force_apply):
             return kwargs
@@ -873,6 +872,9 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             self._build_applied_config(state=state, overrides=applied_overrides)
 
         if self.deterministic:
+            if invocation is not None and invocation.replay_params is not None:
+                invocation.replay_params[self.invocation_key] = deepcopy(effective_params.to_dict())
+                return self._apply_with_params(effective_params, targets, **kwargs)
             saved_params = kwargs[self.save_key]
             transform_id = id(self)
             existing = saved_params.get(transform_id)
@@ -976,33 +978,46 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         """Applies recorded replay parameters without new sampling, preserving the optional caller-local observation
         behavior of sampled leaves.
         """
-        if not self.applied_in_replay:
+        plan = (
+            None
+            if invocation is None or invocation.replay_plans is None
+            else invocation.replay_plans.get(self.invocation_key)
+        )
+        applied = self.applied_in_replay if plan is None else plan["applied"]
+        replay_params = self._replay_params if plan is None else plan["params"]
+        if not applied:
             return kwargs
+        if invocation is not None and invocation.replay_params is not None:
+            invocation.replay_params[self.invocation_key] = deepcopy(replay_params)
         if type(self) is NoOp and invocation is not None and invocation.has_tensor_inputs is False:
-            return self._apply_replay_in_route(state, **kwargs)
+            return self._apply_replay_in_route(state, replay_params, **kwargs)
         single_target = kwargs.get("image") if len(kwargs) == 1 else None
         if single_target is None and len(kwargs) == 1:
             single_target = next(iter(kwargs.values()))
         if isinstance(single_target, np.ndarray) and single_target.dtype.isnative:
-            return self._apply_replay_in_route(state, **kwargs)
+            return self._apply_replay_in_route(state, replay_params, **kwargs)
         if not isinstance(single_target, torch.Tensor):
             native_data, byte_orders, passthrough = _prepare_foreign_float_inputs(self, kwargs)
             if byte_orders:
                 result = self._apply_replay(state, invocation=invocation, **native_data)
                 return _restore_foreign_float_outputs(result, kwargs, byte_orders, passthrough)
         if self._can_bypass_tensor_route(kwargs, invocation):
-            return self._apply_replay_in_route(state, **kwargs)
-        return self._apply_replay_with_tensor_route(state, **kwargs)
+            return self._apply_replay_in_route(state, replay_params, **kwargs)
+        return self._apply_replay_with_tensor_route(state, replay_params, **kwargs)
 
-    def _apply_replay_with_tensor_route(self, state: TransformInvocationState | None, **kwargs: Any) -> Any:
+    def _apply_replay_with_tensor_route(
+        self, state: TransformInvocationState | None, replay_params: dict[str, Any], /, **kwargs: Any
+    ) -> Any:
         route = self._tensor_fallback_route(kwargs)
         if self._uses_tensor_fallback(route):
-            result = self._apply_replay_in_route(state, **self._enter_tensor_fallback(kwargs, route))
+            result = self._apply_replay_in_route(state, replay_params, **self._enter_tensor_fallback(kwargs, route))
             return self._restore_tensor_fallback(result, route)
-        return self._apply_replay_in_route(state, **kwargs)
+        return self._apply_replay_in_route(state, replay_params, **kwargs)
 
-    def _apply_replay_in_route(self, state: TransformInvocationState | None, **kwargs: Any) -> Any:
-        sampled_params = SampledParams.from_dict(deepcopy(self._replay_params))
+    def _apply_replay_in_route(
+        self, state: TransformInvocationState | None, replay_params: dict[str, Any], /, **kwargs: Any
+    ) -> Any:
+        sampled_params = SampledParams.from_dict(deepcopy(replay_params))
         targets = self._build_target_set(kwargs)
         self._validate_spatial_targets(targets)
         if (

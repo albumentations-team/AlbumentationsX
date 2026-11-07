@@ -352,6 +352,18 @@ all stochastic parameters before `apply`, then return a `SampledParams`. Values 
 Use `targets` and its descriptors for channel, dtype, layout, topology, or target-content decisions. Do not derive
 those decisions from the first-target `params["shape"]` field.
 
+`AXG005` rejects module-level Python and NumPy random draws, including imported aliases. `AXG027` rejects instance
+RNG access in built-in transforms, compositions, and their indexed mixins. Generator construction belongs to
+`core/invocation.py`; helpers and constructors cannot open an independent stream.
+Built-ins must also use their supplied sampling view instead of opening another `SamplingContext` through a factory.
+Composition selectors draw from their explicit `InvocationContext`; transform samplers draw from `SamplingContext`.
+Forwarding source generators to `set_random_state` with positional or named arguments is permitted when reconstructing
+configured policy. An application handler may reconstruct a generator from an explicit sampled-seed argument, as
+dropout fill and shot noise do; this derives its
+randomness from the invocation and supports replay. It must not introduce independent entropy.
+
+See the [determinism and replay contract](../determinism.md) for downstream guarantees and limits.
+
 ### SamplingContext compatibility and migration
 
 The fix for [#596](https://github.com/albumentations-team/AlbumentationsX/issues/596) removes

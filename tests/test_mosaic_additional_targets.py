@@ -298,14 +298,16 @@ def test_mosaic_alias_variable_donor_sizes_and_multichannel_padding(
     np.testing.assert_array_equal(result["thermal"], np.repeat(expected[..., None], channels, axis=-1))
 
 
-@pytest.mark.parametrize("dtype", [np.uint8, np.float32], ids=["uint8", "float32"])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32], ids=["uint8", "float16", "float32"])
 @pytest.mark.parametrize("fit_mode", ["cover", "contain"])
 def test_mosaic_alias_resize_supports_128_channels(
-    dtype: type[np.uint8] | type[np.float32],
+    dtype: type[np.uint8] | type[np.float16] | type[np.float32],
     fit_mode: Literal["cover", "contain"],
 ) -> None:
     channels = np.arange(128, dtype=dtype)
-    if dtype is np.float32:
+    if dtype is np.float16:
+        channels /= np.float16(128)
+    elif dtype is np.float32:
         channels /= np.float32(128)
     thermal = np.broadcast_to(channels, (2, 2, 128)).copy()
     transform = A.Compose(
@@ -318,6 +320,37 @@ def test_mosaic_alias_resize_supports_128_channels(
     assert result["thermal"].shape == (4, 4, 128)
     assert result["thermal"].dtype == dtype
     np.testing.assert_array_equal(result["thermal"], np.broadcast_to(channels, (4, 4, 128)))
+
+
+@pytest.mark.parametrize("fit_mode", ["cover", "contain"])
+def test_mosaic_float16_aliases_follow_geometry_for_primary_and_donors(
+    fit_mode: Literal["cover", "contain"],
+) -> None:
+    items = []
+    for index in range(4):
+        image = np.full((3, 5, 3), 10 + index, dtype=np.uint8)
+        items.append({"image": image, "thermal": image[..., 0].astype(np.float16)})
+
+    transform = A.Compose(
+        [
+            A.Mosaic(
+                grid_yx=(2, 2),
+                cell_shape=(4, 6),
+                target_size=(8, 12),
+                fit_mode=fit_mode,
+                interpolation=cv2.INTER_NEAREST,
+                p=1,
+            )
+        ],
+        additional_targets={"thermal": "image"},
+        seed=137,
+        strict=True,
+    )
+
+    result = transform(**items[0], mosaic_metadata=items[1:])
+
+    assert result["thermal"].dtype == np.float16
+    np.testing.assert_array_equal(result["thermal"], result["image"][..., 0].astype(np.float16))
 
 
 @pytest.mark.parametrize("dtype", [np.uint8, np.float32], ids=["uint8", "float32"])

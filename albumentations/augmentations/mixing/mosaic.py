@@ -118,7 +118,8 @@ class Mosaic(DualTransform):
         and geometry, while retaining their own pixels, dtype and channel count. Each active image
         target must be present in every valid donor record, aligned in H/W with that record's image,
         and match its primary target's dtype and channel count. HW and HWC1 donor arrays are compatible.
-        uint8 and float32 targets can be combined; use a scalar fill for targets with different channel counts.
+        uint8, float16, and float32 targets can be combined; use a scalar fill for targets with different
+        channel counts.
         Active image aliases may have at most 128 channels. Wider aliases and incomplete pairs
         raise ValueError before geometry and donor selection, including surplus donors.
         An alias absent from the primary call does not require corresponding donor fields.
@@ -444,8 +445,8 @@ class Mosaic(DualTransform):
     ) -> None:
         if not isinstance(value, np.ndarray) or value.ndim not in (2, 3) or any(size == 0 for size in value.shape):
             raise ValueError(f"Mosaic {context} must be a non-empty HW or HWC NumPy image")
-        if value.dtype not in (np.uint8, np.float32) or value.dtype != reference.dtype:
-            raise ValueError(f"Mosaic {context} must have dtype {reference.dtype} (uint8 or float32)")
+        if value.dtype not in (np.uint8, np.float16, np.float32) or value.dtype != reference.dtype:
+            raise ValueError(f"Mosaic {context} must have dtype {reference.dtype} (uint8, float16, or float32)")
         channels = value.shape[2] if value.ndim == 3 else 1
         reference_channels = reference.shape[2] if reference.ndim == 3 else 1
         if channels > 128:

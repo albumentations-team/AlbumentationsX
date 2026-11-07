@@ -73,19 +73,29 @@ uv run pytest -q \
 
 ## Verification record: 2026-11-07
 
-Tested source: [e7db973](https://github.com/albumentations-team/AlbumentationsX/commit/e7db973df5d40963ea102b3510111d8d6822fe7a).
-This record is added separately from the tested implementation. The local profile was macOS ARM64, Python 3.11.15,
+Tested source: [3d8777b](https://github.com/albumentations-team/AlbumentationsX/commit/3d8777b8b7b145e3cc254ff645f067158278c3e0).
+This record is added separately from the tested implementation. The local profile was macOS ARM64 (Apple M4 Max), Python 3.11.15,
 NumPy 2.4.6, OpenCV 5.0.0.93, Albucore 0.3.5, and CPU PyTorch 2.15.0, installed from the project lockfile.
 
 | Check | Local result |
 | --- | --- |
-| Determinism suite listed above, collected from the full, final focused, and real-worker JUnit results | 142 passed, 0 skipped |
-| Full project suite, excluding the separately executed worker module | 25,107 passed, 34 skipped |
-| Real spawned-worker suite | 5 passed, 0 skipped |
-| Final focused guidance, report, routing, and generative checks | 116 passed |
+| Determinism suite listed above, extracted from the full JUnit result | 165 passed, 0 skipped |
+| Full project suite, including real spawned workers | 25,153 passed, 34 skipped |
+| Real spawned-worker suite, included in the full run | 5 passed, 0 skipped |
+| Coding-guidance suite, including RNG negative controls | 47 passed |
 | All six Python examples in the public contract | Passed, including the spawn example |
 | All pre-commit hooks, including mypy and Pyrefly | Passed |
 | CI matrix/shard consistency and workflow security audit | Passed |
+
+Paired measurements against `ca6ef95` covered 23 public routes with one native compute thread and NEON enabled.
+Ordinary Compose, tracing, Tensor, processor, concurrent-call, and flat Replay routes stayed within 5% of baseline.
+Measured selector-capture cases added 3.6–7.7 microseconds at `32×48×3` for complete visit metadata. SomeOf replay
+with four repeated selections now executes four visits instead of one; its timing includes that corrected work.
+
+Fresh-process checks for four repeated noise visits at `128×160×3`, in uint8 and float32, found peak traced allocation
+within 0.02% of baseline and no measured RSS increase. The record now retains all four required noise arrays once
+(983,040 bytes), where the old record retained only one (245,760 bytes). Record size therefore reflects the complete
+sampled operation rather than silently dropping visit parameters. Raw timings and memory observations remain outside Git.
 
 [Hosted PR CI evidence](https://github.com/albumentations-team/AlbumentationsX/actions/workflows/pr.yml?query=branch%3Acodex%2Fdeterministic-pipeline-contract)
 records the Linux, Windows, and macOS results separately from this local run. Raw generated reports, environment

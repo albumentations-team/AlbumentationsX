@@ -52,6 +52,10 @@ those artifacts are not available.
 `--allow-missing-evidence` selects a local preview: it permits missing test artifacts and a package version at or below
 the inventory baseline. Release preflight omits the flag and enforces both checks.
 
+Release reports also require every environment artifact to name the same full Git commit SHA. The generator compares
+the local behavior inventory with that revision's Git content and rejects unavailable history or later inventory edits.
+Local previews skip this revision check; they remain unsuitable as publication evidence.
+
 The determinism artifact must cover the [composition audit](determinism-audit.md), including real spawned DataLoader
 workers with and without persistence. A missing, empty, failing, or skipped determinism suite blocks the release
 report. The report pins documentation to the tested source revision and links the CI run from environment evidence.

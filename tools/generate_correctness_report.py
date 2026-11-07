@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import tomllib
 from datetime import UTC, datetime
@@ -11,7 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from tests.regression.transform_contracts import coverage_summary
-from tools.check_behavior_changes import format_report
+from tools.check_behavior_changes import NOTES_PATH, format_report
+from tools.release_bundle import _git
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_URL = "https://github.com/albumentations-team/AlbumentationsX"
@@ -350,6 +352,20 @@ def _contract_result(evidence_dir: Path | None, name: str, allow_missing_evidenc
     return _format_test_counts(summary) if summary else "evidence unavailable"
 
 
+def _validate_inventory_revision(root: Path, revision: str) -> None:
+    """Require local migration notes to match the immutable revision identified by release evidence."""
+    if not isinstance(revision, str) or re.fullmatch(r"[0-9a-f]{40}", revision) is None:
+        raise ValueError("Release evidence must identify a full Git commit SHA")
+    try:
+        recorded = _git(root, "show", f"{revision}:{NOTES_PATH.as_posix()}").decode("utf-8")
+    except ValueError as error:
+        raise ValueError(f"Cannot verify behavior inventory at tested revision {revision}") from error
+    if recorded.splitlines() != (root / NOTES_PATH).read_text(encoding="utf-8").splitlines():
+        raise ValueError(
+            f"Behavior inventory differs from tested revision {revision}; collect matching release evidence"
+        )
+
+
 def generate_report(evidence_dir: Path | None = None, allow_missing_evidence: bool = False) -> str:
     """Assemble a report after validating contract results and the migration inventory."""
     environments = _read_json_files(evidence_dir, "environment*.json")
@@ -371,6 +387,10 @@ def generate_report(evidence_dir: Path | None = None, allow_missing_evidence: bo
         (environment["git_commit"] for environment in environments if environment.get("git_commit")),
         "main",
     )
+    if not allow_missing_evidence:
+        if any(environment.get("git_commit") != source_revision for environment in environments):
+            raise ValueError("Release environments must identify the same tested source revision")
+        _validate_inventory_revision(REPO_ROOT, source_revision)
     docs_url = f"{REPOSITORY_URL}/blob/{source_revision}/docs"
 
     version = _project_version()

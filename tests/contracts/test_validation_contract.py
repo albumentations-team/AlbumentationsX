@@ -74,6 +74,33 @@ def test_invalid_compose_configuration(kwargs: dict[str, Any], error: type[Excep
         A.Compose([A.HorizontalFlip()], **kwargs)
 
 
+@pytest.mark.parametrize(
+    ("container", "probabilities", "message"),
+    [
+        (A.OneOf, (0.0, 0.0), "at least one transform with p > 0"),
+        (A.OneOrOther, (), "requires exactly two transforms, got 0"),
+        (A.OneOrOther, (1.0, 1.0, 1.0), "requires exactly two transforms, got 3"),
+    ],
+)
+def test_invalid_selector_configuration(container, probabilities, message) -> None:
+    with pytest.raises(ValueError, match=message):
+        container(transforms=[A.NoOp(p=probability) for probability in probabilities])
+
+
+@pytest.mark.parametrize("lookup", ["get_worker_info", "initial_seed"])
+def test_worker_rng_lookup_errors_propagate(monkeypatch: pytest.MonkeyPatch, lookup: str) -> None:
+    monkeypatch.setattr(torch.utils.data, "get_worker_info", object)
+
+    def fail_lookup():
+        raise AttributeError("worker seed lookup failed")
+
+    owner = torch.utils.data if lookup == "get_worker_info" else torch
+    monkeypatch.setattr(owner, lookup, fail_lookup)
+
+    with pytest.raises(AttributeError, match="worker seed lookup failed"):
+        A.Compose([A.RandomBrightnessContrast(p=1.0)], seed=137)
+
+
 def test_alias_requires_canonical_source_even_on_skip() -> None:
     pipeline = A.Compose([A.HorizontalFlip()], p=0, additional_targets={"right": "image"})
 

@@ -35,6 +35,9 @@ retroactively create a warning period for earlier releases.
 The [unreleased notes](../release-notes/unreleased.md) are the behavior-change inventory for the next release. Each
 level-three heading is a change, under a level-two category. Use this format:
 
+Field values are wrapped prose with inline Markdown. Put longer code examples and multi-step guides in linked
+documents; the inventory keeps the minimal migration and its evidence together.
+
 ```text
 ### Short descriptive title
 

@@ -83,13 +83,16 @@ def test_invalid_compose_configuration(kwargs: dict[str, Any], error: type[Excep
     ],
 )
 def test_invalid_selector_configuration(container, probabilities, message) -> None:
+    """Protect selector rejection behavior recorded in the validation migration notes."""
     with pytest.raises(ValueError, match=message):
         container(transforms=[A.NoOp(p=probability) for probability in probabilities])
 
 
 @pytest.mark.parametrize("lookup", ["get_worker_info", "initial_seed"])
 def test_worker_rng_lookup_errors_propagate(monkeypatch: pytest.MonkeyPatch, lookup: str) -> None:
-    monkeypatch.setattr(torch.utils.data, "get_worker_info", object)
+    """Broken worker integration must not silently select a different random stream."""
+    if lookup == "initial_seed":
+        monkeypatch.setattr(torch.utils.data, "get_worker_info", object)
 
     def fail_lookup():
         raise AttributeError("worker seed lookup failed")

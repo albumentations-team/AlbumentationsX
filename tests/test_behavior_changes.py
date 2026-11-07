@@ -66,6 +66,7 @@ none
 
 @pytest.fixture
 def repository(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Build a minimal policy and evidence tree for destructive negative controls."""
     notes = INVENTORY
     for match in INLINE_LINK.finditer(notes):
         destination = match["destination"].split("#", maxsplit=1)[0]
@@ -98,6 +99,8 @@ def repository(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         ("First affected version: unreleased", "First affected version: 2.6.0", "archive released entries"),
         ("../../tests/contracts/test_validation_contract.py", "../validation.md", "Tests must link within tests"),
         ("../validation.md", "https://example.com/validation.md", "Contract must link within docs"),
+        ("../validation.md", "#validation", "Contract must name a repository file"),
+        ("../validation.md", "../../../outside.md", "Contract must link within docs"),
     ],
 )
 def test_inventory_rejects_incomplete_or_inconsistent_evidence(repository, old, new, message) -> None:
@@ -144,6 +147,18 @@ def test_report_resolves_first_version_and_pins_all_evidence(repository) -> None
     assert "### Deprecations\n\nnone" in report
     assert "### Regression vectors\n\nnone" in report
     assert "../" not in report
+
+
+@pytest.mark.parametrize("title", [' "Validation contract"', " 'Validation contract'", '   "Validation contract"'])
+def test_report_preserves_link_titles_while_pinning_destinations(repository, title) -> None:
+    notes = repository / NOTES_PATH
+    notes.write_text(notes.read_text().replace("../validation.md)", f"../validation.md{title})"))
+    revision_url = "https://github.com/example/project/blob/tested-sha"
+
+    report = format_report(repository, revision_url, "2.6.1", preview=False)
+
+    assert f"[Pipeline validation]({revision_url}/docs/validation.md{title})" in report
+    assert "../validation.md" not in report
 
 
 def test_preview_does_not_claim_an_unreleased_version_is_published(repository) -> None:

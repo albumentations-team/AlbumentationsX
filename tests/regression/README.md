@@ -29,8 +29,8 @@ regression coverage route test fails.
 ## Commands
 
 ```bash
-uv run python tools/generate_regression_vectors.py --transform HorizontalFlip --epoch 2.4
-uv run python tools/generate_regression_vectors.py --all --epoch 2.4
+uv run python tools/generate_regression_vectors.py --transform HorizontalFlip
+uv run python tools/generate_regression_vectors.py --all
 uv run python tools/verify_regression_vectors.py --all
 uv run pytest tests/regression
 ```

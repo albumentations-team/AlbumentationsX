@@ -79,6 +79,7 @@ def _compare_array(
 
 
 def verify_case(case: dict[str, Any]) -> list[str]:
+    """Check the registered epoch and stored outputs without regenerating expectations."""
     case_id = str(case["id"])
     vector_path = REGRESSION_ROOT / str(case["vector_file"])
     if not vector_path.exists():

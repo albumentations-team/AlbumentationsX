@@ -351,6 +351,7 @@ def _contract_result(evidence_dir: Path | None, name: str, allow_missing_evidenc
 
 
 def generate_report(evidence_dir: Path | None = None, allow_missing_evidence: bool = False) -> str:
+    """Assemble a report after validating contract results and the migration inventory."""
     environments = _read_json_files(evidence_dir, "environment*.json")
     pytest_summaries = _read_json_files(evidence_dir, "pytest-summary*.json")
     benchmark_summaries = _read_json_files(evidence_dir, "benchmark*.json")

@@ -34,6 +34,7 @@ POLICY_LINK_SOURCES = (
 
 
 def _change_fields(block: str) -> dict[str, str]:
+    """Accept wrapped field values while rejecting duplicate, unknown, or missing labels."""
     title, _, body = block.partition("\n")
     fields = {"title": title.strip()}
     current_field = ""
@@ -57,7 +58,7 @@ def _change_fields(block: str) -> dict[str, str]:
 
 def read_inventory(root: Path) -> tuple[str, dict[str, list[dict[str, str]]]]:
     """Read structured release notes, preserving explicit no-change categories."""
-    notes = (root / NOTES_PATH).read_text()
+    notes = (root / NOTES_PATH).read_text(encoding="utf-8")
     baseline_match = re.search(r"^Release baseline: (\S+)$", notes, re.MULTILINE)
     if baseline_match is None:
         raise ValueError("Release notes must name their Release baseline")
@@ -88,12 +89,15 @@ def read_inventory(root: Path) -> tuple[str, dict[str, list[dict[str, str]]]]:
 
 
 def _evidence_links(root: Path, change: dict[str, str]) -> None:
+    """Require evidence files inside the contract and permanent-test source trees."""
     for field, directory, suffix in (("Contract", "docs", ".md"), ("Tests", "tests", ".py")):
         links = list(INLINE_LINK.finditer(change[field]))
         if not links:
             raise ValueError(f"{change['title']}: {field} must link to permanent repository evidence")
         for link in links:
             target = urlsplit(link["destination"])
+            if not target.path:
+                raise ValueError(f"{change['title']}: {field} must name a repository file")
             path = (root / NOTES_PATH.parent / target.path).resolve()
             if target.scheme or target.netloc or not path.is_relative_to((root / directory).resolve()):
                 raise ValueError(f"{change['title']}: {field} must link within {directory}/")
@@ -102,7 +106,8 @@ def _evidence_links(root: Path, change: dict[str, str]) -> None:
 
 
 def _links_to(source: Path, target: Path) -> bool:
-    for link in INLINE_LINK.finditer(source.read_text()):
+    """Match a local documentation edge without depending on native path separators."""
+    for link in INLINE_LINK.finditer(source.read_text(encoding="utf-8")):
         destination = urlsplit(link["destination"])
         if (
             not destination.scheme
@@ -122,15 +127,15 @@ def check_repository(root: Path = REPO_ROOT) -> tuple[str, dict[str, list[dict[s
     sources = [root / source for source in POLICY_LINK_SOURCES]
     for source in sources:
         if not _links_to(source, root / POLICY_PATH):
-            raise ValueError(f"{source.relative_to(root)} must link to {POLICY_PATH}")
+            raise ValueError(f"{source.relative_to(root).as_posix()} must link to {POLICY_PATH.as_posix()}")
     template = root / "docs/maintaining/correctness-report-template.md"
-    template_text = template.read_text()
+    template_text = template.read_text(encoding="utf-8")
     for category in CATEGORIES:
         if f"| {category} |" not in template_text:
             raise ValueError(f"Report template must include category {category}")
     for source in (template, root / "docs/maintaining/correctness-and-compatibility-report.md"):
         if not _links_to(source, root / NOTES_PATH):
-            raise ValueError(f"{source.relative_to(root)} must link to {NOTES_PATH}")
+            raise ValueError(f"{source.relative_to(root).as_posix()} must link to {NOTES_PATH.as_posix()}")
     if errors := collect_errors([*sources, root / POLICY_PATH]):
         raise ValueError("\n".join(errors))
     return baseline, inventory
@@ -147,14 +152,16 @@ def format_report(root: Path, repository_url: str, version: str, *, preview: boo
         affected_version = version
 
     def pin_links(text: str) -> str:
+        """Keep Markdown labels and titles while binding destinations to the tested revision."""
+
         def replace_link(match: re.Match[str]) -> str:
             destination = match["destination"]
             target = urlsplit(destination)
-            if target.scheme or target.netloc:
-                return match[0]
             path = (root / NOTES_PATH.parent / target.path).resolve().relative_to(root.resolve()).as_posix()
             fragment = f"#{target.fragment}" if target.fragment else ""
-            return match[0].replace(f"({destination})", f"({repository_url}/{path}{fragment})")
+            start = match.start("destination") - match.start()
+            end = match.end("destination") - match.start()
+            return f"{match[0][:start]}{repository_url}/{path}{fragment}{match[0][end:]}"
 
         return INLINE_LINK.sub(replace_link, text)
 
@@ -178,6 +185,7 @@ def format_report(root: Path, repository_url: str, version: str, *, preview: boo
 
 
 def main() -> int:
+    """Report inventory violations as CLI failures without writing release artifacts."""
     try:
         check_repository()
     except (OSError, ValueError) as error:

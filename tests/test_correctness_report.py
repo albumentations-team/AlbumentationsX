@@ -24,6 +24,7 @@ def test_generate_report_requires_release_evidence_by_default(tmp_path) -> None:
 
 @pytest.fixture
 def release_evidence(tmp_path, monkeypatch):
+    """Provide passing artifacts and a candidate version newer than the inventory baseline."""
     baseline = Version(read_inventory(REPO_ROOT)[0])
     version = f"{baseline.major}.{baseline.minor + 1}.0"
     monkeypatch.setattr("tools.generate_correctness_report._project_version", lambda: version)

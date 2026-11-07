@@ -213,7 +213,8 @@ observation. See the [validation contract](validation.md) for rejection behavior
 channel scopes use the same invocation recording path. Replay does not sample probabilities or parameter values.
 
 Each repeated visit retains its own parameter payload. Dense sampled arrays therefore make record size grow with
-the number of visits. Replay traces label recorded skips as `skipped_replay` and force the root container.
+the number of visits. Replay traces use `skipped_replay` for direct leaf replay skips. Skipped `Compose` and
+`SelectiveChannelTransform` subtrees can use `skipped_probability`. Replay forces the root container.
 
 Older records without `visits` remain readable with their original applied-child interpretation. A historical record
 that omitted repeated visits or random order cannot recover that missing information; capture a new record for an

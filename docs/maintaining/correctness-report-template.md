@@ -22,6 +22,7 @@ Supported Python versions: 3.11, 3.12, 3.13, 3.14
 
 - Unit and functional tests: `<count/result>`
 - [2D geometry contract](../geometry.md): `<count/result/CI run>`
+- [Determinism and replay contract](../determinism.md): `<count/result/CI run>`
 - Public transform-like API coverage routes: `<covered>/<total>`
 - Parameterized transform sweep coverage: `<count/result>`
 - Golden regression vectors: `<manifest-count>/<registered-contract-count>/<result>`
@@ -32,11 +33,21 @@ Supported Python versions: 3.11, 3.12, 3.13, 3.14
 
 ## Guaranteed Contracts
 
-- Fixed-seed Compose pipelines are deterministic for tested transforms.
+- Fixed-seed Compose sequences reproduce within the documented determinism boundary.
 - ReplayCompose reproduces tested transform parameters and outputs.
 - Image outputs preserve documented dtype and channel semantics.
 - Bbox and keypoint label fields remain aligned with surviving annotations.
 - Compose-level compatibility checks fail at pipeline creation where applicable.
+
+## Determinism and Replay
+
+- Sample-keyed `invocation_seed` values reproduce samples across worker counts and call schedules without advancing configured streams.
+- Ordinary worker streams require the same loader seed, worker count, persistence, and sample assignment; persistent workers advance across epochs.
+- Concurrent calls isolate execution state; scheduling does not define caller-to-stream assignment.
+- Root input rejection consumes no random draws; execution errors retain draws already consumed.
+- Constructor serialization, ReplayCompose, and applied-configuration replay save different state.
+- Exact pixel stability is limited to registered cases and their declared environments.
+- [Composition audit and permanent tests](determinism-audit.md): `<tested revision/CI run>`
 
 ## Behavior Changes and Migration
 

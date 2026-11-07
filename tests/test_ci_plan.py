@@ -14,6 +14,7 @@ from tools.ci_plan import CHECK_NAMES, _read_github_files, build_plan, classify_
     [
         ("docs/maintaining/ci-policy.md", {"docs", "ci_policy"}),
         ("albumentations/core/composition.py", {"runtime"}),
+        ("tests/test_dataloader_determinism.py", {"tests", "pytorch"}),
         ("albumentations/pytorch/transforms.py", {"runtime", "pytorch"}),
         ("tests/conftest.py", {"tests", "shared_tests"}),
         ("benchmark/benchmarks/augmentations.py", {"benchmarks"}),
@@ -70,6 +71,14 @@ def test_isolated_test_change_selects_targeted_tests() -> None:
     assert plan.checks["targeted"]
     assert not plan.checks["compatibility"]
     assert plan.pytest_targets == ("tests/test_bbox.py",)
+
+
+def test_dataloader_contract_selects_worker_job_without_empty_targeted_suite() -> None:
+    plan = build_plan(["tests/test_dataloader_determinism.py"])
+
+    assert plan.checks["pytorch"]
+    assert not plan.checks["targeted"]
+    assert not plan.pytest_targets
 
 
 def test_shared_test_change_selects_full_matrix() -> None:

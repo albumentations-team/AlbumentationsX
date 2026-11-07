@@ -554,37 +554,6 @@ def _chain(node: ast.expr) -> list[str] | None:
 
 
 def rule_random_usage(index: SourceIndex) -> list[Diagnostic]:
-    banned_numpy = {
-        "randint",
-        "rand",
-        "randn",
-        "random",
-        "choice",
-        "shuffle",
-        "permutation",
-        "uniform",
-        "normal",
-        "seed",
-        "RandomState",
-        "integers",
-        "standard_normal",
-        "standard_uniform",
-    }
-    banned_random = {
-        "randint",
-        "random",
-        "choice",
-        "shuffle",
-        "uniform",
-        "seed",
-        "sample",
-        "randrange",
-        "gauss",
-        "normalvariate",
-        "triangular",
-        "betavariate",
-        "expovariate",
-    }
     result: list[Diagnostic] = []
     for unit in index.units:
         aliases = unit.aliases
@@ -597,9 +566,10 @@ def rule_random_usage(index: SourceIndex) -> list[Diagnostic]:
             root = aliases.get(chain[0], chain[0])
             rest = chain[1:]
             canonical = ".".join((root, *rest)) if rest else root
-            numpy_method = canonical.rsplit(".", 1)[-1] if canonical.startswith("numpy.random.") else None
-            random_method = canonical.rsplit(".", 1)[-1] if canonical.startswith("random.") else None
-            if numpy_method in banned_numpy:
+            if canonical.startswith("numpy.random.") and canonical not in {
+                "numpy.random.default_rng",
+                "numpy.random.Generator",
+            }:
                 result.append(
                     _unit_d(
                         "AXG005",
@@ -609,7 +579,7 @@ def rule_random_usage(index: SourceIndex) -> list[Diagnostic]:
                         ".".join(chain),
                     )
                 )
-            elif random_method in banned_random:
+            elif canonical.startswith("random.") and canonical != "random.Random":
                 result.append(
                     _unit_d(
                         "AXG005",
@@ -644,6 +614,51 @@ def rule_sampling_rng(index: SourceIndex) -> list[Diagnostic]:
                             "draws must be made in sample_parameters and passed through params",
                             f"{info.name}.{name}",
                         )
+                    )
+    return result
+
+
+def rule_instance_rng(index: SourceIndex) -> list[Diagnostic]:
+    result: list[Diagnostic] = []
+    for info in index.classes.values():
+        if not (info.is_framework_root or index.is_descendant(info, FRAMEWORK_ROOTS)):
+            continue
+        is_composition = info.name in COMPOSE_ROOTS or index.is_descendant(info, COMPOSE_ROOTS)
+        for name, method in info.methods.items():
+            forwarded = {
+                id(argument)
+                for call in ast.walk(method)
+                if isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Attribute)
+                and call.func.attr == "set_random_state"
+                for argument in call.args
+            }
+            for node in ast.walk(method):
+                instance_access = (
+                    isinstance(node, ast.Attribute)
+                    and dotted(node) in {"self.py_random", "self.random_generator"}
+                    and id(node) not in forwarded
+                )
+                sampler_factory = (
+                    (name == "sample_parameters" or is_composition)
+                    and isinstance(node, ast.Call)
+                    and index.resolve_name(info.file, dotted(node.func) or "")
+                    in {
+                        "numpy.random.default_rng",
+                        "numpy.random.Generator",
+                        "numpy.random.RandomState",
+                        "random.Random",
+                    }
+                )
+                if instance_access or sampler_factory:
+                    result.append(
+                        _d(
+                            "AXG027",
+                            info,
+                            node,
+                            "built-in execution must use its SamplingContext or InvocationContext RNG",
+                            f"{info.name}.{name}",
+                        ),
                     )
     return result
 
@@ -1424,6 +1439,7 @@ def run_all(index: SourceIndex) -> list[Diagnostic]:
         rule_sampling_plan_contract,
         rule_random_usage,
         rule_sampling_rng,
+        rule_instance_rng,
         rule_transform_names,
         rule_fill_naming,
         rule_range_annotations,

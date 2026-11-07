@@ -24,25 +24,6 @@ def _core_modules() -> tuple[Path, ...]:
     return core_root / "composition.py", core_root / "transforms_interface.py"
 
 
-def test_augmentation_code_does_not_read_rng_from_transform_instances() -> None:
-    """Keep all transform sampling on the explicit call-local SamplingContext API."""
-    augmentation_root = Path(__file__).parents[1] / "albumentations" / "augmentations"
-    violations: list[str] = []
-
-    for source_path in sorted(augmentation_root.rglob("*.py")):
-        tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))
-        for node in ast.walk(tree):
-            if (
-                isinstance(node, ast.Attribute)
-                and isinstance(node.value, ast.Name)
-                and node.value.id == "self"
-                and node.attr in {"py_random", "random_generator"}
-            ):
-                violations.append(f"{source_path.relative_to(augmentation_root.parent)}:{node.lineno}:{node.attr}")
-
-    assert violations == [], "Transform sampling must use SamplingContext:\n" + "\n".join(violations)
-
-
 def test_execution_entry_points_require_explicit_invocations() -> None:
     """Keep configured graph dispatch explicit instead of falling back to dynamic execution state."""
     violations: list[str] = []

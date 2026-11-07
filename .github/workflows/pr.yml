@@ -301,6 +301,7 @@ jobs:
           tests/test_pytorch.py
           tests/transforms3d/test_pytorch.py
           tests/test_per_worker_seed.py
+          tests/test_dataloader_determinism.py
           tests/test_flip_masks_comprehensive.py
           tests/test_additional_targets.py
 
@@ -468,12 +469,23 @@ jobs:
         run: |
           python tools/verify_regression_vectors.py --all
           python -m pytest -q tests/regression tests/property \
+            --ignore=tests/property/test_determinism.py \
+            --ignore=tests/property/test_applied_config_replay.py \
             --hypothesis-profile=ci-fast \
             --junitxml="${RUNNER_TEMP}/release-bundle/evidence/junit-release.xml"
           python -m pytest -q tests/contracts/test_validation_contract.py \
             --junitxml="${RUNNER_TEMP}/release-bundle/evidence/junit-validation-contract.xml"
           python -m pytest -q tests/contracts/test_geometry_contract.py \
             --junitxml="${RUNNER_TEMP}/release-bundle/evidence/junit-geometry-contract.xml"
+          python -m pytest -q \
+            tests/test_sampling_context.py tests/test_compose_reentrancy.py \
+            tests/test_composition_tracing.py tests/test_dataloader_determinism.py \
+            tests/contracts/test_composition_serialization_contracts.py \
+            tests/property/test_determinism.py tests/property/test_applied_config_replay.py \
+            tests/test_per_worker_seed.py::test_unpickled_compose_resets_runtime_context \
+            tests/test_per_worker_seed.py::test_unpickled_basic_transform_resets_runtime_context \
+            --hypothesis-profile=ci-fast \
+            --junitxml="${RUNNER_TEMP}/release-bundle/evidence/junit-determinism-contract.xml"
       - name: Summarize release pytest results
         if: always()
         run: |
@@ -488,6 +500,10 @@ jobs:
           python tools/pytest_summary.py \
             --junit "${RUNNER_TEMP}/release-bundle/evidence/junit-geometry-contract.xml" \
             --output "${RUNNER_TEMP}/release-bundle/evidence/geometry-contract.json" \
+            --allow-incomplete
+          python tools/pytest_summary.py \
+            --junit "${RUNNER_TEMP}/release-bundle/evidence/junit-determinism-contract.xml" \
+            --output "${RUNNER_TEMP}/release-bundle/evidence/determinism-contract.json" \
             --allow-incomplete
       - name: Collect core benchmark coverage evidence
         run: |

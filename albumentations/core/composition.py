@@ -1846,6 +1846,8 @@ class Compose(BaseCompose, HubMixin):
         - Concurrent calls to one Compose instance, including `run_with_trace()`, keep all mutable execution
           state in separate invocations. A short root-only seed reservation establishes each caller's private
           random streams; pass `invocation_seed` when a sample must be independent of reservation order.
+        - Seeding, worker, concurrency, failure, and replay guarantees are defined in
+          https://github.com/albumentations-team/AlbumentationsX/blob/main/docs/determinism.md.
 
     """
 
@@ -4313,6 +4315,10 @@ class ReplayCompose(Compose):
         seed (int | None):
             Controls reproducibility of random augmentations.
             See superclass documentation for further information.
+
+    Note:
+        Parameter replay, constructor serialization, and applied-configuration replay have distinct guarantees.
+        See https://github.com/albumentations-team/AlbumentationsX/blob/main/docs/determinism.md.
 
     """
 

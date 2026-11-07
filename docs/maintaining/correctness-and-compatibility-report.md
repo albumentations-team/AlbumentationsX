@@ -13,7 +13,7 @@ which limitations are known.
    sets tested.
 3. Test summary covering unit, regression, property, serialization/replay, 3D,
    bbox/keypoint, and OBB tests. Record separate results for the [validation contract](../validation.md)
-   and the [2D geometry contract](../geometry.md).
+   the [2D geometry contract](../geometry.md), and the [determinism and replay contract](../determinism.md).
 4. Correctness contracts: determinism, dtype and shape, target alignment,
    label integrity, [2D geometry](../geometry.md), volume semantics, and
    serialization behavior.
@@ -41,6 +41,11 @@ uv run python tools/generate_correctness_report.py \
 
 The version-bump release preflight should omit `--allow-missing-evidence` and
 provide at least one environment JSON artifact, passing pytest summary JSON,
-passing `validation-contract.json` and `geometry-contract.json` suite results, benchmark coverage summary/detail JSON,
+passing `validation-contract.json`, `geometry-contract.json`, and `determinism-contract.json` suite results,
+benchmark coverage summary/detail JSON,
 benchmark performance-budget JSON, and security JSON evidence. Local dry runs may use `--allow-missing-evidence` when
 those artifacts are not available.
+
+The determinism artifact must cover the [composition audit](determinism-audit.md), including real spawned DataLoader
+workers with and without persistence. A missing, empty, failing, or skipped determinism suite blocks the release
+report. The report pins documentation to the tested source revision and links the CI run from environment evidence.

@@ -65,6 +65,7 @@ jobs:
         tests/test_pytorch.py
         tests/transforms3d/test_pytorch.py
         tests/test_per_worker_seed.py
+        tests/test_dataloader_determinism.py
         tests/test_flip_masks_comprehensive.py
         tests/test_additional_targets.py
 

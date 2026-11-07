@@ -69,6 +69,55 @@ class RandomNew(DualTransform):
     assert {"AXG002", "AXG004", "AXG005", "AXG006", "AXG007"} <= set(ids)
 
 
+@pytest.mark.parametrize("base", ["BaseCompose", "DualTransform"])
+@pytest.mark.parametrize("expression", ["self.py_random.random()", "self.random_generator", "np.random.default_rng()"])
+def test_builtin_sampling_cannot_open_an_independent_rng_path(base: str, expression: str) -> None:
+    ids = rule_ids(
+        {
+            "albumentations/core/composition.py": f"""
+import numpy as np
+class {base}: pass
+class Example({base}):
+    def sample_parameters(self, params, data, targets, sampling):
+        rng = {expression}
+        return rng
+""",
+        },
+    )
+    assert "AXG027" in ids
+
+
+def test_rng_policy_forwarding_and_explicit_context_sampling_remain_allowed() -> None:
+    ids = rule_ids(
+        {
+            "albumentations/core/composition.py": """
+class BaseCompose: pass
+class Example(BaseCompose):
+    def reconstruct(self, other):
+        other.set_random_state(self.random_generator, self.py_random)
+    def apply_in_invocation(self, invocation):
+        return invocation.py_random.random(), invocation.random_generator.uniform()
+    def sample_parameters(self, params, data, targets, sampling):
+        return sampling.py_random.random(), sampling.random_generator.uniform()
+""",
+        },
+    )
+    assert "AXG027" not in ids
+
+
+@pytest.mark.parametrize(
+    ("imports", "expression"),
+    [
+        ("import numpy as arrays", "arrays.random.beta(1, 1)"),
+        ("from numpy.random import uniform as draw", "draw()"),
+        ("import random as stdlib", "stdlib.getrandbits(64)"),
+        ("from random import choices as draw", "draw([1, 2])"),
+    ],
+)
+def test_global_rng_checks_cover_aliases_and_distributions(imports: str, expression: str) -> None:
+    assert "AXG005" in rule_ids({"albumentations/core/composition.py": f"{imports}\nvalue = {expression}\n"})
+
+
 def test_apply_length_ignores_comments_and_docstrings_but_enforces_code_lines() -> None:
     body = "\n".join("        value = value" for _ in range(21))
     ids = rule_ids(

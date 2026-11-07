@@ -76,6 +76,7 @@ BENCHMARK_TOOL_PATHS = {
     "tools/select_benchmark_filters.py",
 }
 PYTORCH_TEST_PATHS = {
+    "tests/test_dataloader_determinism.py",
     "tests/test_additional_targets.py",
     "tests/test_flip_masks_comprehensive.py",
     "tests/test_per_worker_seed.py",
@@ -83,6 +84,7 @@ PYTORCH_TEST_PATHS = {
     "tests/transforms3d/test_pytorch.py",
 }
 PYTORCH_ONLY_TEST_PATHS = {
+    "tests/test_dataloader_determinism.py",
     "tests/test_pytorch.py",
     "tests/transforms3d/test_pytorch.py",
 }

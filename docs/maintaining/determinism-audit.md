@@ -70,6 +70,22 @@ uv run pytest -q \
   --junitxml=_internal/determinism-contract.xml
 ```
 
-Raw generated reports and local logs belong outside Git. A milestone handoff should link the passing PR/CI run and
-retain the environment, JUnit, and JSON evidence alongside the generated report. It must distinguish a local run
-from hosted Linux/Windows/macOS CI results.
+## Verification record: 2026-11-07
+
+Tested source: [e7db973](https://github.com/albumentations-team/AlbumentationsX/commit/e7db973df5d40963ea102b3510111d8d6822fe7a).
+This record is added separately from the tested implementation. The local profile was macOS ARM64, Python 3.11.15,
+NumPy 2.4.6, OpenCV 5.0.0.93, Albucore 0.3.5, and CPU PyTorch 2.15.0, installed from the project lockfile.
+
+| Check | Local result |
+| --- | --- |
+| Determinism suite listed above, collected from the full, final focused, and real-worker JUnit results | 142 passed, 0 skipped |
+| Full project suite, excluding the separately executed worker module | 25,107 passed, 34 skipped |
+| Real spawned-worker suite | 5 passed, 0 skipped |
+| Final focused guidance, report, routing, and generative checks | 116 passed |
+| All six Python examples in the public contract | Passed, including the spawn example |
+| All pre-commit hooks, including mypy and Pyrefly | Passed |
+| CI matrix/shard consistency and workflow security audit | Passed |
+
+[Hosted PR CI evidence](https://github.com/albumentations-team/AlbumentationsX/actions/workflows/pr.yml?query=branch%3Acodex%2Fdeterministic-pipeline-contract)
+records the Linux, Windows, and macOS results separately from this local run. Raw generated reports, environment
+metadata, JUnit, and JSON evidence belong outside Git; release preflight retains them with its generated report.

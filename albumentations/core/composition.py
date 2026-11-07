@@ -417,6 +417,8 @@ class BaseCompose(InvocationRngOwner, Serializable):
         self.invocation_key = object()
 
         self.replay_mode = False
+        self._record_replay = False
+        self._replay_visits: tuple[tuple[int, dict[str, Any]], ...] | None = None
         self._additional_targets: dict[str, str] = {}
         self._available_keys: set[str] = set()
         self._configured_processors: dict[str, BboxProcessor | KeypointsProcessor] = {}
@@ -523,6 +525,13 @@ class BaseCompose(InvocationRngOwner, Serializable):
         nodes therefore bypass that public entry point explicitly. This small dispatcher is
         the only place where graph execution crosses from a container to one of its nodes.
         """
+        if invocation is not None and invocation.replay_params is not None:
+            if isinstance(transform, BaseCompose):
+                state = invocation.compose_state(transform)
+                state.replay_visits = []
+                state.replay_applied = False
+            else:
+                invocation.replay_params.pop(transform.invocation_key, None)
         if isinstance(transform, BasicTransform):
             if invocation is None:
                 if not force_apply and transform.p <= 0.0:
@@ -717,6 +726,7 @@ class BaseCompose(InvocationRngOwner, Serializable):
         tracking_data: dict[str, Any] | None = None,
         finalize_annotations: bool = True,
         resync_instances: bool = False,
+        replay_child: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Execute a configured edge through normal dispatch, then perform annotation, trace, and
         instance-binding work in observable order at this graph boundary.
@@ -728,10 +738,13 @@ class BaseCompose(InvocationRngOwner, Serializable):
         """
         compiled_child = self._compiled_children[index]
         transform = compiled_child.transform
+        if invocation is not None and (invocation.replay_plans is not None or replay_child is not None):
+            self._set_replay_visit(index, transform, invocation, replay_child)
         trace = None if invocation is None else invocation.trace_session
 
         if trace is None:
             data = self._apply_child(transform, data, invocation, force_apply=force_apply)
+            self._record_replay_visit(index, transform, invocation)
             if track_applied:
                 self._track_transform_params(transform, data if tracking_data is None else tracking_data)
             if finalize_annotations:
@@ -743,6 +756,7 @@ class BaseCompose(InvocationRngOwner, Serializable):
         with trace.node_scope(trace.child_path(index)):
             start_ns = perf_counter_ns() if trace.context.options.include_timing else None
             data = self._apply_child(transform, data, invocation, force_apply=force_apply)
+            self._record_replay_visit(index, transform, invocation)
             if track_applied:
                 self._track_transform_params(transform, data if tracking_data is None else tracking_data)
             if finalize_annotations:
@@ -750,7 +764,7 @@ class BaseCompose(InvocationRngOwner, Serializable):
             if resync_instances and compiled_child.may_change_bboxes:
                 self._resync_instance_ids(data)
             if isinstance(transform, BasicTransform):
-                applied = transform.applied_in_replay if transform.replay_mode else bool(transform.params)
+                applied = bool(transform.params)
                 trace.emit_leaf(
                     class_fullname=transform.get_applied_replay_class().get_class_fullname(),
                     status=_TRACE_STATUS_APPLIED if applied else self._leaf_skip_status(transform),
@@ -760,13 +774,83 @@ class BaseCompose(InvocationRngOwner, Serializable):
                 )
         return data
 
+    def _set_replay_visit(
+        self, index: int, transform: TransformType, invocation: InvocationContext, execution: dict[str, Any] | None
+    ) -> None:
+        if execution is None and invocation.replay_plans is not None:
+            plan = invocation.replay_plans.get(self.invocation_key)
+            if plan is None:
+                invocation.replay_plans.pop(transform.invocation_key, None)
+                return
+            execution = next(
+                (child for child_index, child in plan.get("children", []) if child_index == index),
+                {"applied": False, "params": None},
+            )
+        if execution is not None:
+            if invocation.replay_plans is None:
+                invocation.replay_plans = {}
+            invocation.replay_plans[transform.invocation_key] = execution
+
+    @staticmethod
+    def _replay_snapshot(transform: TransformType, invocation: InvocationContext) -> dict[str, Any]:
+        if isinstance(transform, BaseCompose):
+            state = invocation.compose_state(transform)
+            return {
+                "applied": state.replay_applied,
+                "children": state.replay_visits or [],
+                "ordered": isinstance(transform, (OneOf, SomeOf, OneOrOther)),
+            }
+        params = (
+            None if invocation.replay_params is None else invocation.replay_params.pop(transform.invocation_key, None)
+        )
+        return {"applied": params is not None, "params": params}
+
+    def _record_replay_visit(self, index: int, transform: TransformType, invocation: InvocationContext | None) -> None:
+        if invocation is None or invocation.replay_params is None:
+            return
+        state = invocation.compose_state(self)
+        if state.replay_visits is None:
+            state.replay_visits = []
+        state.replay_visits.append((index, self._replay_snapshot(transform, invocation)))
+
     def _should_apply_in_context(self, context: InvocationContext, *, force_apply: bool) -> bool:
         """Evaluate container probability from the active call-local stream, keeping concurrent calls isolated and
         avoiding configured generator access during dispatch.
         """
+        if self.replay_mode:
+            return self._replay_applied(context)
         if force_apply or self.p >= 1.0:
             return True
         return self.p > 0.0 and context.py_random.random() < self.p
+
+    def _replay_applied(self, invocation: InvocationContext) -> bool:
+        plan = None if invocation.replay_plans is None else invocation.replay_plans.get(self.invocation_key)
+        return self.applied_in_replay if plan is None else bool(plan["applied"])
+
+    def _replay_selected_indices(self, invocation: InvocationContext) -> list[int]:
+        plan = None if invocation.replay_plans is None else invocation.replay_plans.get(self.invocation_key)
+        if plan is not None:
+            return [index for index, _ in plan.get("children", [])]
+        return [
+            index for index, transform in enumerate(self.transforms) if getattr(transform, "applied_in_replay", False)
+        ]
+
+    def _recorded_replay_visits(self, invocation: InvocationContext) -> Sequence[tuple[int, dict[str, Any]]] | None:
+        plan = None if invocation.replay_plans is None else invocation.replay_plans.get(self.invocation_key)
+        return self._replay_visits if plan is None else plan.get("children", [])
+
+    def _apply_recorded_visits(
+        self, data: dict[str, Any], invocation: InvocationContext, visits: Sequence[tuple[int, dict[str, Any]]]
+    ) -> dict[str, Any]:
+        trace = invocation.trace_session
+        if trace is not None:
+            self._emit_unselected_trace_children(trace, self, {index for index, _ in visits})
+        for index, child in visits:
+            data = self._execute_child(
+                index, data, invocation, replay_child=child, track_applied="applied_transforms" in data
+            )
+        self._emit_trace_composition(trace)
+        return data
 
     @property
     def processors(self) -> dict[str, BboxProcessor | KeypointsProcessor]:
@@ -1041,6 +1125,7 @@ class BaseCompose(InvocationRngOwner, Serializable):
             save_key (str): Key to save replay parameters. Default: "replay".
 
         """
+        self._record_replay = flag
         for t in self.transforms:
             t.set_deterministic(flag, save_key)
 
@@ -1162,6 +1247,10 @@ class BaseCompose(InvocationRngOwner, Serializable):
         """Publish a completed composition only after normal dispatch commits annotation and instance
         state, matching the result its parent node sees.
         """
+        if self._record_replay:
+            invocation = get_current_invocation()
+            if invocation is not None and invocation.replay_params is not None:
+                invocation.compose_state(self).replay_applied = status == _TRACE_STATUS_APPLIED
         if trace is not None:
             trace.emit_composition(class_fullname=self.get_class_fullname(), status=status)
 
@@ -2289,7 +2378,11 @@ class Compose(BaseCompose, HubMixin):
         """Evaluates root probability against the call-local Python stream, so concurrent calls never read a configured
         shared generator before the context becomes active.
         """
-        if force_apply or self.p >= 1.0:
+        if force_apply:
+            return True
+        if self.replay_mode:
+            return self._replay_applied(context)
+        if self.p >= 1.0:
             return True
         return self.p > 0.0 and context.py_random.random() < self.p
 
@@ -3817,16 +3910,15 @@ class OneOf(BaseCompose):
         trace = invocation.trace_session
 
         if self.replay_mode:
-            if not self.applied_in_replay:
+            if not self._replay_applied(invocation):
                 self._emit_trace_skip(trace, _TRACE_STATUS_SKIPPED_REPLAY)
                 return data
-            selected_indices = {
-                index
-                for index, transform in enumerate(self.transforms)
-                if getattr(transform, "applied_in_replay", False)
-            }
+            visits = self._recorded_replay_visits(invocation)
+            if visits is not None:
+                return self._apply_recorded_visits(data, invocation, visits)
+            selected_indices = self._replay_selected_indices(invocation)
             if trace is not None:
-                self._emit_unselected_trace_children(trace, self, selected_indices)
+                self._emit_unselected_trace_children(trace, self, set(selected_indices))
             for index in selected_indices:
                 data = self._execute_child(index, data, invocation, track_applied="applied_transforms" in data)
             self._emit_trace_composition(trace)
@@ -3836,7 +3928,7 @@ class OneOf(BaseCompose):
             self._emit_trace_skip(trace, _TRACE_STATUS_SKIPPED_PROBABILITY)
             return data
 
-        idx: int = invocation.random_generator.choice(len(self.transforms), p=self.transforms_ps)
+        idx = invocation.random_generator.choice(len(self.transforms), p=self.transforms_ps)
         if trace is not None:
             self._emit_unselected_trace_children(trace, self, {idx})
         data = self._execute_child(
@@ -3955,16 +4047,15 @@ class SomeOf(BaseCompose):
         trace = invocation.trace_session
 
         if self.replay_mode:
-            if not self.applied_in_replay:
+            if not self._replay_applied(invocation):
                 self._emit_trace_skip(trace, _TRACE_STATUS_SKIPPED_REPLAY)
                 return data
-            selected_indices = {
-                index
-                for index, transform in enumerate(self.transforms)
-                if getattr(transform, "applied_in_replay", False)
-            }
+            visits = self._recorded_replay_visits(invocation)
+            if visits is not None:
+                return self._apply_recorded_visits(data, invocation, visits)
+            selected_indices = self._replay_selected_indices(invocation)
             if trace is not None:
-                self._emit_unselected_trace_children(trace, self, selected_indices)
+                self._emit_unselected_trace_children(trace, self, set(selected_indices))
             for index in selected_indices:
                 data = self._execute_child(index, data, invocation, track_applied="applied_transforms" in data)
             self._emit_trace_composition(trace)
@@ -4037,7 +4128,7 @@ class RandomOrder(SomeOf):
         >>> # respecting their individual probabilities (0.5, 1.0, 0.8).
 
     Note:
-        - Inherits from SomeOf, but overrides `get_indices` to ensure random order without sorting.
+        - Inherits from SomeOf, but overrides `sample_indices` to ensure random order without sorting.
         - Selection is uniform; application depends on individual transform probabilities.
 
     """
@@ -4124,9 +4215,12 @@ class OneOrOther(BaseCompose):
         trace = invocation.trace_session
 
         if self.replay_mode:
-            if not self.applied_in_replay:
+            if not self._replay_applied(invocation):
                 self._emit_trace_skip(trace, _TRACE_STATUS_SKIPPED_REPLAY)
                 return data
+            visits = self._recorded_replay_visits(invocation)
+            if visits is not None:
+                return self._apply_recorded_visits(data, invocation, visits)
             for index in range(len(self.transforms)):
                 data = self._execute_child(index, data, invocation, track_applied="applied_transforms" in data)
             self._emit_trace_composition(trace)
@@ -4360,6 +4454,16 @@ class ReplayCompose(Compose):
         self.save_key = save_key
         self._available_keys.add(save_key)
         self._replay_label_state: dict[str, LabelReplayRecord] | None = None
+        self._capture_replay_visits = self._requires_replay_visits()
+        self._record_replay = self._capture_replay_visits
+
+    def _requires_replay_visits(self) -> bool:
+        seen: set[int] = set()
+        for transform in self.transforms:
+            if isinstance(transform, BaseCompose) or transform.replay_mode or id(transform) in seen:
+                return True
+            seen.add(id(transform))
+        return False
 
     def _preprocess_processors(self, data: dict[str, Any]) -> None:
         if self.main_compose and self._replay_label_state is not None:
@@ -4388,6 +4492,10 @@ class ReplayCompose(Compose):
     def postprocess(self, data: dict[str, Any]) -> dict[str, Any]:
         invocation = get_current_invocation()
         state = None if invocation is None else invocation.get_compose_state(self)
+        if invocation is not None and invocation.replay_params is not None:
+            state = invocation.compose_state(self)
+            state.replay_applied = True
+            data[self.save_key].setdefault(id(self), {})["_execution"] = self._replay_snapshot(self, invocation)
         if self.main_compose and state is not None and state.replay_label_metadata is not None:
             recorded: dict[str, LabelReplayRecord] = {}
             for name, processor in self.processors.items():
@@ -4396,7 +4504,7 @@ class ReplayCompose(Compose):
                 if changed:
                     recorded[name] = {"initial": initial, "final": changed}
             if recorded:
-                data[self.save_key][id(self)] = {"label_metadata": recorded}
+                data[self.save_key].setdefault(id(self), {})["label_metadata"] = recorded
         return super().postprocess(data)
 
     def _new_invocation_context(
@@ -4409,11 +4517,14 @@ class ReplayCompose(Compose):
         """Creates an observing ReplayCompose context, retaining leaf parameters for replay while keeping sampled values
         out of configured transform instances.
         """
-        return super()._new_invocation_context(
+        context = super()._new_invocation_context(
             collect_applied=True,
             invocation_seed=invocation_seed,
             prime_py_random=prime_py_random,
         )
+        if self._capture_replay_visits and not self.replay_mode:
+            context.replay_params = {}
+        return context
 
     def __call__(
         self,
@@ -4442,6 +4553,8 @@ class ReplayCompose(Compose):
             invocation_seed=invocation_seed,
             **kwargs,
         )
+        if self.replay_mode:
+            return result
         serialized = self.get_dict_with_id()
         self.fill_with_params(serialized, result[self.save_key])
         self.fill_applied(serialized)
@@ -4459,8 +4572,14 @@ class ReplayCompose(Compose):
         """Execute a replay container through parent invocation, retaining serialization without creating
         another public root or duplicating preprocessing work.
         """
+        if invocation.replay_params is None and self._capture_replay_visits and not self.replay_mode:
+            invocation.replay_params = {}
         data[self.save_key] = defaultdict(dict)
         result = super().apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
+        if self.replay_mode:
+            return result
+        if invocation.replay_params is not None:
+            result[self.save_key].setdefault(id(self), {})["_execution"] = self._replay_snapshot(self, invocation)
         serialized = self.get_dict_with_id()
         self.fill_with_params(serialized, result[self.save_key])
         self.fill_applied(serialized)
@@ -4486,6 +4605,8 @@ class ReplayCompose(Compose):
             invocation_seed=invocation_seed,
             **data,
         )
+        if self.replay_mode:
+            return trace_result
         serialized = self.get_dict_with_id()
         self.fill_with_params(serialized, trace_result.data[self.save_key])
         self.fill_applied(serialized)
@@ -4506,7 +4627,10 @@ class ReplayCompose(Compose):
 
         """
         augs = ReplayCompose._restore_for_replay(saved_augmentations)
-        return augs(force_apply=True, **kwargs)
+        result = augs(force_apply=True, **kwargs)
+        if isinstance(augs, ReplayCompose):
+            result[augs.save_key] = copy.deepcopy(saved_augmentations)
+        return result
 
     @staticmethod
     def replay_with_trace(
@@ -4523,7 +4647,10 @@ class ReplayCompose(Compose):
         if not isinstance(augs, Compose):
             msg = "A replay trace requires a serialized Compose or ReplayCompose pipeline"
             raise TypeError(msg)
-        return augs.run_with_trace(options=options, force_apply=True, **data)
+        result = augs.run_with_trace(options=options, force_apply=True, **data)
+        if isinstance(augs, ReplayCompose):
+            result.data[augs.save_key] = copy.deepcopy(saved_augmentations)
+        return result
 
     @staticmethod
     def _restore_for_replay(
@@ -4563,6 +4690,8 @@ class ReplayCompose(Compose):
 
         if isinstance(transform, ReplayCompose) and params is not None:
             transform._replay_label_state = params.get("label_metadata")
+        if isinstance(transform, (OneOf, SomeOf, OneOrOther)) and params is not None and "visits" in params:
+            transform._replay_visits = ReplayCompose._restore_replay_visits(transform, params["visits"])
         transform = cast("BasicTransform", transform)
         if isinstance(transform, BasicTransform) and params is not None:
             transform.params = params
@@ -4572,14 +4701,73 @@ class ReplayCompose(Compose):
         transform.applied_in_replay = applied
         return transform
 
+    @staticmethod
+    def _restore_replay_visits(transform: BaseCompose, visits: Any) -> tuple[tuple[int, dict[str, Any]], ...]:
+        if not isinstance(visits, list):
+            raise TypeError("replay.params.visits must be a list")
+        restored = []
+        for visit in visits:
+            if not isinstance(visit, dict) or type(visit.get("index")) is not int:
+                raise TypeError("replay visits must contain an integer index and execution record")
+            require_serialized_fields(visit, "replay.params.visits", "index", "execution")
+            index = visit["index"]
+            if not 0 <= index < len(transform.transforms):
+                raise ValueError("replay visit index is outside the configured child pool")
+            execution = visit["execution"]
+            ReplayCompose._validate_execution(transform.transforms[index], execution)
+            restored.append((index, execution))
+        return tuple(restored)
+
+    @staticmethod
+    def _validate_execution(transform: TransformType, execution: Any) -> None:
+        if not isinstance(execution, dict) or not isinstance(execution.get("applied"), bool):
+            raise TypeError("replay visit execution requires a boolean applied flag")
+        if isinstance(transform, BasicTransform):
+            if "params" not in execution:
+                raise ValueError("replay visit execution is missing params")
+            params = execution["params"]
+            if params is not None and not isinstance(params, dict):
+                raise TypeError("replay visit params must be a dict or None")
+            if execution["applied"] and not isinstance(params, dict):
+                raise TypeError("an applied replay visit requires sampled parameters")
+            return
+        children = execution.get("children")
+        if not isinstance(children, list):
+            raise TypeError("replay composition visits require a child list")
+        for child in children:
+            if not isinstance(child, (list, tuple)) or len(child) != 2 or type(child[0]) is not int:
+                raise TypeError("replay child visits require an integer index and execution record")
+            index, record = child
+            if not 0 <= index < len(transform.transforms):
+                raise ValueError("replay child visit index is outside the configured pool")
+            ReplayCompose._validate_execution(transform.transforms[index], record)
+
+    @staticmethod
+    def _fill_with_execution(serialized: dict[str, Any], execution: dict[str, Any] | None) -> None:
+        serialized.pop("id", None)
+        serialized["applied"] = execution is not None and execution["applied"]
+        serialized["params"] = None if execution is None else execution.get("params")
+        if "transforms" not in serialized:
+            return
+        templates = serialized["transforms"]
+        snapshots = [] if execution is None else execution.get("children", [])
+        ordered = execution is not None and execution.get("ordered", False)
+        by_index = {} if ordered else dict(snapshots)
+        for index, child in enumerate(templates):
+            ReplayCompose._fill_with_execution(child, by_index.get(index))
+        if ordered:
+            serialized["params"] = {
+                "visits": [{"index": index, "execution": snapshot} for index, snapshot in snapshots]
+            }
+
     def fill_with_params(
         self,
         serialized: dict[str, Any],
         all_params: Any,
         occurrence_indices: dict[int, int] | None = None,
     ) -> None:
-        """Fill serialized transform data with params for replay. Copies from all_params by
-        id into serialized['params']; recurses into transforms. Mutates serialized.
+        """Populate a replay tree from invocation data, preserving ordered child visits and accepting
+        legacy per-object parameter lists. Mutates serialized.
 
         Args:
             serialized (dict[str, Any]): Serialized transform data.
@@ -4593,6 +4781,11 @@ class ReplayCompose(Compose):
             msg = "serialized replay node has no integer id"
             raise TypeError(msg)
         params = all_params.get(transform_id)
+        if isinstance(params, dict) and "_execution" in params:
+            self._fill_with_execution(serialized, params["_execution"])
+            if "label_metadata" in params:
+                serialized["params"] = {"label_metadata": params["label_metadata"]}
+            return
         if isinstance(params, list):
             occurrence_index = occurrence_indices.get(transform_id, 0)
             params = params[occurrence_index] if occurrence_index < len(params) else None
@@ -4603,8 +4796,8 @@ class ReplayCompose(Compose):
             self.fill_with_params(transform, all_params, occurrence_indices)
 
     def fill_applied(self, serialized: dict[str, Any]) -> bool:
-        """Set 'applied' flag for transforms based on parameters. Recurses; leaf applied =
-        params is not None. Returns True if any transform was applied.
+        """Complete applied flags for legacy records while preserving explicit visit-based decisions.
+        Returns True if the recorded composition or transform was applied.
 
         Args:
             serialized (dict[str, Any]): Serialized transform data.
@@ -4614,6 +4807,8 @@ class ReplayCompose(Compose):
 
         """
         if "transforms" in serialized:
+            if "applied" in serialized:
+                return bool(serialized["applied"])
             applied = [self.fill_applied(t) for t in serialized["transforms"]]
             serialized["applied"] = any(applied)
         else:
@@ -4696,9 +4891,12 @@ class Sequential(BaseCompose):
         trace = invocation.trace_session
 
         if self.replay_mode:
-            if not self.applied_in_replay:
+            if not self._replay_applied(invocation):
                 self._emit_trace_skip(trace, _TRACE_STATUS_SKIPPED_REPLAY)
                 return data
+            visits = self._recorded_replay_visits(invocation)
+            if visits is not None:
+                return self._apply_recorded_visits(data, invocation, visits)
         elif not self._should_apply_in_context(invocation, force_apply=force_apply):
             self._emit_trace_skip(trace, _TRACE_STATUS_SKIPPED_PROBABILITY)
             return data

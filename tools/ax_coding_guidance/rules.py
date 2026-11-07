@@ -620,10 +620,14 @@ def rule_sampling_rng(index: SourceIndex) -> list[Diagnostic]:
 
 def rule_instance_rng(index: SourceIndex) -> list[Diagnostic]:
     result: list[Diagnostic] = []
-    for info in index.classes.values():
-        if not (info.is_framework_root or index.is_descendant(info, FRAMEWORK_ROOTS)):
-            continue
-        is_composition = info.name in COMPOSE_ROOTS or index.is_descendant(info, COMPOSE_ROOTS)
+    execution_classes = {
+        info.qname: info
+        for info in index.classes.values()
+        if info.is_framework_root or index.is_descendant(info, FRAMEWORK_ROOTS)
+    }
+    for info in tuple(execution_classes.values()):
+        execution_classes.update((parent.qname, parent) for parent in index.ancestors(info))
+    for info in execution_classes.values():
         for name, method in info.methods.items():
             forwarded = {
                 id(argument)
@@ -631,7 +635,7 @@ def rule_instance_rng(index: SourceIndex) -> list[Diagnostic]:
                 if isinstance(call, ast.Call)
                 and isinstance(call.func, ast.Attribute)
                 and call.func.attr == "set_random_state"
-                for argument in call.args
+                for argument in (*call.args, *(keyword.value for keyword in call.keywords))
             }
             for node in ast.walk(method):
                 instance_access = (
@@ -639,18 +643,7 @@ def rule_instance_rng(index: SourceIndex) -> list[Diagnostic]:
                     and dotted(node) in {"self.py_random", "self.random_generator"}
                     and id(node) not in forwarded
                 )
-                sampler_factory = (
-                    (name == "sample_parameters" or is_composition)
-                    and isinstance(node, ast.Call)
-                    and index.resolve_name(info.file, dotted(node.func) or "")
-                    in {
-                        "numpy.random.default_rng",
-                        "numpy.random.Generator",
-                        "numpy.random.RandomState",
-                        "random.Random",
-                    }
-                )
-                if instance_access or sampler_factory:
+                if instance_access:
                     result.append(
                         _d(
                             "AXG027",
@@ -660,6 +653,53 @@ def rule_instance_rng(index: SourceIndex) -> list[Diagnostic]:
                             f"{info.name}.{name}",
                         ),
                     )
+    return result
+
+
+def _recorded_seed_factory(call: ast.Call, function: ast.FunctionDef | ast.AsyncFunctionDef | None) -> bool:
+    if function is None or not (function.name == "apply" or function.name.startswith("apply_to_")):
+        return False
+    seed = (
+        call.args[0] if call.args else next((item.value for item in call.keywords if item.arg in {"seed", "x"}), None)
+    )
+    return (
+        isinstance(seed, ast.Name)
+        and (seed.id == "seed" or seed.id.endswith("_seed"))
+        and seed.id in {argument.arg for argument in argument_nodes(function)}
+    )
+
+
+def rule_rng_factories(index: SourceIndex) -> list[Diagnostic]:
+    result: list[Diagnostic] = []
+    factories = {
+        "numpy.random.default_rng",
+        "numpy.random.Generator",
+        "numpy.random.RandomState",
+        "random.Random",
+        "albumentations.core.invocation.SamplingContext.from_seed",
+        "albumentations.core.invocation.SamplingContext.from_owner",
+    }
+    for unit in index.units:
+        if unit.key == "albumentations/core/invocation.py":
+            continue
+        parents = {child: node for node in ast.walk(unit.tree) for child in ast.iter_child_nodes(node)}
+        for node in ast.walk(unit.tree):
+            if not isinstance(node, ast.Call) or index.resolve_name(unit, dotted(node.func) or "") not in factories:
+                continue
+            parent = parents.get(node)
+            while parent is not None and not isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                parent = parents.get(parent)
+            function = parent if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)) else None
+            if not _recorded_seed_factory(node, function):
+                result.append(
+                    _unit_d(
+                        "AXG027",
+                        unit,
+                        node,
+                        "RNG sources belong in invocation.py; kernels may reconstruct a recorded seed argument",
+                        dotted(node.func) or "",
+                    )
+                )
     return result
 
 
@@ -1440,6 +1480,7 @@ def run_all(index: SourceIndex) -> list[Diagnostic]:
         rule_random_usage,
         rule_sampling_rng,
         rule_instance_rng,
+        rule_rng_factories,
         rule_transform_names,
         rule_fill_naming,
         rule_range_annotations,

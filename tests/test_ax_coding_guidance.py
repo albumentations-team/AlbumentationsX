@@ -70,12 +70,22 @@ class RandomNew(DualTransform):
 
 
 @pytest.mark.parametrize("base", ["BaseCompose", "DualTransform"])
-@pytest.mark.parametrize("expression", ["self.py_random.random()", "self.random_generator", "np.random.default_rng()"])
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "self.py_random.random()",
+        "self.random_generator",
+        "np.random.default_rng()",
+        "SamplingContext.from_seed(137)",
+        "SamplingContext.from_owner(self)",
+    ],
+)
 def test_builtin_sampling_cannot_open_an_independent_rng_path(base: str, expression: str) -> None:
     ids = rule_ids(
         {
             "albumentations/core/composition.py": f"""
 import numpy as np
+from albumentations.core.invocation import SamplingContext
 class {base}: pass
 class Example({base}):
     def sample_parameters(self, params, data, targets, sampling):
@@ -91,18 +101,69 @@ def test_rng_policy_forwarding_and_explicit_context_sampling_remain_allowed() ->
     ids = rule_ids(
         {
             "albumentations/core/composition.py": """
+import numpy as np
 class BaseCompose: pass
 class Example(BaseCompose):
     def reconstruct(self, other):
         other.set_random_state(self.random_generator, self.py_random)
+        other.set_random_state(random_generator=self.random_generator, py_random=self.py_random)
     def apply_in_invocation(self, invocation):
         return invocation.py_random.random(), invocation.random_generator.uniform()
     def sample_parameters(self, params, data, targets, sampling):
         return sampling.py_random.random(), sampling.random_generator.uniform()
+class DualTransform: pass
+class Dropout(DualTransform):
+    def apply(self, img, seed):
+        return np.random.default_rng(seed).random(img.shape)
 """,
         },
     )
     assert "AXG027" not in ids
+
+
+def test_instance_rng_check_includes_non_transform_mixins() -> None:
+    ids = rule_ids(
+        {
+            "albumentations/augmentations/example.py": """
+class DualTransform: pass
+class SamplingMixin:
+    def sample_parameters(self, params, data, targets, sampling):
+        return self.py_random.random()
+class Example(SamplingMixin, DualTransform): pass
+"""
+        }
+    )
+    assert "AXG027" in ids
+
+
+@pytest.mark.parametrize("method", ["__init__", "sample_parameters", "helper"])
+@pytest.mark.parametrize("factory", ["np.random.default_rng()", "np.random.default_rng(137)", "random.Random(137)"])
+def test_rng_factories_cannot_escape_through_constructors_or_sampling_helpers(method: str, factory: str) -> None:
+    ids = rule_ids(
+        {
+            "albumentations/augmentations/example.py": f"""
+import numpy as np
+import random
+class DualTransform: pass
+class Example(DualTransform):
+    def {method}(self):
+        return {factory}
+"""
+        }
+    )
+    assert "AXG027" in ids
+
+
+def test_rng_factory_check_includes_free_sampling_helpers() -> None:
+    assert "AXG027" in rule_ids(
+        {
+            "albumentations/augmentations/example.py": """
+from numpy.random import default_rng as generator
+def draw():
+    return generator().random()
+"""
+        }
+    )
 
 
 @pytest.mark.parametrize(

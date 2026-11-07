@@ -1,0 +1,48 @@
+{
+  "__class_fullname__": "ReplayCompose",
+  "params": null,
+  "transforms": [
+    {
+      "__class_fullname__": "SomeOf",
+      "params": null,
+      "transforms": [
+        {
+          "__class_fullname__": "HorizontalFlip",
+          "p": 1.0,
+          "params": {
+            "parameter_schema": 3,
+            "target_schema": null,
+            "params": {
+              "shape": [
+                5,
+                7,
+                3
+              ]
+            },
+            "target_params": []
+          },
+          "applied": true
+        }
+      ],
+      "p": 1,
+      "n": 1,
+      "replace": false,
+      "applied": true
+    }
+  ],
+  "bbox_params": null,
+  "keypoint_params": null,
+  "additional_targets": {},
+  "semantic_mask_label_mappings": null,
+  "p": 1.0,
+  "is_check_shapes": true,
+  "strict": false,
+  "mask_interpolation": null,
+  "seed": 137,
+  "save_applied_params": false,
+  "telemetry": true,
+  "instance_binding": null,
+  "frame_binding": null,
+  "save_key": "replay",
+  "applied": true
+}

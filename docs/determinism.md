@@ -207,6 +207,18 @@ observation. See the [validation contract](validation.md) for rejection behavior
 | `ReplayCompose` | Parameters and applied/skipped decisions for one call | That invocation on compatible input targets, without resampling |
 | Applied configuration: `save_applied_params=True` and `Compose.from_applied_transforms` | Realized constructor policy for applied transforms | A runnable reconstructed policy; exactness depends on the registered transform case |
 
+`ReplayCompose` preserves repeated children, skipped visits, execution order, and each visit's sampled parameters in
+`SomeOf` and `RandomOrder`. Selectors, including `OneOf` and `OneOrOther`, store visit metadata in their existing
+`params` dictionary as `visits`; the configured child pool remains constructor policy. Nested selectors and selective
+channel scopes use the same invocation recording path. Replay does not sample probabilities or parameter values.
+
+Each repeated visit retains its own parameter payload. Dense sampled arrays therefore make record size grow with
+the number of visits. Replay traces label recorded skips as `skipped_replay` and force the root container.
+
+Older records without `visits` remain readable with their original applied-child interpretation. A historical record
+that omitted repeated visits or random order cannot recover that missing information; capture a new record for an
+exact replay of those routes. Constructor serialization is unchanged.
+
 ```python
 import json
 import numpy as np

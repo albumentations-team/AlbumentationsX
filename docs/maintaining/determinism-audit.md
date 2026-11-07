@@ -15,8 +15,8 @@ Standalone containers open a root invocation when there is no enclosing invocati
 | `Compose` | Root probability and leaf sampling | `_execute_root`, `_apply_children` |
 | `ReplayCompose` | Ordinary calls use Compose sources; replay uses stored decisions | `_execute_root`, `apply_in_invocation` |
 | `OneOf` | Probability and weighted child choice | `apply_in_invocation` |
-| `SomeOf` | Probability and child indices, including replacement | `apply_in_invocation`, `_get_indices` |
-| `RandomOrder` | SomeOf selection with sampled execution order | Inherited `apply_in_invocation`, `_get_indices` |
+| `SomeOf` | Probability and child indices, including replacement | `apply_in_invocation`, `sample_indices` |
+| `RandomOrder` | SomeOf selection with sampled execution order | Inherited `apply_in_invocation`, overridden `sample_indices` |
 | `OneOrOther` | First/second branch choice | `apply_in_invocation` |
 | `Sequential` | Container and child probabilities | `apply_in_invocation` |
 | `SelectiveChannelTransform` | Container and child probabilities for selected channels | `apply_in_invocation` |
@@ -37,7 +37,8 @@ Sources: [composition](../../albumentations/core/composition.py),
 | Ordinary workers reproduce a fixed loader setup, advance across epochs, and differ when worker count changes | `tests/test_dataloader_determinism.py` |
 | Pickle/unpickle rebuilds process-local RNG state | `tests/test_per_worker_seed.py` pickle contracts; spawned-worker tests |
 | Constructor persistence, ReplayCompose, applied configurations, and tracing | `tests/contracts/test_composition_serialization_contracts.py`, `tests/test_composition_tracing.py`, and `tests/property/test_applied_config_replay.py` |
-| Prohibited global sampling, instance RNG access, and sampler-created independent sources are rejected | `tests/test_ax_coding_guidance.py` negative controls for `AXG005` and `AXG027` |
+| Repeated/reordered child visits, per-visit parameters, nested selectors, channel scopes, annotations, and older replay records | `tests/test_composition_tracing.py` and the frozen record `tests/files/replay-someof-without-visits.json` |
+| Prohibited global sampling, mixin/instance RNG access, and helper/constructor-created independent sources are rejected | `tests/test_ax_coding_guidance.py` negative controls for `AXG005` and `AXG027` |
 
 The real-worker tests reproduce [#81](https://github.com/albumentations-team/AlbumentationsX/issues/81): ordinary
 augmentations may change when worker count changes. Stable sample-keyed `invocation_seed` values reproduce the same

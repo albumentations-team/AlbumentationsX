@@ -1,4 +1,6 @@
 import copy
+import json
+from pathlib import Path
 from unittest import mock
 
 import numpy as np
@@ -74,6 +76,187 @@ def test_replay_preserves_each_occurrence_of_one_reused_transform() -> None:
     np.testing.assert_array_equal(replayed["image"], original["image"])
     first, second = original["replay"]["transforms"]
     assert first["params"] != second["params"]
+
+
+@pytest.mark.parametrize("container", [A.SomeOf, A.RandomOrder])
+@pytest.mark.parametrize("replace", [False, True])
+def test_replay_preserves_selected_child_visits_and_their_parameters(container, replace) -> None:
+    image = np.arange(5 * 7 * 3, dtype=np.uint8).reshape(5, 7, 3)
+    for seed in range(137, 145):
+        pipeline = A.ReplayCompose(
+            [
+                container(
+                    [A.HorizontalFlip(p=0.5), A.RandomBrightnessContrast(p=1.0)],
+                    n=4 if replace else 2,
+                    replace=replace,
+                    p=1.0,
+                )
+            ],
+            seed=seed,
+        )
+        original = pipeline.run_with_trace(image=image)
+        saved = json.loads(json.dumps(original.data["replay"]))
+        replayed = A.ReplayCompose.replay_with_trace(saved, image=image)
+        np.testing.assert_array_equal(replayed.data["image"], original.data["image"])
+        second_replay = A.ReplayCompose.replay(replayed.data["replay"], image=image)
+        np.testing.assert_array_equal(second_replay["image"], original.data["image"])
+        expected_paths = [record.node_path for record in original.records if record.node_kind == "leaf"]
+        assert [record.node_path for record in replayed.records if record.node_kind == "leaf"] == expected_paths
+
+
+def test_replay_preserves_repeated_nested_selections_and_channel_scopes() -> None:
+    image = np.arange(5 * 7 * 3, dtype=np.uint8).reshape(5, 7, 3)
+    mask = np.arange(5 * 7, dtype=np.uint8).reshape(5, 7)
+    for seed in range(137, 145):
+        pipeline = A.ReplayCompose(
+            [
+                A.SomeOf(
+                    [
+                        A.OneOf([A.HorizontalFlip(p=1), A.VerticalFlip(p=1)], p=0.7),
+                        A.SelectiveChannelTransform([A.RandomBrightnessContrast(p=1)], channels=(0,), p=1),
+                        A.OneOrOther(A.HorizontalFlip(p=1), A.VerticalFlip(p=1), p=0.5),
+                        A.Compose([A.HorizontalFlip(p=1)], p=0.3),
+                    ],
+                    n=5,
+                    replace=True,
+                    p=1,
+                )
+            ],
+            seed=seed,
+        )
+        original = pipeline(image=image, mask=mask)
+        saved = json.loads(json.dumps(original["replay"]))
+        replayed = A.ReplayCompose.replay(saved, image=image, mask=mask)
+        for target in ("image", "mask"):
+            np.testing.assert_array_equal(replayed[target], original[target])
+
+
+@pytest.mark.parametrize("alias", ["other", "replay_params"])
+def test_replay_visit_parameters_use_root_additional_target_policy(alias: str) -> None:
+    image = np.arange(5 * 7 * 3, dtype=np.uint8).reshape(5, 7, 3)
+    pipeline = A.ReplayCompose(
+        [A.SomeOf([A.HorizontalFlip(p=1)], n=3, replace=True)],
+        additional_targets={alias: "image"},
+        seed=137,
+    )
+    data = {"image": image, alias: image.copy()}
+    original = pipeline(**data)
+    replayed = A.ReplayCompose.replay(original["replay"], **data)
+    np.testing.assert_array_equal(replayed[alias], original[alias])
+
+
+def test_nested_replay_containers_preserve_outer_visits() -> None:
+    image = np.arange(5 * 7 * 3, dtype=np.uint8).reshape(5, 7, 3)
+    pipeline = A.ReplayCompose(
+        [A.HorizontalFlip(p=1), A.ReplayCompose([A.VerticalFlip(p=1)]), A.RandomBrightnessContrast(p=1)], seed=137
+    )
+    original = pipeline(image=image)
+    replayed = A.ReplayCompose.replay(original["replay"], image=image)
+    np.testing.assert_array_equal(replayed["image"], original["image"])
+
+
+def test_repeated_replay_stores_each_sampled_noise_field_once() -> None:
+    def arrays(value):
+        if isinstance(value, np.ndarray):
+            return [value]
+        if isinstance(value, dict):
+            return [array for child in value.values() for array in arrays(child)]
+        if isinstance(value, (list, tuple)):
+            return [array for child in value for array in arrays(child)]
+        return []
+
+    image = np.full((12, 14, 3), 137, dtype=np.uint8)
+    pipeline = A.ReplayCompose([A.SomeOf([A.GaussNoise(p=1)], n=3, replace=True)], seed=137)
+    original = pipeline(image=image)
+    assert len(arrays(original["replay"])) == 3
+    replayed = A.ReplayCompose.replay(original["replay"], image=image)
+    np.testing.assert_array_equal(replayed["image"], original["image"])
+
+
+@pytest.mark.parametrize(
+    ("visits", "error", "message"),
+    [
+        ("invalid", TypeError, "visits must be a list"),
+        ([{"index": True, "execution": {}}], TypeError, "integer index"),
+        ([{"index": 137, "execution": {}}], ValueError, "outside the configured child pool"),
+        ([{"index": 0, "execution": {"applied": "yes"}}], TypeError, "boolean applied flag"),
+        ([{"index": 0, "execution": {"applied": True, "params": None}}], TypeError, "sampled parameters"),
+        ([{"index": 0, "execution": {"applied": False}}], ValueError, "params"),
+        ([{"index": 0, "execution": {"applied": False, "params": 137}}], TypeError, "dict or None"),
+    ],
+)
+def test_replay_rejects_malformed_child_visit_metadata(visits, error, message) -> None:
+    image = np.zeros((5, 7, 3), dtype=np.uint8)
+    pipeline = A.ReplayCompose([A.SomeOf([A.HorizontalFlip(p=1)], n=2, replace=True)], seed=137)
+    saved = pipeline(image=image)["replay"]
+    saved["transforms"][0]["params"]["visits"] = visits
+    with pytest.raises(error, match=message):
+        A.ReplayCompose.replay(saved, image=image)
+
+
+@pytest.mark.parametrize("container_name", ["OneOf", "OneOrOther", "SomeOf"])
+def test_replay_preserves_selected_containers_when_their_leaves_skip(container_name: str) -> None:
+    selected = A.Sequential([A.HorizontalFlip(p=0)], p=1)
+    if container_name == "OneOrOther":
+        container = A.OneOrOther(selected, A.VerticalFlip(p=1), p=1)
+    elif container_name == "SomeOf":
+        container = A.SomeOf([selected], n=1, p=1)
+    else:
+        container = A.OneOf([selected], p=1)
+    pipeline = A.ReplayCompose([container], seed=137)
+    image = np.arange(5 * 7 * 3, dtype=np.uint8).reshape(5, 7, 3)
+    original = pipeline.run_with_trace(image=image)
+    replayed = A.ReplayCompose.replay_with_trace(original.data["replay"], image=image)
+    assert [(record.node_path, record.node_kind, record.status == "applied") for record in replayed.records] == [
+        (record.node_path, record.node_kind, record.status == "applied") for record in original.records
+    ]
+    np.testing.assert_array_equal(replayed.data["image"], original.data["image"])
+
+
+def test_reused_forced_leaf_clears_observation_when_its_next_visit_skips() -> None:
+    flip = A.HorizontalFlip(p=0)
+    pipeline = A.ReplayCompose([A.OneOrOther(flip, A.NoOp(p=1), p=1), flip], seed=137, save_applied_params=True)
+    image = np.arange(5 * 7 * 3, dtype=np.uint8).reshape(5, 7, 3)
+    original = pipeline.run_with_trace(image=image)
+    leaves = [record for record in original.records if record.node_kind == "leaf"]
+    assert leaves[-1].status == "skipped_probability"
+    assert len(original.data["applied_transforms"]) == 1
+    replayed = A.ReplayCompose.replay_with_trace(original.data["replay"], image=image)
+    np.testing.assert_array_equal(replayed.data["image"], original.data["image"])
+
+
+@pytest.mark.parametrize("container_name", ["SomeOf", "RandomOrder"])
+def test_replay_accepts_legacy_records_without_child_visit_metadata(container_name: str) -> None:
+    path = Path(__file__).parent / "files" / "replay-someof-without-visits.json"
+    saved = json.loads(path.read_text())
+    saved["transforms"][0]["__class_fullname__"] = container_name
+    image = np.arange(5 * 7 * 3, dtype=np.uint8).reshape(5, 7, 3)
+    replayed = A.ReplayCompose.replay(saved, image=image)
+    np.testing.assert_array_equal(replayed["image"], image[:, ::-1])
+
+
+def test_replay_keeps_annotations_aligned_through_reordered_repeated_geometry() -> None:
+    data = {
+        "image": np.arange(5 * 7 * 3, dtype=np.uint8).reshape(5, 7, 3),
+        "mask": np.arange(5 * 7, dtype=np.uint8).reshape(5, 7),
+        "bboxes": np.array([[1, 1, 6, 4]], dtype=np.float32),
+        "labels": ["object"],
+        "keypoints": np.array([[2, 3]], dtype=np.float32),
+    }
+    pipeline = A.ReplayCompose(
+        [
+            A.RandomOrder(
+                [A.Crop(x_min=0, y_min=0, x_max=5, y_max=4, p=1), A.HorizontalFlip(p=1)], n=4, replace=True, p=1
+            )
+        ],
+        bbox_params=A.BboxParams("pascal_voc", label_fields=["labels"]),
+        keypoint_params=A.KeypointParams("xy", remove_invisible=False),
+        seed=137,
+    )
+    original = pipeline(**data)
+    replayed = A.ReplayCompose.replay(original["replay"], **data)
+    for target in data:
+        np.testing.assert_array_equal(replayed[target], original[target])
 
 
 def test_trace_matches_nested_replay_compose_execution() -> None:

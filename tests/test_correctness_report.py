@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 
 import pytest
+from packaging.version import Version
 
+from tools.check_behavior_changes import REPO_ROOT, read_inventory
 from tools.generate_correctness_report import _validate_required_evidence, generate_report
 
 
@@ -21,7 +23,10 @@ def test_generate_report_requires_release_evidence_by_default(tmp_path) -> None:
 
 
 @pytest.fixture
-def release_evidence(tmp_path):
+def release_evidence(tmp_path, monkeypatch):
+    baseline = Version(read_inventory(REPO_ROOT)[0])
+    version = f"{baseline.major}.{baseline.minor + 1}.0"
+    monkeypatch.setattr("tools.generate_correctness_report._project_version", lambda: version)
     _write_json(
         tmp_path / "environment-local.json",
         {"git_commit": "a" * 40, "github": {"run_id": "137"}},

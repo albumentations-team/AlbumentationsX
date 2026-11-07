@@ -4,6 +4,8 @@ This document defines the public compatibility policy for AlbumentationsX. The
 policy covers tested Python versions, operating systems, dependency sets,
 optional extras, and how support is retired.
 
+API and output changes follow the separate [behavior compatibility and migration policy](behavior-compatibility.md).
+
 ## Python Versions
 
 AlbumentationsX currently supports Python 3.11, 3.12, 3.13, and 3.14.

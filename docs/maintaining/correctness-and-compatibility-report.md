@@ -26,7 +26,10 @@ which limitations are known.
    status, SBOM, checksums, and PyPI provenance.
 8. Reproducibility details: CI runs, lockfile hash, environment artifacts, and
    commands.
-9. Behavior changes and migration guidance linked to the release notes for the tested revision.
+9. Behavior changes and migration guidance from the checked [release-note inventory](../release-notes/unreleased.md),
+   following the [behavior compatibility policy](behavior-compatibility.md). Each change links its migration, contract,
+   and tests at the tested revision. Every category explicitly lists its changes or `none`; the first affected version
+   is the version being released.
 
 Reports must avoid internal funding or grant context. They should describe the
 library guarantees in language useful to downstream users.
@@ -49,3 +52,7 @@ those artifacts are not available.
 The determinism artifact must cover the [composition audit](determinism-audit.md), including real spawned DataLoader
 workers with and without persistence. A missing, empty, failing, or skipped determinism suite blocks the release
 report. The report pins documentation to the tested source revision and links the CI run from environment evidence.
+
+The report also runs `tools.check_behavior_changes`. Missing migration fields, disconnected policy documents, and
+missing contract/test links block generation, including local previews. A release version at or below the inventory's
+baseline blocks a release report. Local previews may retain `unreleased` and are not publication evidence.

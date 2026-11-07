@@ -18,6 +18,7 @@ tutorials, and usage guides. This index links to the library documents maintaine
 - [Telemetry and data handling](privacy.md)
 - [Security policy and vulnerability reporting](../SECURITY.md)
 - [Supported environments](maintaining/support-policy.md)
+- [Behavior compatibility and migration](maintaining/behavior-compatibility.md)
 - [Verify a release](maintaining/release-verification.md)
 
 ## Contribute and maintain

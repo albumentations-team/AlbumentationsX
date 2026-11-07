@@ -87,6 +87,8 @@ def verify_case(case: dict[str, Any]) -> list[str]:
     contract = contract_by_name(str(case["transform"]))
     actual_outputs = _run_contract(contract)
     issues: list[str] = []
+    if case.get("behavior_epoch") != contract.behavior_epoch:
+        issues.append(f"{case_id} behavior epoch differs between manifest and registry")
     stability = str(case.get("stability", contract.stability))
     tolerance = float(case.get("tolerance", contract.tolerance))
 

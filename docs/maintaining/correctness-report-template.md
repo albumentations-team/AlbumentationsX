@@ -51,7 +51,20 @@ Supported Python versions: 3.11, 3.12, 3.13, 3.14
 
 ## Behavior Changes and Migration
 
-- Release notes and migration guidance for the tested revision: `<link>`
+Follow the [behavior compatibility policy](behavior-compatibility.md). Populate this section from the checked
+[release-note inventory](../release-notes/unreleased.md), pinned to the tested revision.
+
+- Release baseline: `<last published version>`
+- First affected version: `<version being released; never an unresolved placeholder>`
+
+| Category | Changes and migration evidence |
+| --- | --- |
+| Validation | `<each change's release note, migration, contract, and tests; or none>` |
+| Geometry | `<each change's release note, migration, contract, and tests; or none>` |
+| Determinism | `<each change's release note, migration, contract, and tests; or none>` |
+| Constructor defaults | `<changes or none>` |
+| Deprecations | `<replacement, warning version, removal version/condition; or none>` |
+| Regression vectors | `<sentinel, old/new epoch, rationale and tests; or none>` |
 
 ## Known Limitations
 

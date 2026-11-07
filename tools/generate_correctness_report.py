@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from tests.regression.transform_contracts import coverage_summary
+from tools.check_behavior_changes import format_report
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_URL = "https://github.com/albumentations-team/AlbumentationsX"
@@ -372,6 +373,12 @@ def generate_report(evidence_dir: Path | None = None, allow_missing_evidence: bo
     docs_url = f"{REPOSITORY_URL}/blob/{source_revision}/docs"
 
     version = _project_version()
+    behavior_changes = format_report(
+        REPO_ROOT,
+        f"{REPOSITORY_URL}/blob/{source_revision}",
+        version,
+        preview=allow_missing_evidence,
+    )
     generated_at = datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
     python_versions = ", ".join(SUPPORTED_PYTHONS)
     operating_systems = ", ".join(TIER_1_OSES)
@@ -443,6 +450,8 @@ Dependency sets tracked by the support policy: {dependency_sets}
 ## Behavior Changes and Migration
 
 See the [release notes]({docs_url}/release-notes/unreleased.md) for behavior changes and migration steps.
+
+{behavior_changes}
 
 ## Known Limitations
 

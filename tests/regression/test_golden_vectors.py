@@ -8,7 +8,7 @@ import pytest
 
 from tests.regression.transform_contracts import registered_transform_names, unaccounted_public_transforms
 from tools.generate_regression_vectors import MANIFEST_PATH
-from tools.verify_regression_vectors import verify_cases
+from tools.verify_regression_vectors import _load_manifest, verify_case, verify_cases
 
 pytestmark = pytest.mark.regression
 
@@ -26,3 +26,10 @@ def test_registered_golden_contracts_have_manifest_cases() -> None:
 
 def test_golden_vectors_match_current_behavior() -> None:
     assert verify_cases() == []
+
+
+def test_golden_vector_rejects_uncoordinated_behavior_epoch() -> None:
+    case = _load_manifest()["cases"][0]
+    case["behavior_epoch"] = "unreviewed"
+
+    assert verify_case(case) == [f"{case['id']} behavior epoch differs between manifest and registry"]

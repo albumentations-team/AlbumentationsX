@@ -95,7 +95,7 @@ def _evidence_links(root: Path, change: dict[str, str]) -> None:
         if not links:
             raise ValueError(f"{change['title']}: {field} must link to permanent repository evidence")
         for link in links:
-            target = urlsplit(link["destination"])
+            target = urlsplit(link["destination"].strip("<>"))
             if not target.path:
                 raise ValueError(f"{change['title']}: {field} must name a repository file")
             path = (root / NOTES_PATH.parent / target.path).resolve()
@@ -108,7 +108,7 @@ def _evidence_links(root: Path, change: dict[str, str]) -> None:
 def _links_to(source: Path, target: Path) -> bool:
     """Match a local documentation edge without depending on native path separators."""
     for link in INLINE_LINK.finditer(source.read_text(encoding="utf-8")):
-        destination = urlsplit(link["destination"])
+        destination = urlsplit(link["destination"].strip("<>"))
         if (
             not destination.scheme
             and not destination.netloc
@@ -131,7 +131,7 @@ def check_repository(root: Path = REPO_ROOT) -> tuple[str, dict[str, list[dict[s
     template = root / "docs/maintaining/correctness-report-template.md"
     template_text = template.read_text(encoding="utf-8")
     for category in CATEGORIES:
-        if f"| {category} |" not in template_text:
+        if f"### {category}\n" not in template_text:
             raise ValueError(f"Report template must include category {category}")
     for source in (template, root / "docs/maintaining/correctness-and-compatibility-report.md"):
         if not _links_to(source, root / NOTES_PATH):
@@ -156,12 +156,15 @@ def format_report(root: Path, repository_url: str, version: str, *, preview: boo
 
         def replace_link(match: re.Match[str]) -> str:
             destination = match["destination"]
-            target = urlsplit(destination)
+            target = urlsplit(destination.strip("<>"))
             path = (root / NOTES_PATH.parent / target.path).resolve().relative_to(root.resolve()).as_posix()
             fragment = f"#{target.fragment}" if target.fragment else ""
+            pinned = f"{repository_url}/{path}{fragment}"
+            if destination.startswith("<"):
+                pinned = f"<{pinned}>"
             start = match.start("destination") - match.start()
             end = match.end("destination") - match.start()
-            return f"{match[0][:start]}{repository_url}/{path}{fragment}{match[0][end:]}"
+            return f"{match[0][:start]}{pinned}{match[0][end:]}"
 
         return INLINE_LINK.sub(replace_link, text)
 

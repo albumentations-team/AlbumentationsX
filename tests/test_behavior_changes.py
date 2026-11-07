@@ -78,12 +78,12 @@ def repository(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         policy_link = os.path.relpath(tmp_path / POLICY_PATH, path.parent)
         notes_link = os.path.relpath(tmp_path / NOTES_PATH, path.parent)
-        path.write_text(f"[Policy]({policy_link})\n[Notes]({notes_link})\n")
+        path.write_text(f"[Policy](<{policy_link}>)\n[Notes](<{notes_link}>)\n")
     (tmp_path / NOTES_PATH).write_text(notes)
     (tmp_path / POLICY_PATH).write_text("# Behavior policy\n")
     template = tmp_path / "docs/maintaining/correctness-report-template.md"
     with template.open("a") as file:
-        file.write("\n".join(f"| {category} | none |" for category in CATEGORIES))
+        file.write("\n".join(f"### {category}\n\nnone\n" for category in CATEGORIES))
     monkeypatch.setattr("tools.check_local_markdown_links.REPO_ROOT", tmp_path)
     return tmp_path
 
@@ -122,7 +122,7 @@ def test_maintenance_documents_cannot_disconnect_policy(repository, source) -> N
 
 def test_report_template_cannot_drop_a_category(repository) -> None:
     template = repository / "docs/maintaining/correctness-report-template.md"
-    template.write_text(template.read_text().replace("| Deprecations | none |", ""))
+    template.write_text(template.read_text().replace("### Deprecations\n\nnone", ""))
 
     with pytest.raises(ValueError, match="Report template must include category Deprecations"):
         check_repository(repository)
@@ -150,14 +150,20 @@ def test_report_resolves_first_version_and_pins_all_evidence(repository) -> None
 
 
 @pytest.mark.parametrize("title", [' "Validation contract"', " 'Validation contract'", '   "Validation contract"'])
-def test_report_preserves_link_titles_while_pinning_destinations(repository, title) -> None:
+@pytest.mark.parametrize("angle_brackets", [False, True])
+def test_report_preserves_link_titles_while_pinning_destinations(repository, title, angle_brackets) -> None:
+    """Published evidence must stay navigable with link titles and angle delimiters."""
     notes = repository / NOTES_PATH
-    notes.write_text(notes.read_text().replace("../validation.md)", f"../validation.md{title})"))
+    destination = "<../validation.md>" if angle_brackets else "../validation.md"
+    notes.write_text(notes.read_text().replace("../validation.md)", f"{destination}{title})"))
     revision_url = "https://github.com/example/project/blob/tested-sha"
 
     report = format_report(repository, revision_url, "2.6.1", preview=False)
 
-    assert f"[Pipeline validation]({revision_url}/docs/validation.md{title})" in report
+    pinned = f"{revision_url}/docs/validation.md"
+    if angle_brackets:
+        pinned = f"<{pinned}>"
+    assert f"[Pipeline validation]({pinned}{title})" in report
     assert "../validation.md" not in report
 
 

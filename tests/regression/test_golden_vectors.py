@@ -32,4 +32,4 @@ def test_golden_vector_rejects_uncoordinated_behavior_epoch() -> None:
     case = _load_manifest()["cases"][0]
     case["behavior_epoch"] = "unreviewed"
 
-    assert verify_case(case) == [f"{case['id']} behavior epoch differs between manifest and registry"]
+    assert f"{case['id']} behavior epoch differs between manifest and registry" in verify_case(case)

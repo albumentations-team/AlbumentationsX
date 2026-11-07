@@ -14,7 +14,7 @@ repos:
         files: ^(pyproject\.toml|\.github/workflows/|docs/maintaining/|tools/ci_matrix\.py)
       - id: check-behavior-changes
         name: Check behavior compatibility and migration evidence
-        entry: python -m tools.check_behavior_changes
+        entry: uv run python -m tools.check_behavior_changes
         language: system
         pass_filenames: false
         files: ^(docs/|tools/(check_behavior_changes|generate_correctness_report)\.py|tests/test_behavior_changes\.py|pyproject\.toml|\.pre-commit-config\.yaml)

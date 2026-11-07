@@ -26,7 +26,10 @@ which limitations are known.
    status, SBOM, checksums, and PyPI provenance.
 8. Reproducibility details: CI runs, lockfile hash, environment artifacts, and
    commands.
-9. Behavior changes and migration guidance linked to the release notes for the tested revision.
+9. Behavior changes and migration guidance from the checked [release-note inventory](../release-notes/unreleased.md),
+   following the [behavior compatibility policy](behavior-compatibility.md). Each change links its migration, contract,
+   and tests at the tested revision. Every category explicitly lists its changes or `none`; the first affected version
+   is the version being released.
 
 Reports must avoid internal funding or grant context. They should describe the
 library guarantees in language useful to downstream users.
@@ -46,6 +49,17 @@ benchmark coverage summary/detail JSON,
 benchmark performance-budget JSON, and security JSON evidence. Local dry runs may use `--allow-missing-evidence` when
 those artifacts are not available.
 
+`--allow-missing-evidence` selects a local preview: it permits missing test artifacts and a package version at or below
+the inventory baseline. Release preflight omits the flag and enforces both checks.
+
+Release reports also require every environment artifact to name the same full Git commit SHA. The generator compares
+the local behavior inventory with that revision's Git content and rejects unavailable history or later inventory edits.
+Local previews skip this revision check; they remain unsuitable as publication evidence.
+
 The determinism artifact must cover the [composition audit](determinism-audit.md), including real spawned DataLoader
 workers with and without persistence. A missing, empty, failing, or skipped determinism suite blocks the release
 report. The report pins documentation to the tested source revision and links the CI run from environment evidence.
+
+The report also runs `tools.check_behavior_changes`. Missing migration fields, disconnected policy documents, and
+missing contract/test links block generation, including local previews. A release version at or below the inventory's
+baseline blocks a release report. Local previews may retain `unreleased` and are not publication evidence.

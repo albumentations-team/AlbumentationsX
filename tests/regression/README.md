@@ -16,6 +16,11 @@ crop contract. Each manifest case records the transform, params, seed, input
 recipe, environment, behavior epoch, targets, stability mode, tolerance, and
 output metadata.
 
+Follow the [behavior compatibility policy](../../docs/maintaining/behavior-compatibility.md#update-regression-behavior-epochs-deliberately)
+when changing expectations. Record the rationale and old/new epoch in the pull request and release notes, and update
+the registry and manifest together. The verifier rejects mismatched epochs. Do not bump unaffected sentinels or
+regenerate vectors merely to accept an unexplained failure.
+
 `tests/regression/transform_contracts.py` also tracks public transform coverage
 routes. A new public transform-like API should be covered by the established
 parameterized sweeps or assigned an explicit focused route; otherwise the
@@ -24,8 +29,8 @@ regression coverage route test fails.
 ## Commands
 
 ```bash
-uv run python tools/generate_regression_vectors.py --transform HorizontalFlip --epoch 2.4
-uv run python tools/generate_regression_vectors.py --all --epoch 2.4
+uv run python tools/generate_regression_vectors.py --transform HorizontalFlip
+uv run python tools/generate_regression_vectors.py --all
 uv run python tools/verify_regression_vectors.py --all
 uv run pytest tests/regression
 ```

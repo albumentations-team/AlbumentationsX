@@ -51,7 +51,43 @@ Supported Python versions: 3.11, 3.12, 3.13, 3.14
 
 ## Behavior Changes and Migration
 
-- Release notes and migration guidance for the tested revision: `<link>`
+Follow the [behavior compatibility policy](behavior-compatibility.md). Populate this section from the checked
+[release-note inventory](../release-notes/unreleased.md), pinned to the tested revision.
+
+- Release baseline: `<last published version>`
+- First affected version: `<version being released; never an unresolved placeholder>`
+
+For each category, list every change in a table or write `none` when there is no observable change.
+
+### Validation
+
+| Change and migration | Contract | Tests |
+| --- | --- | --- |
+| `<release note with migration>` | `<owning contract>` | `<permanent tests>` |
+
+### Geometry
+
+| Change and migration | Contract | Tests |
+| --- | --- | --- |
+| `<release note with migration>` | `<owning contract>` | `<permanent tests>` |
+
+### Determinism
+
+| Change and migration | Contract | Tests |
+| --- | --- | --- |
+| `<release note with migration>` | `<owning contract>` | `<permanent tests>` |
+
+### Constructor defaults
+
+`<change table or none>`
+
+### Deprecations
+
+`<change table with replacement, warning version, removal version/condition; or none>`
+
+### Regression vectors
+
+`<change table with sentinel, old/new epoch, rationale and tests; or none>`
 
 ## Known Limitations
 

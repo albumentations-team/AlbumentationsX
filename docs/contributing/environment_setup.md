@@ -110,7 +110,7 @@ uv run pytest -n 4 -q tests/regression tests/property --hypothesis-profile=ci-fa
 Golden vectors change only through an explicit regeneration command, for example:
 
 ```bash
-uv run python tools/generate_regression_vectors.py --transform HorizontalFlip --epoch 2.4
+uv run python tools/generate_regression_vectors.py --transform HorizontalFlip
 ```
 
 To inspect report generation without release evidence:

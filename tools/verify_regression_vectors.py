@@ -79,6 +79,7 @@ def _compare_array(
 
 
 def verify_case(case: dict[str, Any]) -> list[str]:
+    """Check the registered epoch and stored outputs without regenerating expectations."""
     case_id = str(case["id"])
     vector_path = REGRESSION_ROOT / str(case["vector_file"])
     if not vector_path.exists():
@@ -87,6 +88,8 @@ def verify_case(case: dict[str, Any]) -> list[str]:
     contract = contract_by_name(str(case["transform"]))
     actual_outputs = _run_contract(contract)
     issues: list[str] = []
+    if case.get("behavior_epoch") != contract.behavior_epoch:
+        issues.append(f"{case_id} behavior epoch differs between manifest and registry")
     stability = str(case.get("stability", contract.stability))
     tolerance = float(case.get("tolerance", contract.tolerance))
 

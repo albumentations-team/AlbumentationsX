@@ -5,6 +5,9 @@ regression tests, property tests, and public release reports. It distinguishes
 behavior AlbumentationsX guarantees from behavior that is tested structurally
 or intentionally left unspecified.
 
+Changes to these guarantees follow the [behavior compatibility policy](behavior-compatibility.md), including migration
+evidence and deliberate regression-epoch updates.
+
 The mature verification model is layered:
 
 - parameterized transform sweeps are the primary broad coverage mechanism for

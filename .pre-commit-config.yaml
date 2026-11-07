@@ -12,6 +12,12 @@ repos:
         language: system
         pass_filenames: false
         files: ^(pyproject\.toml|\.github/workflows/|docs/maintaining/|tools/ci_matrix\.py)
+      - id: check-behavior-changes
+        name: Check behavior compatibility and migration evidence
+        entry: uv run python -m tools.check_behavior_changes
+        language: system
+        pass_filenames: false
+        always_run: true
       - id: check-ax-rules
         name: Check AlbumentationsX rules
         entry: uv run python -m tools.ax_rules

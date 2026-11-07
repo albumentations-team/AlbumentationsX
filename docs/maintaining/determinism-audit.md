@@ -73,7 +73,7 @@ uv run pytest -q \
 
 ## Verification record: 2026-11-07
 
-Tested source: [3d8777b](https://github.com/albumentations-team/AlbumentationsX/commit/3d8777b8b7b145e3cc254ff645f067158278c3e0).
+Tested runtime source: [3d8777b](https://github.com/albumentations-team/AlbumentationsX/commit/3d8777b8b7b145e3cc254ff645f067158278c3e0).
 This record is added separately from the tested implementation. The local profile was macOS ARM64 (Apple M4 Max), Python 3.11.15,
 NumPy 2.4.6, OpenCV 5.0.0.93, Albucore 0.3.5, and CPU PyTorch 2.15.0, installed from the project lockfile.
 
@@ -82,10 +82,13 @@ NumPy 2.4.6, OpenCV 5.0.0.93, Albucore 0.3.5, and CPU PyTorch 2.15.0, installed 
 | Determinism suite listed above, extracted from the full JUnit result | 165 passed, 0 skipped |
 | Full project suite, including real spawned workers | 25,153 passed, 34 skipped |
 | Real spawned-worker suite, included in the full run | 5 passed, 0 skipped |
-| Coding-guidance suite, including RNG negative controls | 47 passed |
+| Coding-guidance suite, including RNG factory exemption boundaries | 56 passed |
 | All six Python examples in the public contract | Passed, including the spawn example |
 | All pre-commit hooks, including mypy and Pyrefly | Passed |
 | CI matrix/shard consistency and workflow security audit | Passed |
+
+Runtime results refer to the implementation above; repository-check results cover the current PR, including the
+restriction of recorded-seed reconstruction to plain NumPy and Python generators.
 
 Paired measurements against `ca6ef95` covered 23 public routes with one native compute thread and NEON enabled.
 Ordinary Compose, tracing, Tensor, processor, concurrent-call, and flat Replay routes stayed within 5% of baseline.

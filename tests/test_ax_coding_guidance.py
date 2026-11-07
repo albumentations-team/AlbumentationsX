@@ -121,6 +121,39 @@ class Dropout(DualTransform):
     assert "AXG027" not in ids
 
 
+@pytest.mark.parametrize(
+    ("method", "expression", "prohibited"),
+    [
+        pytest.param("apply", "np.random.default_rng(0)", True, id="constant-seed"),
+        pytest.param("apply", "np.random.default_rng()", True, id="unseeded"),
+        pytest.param("apply", "np.random.default_rng(seed=seed)", False, id="keyword-seed"),
+        pytest.param("helper", "np.random.default_rng(seed)", True, id="seeded-helper"),
+        pytest.param("apply", "random.Random(seed)", False, id="python-generator"),
+        pytest.param("apply", "np.random.Generator(seed)", True, id="bit-generator-wrapper"),
+        pytest.param("apply", "np.random.RandomState(seed)", True, id="legacy-generator"),
+        pytest.param("apply", "SamplingContext.from_seed(seed)", True, id="replacement-sampling-context"),
+        pytest.param("apply", "SamplingContext.from_owner(seed)", True, id="replacement-owner-context"),
+    ],
+)
+def test_recorded_seed_exemption_only_allows_plain_generator_reconstruction(
+    method: str, expression: str, prohibited: bool
+) -> None:
+    ids = rule_ids(
+        {
+            "albumentations/augmentations/example.py": f"""
+import numpy as np
+import random
+from albumentations.core.invocation import SamplingContext
+class DualTransform: pass
+class Example(DualTransform):
+    def {method}(self, img, seed):
+        return {expression}
+"""
+        }
+    )
+    assert ("AXG027" in ids) == prohibited
+
+
 def test_instance_rng_check_includes_non_transform_mixins() -> None:
     ids = rule_ids(
         {

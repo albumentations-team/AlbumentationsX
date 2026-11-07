@@ -656,8 +656,14 @@ def rule_instance_rng(index: SourceIndex) -> list[Diagnostic]:
     return result
 
 
-def _recorded_seed_factory(call: ast.Call, function: ast.FunctionDef | ast.AsyncFunctionDef | None) -> bool:
-    if function is None or not (function.name == "apply" or function.name.startswith("apply_to_")):
+def _recorded_seed_factory(
+    factory: str, call: ast.Call, function: ast.FunctionDef | ast.AsyncFunctionDef | None
+) -> bool:
+    if (
+        factory not in {"numpy.random.default_rng", "random.Random"}
+        or function is None
+        or not (function.name == "apply" or function.name.startswith("apply_to_"))
+    ):
         return False
     seed = (
         call.args[0] if call.args else next((item.value for item in call.keywords if item.arg in {"seed", "x"}), None)
@@ -684,13 +690,16 @@ def rule_rng_factories(index: SourceIndex) -> list[Diagnostic]:
             continue
         parents = {child: node for node in ast.walk(unit.tree) for child in ast.iter_child_nodes(node)}
         for node in ast.walk(unit.tree):
-            if not isinstance(node, ast.Call) or index.resolve_name(unit, dotted(node.func) or "") not in factories:
+            if not isinstance(node, ast.Call):
+                continue
+            factory = index.resolve_name(unit, dotted(node.func) or "")
+            if factory not in factories:
                 continue
             parent = parents.get(node)
             while parent is not None and not isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 parent = parents.get(parent)
             function = parent if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)) else None
-            if not _recorded_seed_factory(node, function):
+            if not _recorded_seed_factory(factory, node, function):
                 result.append(
                     _unit_d(
                         "AXG027",

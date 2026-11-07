@@ -47,7 +47,7 @@ class OverlayElements(DualTransform):
         image, mask
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     References:
         doc-augmentation: https://github.com/danaaubakirova/doc-augmentation

@@ -504,7 +504,7 @@ class Illumination(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Examples:
         >>> import numpy as np
@@ -797,7 +797,7 @@ class Vignetting(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any

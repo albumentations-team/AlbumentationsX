@@ -115,7 +115,7 @@ class Affine3D(Transform3D):
         volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Notes:
         - Volume arrays are `(D, H, W, C)` and keypoints are `(x, y, z)`.
@@ -333,7 +333,7 @@ class ElasticTransform3D(Transform3D):
         volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Notes:
         - The constructor enforces `2 * high * sqrt((rows - 3)^2 + (columns - 3)^2) < 0.75`, which bounds the
@@ -546,7 +546,7 @@ class Resize3D(Transform3D):
         volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Notes:
         - NumPy volume data use channel-last `(D, H, W, C)` layout. CPU Tensor volume data
@@ -652,7 +652,7 @@ class RandomResizedCrop3D(Transform3D):
         volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Notes:
         - NumPy volumes use `(D, H, W)` or `(D, H, W, C)`; CPU tensors use `(C, D, H, W)`.
@@ -950,7 +950,7 @@ class Pad3D(BasePad3D):
         volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         NumPy input uses (depth, height, width) with an optional channel-last axis. CPU Tensor input uses
@@ -1090,7 +1090,7 @@ class PadIfNeeded3D(BasePad3D):
         volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         NumPy input uses (depth, height, width) with an optional channel-last axis. CPU Tensor input uses
@@ -1519,7 +1519,7 @@ class CenterCrop3D(BaseCropAndPad3D):
         volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         If you want to perform cropping only in the XY plane while preserving all slices along
@@ -1679,7 +1679,7 @@ class RandomCrop3D(BaseCropAndPad3D):
         volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         If you want to perform random cropping only in the XY plane while preserving all slices along
@@ -2067,7 +2067,7 @@ class Flip3D(Transform3D):
         volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         - A realized reflection across an odd number of axes emits the `Flip3D` label-mapping event. Its semantic-mask
@@ -2230,7 +2230,7 @@ class CubicSymmetry(Transform3D):
         volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         - This transform is particularly useful for data augmentation in 3D medical imaging,
@@ -2339,7 +2339,7 @@ class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified 
         volume, volumes, mask3d, masks3d, keypoints
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Examples:
         >>> import numpy as np
@@ -2477,6 +2477,9 @@ class GridShuffle3D(Transform3D):
 
     Targets:
         volume, volumes, mask3d, masks3d, keypoints
+
+    Image types:
+        uint8, float16, float32
 
     Note:
         - This transform maintains consistency across all targets. If applied to a volume and its corresponding

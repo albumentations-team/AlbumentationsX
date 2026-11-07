@@ -1225,7 +1225,7 @@ def to_gray_average(
             and the input dtype.
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         any
@@ -1268,7 +1268,7 @@ def to_gray_max(
             and the input dtype.
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         any

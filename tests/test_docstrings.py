@@ -99,6 +99,18 @@ def test_docstring_targets_match_class_property(transform_cls):
 
 
 @pytest.mark.parametrize("transform_cls", PUBLIC_TRANSFORM_CLASSES)
+def test_docstring_image_types_cover_supported_image_dtypes(transform_cls):
+    """Keep published image dtype metadata aligned with the float16 transform contract."""
+    parsed = get_transform_metadata(transform_cls).docstring_parsed
+    assert parsed is not None
+    image_types = {name.strip() for name in parsed.extra_sections.get("Image types", "").split(",")}
+
+    assert {"float16", "float32"} <= image_types, (
+        f"{transform_cls.__name__}: image types must document float16 and float32"
+    )
+
+
+@pytest.mark.parametrize("transform_cls", PUBLIC_TRANSFORM_CLASSES)
 def test_docstring_bbox_types_match_class_property(transform_cls):
     """Test that 'Supported bboxes:' in docstring matches _supported_bbox_types class property."""
     transform_name = transform_cls.__name__

@@ -48,6 +48,9 @@ class ToTensorV2(BaseTensorTransform):
     Targets:
         image, images, mask, masks
 
+    Image types:
+        uint8, float16, float32
+
     Examples:
         >>> transform = ToTensorV2(transpose_mask=True)
 
@@ -114,6 +117,9 @@ class ToTensor3D(BaseTensorTransform):
 
     Targets:
         volume, volumes, mask3d, masks3d
+
+    Image types:
+        uint8, float16, float32
 
     Examples:
         >>> transform = ToTensor3D(p=1.0)

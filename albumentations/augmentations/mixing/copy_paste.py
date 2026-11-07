@@ -116,7 +116,7 @@ class CopyAndPaste(DualTransform):
         Otherwise existing keypoints are left unchanged and pasted keypoints are still appended.
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Supported bboxes:
         hbb

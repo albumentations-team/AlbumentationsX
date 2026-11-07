@@ -220,6 +220,9 @@ class MotionBlur(Blur):
     Targets:
         image, images, volume, volumes
 
+    Image types:
+        uint8, float16, float32
+
     Examples of angle vs direction:
         1. Horizontal motion (angle=0°):
            - direction=0.0:   ←•→   (symmetric blur)
@@ -484,7 +487,7 @@ class MedianBlur(Blur):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -1419,7 +1422,7 @@ class AdvancedBlur(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     """
 
@@ -1576,7 +1579,7 @@ class Defocus(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         - The defocus effect is created using a disc kernel, which simulates the shape of a camera's aperture.

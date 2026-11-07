@@ -31,7 +31,7 @@ class UniformTemporalSubsample(BasicTransform):
         images, masks, bboxes, keypoints
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         - The `images` target is the temporal sequence. Supply NumPy videos as (T, H, W, C)

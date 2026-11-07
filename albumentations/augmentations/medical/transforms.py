@@ -63,7 +63,7 @@ class Anisotropy3D(VolumeOnlyTransform):
         volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Examples:
         >>> import albumentations as A

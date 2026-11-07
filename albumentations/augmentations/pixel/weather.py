@@ -90,7 +90,7 @@ class RandomSnow(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         - "bleach": brightness threshold in HLS; pixels above snow_point are scaled by
@@ -1435,7 +1435,7 @@ class AtmosphericFog(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any

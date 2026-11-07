@@ -68,7 +68,7 @@ class ChannelShuffle(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -180,7 +180,7 @@ class ChannelSwap(ChannelShuffle):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any (channel_order length must match)

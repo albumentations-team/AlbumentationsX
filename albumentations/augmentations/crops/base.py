@@ -55,7 +55,7 @@ class BaseCrop(DualTransform):
         image, mask, bboxes, keypoints, volume, mask3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         This class is not meant to be used directly. Instead, use or create derived
@@ -248,7 +248,7 @@ class BaseCropAndPad(BaseCrop):
         image, mask, bboxes, keypoints, volume, mask3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         This class is not meant to be used directly. Instead, use or create derived
@@ -613,7 +613,7 @@ class _BaseRandomSizedCrop(DualTransform):
         image, mask, bboxes, keypoints, volume, mask3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         This class is not meant to be used directly. Instead, use derived transforms

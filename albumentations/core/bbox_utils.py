@@ -12,7 +12,6 @@ from typing import Annotated, Any, Literal
 
 import cv2
 import numpy as np
-from albucore import mean
 from pydantic import BaseModel, ConfigDict, Field
 
 from albumentations.augmentations.utils import handle_empty_array
@@ -684,69 +683,16 @@ def obb_to_polygons(bboxes: np.ndarray) -> np.ndarray:
     return rotated + np.stack([center_x, center_y], axis=1)[:, None, :]
 
 
-def _norm_angle_90(a: float) -> float:
-    """Normalize angle in degrees to half-open [-90, 90). Private helper: modulo 360
-    then fold into [-90, 90). OBB canonical form and corner-to-params use this.
-    """
-    a = a % 360.0
-    if a >= 180.0:
-        a -= 360.0
-    if a >= 90.0:
-        a -= 180.0
-    elif a < -90.0:
-        a += 180.0
-    return a
-
-
-def _corners_to_obb_params(corners: np.ndarray) -> tuple[float, float, float, float, float]:
-    """Derive (cx, cy, width, height, angle) from 4 corner points. Order-invariant:
-    width = edge more horizontal, angle in [-90, 90). Use via polygons_to_obb.
-
-    Ignores cv2.minAreaRect (w,h,angle) conventions. Uses corners directly:
-    - width = length of edge more parallel to horizontal
-    - height = length of the other edge
-    - angle = rotation of width edge, in [-90, 90) degrees
-
-    Order-invariant: considers all 4 edges so boxPoints corner order does not matter.
-    """
-    # Collect all 4 edges (rectangle: 2 unique lengths, 2 unique angles)
-    edges: list[tuple[float, float]] = []
-    for i in range(4):
-        v = corners[(i + 1) % 4] - corners[i]
-        length = float(np.linalg.norm(v))
-        a = _norm_angle_90(np.degrees(np.arctan2(v[1], v[0])))
-        edges.append((length, a))
-
-    # Pick width = edge with smaller |angle| (more parallel to horizontal)
-    (len1, a1), (len2, a2) = edges[0], edges[1]
-    if abs(a1) <= abs(a2):
-        width, height = len1, len2
-        angle = a1
-    else:
-        width, height = len2, len1
-        angle = a2
-
-    cx = float(mean(corners[:, 0].astype(np.float32)))
-    cy = float(mean(corners[:, 1].astype(np.float32)))
-    return cx, cy, width, height, angle
-
-
 @handle_empty_array("points")
 def polygons_to_obb(
     polygons: np.ndarray,
     extra_fields: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Fit OBB from (N, 4, 2) corner polygons. Uses cv2.minAreaRect + boxPoints then
-    _corners_to_obb_params. Optional extra_fields.
+    """Fit minimum-area oriented boxes in the input coordinate system.
 
-    Uses cv2.minAreaRect only to get the 4 corners (via boxPoints). From those
-    corners we derive (w, h, angle) with our convention: width = edge more
-    parallel to horizontal, angle in [-90, 90). This ensures obb_to_polygons
-    and cv2.boxPoints produce visually correct results regardless of
-    minAreaRect's internal (w,h,angle) representation.
-
-    The function is coordinate-system agnostic - it preserves the input
-    coordinate system.
+    OpenCV fits each rectangle. Its fitted corners define the center and
+    side lengths. The edge closer to horizontal is the width, with its angle
+    expressed in degrees in the range [-90, 90).
 
     Args:
         polygons (np.ndarray): array of shape (N, 4, 2) with corners in any coordinate system.
@@ -765,21 +711,27 @@ def polygons_to_obb(
             dtype=polygons.dtype,
         )
 
-    obb_list: list[list[float]] = []
-    polygons32 = polygons.astype(np.float32)
+    fitted_corners = np.empty((len(polygons), 4, 2), dtype=np.float32)
+    polygons32 = np.ascontiguousarray(polygons, dtype=np.float32)
+    for polygon, fitted in zip(polygons32, fitted_corners, strict=True):
+        cv2.boxPoints(cv2.minAreaRect(polygon), fitted)
 
-    for index in range(polygons32.shape[0]):
-        rect = cv2.minAreaRect(polygons32[index, :, :])
-        corners = cv2.boxPoints(rect).astype(np.float64)
-        cx, cy, width, height, angle = _corners_to_obb_params(corners)
+    centers = fitted_corners.mean(axis=1, dtype=np.float64)
+    edges = np.subtract(fitted_corners[:, 1:3], fitted_corners[:, :2], dtype=np.float64)
+    edge_x, edge_y = edges[..., 0], edges[..., 1]
+    half_lengths = np.sqrt(edge_x * edge_x + edge_y * edge_y) * 0.5
 
-        x_min = cx - width / 2.0
-        x_max = cx + width / 2.0
-        y_min = cy - height / 2.0
-        y_max = cy + height / 2.0
-        obb_list.append([x_min, y_min, x_max, y_max, angle])
+    angles = np.degrees(np.arctan2(edge_y, edge_x))
+    angles %= 360
+    np.subtract(angles, 360, out=angles, where=angles >= 270)
+    np.subtract(angles, 180, out=angles, where=angles >= 90)
+    first_is_width = np.abs(angles[:, 0]) <= np.abs(angles[:, 1])
+    half_sizes = np.where(first_is_width[:, None], half_lengths, half_lengths[:, ::-1])
 
-    obb = np.array(obb_list, dtype=polygons.dtype)
+    obb = np.empty((len(polygons), BBOX_OBB_MIN_COLUMNS), dtype=polygons.dtype)
+    obb[:, :2] = centers - half_sizes
+    obb[:, 2:4] = centers + half_sizes
+    obb[:, 4] = np.where(first_is_width, angles[:, 0], angles[:, 1])
 
     if extra_fields is not None:
         return np.concatenate([obb, extra_fields], axis=1)
@@ -1478,10 +1430,8 @@ def mask_to_bboxes(
         return np.zeros((0, original_bboxes.shape[1]), dtype=original_bboxes.dtype)
 
     for idx in range(num_boxes):
-        mask = masks[..., idx]
-        if np.any(mask):
-            y_coords, x_coords = np.where(mask)
-
+        y_coords, x_coords = np.nonzero(masks[..., idx])
+        if y_coords.size:
             if bbox_type == "obb":
                 # Use boxPoints + polygons_to_obb for OpenCV-version-invariant OBB
                 points = np.column_stack([x_coords, y_coords]).astype(np.float32)

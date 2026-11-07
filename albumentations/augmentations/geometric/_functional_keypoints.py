@@ -10,6 +10,7 @@ from albucore import sqrt as albucore_sqrt
 from ._functional_distortion import (
     generate_inverse_distortion_map,
 )
+from ._functional_grid import GridElasticGeometry, prepare_grid_elastic_geometry
 from ._functional_images import (
     C4_GROUP_ELEMENT_TO_K,
     PAIR,
@@ -607,43 +608,29 @@ def remap_keypoints(
 @handle_empty_array("keypoints")
 def distort_image_keypoints(
     keypoints: np.ndarray,
-    generated_mesh: np.ndarray,
+    generated_mesh: np.ndarray | GridElasticGeometry,
     image_shape: tuple[int, int],
 ) -> np.ndarray:
-    """Map keypoints through a piecewise-affine mesh; new (x,y) from mesh cells. Use with
-    PiecewiseAffine. Angle and extra columns unchanged.
+    """Map keypoints through the perspective transform of their source cell.
 
-    This function applies a perspective transformation to each keypoint based on the provided generated mesh.
-    It ensures that the keypoints are clipped to the image boundaries after transformation.
+    Source rectangles are half-open on the right and bottom. Output coordinates
+    are clipped to the image. Angle and extra columns are preserved.
 
     Args:
         keypoints (np.ndarray): The keypoints to distort.
-        generated_mesh (np.ndarray): The generated mesh to distort the keypoints with.
+        generated_mesh (np.ndarray | GridElasticGeometry): The sampled mesh or its prepared geometry.
         image_shape (tuple[int, int]): The shape of the image as (height, width).
 
     Returns:
         np.ndarray: The distorted keypoints.
 
     """
+    geometry = prepare_grid_elastic_geometry(generated_mesh)
     distorted_keypoints = keypoints.copy()
     height, width = image_shape[:2]
 
-    for mesh in generated_mesh:
-        x1, y1, x2, y2 = mesh[:4]  # Source rectangle
-        dst_quad = mesh[4:].reshape(4, 2)  # Destination quadrilateral
-
-        src_quad = np.array(
-            [
-                [x1, y1],  # Top-left
-                [x2, y1],  # Top-right
-                [x2, y2],  # Bottom-right
-                [x1, y2],  # Bottom-left
-            ],
-            dtype=np.float32,
-        )
-
-        perspective_mat = cv2.getPerspectiveTransform(src_quad, dst_quad)
-
+    for rectangle, matrix in zip(geometry.source_rectangles, geometry.matrices, strict=True):
+        x1, y1, x2, y2 = rectangle
         mask = (keypoints[:, 0] >= x1) & (keypoints[:, 0] < x2) & (keypoints[:, 1] >= y1) & (keypoints[:, 1] < y2)
         cell_keypoints = keypoints[mask]
 
@@ -651,7 +638,7 @@ def distort_image_keypoints(
             points_float32 = cell_keypoints[:, :2].astype(np.float32).reshape(-1, 1, 2)
             transformed_points = cv2.perspectiveTransform(
                 points_float32,
-                perspective_mat,
+                matrix,
             ).reshape(-1, 2)
 
             # Update distorted keypoints

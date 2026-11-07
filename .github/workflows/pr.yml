@@ -472,6 +472,8 @@ jobs:
             --junitxml="${RUNNER_TEMP}/release-bundle/evidence/junit-release.xml"
           python -m pytest -q tests/contracts/test_validation_contract.py \
             --junitxml="${RUNNER_TEMP}/release-bundle/evidence/junit-validation-contract.xml"
+          python -m pytest -q tests/contracts/test_geometry_contract.py \
+            --junitxml="${RUNNER_TEMP}/release-bundle/evidence/junit-geometry-contract.xml"
       - name: Summarize release pytest results
         if: always()
         run: |
@@ -482,6 +484,10 @@ jobs:
           python tools/pytest_summary.py \
             --junit "${RUNNER_TEMP}/release-bundle/evidence/junit-validation-contract.xml" \
             --output "${RUNNER_TEMP}/release-bundle/evidence/validation-contract.json" \
+            --allow-incomplete
+          python tools/pytest_summary.py \
+            --junit "${RUNNER_TEMP}/release-bundle/evidence/junit-geometry-contract.xml" \
+            --output "${RUNNER_TEMP}/release-bundle/evidence/geometry-contract.json" \
             --allow-incomplete
       - name: Collect core benchmark coverage evidence
         run: |

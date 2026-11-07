@@ -20,8 +20,12 @@ def test_generate_report_requires_release_evidence_by_default(tmp_path) -> None:
         generate_report(tmp_path)
 
 
-def test_generate_report_accepts_required_release_evidence(tmp_path) -> None:
-    _write_json(tmp_path / "environment-local.json", {})
+@pytest.fixture
+def release_evidence(tmp_path):
+    _write_json(
+        tmp_path / "environment-local.json",
+        {"git_commit": "a" * 40, "github": {"run_id": "137"}},
+    )
     _write_json(
         tmp_path / "pytest-summary-local.json",
         {
@@ -111,14 +115,29 @@ def test_generate_report_accepts_required_release_evidence(tmp_path) -> None:
         "totals": {"passed": 35, "failures": 0, "errors": 0, "skipped": 0},
     }
     _write_json(validation_path, validation_summary)
+    _write_json(
+        tmp_path / "geometry-contract.json",
+        {
+            "source": "junit-geometry-contract.xml",
+            "status": "ok",
+            "totals": {"passed": 44, "failures": 0, "errors": 0, "skipped": 0},
+        },
+    )
+    return tmp_path
 
-    report = generate_report(tmp_path)
+
+def test_generate_report_accepts_required_release_evidence(release_evidence) -> None:
+    report = generate_report(release_evidence)
 
     assert "Benchmark coverage detail" in report
     assert "Benchmark coverage diff" in report
     assert "Performance budget" in report
     assert "10 passed, 0 failed, 0 errors, 1 skipped" in report
     assert "Validation contract: 35 passed, 0 failed, 0 errors, 0 skipped" in report
+    docs_path = f"https://github.com/albumentations-team/AlbumentationsX/blob/{'a' * 40}/docs"
+    assert f"[2D geometry contract]({docs_path}/geometry.md): 44 passed, 0 failed, 0 errors, 0 skipped" in report
+    assert f"[release notes]({docs_path}/release-notes/unreleased.md)" in report
+    assert "[CI run 137](https://github.com/albumentations-team/AlbumentationsX/actions/runs/137)" in report
     assert "batch: covered=1, tracked_without_dedicated_matrix=2" in report
     assert "memory: covered_advisory=1" in report
     assert "0 coverage contract failure(s)" in report
@@ -126,14 +145,43 @@ def test_generate_report_accepts_required_release_evidence(tmp_path) -> None:
     assert "CodeQL: managed through path-scoped advanced workflows" in report
     assert "ASV comparison refs: `2.4.2` -> `release-head`" in report
 
+    validation_path = release_evidence / "validation-contract.json"
+    validation_summary = json.loads(validation_path.read_text())
     validation_summary["totals"]["skipped"] = 1
     _write_json(validation_path, validation_summary)
     with pytest.raises(ValueError, match="validation contract evidence must show a nonempty suite with no skipped"):
-        generate_report(tmp_path)
+        generate_report(release_evidence)
 
     validation_path.unlink()
     with pytest.raises(ValueError, match=r"Missing required release evidence artifact: validation-contract\.json"):
-        generate_report(tmp_path)
+        generate_report(release_evidence)
+
+
+@pytest.mark.parametrize(
+    ("totals", "match"),
+    [
+        pytest.param(None, r"Missing required release evidence artifact: geometry-contract\.json", id="missing"),
+        pytest.param(
+            {"passed": 0, "failures": 0, "errors": 0, "skipped": 0},
+            "geometry contract evidence must show a nonempty suite",
+            id="empty",
+        ),
+        pytest.param(
+            {"passed": 43, "failures": 1, "errors": 0, "skipped": 0},
+            "geometry contract evidence is incomplete or failing",
+            id="failing",
+        ),
+    ],
+)
+def test_generate_report_requires_passing_geometry_evidence(release_evidence, totals, match) -> None:
+    path = release_evidence / "geometry-contract.json"
+    if totals is None:
+        path.unlink()
+    else:
+        _write_json(path, {"source": "junit-geometry-contract.xml", "status": "ok", "totals": totals})
+
+    with pytest.raises(ValueError, match=match):
+        generate_report(release_evidence)
 
 
 @pytest.mark.parametrize(

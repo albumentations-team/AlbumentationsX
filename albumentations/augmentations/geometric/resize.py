@@ -4,8 +4,9 @@ This module provides transform classes for resizing operations, including unifor
 scaling with aspect ratio preservation, and size-constrained transformations.
 """
 
-from collections.abc import Sequence
-from typing import Any, Literal, Self
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from typing import Any, ClassVar, Literal, Self
 
 import cv2
 import numpy as np
@@ -15,7 +16,7 @@ from pydantic import Field, model_validator
 from albumentations.core.bbox_utils import denormalize_bboxes, normalize_bboxes
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet
-from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
+from albumentations.core.transforms_interface import BaseTransformInitSchema, BasicTransform, DualTransform
 from albumentations.core.type_definitions import (
     ALL_TARGETS,
     CV2_INTER_AREA,
@@ -29,7 +30,83 @@ from . import functional as fgeometric
 __all__ = ["LetterBox", "LongestMaxSize", "RandomScale", "Resize", "SmallestMaxSize"]
 
 
-class RandomScale(DualTransform):
+@dataclass(frozen=True, slots=True)
+class ScaledResizeShape:
+    """Derive a resize shape from scale factors and an input frame."""
+
+    scale_x_key: str
+    scale_y_key: str
+    round_dimension: Callable[[float], int]
+
+    def output_shape(self, shape: tuple[int, int], params: Mapping[str, Any]) -> tuple[int, int]:
+        height, width = shape
+        return (
+            max(1, self.round_dimension(height * params[self.scale_y_key])),
+            max(1, self.round_dimension(width * params[self.scale_x_key])),
+        )
+
+    def __call__(self, params: Mapping[str, Any], targets: TargetSet, transform: BasicTransform) -> Mapping[str, Any]:
+        if not transform.replay_mode and "output_shape" in params:
+            return params
+        shape = targets.aligned_spatial_shape(2)
+        if shape is None:
+            return params
+        return {**params, "shape": shape, "output_shape": self.output_shape(shape, params)}
+
+
+def _materialize_fixed_resize_params(
+    params: Mapping[str, Any],
+    targets: TargetSet,
+    transform: BasicTransform,
+) -> Mapping[str, Any]:
+    if not transform.replay_mode:
+        return params
+
+    shape = targets.aligned_spatial_shape(2)
+    if shape is None or shape == params.get("shape", ())[:2]:
+        return params
+    return {**params, "shape": shape}
+
+
+class _ResizeByScale(DualTransform):
+    _runtime_generated_params = frozenset({"output_shape"})
+    _runtime_param_materializer: ClassVar[ScaledResizeShape] = ScaledResizeShape("scale", "scale", round)
+
+    def _sampled_scale(
+        self,
+        params: Mapping[str, Any],
+        shape: tuple[int, int] | None,
+        scale: dict[str, Any],
+    ) -> SampledParams:
+        if shape is not None:
+            scale["output_shape"] = self._runtime_param_materializer.output_shape(shape, scale)
+            if shape != params.get("shape", ())[:2]:
+                scale["shape"] = shape
+        return SampledParams(params=scale)
+
+    def apply_to_bboxes(
+        self,
+        bboxes: np.ndarray,
+        shape: tuple[int, int],
+        output_shape: tuple[int, int],
+        bbox_type: Literal["hbb", "obb"],
+        **params: Any,
+    ) -> np.ndarray:
+        return fgeometric.resize_bboxes(bboxes, shape, output_shape, bbox_type)
+
+    def apply_to_keypoints(
+        self,
+        keypoints: np.ndarray,
+        shape: tuple[int, int],
+        output_shape: tuple[int, int],
+        **params: Any,
+    ) -> np.ndarray:
+        height, width = shape[:2]
+        new_height, new_width = output_shape
+        return fgeometric.keypoints_scale(keypoints, new_width / width, new_height / height)
+
+
+class RandomScale(_ResizeByScale):
     """Resize by a random scale factor (scale_range). Output size differs from input; all
     targets scaled together. Useful for scale augmentation without cropping.
 
@@ -161,6 +238,7 @@ class RandomScale(DualTransform):
 
     _targets = ALL_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+    _runtime_param_materializer = ScaledResizeShape("scale_x", "scale_y", int)
 
     class InitSchema(BaseTransformInitSchema):
         scale_range: tuple[float, float] | dict[Literal["x", "y"], tuple[float, float]]
@@ -219,13 +297,14 @@ class RandomScale(DualTransform):
             scale = sampling.py_random.uniform(*self.scale_range) + 1.0
             scale_x = scale_y = scale
             sampling.applied_overrides["scale_range"] = scale - 1.0
-        return SampledParams(params={"scale_x": scale_x, "scale_y": scale_y})
+        return self._sampled_scale(params, targets.aligned_spatial_shape(2), {"scale_x": scale_x, "scale_y": scale_y})
 
     def apply(
         self,
         img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         scale_x: float,
         scale_y: float,
+        output_shape: tuple[int, int],
         **params: Any,
     ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         is_downscale = scale_x < 1.0 or scale_y < 1.0
@@ -233,7 +312,7 @@ class RandomScale(DualTransform):
         if self.area_for_downscale in ["image", "image_mask"] and is_downscale:
             interpolation = CV2_INTER_AREA
 
-        result = fgeometric.scale_xy(img, scale_x, scale_y, interpolation)
+        result = fgeometric.resize(img, output_shape, interpolation)
         return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation, source=img)
 
     def apply_to_mask(
@@ -241,6 +320,7 @@ class RandomScale(DualTransform):
         mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         scale_x: float,
         scale_y: float,
+        output_shape: tuple[int, int],
         **params: Any,
     ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         is_downscale = scale_x < 1.0 or scale_y < 1.0
@@ -248,42 +328,10 @@ class RandomScale(DualTransform):
         if self.area_for_downscale == "image_mask" and is_downscale:
             interpolation = CV2_INTER_AREA
 
-        return fgeometric.scale_xy(mask, scale_x, scale_y, interpolation)
-
-    def apply_to_bboxes(
-        self,
-        bboxes: np.ndarray,
-        scale_x: float,
-        scale_y: float,
-        shape: tuple[int, int],
-        bbox_type: Literal["hbb", "obb"],
-        **params: Any,
-    ) -> np.ndarray:
-        height, width = shape[:2]
-        new_height = max(1, int(height * scale_y))
-        new_width = max(1, int(width * scale_x))
-        return fgeometric.resize_bboxes(
-            bboxes,
-            image_shape=(height, width),
-            output_shape=(new_height, new_width),
-            bbox_type=bbox_type,
-        )
-
-    def apply_to_keypoints(
-        self,
-        keypoints: np.ndarray,
-        scale_x: float,
-        scale_y: float,
-        shape: tuple[int, int],
-        **params: Any,
-    ) -> np.ndarray:
-        height, width = shape[:2]
-        new_height = max(1, int(height * scale_y))
-        new_width = max(1, int(width * scale_x))
-        return fgeometric.keypoints_scale(keypoints, new_width / width, new_height / height)
+        return fgeometric.resize(mask, output_shape, interpolation)
 
 
-class BaseMaxSizeTransform(DualTransform):
+class BaseMaxSizeTransform(_ResizeByScale):
     """Resize so longest or smallest side meets a maximum; aspect ratio fixed. Use
     LongestMaxSize or SmallestMaxSize; max_size or max_size_hw sets the constraint.
 
@@ -378,7 +426,7 @@ class BaseMaxSizeTransform(DualTransform):
         >>> # Get results
         >>> transformed_image = result['image']  # Shape will be approximately (122, 245, 3)
         >>> transformed_mask = result['mask']    # Shape will be approximately (122, 245)
-        >>> transformed_bboxes = result['bboxes']  # Bounding boxes are scale invariant
+        >>> transformed_bboxes = result['bboxes']
         >>> transformed_keypoints = result['keypoints']  # Keypoints scaled proportionally
         >>> transformed_bbox_labels = result['bbox_labels']  # Labels remain unchanged
         >>> transformed_keypoint_labels = result['keypoint_labels']  # Labels remain unchanged
@@ -423,54 +471,28 @@ class BaseMaxSizeTransform(DualTransform):
         self,
         img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         scale: float,
+        output_shape: tuple[int, int],
         **params: Any,
     ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
-        height, width = img.shape[:2]
-        new_height, new_width = max(1, round(height * scale)), max(1, round(width * scale))
-
         interpolation = self.interpolation
         if self.area_for_downscale in ["image", "image_mask"] and scale < 1.0:
             interpolation = CV2_INTER_AREA
 
-        result = fgeometric.resize(img, (new_height, new_width), interpolation=interpolation)
+        result = fgeometric.resize(img, output_shape, interpolation=interpolation)
         return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation, source=img)
 
     def apply_to_mask(
         self,
         mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
         scale: float,
+        output_shape: tuple[int, int],
         **params: Any,
     ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
-        height, width = mask.shape[:2]
-        new_height, new_width = max(1, round(height * scale)), max(1, round(width * scale))
-
         interpolation = self.mask_interpolation
         if self.area_for_downscale == "image_mask" and scale < 1.0:
             interpolation = CV2_INTER_AREA
 
-        return fgeometric.resize(mask, (new_height, new_width), interpolation=interpolation)
-
-    def apply_to_bboxes(
-        self,
-        bboxes: np.ndarray,
-        shape: tuple[int, int],
-        bbox_type: Literal["hbb", "obb"],
-        **params: Any,
-    ) -> np.ndarray:
-        # Bounding box coordinates are scale invariant
-        return bboxes
-
-    def apply_to_keypoints(
-        self,
-        keypoints: np.ndarray,
-        scale: float,
-        shape: tuple[int, int],
-        **params: Any,
-    ) -> np.ndarray:
-        height, width = shape[:2]
-        new_height = max(1, round(height * scale))
-        new_width = max(1, round(width * scale))
-        return fgeometric.keypoints_scale(keypoints, new_width / width, new_height / height)
+        return fgeometric.resize(mask, output_shape, interpolation=interpolation)
 
 
 class LongestMaxSize(BaseMaxSizeTransform):
@@ -595,7 +617,7 @@ class LongestMaxSize(BaseMaxSizeTransform):
         else:
             raise RuntimeError("Either max_size or max_size_hw must be set")
 
-        return SampledParams(params={"scale": scale})
+        return self._sampled_scale(params, (img_h, img_w), {"scale": scale})
 
 
 class SmallestMaxSize(BaseMaxSizeTransform):
@@ -716,7 +738,7 @@ class SmallestMaxSize(BaseMaxSizeTransform):
         else:
             raise RuntimeError("Either max_size or max_size_hw must be set")
 
-        return SampledParams(params={"scale": scale})
+        return self._sampled_scale(params, (img_h, img_w), {"scale": scale})
 
 
 class Resize(DualTransform):
@@ -810,6 +832,7 @@ class Resize(DualTransform):
 
     _targets = ALL_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+    _runtime_param_materializer = staticmethod(_materialize_fixed_resize_params)
 
     class InitSchema(BaseTransformInitSchema):
         height: int = Field(ge=1)
@@ -947,6 +970,7 @@ class LetterBox(DualTransform):
 
     _targets = ALL_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+    _runtime_param_materializer = staticmethod(_materialize_fixed_resize_params)
 
     class InitSchema(BaseTransformInitSchema):
         size: tuple[int, int]
@@ -1032,14 +1056,14 @@ class LetterBox(DualTransform):
         pad_bottom: int,
         pad_left: int,
         pad_right: int,
+        shape: tuple[int, int],
+        bbox_type: Literal["hbb", "obb"],
         **params: Any,
     ) -> np.ndarray:
-        # Bboxes are normalized [0,1] w.r.t. original image dimensions.
-        # Uniform-scale resize keeps normalized coords unchanged.
-        # Padding shifts them: denormalize in resized space, shift, renormalize in padded space.
-        target_h, target_w = self.size
-
-        bboxes_abs = denormalize_bboxes(bboxes, (new_height, new_width))
+        resized_shape = (new_height, new_width)
+        if bbox_type == "obb":
+            bboxes = fgeometric.resize_bboxes(bboxes, shape[:2], resized_shape, bbox_type)
+        bboxes_abs = denormalize_bboxes(bboxes, resized_shape)
         padded_abs = fgeometric.pad_bboxes(
             bboxes_abs,
             pad_top,
@@ -1047,9 +1071,9 @@ class LetterBox(DualTransform):
             pad_left,
             pad_right,
             cv2.BORDER_CONSTANT,
-            image_shape=(new_height, new_width),
+            image_shape=resized_shape,
         )
-        return normalize_bboxes(padded_abs, (target_h, target_w))
+        return normalize_bboxes(padded_abs, self.size)
 
     def apply_to_keypoints(
         self,

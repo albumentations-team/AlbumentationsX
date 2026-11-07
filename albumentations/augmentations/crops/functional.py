@@ -6,7 +6,7 @@ consistency between different data types during cropping operations.
 """
 
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, Literal
 
 import cv2
 import numpy as np
@@ -117,6 +117,21 @@ def crop_bboxes_by_coords(
     # For OBB, angle (column 4) and any extra fields (5+) are preserved unchanged
 
     return result
+
+
+def crop_and_resize_bboxes(
+    bboxes: np.ndarray,
+    crop_coords: tuple[int, int, int, int],
+    image_shape: tuple[int, int],
+    output_shape: tuple[int, int],
+    bbox_type: Literal["hbb", "obb"],
+) -> np.ndarray:
+    """Map boxes into the crop before scaling them to the output size."""
+    cropped = crop_bboxes_by_coords(bboxes, crop_coords, image_shape)
+    if bbox_type == "hbb":
+        return cropped
+    x_min, y_min, x_max, y_max = crop_coords
+    return fgeometric.resize_bboxes(cropped, (y_max - y_min, x_max - x_min), output_shape, bbox_type)
 
 
 @handle_empty_array("keypoints")

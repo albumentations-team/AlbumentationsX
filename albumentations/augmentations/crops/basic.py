@@ -910,9 +910,14 @@ class CropAndPad(DualTransform):
         pad_params: tuple[int, int, int, int] | None,
         result_shape: tuple[int, int],
         shape: tuple[int, int],
+        bbox_type: Literal["hbb", "obb"],
         **params: Any,
     ) -> np.ndarray:
-        return fcrops.crop_and_pad_bboxes(bboxes, crop_params, pad_params, shape[:2], result_shape)
+        image_shape = shape[:2]
+        cropped = fcrops.crop_and_pad_bboxes(bboxes, crop_params, pad_params, image_shape, result_shape)
+        if self.keep_size and bbox_type == "obb":
+            return fgeometric.resize_bboxes(cropped, result_shape, image_shape, bbox_type)
+        return cropped
 
     def apply_to_keypoints(
         self,
@@ -933,23 +938,14 @@ class CropAndPad(DualTransform):
         )
 
     @staticmethod
-    def __prevent_zero(val1: int, val2: int, max_val: int) -> tuple[int, int]:
-        regain = abs(max_val) + 1
-        regain1 = regain // 2
-        regain2 = regain // 2
-        if regain1 + regain2 < regain:
-            regain1 += 1
-
-        if regain1 > val1:
-            diff = regain1 - val1
-            regain1 = val1
-            regain2 += diff
-        elif regain2 > val2:
-            diff = regain2 - val2
-            regain2 = val2
-            regain1 += diff
-
-        return val1 - regain1, val2 - regain2
+    def _restore_crop_pixels(start: int, end: int, pixels_to_restore: int) -> tuple[int, int]:
+        restore_start = (pixels_to_restore + 1) // 2
+        restore_end = pixels_to_restore - restore_start
+        if restore_start > start:
+            return 0, end - (pixels_to_restore - start)
+        if restore_end > end:
+            return start - (pixels_to_restore - end), 0
+        return start - restore_start, end - restore_end
 
     @staticmethod
     def _prevent_zero(crop_params: list[int], height: int, width: int) -> list[int]:
@@ -959,9 +955,9 @@ class CropAndPad(DualTransform):
         remaining_width = width - (left + right)
 
         if remaining_height < 1:
-            top, bottom = CropAndPad.__prevent_zero(top, bottom, height)
+            top, bottom = CropAndPad._restore_crop_pixels(top, bottom, 1 - remaining_height)
         if remaining_width < 1:
-            left, right = CropAndPad.__prevent_zero(left, right, width)
+            left, right = CropAndPad._restore_crop_pixels(left, right, 1 - remaining_width)
 
         return [max(top, 0), max(right, 0), max(bottom, 0), max(left, 0)]
 

@@ -11,6 +11,9 @@ import torch
 from albucore import flip_volume, rot90_volume, transpose_volume
 from numpy.typing import NDArray
 
+from albumentations.core.type_definitions import MONO_CHANNEL_DIMENSIONS
+
+from ._functional_grid import GridElasticGeometry, compose_perspective_output_scale, prepare_grid_elastic_geometry
 from ._functional_shared import (
     NUM_KEYPOINTS_COLUMNS_IN_ALBUMENTATIONS,
     NUM_MULTI_CHANNEL_DIMENSIONS,
@@ -184,7 +187,7 @@ def perspective_images(
     num_channels = 1 if images.ndim == 3 else images.shape[3]
 
     if keep_size:
-        adjusted_matrix = np.array([[width / max_width, 0, 0], [0, height / max_height, 0], [0, 0, 1]]) @ matrix
+        adjusted_matrix = compose_perspective_output_scale(matrix, (max_height, max_width), (height, width))
         dsize = (width, height)
     else:
         adjusted_matrix = matrix
@@ -261,6 +264,8 @@ def perspective_keypoints(
     max_width: int,
     max_height: int,
     keep_size: bool,
+    *,
+    output_matrix: np.ndarray | None = None,
 ) -> np.ndarray:
     """Apply perspective transformation to keypoints. matrix, image_shape,
     max_width, max_height, keep_size. Updates x, y, angle, scale.
@@ -272,6 +277,7 @@ def perspective_keypoints(
         max_width (int): Maximum width after transformation
         max_height (int): Maximum height after transformation
         keep_size (bool): Whether to keep original size
+        output_matrix (np.ndarray | None): Prepared homography for the output frame, when available.
 
     Returns:
         np.ndarray: Transformed keypoints array with same shape as input
@@ -291,7 +297,8 @@ def perspective_keypoints(
 
     keypoint_vector = np.column_stack((x, y)).astype(np.float32).reshape(-1, 1, 2)
 
-    transformed_points = cast("NDArray[np.float32]", cv2.perspectiveTransform(keypoint_vector, matrix)).squeeze()
+    projection = matrix if output_matrix is None else output_matrix
+    transformed_points = cast("NDArray[np.float32]", cv2.perspectiveTransform(keypoint_vector, projection)).squeeze()
 
     # Unsqueeze if we have a single keypoint
     if transformed_points.ndim == 1:
@@ -309,8 +316,9 @@ def perspective_keypoints(
     if keep_size:
         scale_x = width / max_width
         scale_y = height / max_height
-        x *= scale_x
-        y *= scale_y
+        if output_matrix is None:
+            x *= scale_x
+            y *= scale_y
         scale *= max(scale_x, scale_y)
 
     transformed_keypoints = np.column_stack([x, y, z, angle, scale])
@@ -815,34 +823,24 @@ def get_pad_grid_dimensions(
 
 def distort_image(
     image: np.ndarray,
-    generated_mesh: np.ndarray,
+    generated_mesh: np.ndarray | GridElasticGeometry,
     interpolation: int,
 ) -> np.ndarray:
-    """Apply perspective distortion to an image from a generated mesh. Each mesh
-    cell is warped; interpolation for resampling. For PiecewiseAffine-style transforms.
+    """Warp an image into the destination cells of an elastic grid.
 
-    This function applies a perspective transformation to each cell of the image defined by the
-    generated mesh. The distortion is applied using OpenCV's perspective transformation and
-    blending techniques.
+    Cells are drawn in mesh order. Later cells overwrite earlier cells where
+    their destination contours overlap.
 
     Args:
         image (np.ndarray): The input image to be distorted. Can be a 2D grayscale image or a
                             3D color image.
-        generated_mesh (np.ndarray): A 2D array where each row represents a quadrilateral cell
-                                    as [x1, y1, x2, y2, dst_x1, dst_y1, dst_x2, dst_y2, dst_x3, dst_y3, dst_x4, dst_y4].
-                                    The first four values define the source rectangle, and the last eight values
-                                    define the destination quadrilateral.
+        generated_mesh (np.ndarray | GridElasticGeometry): Prepared geometry or an array with one row per cell.
+            A row stores `[x1, y1, x2, y2]` for the source rectangle followed by the four destination `(x, y)` pairs.
         interpolation (int): Interpolation method to be used in the perspective transformation.
                              Should be one of the OpenCV interpolation flags (e.g., cv2.INTER_LINEAR).
 
     Returns:
         np.ndarray: The distorted image with the same shape and dtype as the input image.
-
-    Note:
-        - The function preserves the channel dimension of the input image.
-        - Each cell of the generated mesh is transformed independently and then blended into the output image.
-        - The distortion is applied using perspective transformation, which allows for more complex
-          distortions compared to affine transformations.
 
     Examples:
         >>> image = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
@@ -852,40 +850,29 @@ def distort_image(
         (100, 100, 3)
 
     """
-    distorted_image = np.zeros(image.shape, dtype=image.dtype)
-    mask = np.zeros(image.shape[:2], dtype=np.uint8)
+    geometry = prepare_grid_elastic_geometry(generated_mesh)
+    channel_less = image.ndim == MONO_CHANNEL_DIMENSIONS
+    source = image[..., None] if channel_less else image
+    distorted_image = np.zeros(source.shape, dtype=source.dtype)
+    height, width = source.shape[:2]
+    mask = np.zeros((height, width), dtype=np.uint8)
 
-    for mesh in generated_mesh:
-        x1, y1, x2, y2 = mesh[:4]
-        dst_quad = mesh[4:].reshape(4, 2)
-
-        src_quad = np.array(
-            [
-                [x1, y1],
-                [x2, y1],
-                [x2, y2],
-                [x1, y2],
-            ],
-            dtype=np.float32,
-        )
-
-        perspective_mat = cv2.getPerspectiveTransform(src_quad, dst_quad)
-
+    for matrix, contour in zip(geometry.matrices, geometry.destination_contours, strict=True):
         warped = warp_perspective(
-            image,
-            perspective_mat,
-            dsize=(image.shape[1], image.shape[0]),
+            source,
+            matrix,
+            dsize=(width, height),
             flags=interpolation,
             border_mode=cv2.BORDER_CONSTANT,
             border_value=0,
         )
 
         mask[:] = 0
-        cv2.fillConvexPoly(mask, dst_quad.astype(np.int32), 255)
+        cv2.fillConvexPoly(mask, contour, 255)
 
         distorted_image = cv2.copyTo(warped, mask, distorted_image)
 
-    return distorted_image
+    return distorted_image[..., 0] if channel_less else distorted_image
 
 
 def create_affine_transformation_matrix(

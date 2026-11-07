@@ -192,11 +192,11 @@ def make_target_mask_batch_data(rng: np.random.Generator) -> dict[str, Any]:
     return {"masks": np.stack(masks)}
 
 
-def make_target_empty_hbb_data(rng: np.random.Generator) -> dict[str, Any]:
-    """Return image data with typed empty horizontal-box fields."""
+def make_target_empty_bbox_data(rng: np.random.Generator, *, geometry_columns: int) -> dict[str, Any]:
+    """Return image data with typed empty box and label fields."""
     data = make_target_image_mask_data(rng)
     data.update(
-        bboxes=np.empty((0, 4), dtype=np.float32),
+        bboxes=np.empty((0, geometry_columns), dtype=np.float32),
         bbox_labels=[],
         bbox_scores=[],
     )

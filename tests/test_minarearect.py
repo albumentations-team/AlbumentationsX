@@ -11,7 +11,6 @@ import numpy as np
 import pytest
 
 from albumentations.core.bbox_utils import (
-    _corners_to_obb_params,
     convert_bboxes_to_albumentations,
     denormalize_bboxes,
     obb_to_polygons,
@@ -329,24 +328,27 @@ def test_minarearect_output_format(angle_deg: int) -> None:
     np.testing.assert_allclose(w_out * h_out, w_in * h_in, rtol=1e-5)
 
 
-def test_corners_to_obb_params_angle_range() -> None:
-    """_corners_to_obb_params returns angle in [-90, 90) for various corner inputs."""
-    cx, cy = 100.0, 100.0
-    w, h = 80.0, 40.0
-    for angle_deg in [0, 15, 30, 45, 60, 89, -15, -30, -45, -60, -89, 90, 120, 170, -120, -170]:
-        obb = np.array(
-            [
-                cx - w / 2,
-                cy - h / 2,
-                cx + w / 2,
-                cy + h / 2,
-                float(angle_deg),
-            ],
-            dtype=np.float64,
-        )
-        corners = obb_to_polygons(obb.reshape(1, -1))[0]
-        _, _, _, _, a_out = _corners_to_obb_params(corners)
-        assert -90 <= a_out < 90, f"Angle {a_out} out of [-90, 90) for input {angle_deg}"
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_batched_obb_fit_preserves_reference_corners(dtype) -> None:
+    polygons = np.array(
+        [
+            [[6.25, 7.5], [35.75, 7.5], [41.5, 19.75], [2.0, 19.75]],
+            [[24, 11], [43, 30], [33, 40], [14, 21]],
+            [[41, 4], [41, 11], [41, 25], [41, 18]],
+        ],
+        dtype=dtype,
+    )[:, ::-1]
+    original = polygons.copy()
+    labels = np.arange(137, 140, dtype=dtype)[:, None]
+
+    fitted = polygons_to_obb(polygons, extra_fields=labels)
+
+    assert fitted.dtype == dtype
+    np.testing.assert_array_equal(fitted[:, 5:], labels)
+    np.testing.assert_array_equal(polygons, original)
+    for polygon, actual in zip(polygons, obb_to_polygons(fitted), strict=True):
+        expected = cv2.boxPoints(cv2.minAreaRect(polygon.astype(np.float32)))
+        assert obb_corners_equivalent(actual, expected, atol=1e-5)
 
 
 @pytest.mark.parametrize("angle_deg", ANGLES_ALL)

@@ -12,7 +12,7 @@ from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 from functools import cache
-from typing import Annotated, Any, ClassVar, TypeVar, cast, get_args, get_type_hints
+from typing import Annotated, Any, ClassVar, Protocol, TypeVar, cast, get_args, get_type_hints
 from warnings import warn
 
 import cv2
@@ -346,6 +346,18 @@ def _metadata_sequence_item_to_numpy(value: Any, target: str | None) -> Any:
     return value
 
 
+class _RuntimeParamMaterializer(Protocol):
+    """Prepare shared runtime parameters from a sampled record. None skips the target kernels."""
+
+    def __call__(
+        self,
+        params: Mapping[str, Any],
+        targets: TargetSet,
+        transform: "BasicTransform",
+        /,
+    ) -> Mapping[str, Any] | None: ...
+
+
 class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
     """Base class for all transforms in Albumentations. Provides core functionality for application,
     serialization, and params.
@@ -398,6 +410,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
     _valid_applied_config_keys_cache: ClassVar[frozenset[str] | None] = None
     _applied_replay_class: ClassVar[type["BasicTransform"] | None] = None
     _sampling_spatial_rank: ClassVar[int | None] = None
+    _runtime_param_materializer: ClassVar[_RuntimeParamMaterializer | None] = None
     _runtime_generated_params: ClassVar[frozenset[str]] = frozenset()
     _runtime_binding_params: ClassVar[Mapping[str, None]] = {}
     _preserves_input_image_range: ClassVar[bool] = True  # image targets retain the input dtype's normalized range
@@ -418,6 +431,8 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
                 f"{cls.__name__} defines removed sampling hook(s): {names}. "
                 "Implement sample_parameters(params, data, targets, sampling) instead.",
             )
+        if "apply_with_params" in cls.__dict__:
+            raise TypeError(f"{cls.__name__} overrides apply_with_params. Use sample_parameters and target handlers.")
 
     def _tensor_fallback_route(self, data: Mapping[str, Any]) -> _TensorFallbackRoute:
         """Collect visible Tensor targets and declared Tensor metadata for one leaf."""
@@ -833,14 +848,9 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
                 msg = f"{self.__class__.__name__} requires {self.targets_as_params} missing keys: {missing_keys}"
                 raise ValueError(msg)
 
-        if (
-            targets is None
-            and state is None
-            and not self.deterministic
-            and type(self).apply_with_params in {BasicTransform.apply_with_params, DualTransform.apply_with_params}
-        ):
+        if targets is None and state is None and not self.deterministic:
             if invocation is not None and invocation.frame_state is not None:
-                return self.apply_with_params(SampledParams(params=params), **kwargs)
+                return self._apply_with_params(SampledParams(params=params), targets, **kwargs)
             return self.apply_with_uniform_params(params, **kwargs)
 
         applied_overrides, sampled_params = self._sample_parameters(
@@ -872,7 +882,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
                 existing.append(deepcopy(effective_params.to_dict()))
             else:
                 saved_params[transform_id] = [existing, deepcopy(effective_params.to_dict())]
-        return self.apply_with_params(effective_params, **kwargs)
+        return self._apply_with_params(effective_params, targets, **kwargs)
 
     def _sample_parameters(
         self,
@@ -995,6 +1005,16 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         sampled_params = SampledParams.from_dict(deepcopy(self._replay_params))
         targets = self._build_target_set(kwargs)
         self._validate_spatial_targets(targets)
+        if (
+            "bbox_type" not in sampled_params.params
+            and not sampled_params.target_params
+            and targets.by_canonical_type("bboxes")
+            and self.get_processor("bboxes") is None
+        ):
+            sampled_params = SampledParams(
+                {**sampled_params.params, "bbox_type": "hbb"},
+                target_schema=sampled_params.target_schema,
+            )
         sampled_params.validate(
             targets,
             {
@@ -1006,7 +1026,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         )
         if state is not None:
             state.params = sampled_params.to_dict()
-        return self.apply_with_params(sampled_params, **kwargs)
+        return self._apply_with_params(sampled_params, targets, **kwargs)
 
     def get_applied_params(self) -> dict[str, Any]:
         """Returns the parameters that were used in the last transform application; returns empty
@@ -1118,13 +1138,22 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             for key, arg in kwargs.items()
         }
 
-    def apply_with_params(
+    def _apply_with_params(
         self,
         sampled_params: SampledParams,
-        *args: Any,
+        targets: TargetSet | None,
+        /,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Dispatch sampled parameters to target handlers and retain explicitly returned binding IDs."""
+        materialize = self._runtime_param_materializer
+        if materialize is not None and targets is not None:
+            params = materialize(sampled_params.params, targets, self)
+            if params is None:
+                return kwargs
+            if params is not sampled_params.params:
+                sampled_params = SampledParams(params, sampled_params.target_params, sampled_params.target_schema)
+
         invocation = get_current_invocation()
         binding = None if invocation is None else invocation.frame_state
         functions = self._key2func if binding is None else binding.functions(self.invocation_key, self._key2func)
@@ -1397,6 +1426,17 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         bbox_processor = None if invocation is None else invocation.get_processor("bboxes")
         if isinstance(bbox_processor, BboxProcessor):
             params["bbox_type"] = bbox_processor.params.bbox_type
+        elif "bboxes" in self._key2func and (
+            data.get("bboxes") is not None
+            or (
+                self._additional_targets
+                and any(
+                    target == "bboxes" and data.get(name) is not None
+                    for name, target in self._additional_targets.items()
+                )
+            )
+        ):
+            params["bbox_type"] = "hbb"
 
         # Add transform-specific params
         self._add_transform_specific_params(params)
@@ -2050,11 +2090,17 @@ class DualTransform(BasicTransform):
 
         return keypoints
 
-    def apply_with_params(self, sampled_params: SampledParams, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    def _apply_with_params(
+        self,
+        sampled_params: SampledParams,
+        targets: TargetSet | None,
+        /,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
         """Apply a dual transform with its parameters, including configured keypoint and transform-aware
         semantic-mask label mappings.
         """
-        res = super().apply_with_params(sampled_params, *args, **kwargs)
+        res = super()._apply_with_params(sampled_params, targets, **kwargs)
 
         if "keypoints" in res and res["keypoints"] is not None:
             res["keypoints"] = self._apply_label_mapping_to_keypoints(

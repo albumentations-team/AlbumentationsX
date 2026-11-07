@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from random import Random
 from typing import Literal
 
@@ -12,6 +13,33 @@ from ._functional_shared import (
     np,
     reduce_sum,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class GridElasticGeometry:
+    """Shared geometry for the cells of one realized elastic grid."""
+
+    source_rectangles: np.ndarray
+    destination_contours: np.ndarray
+    matrices: tuple[np.ndarray, ...]
+
+
+def prepare_grid_elastic_geometry(generated_mesh: np.ndarray | GridElasticGeometry) -> GridElasticGeometry:
+    """Resolve the homography and raster contour for each cell of a sampled mesh."""
+    if isinstance(generated_mesh, GridElasticGeometry):
+        return generated_mesh
+
+    mesh = np.asarray(generated_mesh, dtype=np.float32).reshape(len(generated_mesh), 12)
+    source_rectangles = mesh[:, :4]
+    destination_quads = mesh[:, 4:].reshape(-1, 4, 2)
+    x_min, y_min, x_max, y_max = source_rectangles.T
+    source_quads = np.stack((x_min, y_min, x_max, y_min, x_max, y_max, x_min, y_max), axis=1).reshape(-1, 4, 2)
+    matrices = tuple(
+        cv2.getPerspectiveTransform(source, destination)
+        for source, destination in zip(source_quads, destination_quads, strict=True)
+    )
+
+    return GridElasticGeometry(source_rectangles, destination_quads.astype(np.int32), matrices)
 
 
 def generate_grid(
@@ -302,6 +330,17 @@ def order_points(pts: np.ndarray) -> np.ndarray:
         br, tr = right
 
     return np.array([tl, tr, br, bl], dtype=np.float32)
+
+
+def compose_perspective_output_scale(
+    matrix: np.ndarray,
+    warp_shape: tuple[int, int],
+    output_shape: tuple[int, int],
+) -> np.ndarray:
+    """Compose a resize of the warped frame into its homography."""
+    warp_height, warp_width = warp_shape
+    height, width = output_shape
+    return np.diag((width / warp_width, height / warp_height, 1)) @ matrix
 
 
 def compute_perspective_params(

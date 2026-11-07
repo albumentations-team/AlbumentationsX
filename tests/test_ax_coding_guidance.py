@@ -79,6 +79,42 @@ def test_apply_length_ignores_comments_and_docstrings_but_enforces_code_lines() 
     assert "AXG003" in ids
 
 
+def test_sampled_dispatch_is_owned_by_framework_classes() -> None:
+    diagnostics = run_sources(
+        {
+            "albumentations/core/transforms_interface.py": """
+class BasicTransform:
+    def _apply_with_params(self, params):
+        pass
+
+class DualTransform(BasicTransform):
+    def _apply_with_params(self, params):
+        pass
+""",
+            "albumentations/augmentations/example.py": """
+from albumentations.core.transforms_interface import DualTransform as SpatialTransform
+
+class _SharedResize(SpatialTransform):
+    def _apply_with_params(self, params):
+        pass
+
+class Example(_SharedResize):
+    def apply_with_params(self, params):
+        pass
+
+class Unrelated:
+    def _apply_with_params(self, params):
+        pass
+""",
+        },
+    )
+
+    assert {diagnostic.symbol for diagnostic in diagnostics if diagnostic.rule == "AXG026"} == {
+        "_SharedResize._apply_with_params",
+        "Example.apply_with_params",
+    }
+
+
 def test_transform_apply_methods_must_name_sampled_parameters_they_consume() -> None:
     diagnostics = rule_ids(
         {

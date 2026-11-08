@@ -364,7 +364,9 @@ def test_mosaic_alias_rejects_129_channels_before_geometry(
 ) -> None:
     """Reject over-wide aliases before sampling geometry for each supported image dtype."""
     channels = np.arange(129, dtype=dtype)
-    if dtype is np.float32:
+    if dtype is np.float16:
+        channels /= np.float16(129)
+    elif dtype is np.float32:
         channels /= np.float32(129)
     mosaic = A.Mosaic(grid_yx=(1, 1), cell_shape=(4, 4), target_size=(4, 4), fit_mode=fit_mode, p=1)
     transform = A.Compose([mosaic], additional_targets={"thermal": "image"}, seed=137)

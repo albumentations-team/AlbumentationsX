@@ -101,6 +101,9 @@ def test_docstring_targets_match_class_property(transform_cls):
 @pytest.mark.parametrize("transform_cls", PUBLIC_TRANSFORM_CLASSES)
 def test_docstring_image_types_cover_supported_image_dtypes(transform_cls):
     """Keep published image dtype metadata aligned with the float16 transform contract."""
+    if not ({"image", "images", "volume", "volumes"} & get_class_targets(transform_cls)):
+        pytest.skip("Image type metadata applies only to image and volume targets")
+
     parsed = get_transform_metadata(transform_cls).docstring_parsed
     assert parsed is not None
     image_types = {name.strip() for name in (parsed.extra_sections.get("Image types") or "").split(",")}

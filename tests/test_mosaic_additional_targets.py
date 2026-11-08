@@ -304,6 +304,7 @@ def test_mosaic_alias_resize_supports_128_channels(
     dtype: type[np.uint8] | type[np.float16] | type[np.float32],
     fit_mode: Literal["cover", "contain"],
 ) -> None:
+    """Preserve the 128-channel alias limit for every supported image dtype."""
     channels = np.arange(128, dtype=dtype)
     if dtype is np.float16:
         channels /= np.float16(128)
@@ -326,6 +327,7 @@ def test_mosaic_alias_resize_supports_128_channels(
 def test_mosaic_float16_aliases_follow_geometry_for_primary_and_donors(
     fit_mode: Literal["cover", "contain"],
 ) -> None:
+    """Keep FP16 aliases aligned with primary images and donors through both fit modes."""
     items = []
     for index in range(4):
         image = np.full((3, 5, 3), 10 + index, dtype=np.uint8)
@@ -360,6 +362,7 @@ def test_mosaic_alias_rejects_129_channels_before_geometry(
     fit_mode: Literal["cover", "contain"],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Reject over-wide aliases before sampling geometry for each supported image dtype."""
     channels = np.arange(129, dtype=dtype)
     if dtype is np.float32:
         channels /= np.float32(129)

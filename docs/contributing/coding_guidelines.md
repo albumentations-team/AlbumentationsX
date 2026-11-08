@@ -362,7 +362,7 @@ configured policy. An application handler may reconstruct a generator from an ex
 dropout fill and shot noise do; this derives its
 randomness from the invocation and supports replay. It must not introduce independent entropy.
 
-See the [determinism and replay contract](https://github.com/albumentations-team/AlbumentationsX/blob/main/docs/determinism.md) for downstream guarantees and limits.
+See the [determinism and replay contract](../determinism.md) for downstream guarantees and limits.
 
 ### SamplingContext compatibility and migration
 

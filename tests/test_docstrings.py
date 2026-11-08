@@ -103,7 +103,7 @@ def test_docstring_image_types_cover_supported_image_dtypes(transform_cls):
     """Keep published image dtype metadata aligned with the float16 transform contract."""
     parsed = get_transform_metadata(transform_cls).docstring_parsed
     assert parsed is not None
-    image_types = {name.strip() for name in parsed.extra_sections.get("Image types", "").split(",")}
+    image_types = {name.strip() for name in (parsed.extra_sections.get("Image types") or "").split(",")}
 
     assert {"float16", "float32"} <= image_types, (
         f"{transform_cls.__name__}: image types must document float16 and float32"

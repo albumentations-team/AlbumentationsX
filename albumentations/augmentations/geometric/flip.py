@@ -60,7 +60,7 @@ class VerticalFlip(DualTransform):
         image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
 
     Supported bboxes:
@@ -222,7 +222,7 @@ class HorizontalFlip(DualTransform):
         image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
 
     Supported bboxes:
@@ -382,7 +382,7 @@ class Transpose(DualTransform):
         image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Supported bboxes:
         hbb, obb
@@ -549,7 +549,7 @@ class D4(DualTransform):
         image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Supported bboxes:
         hbb, obb
@@ -812,7 +812,7 @@ class SquareSymmetry(D4):
         image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Supported bboxes:
         hbb, obb

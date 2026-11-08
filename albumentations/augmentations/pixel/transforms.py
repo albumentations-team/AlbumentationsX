@@ -249,7 +249,7 @@ class InvertImg(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -517,7 +517,7 @@ class Emboss(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         - The emboss effect is created using a 3x3 convolution kernel.
@@ -631,7 +631,7 @@ class Enhance(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -890,7 +890,7 @@ class RingingOvershoot(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -1036,7 +1036,7 @@ class UnsharpMask(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         - The algorithm creates a mask M = (I - G) * alpha, where I is the original image and G is the Gaussian
@@ -1554,7 +1554,7 @@ class LensFlare(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         3

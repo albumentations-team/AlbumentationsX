@@ -135,7 +135,7 @@ class RandomScale(_ResizeByScale):
         image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Supported bboxes:
         hbb, obb
@@ -361,7 +361,7 @@ class BaseMaxSizeTransform(_ResizeByScale):
         image, mask, bboxes, keypoints, volume, mask3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         - This is a base class that should be extended by concrete resize transforms.
@@ -523,7 +523,7 @@ class LongestMaxSize(BaseMaxSizeTransform):
         image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Supported bboxes:
         hbb, obb
@@ -650,7 +650,7 @@ class SmallestMaxSize(BaseMaxSizeTransform):
         image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Supported bboxes:
         hbb, obb
@@ -766,7 +766,7 @@ class Resize(DualTransform):
         image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Supported bboxes:
         hbb, obb
@@ -928,7 +928,7 @@ class LetterBox(DualTransform):
         image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Supported bboxes:
         hbb, obb

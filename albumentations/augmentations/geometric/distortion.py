@@ -300,7 +300,7 @@ class ElasticTransform(BaseRemapTransform):
         image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Supported bboxes:
         hbb, obb
@@ -490,7 +490,7 @@ class PiecewiseAffine(BaseDistortion):
         image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Supported bboxes:
         hbb, obb
@@ -641,7 +641,7 @@ class OpticalDistortion(BaseDistortion):
         image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
 
     Supported bboxes:
@@ -771,7 +771,7 @@ class GridDistortion(BaseDistortion):
         image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
 
     Supported bboxes:
@@ -946,7 +946,7 @@ class ThinPlateSpline(BaseDistortion):
         image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Supported bboxes:
         hbb, obb
@@ -1123,7 +1123,7 @@ class WaterRefraction(BaseDistortion):
         image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -1270,7 +1270,7 @@ class PixelSpread(BaseDistortion):
         image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any

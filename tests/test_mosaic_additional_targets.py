@@ -353,10 +353,10 @@ def test_mosaic_float16_aliases_follow_geometry_for_primary_and_donors(
     np.testing.assert_array_equal(result["thermal"], result["image"][..., 0].astype(np.float16))
 
 
-@pytest.mark.parametrize("dtype", [np.uint8, np.float32], ids=["uint8", "float32"])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32], ids=["uint8", "float16", "float32"])
 @pytest.mark.parametrize("fit_mode", ["cover", "contain"])
 def test_mosaic_alias_rejects_129_channels_before_geometry(
-    dtype: type[np.uint8] | type[np.float32],
+    dtype: type[np.uint8] | type[np.float16] | type[np.float32],
     fit_mode: Literal["cover", "contain"],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -179,6 +179,7 @@ POSITIONS = ["center", "top_left", "top_right", "bottom_left", "bottom_right"]
 
 @pytest.mark.parametrize("crop_cls", (A.RandomCrop, A.CenterCrop))
 def test_fixed_crop_pads_undersized_input_even_when_padding_is_disabled(crop_cls: type[A.DualTransform]) -> None:
+    """Keep image, stacked targets, and annotations aligned after required padding."""
     image = np.zeros((40, 50, 3), dtype=np.uint8)
     image[5:15, 5:15] = 1
     mask = np.zeros((40, 50, 3), dtype=np.uint8)

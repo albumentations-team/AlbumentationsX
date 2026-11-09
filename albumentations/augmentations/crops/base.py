@@ -464,6 +464,7 @@ class BaseCropAndPad(BaseCrop):
         pad_params: dict[str, int] | None,
         **params: Any,
     ) -> StackedMasks4D:
+        """Pad mask stacks with fill_mask before applying the shared crop."""
         if masks.size == 0:
             crop_height = crop_coords[3] - crop_coords[1]
             crop_width = crop_coords[2] - crop_coords[0]
@@ -526,6 +527,7 @@ class BaseCropAndPad(BaseCrop):
         pad_params: dict[str, int] | None,
         **params: Any,
     ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
+        """Pad image batches with fill values before applying the shared crop."""
         if pad_params is not None:
             images = self._pad_batched_targets(images, pad_params, self.fill)
         return BaseCrop.apply_to_images(self, images, crop_coords, **params)
@@ -537,6 +539,7 @@ class BaseCropAndPad(BaseCrop):
         pad_params: dict[str, int] | None,
         **params: Any,
     ) -> VolumeType:
+        """Pad 3D masks with fill_mask before applying the shared crop."""
         if pad_params is not None:
             mask3d = cast("VolumeType", self._pad_batched_targets(mask3d, pad_params, self.fill_mask))
         return BaseCrop.apply_to_images(self, mask3d, crop_coords, **params)

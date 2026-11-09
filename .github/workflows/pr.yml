@@ -610,7 +610,7 @@ jobs:
         env:
           PACKAGE_VERSION: ${{ steps.metadata.outputs.package_version }}
         run: >-
-          python tools/generate_correctness_report.py
+          python -m tools.generate_correctness_report
           --evidence-dir "${RUNNER_TEMP}/release-bundle/evidence"
           --output
           "${RUNNER_TEMP}/release-bundle/public/albumentationsx-${PACKAGE_VERSION}-correctness-compatibility-report.md"

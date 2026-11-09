@@ -334,7 +334,7 @@ class MacenkoNormalizer(StainNormalizer):
 
         eigenvalues, eigenvectors = cv2.eigen(od_covariance)[1:]
         idx = np.argsort(eigenvalues.ravel())[-2:]
-        principal_eigenvectors = np.ascontiguousarray(eigenvectors[:, idx], dtype=np.float32)
+        principal_eigenvectors = np.ascontiguousarray(eigenvectors[idx].T, dtype=np.float32)
 
         # Add small epsilon to avoid numerical instability
         epsilon = 1e-8

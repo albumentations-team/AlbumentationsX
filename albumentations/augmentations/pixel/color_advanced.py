@@ -639,7 +639,7 @@ class RGBShift(AdditiveNoise):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         - Values are shifted independently for each channel
@@ -800,7 +800,7 @@ class PhotoMetricDistort(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         1, 3

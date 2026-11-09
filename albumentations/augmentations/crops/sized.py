@@ -363,7 +363,7 @@ class RandomSizedCrop(_BaseRandomSizedCrop):
         image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
 
     Supported bboxes:
@@ -532,7 +532,7 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
         image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
 
     Supported bboxes:

@@ -138,7 +138,7 @@ class StochasticConvolution(_FullVolumeNoiseTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -281,7 +281,7 @@ class GaussNoise(_FullVolumeNoiseTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -565,7 +565,7 @@ class MultiplicativeNoise(ImageOnlyTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any
@@ -1231,7 +1231,7 @@ class SaltAndPepper(_FullVolumeNoiseTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Note:
         - Salt noise sets pixels to maximum value (255 for uint8, 1.0 for float32)
@@ -1390,7 +1390,7 @@ class FilmGrain(_FullVolumeNoiseTransform):
         image, images, volume, volumes
 
     Image types:
-        uint8, float32
+        uint8, float16, float32
 
     Number of channels:
         Any

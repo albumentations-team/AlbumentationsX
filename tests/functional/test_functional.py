@@ -3470,6 +3470,27 @@ def test_normalizer_stain_separation(normalizer_class, kwargs, angle_tolerance, 
         assert angle_degrees < angle_tolerance
 
 
+def test_macenko_recovers_known_stain_vectors():
+    rng = np.random.default_rng(137)
+    hematoxylin = np.array([0.5626, 0.7201, 0.4062])
+    eosin = np.array([0.2159, 0.8012, 0.5581])
+    stain_matrix = np.stack([hematoxylin / np.linalg.norm(hematoxylin), eosin / np.linalg.norm(eosin)])
+    pixel_count = 256 * 256
+    concentrations = np.stack(
+        [rng.gamma(2.0, 0.35, pixel_count), rng.gamma(2.0, 0.30, pixel_count)],
+        axis=1,
+    )
+    optical_density = concentrations @ stain_matrix + rng.normal(0, 0.01, (pixel_count, 3))
+    image = np.clip(255 * np.exp(-optical_density), 0, 255).astype(np.uint8).reshape(256, 256, 3)
+
+    normalizer = fmedical.MacenkoNormalizer()
+    normalizer.fit(image)
+
+    cosine_angles = np.sum(normalizer.stain_matrix_target * stain_matrix, axis=1)
+    angles = np.degrees(np.arccos(np.clip(np.abs(cosine_angles), -1, 1)))
+    assert np.all(angles < 5)
+
+
 @pytest.mark.parametrize(
     "angular_percentile",
     [0, 50, 90, 99, 99.9],

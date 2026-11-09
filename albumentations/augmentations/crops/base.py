@@ -457,6 +457,33 @@ class BaseCropAndPad(BaseCrop):
         # Note' that super().apply would apply the padding twice as it is looped to this.apply
         return BaseCrop.apply(self, mask, crop_coords=crop_coords, **params)
 
+    def apply_to_masks(  # type: ignore[override]  # pyrefly: ignore[bad-override]
+        self,
+        masks: StackedMasks4D,
+        crop_coords: tuple[int, int, int, int],
+        pad_params: dict[str, int] | None,
+        **params: Any,
+    ) -> StackedMasks4D:
+        if masks.size == 0:
+            crop_height = crop_coords[3] - crop_coords[1]
+            crop_width = crop_coords[2] - crop_coords[0]
+            return StackedMasks4D(np.empty((0, crop_height, crop_width, masks.shape[3]), dtype=masks.dtype))
+        if pad_params is not None:
+            masks = StackedMasks4D(
+                fcrops.pad_along_axes(
+                    masks,
+                    pad_params["pad_top"],
+                    pad_params["pad_bottom"],
+                    pad_params["pad_left"],
+                    pad_params["pad_right"],
+                    h_axis=1,
+                    w_axis=2,
+                    border_mode=self.border_mode,
+                    pad_value=cast("tuple[float, ...] | float", self.fill_mask),
+                ),
+            )
+        return StackedMasks4D(BaseCrop.apply_to_images(self, masks, crop_coords, **params))
+
     def apply_to_images(  # type: ignore[override]  # pyrefly: ignore[bad-override]
         self,
         images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],

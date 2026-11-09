@@ -179,21 +179,26 @@ POSITIONS = ["center", "top_left", "top_right", "bottom_left", "bottom_right"]
 
 @pytest.mark.parametrize("crop_cls", (A.RandomCrop, A.CenterCrop))
 def test_fixed_crop_pads_undersized_input_even_when_padding_is_disabled(crop_cls: type[A.DualTransform]) -> None:
-    image = np.zeros((40, 50, 3), dtype=np.uint8)
-    mask = np.zeros((40, 50), dtype=np.uint8)
+    image = np.ones((40, 50, 3), dtype=np.uint8)
+    mask = np.ones((40, 50), dtype=np.uint8)
+    masks = np.ones((2, 40, 50, 1), dtype=np.uint8)
     transform = A.Compose(
-        [crop_cls(height=60, width=70, pad_if_needed=False, p=1.0)],
+        [crop_cls(height=60, width=70, pad_if_needed=False, fill=7, fill_mask=3, p=1.0)],
         bbox_params=A.BboxParams(coord_format="pascal_voc"),
         keypoint_params=A.KeypointParams(coord_format="xy"),
         seed=137,
     )
 
-    result = transform(image=image, mask=mask, bboxes=[(5, 5, 15, 15)], keypoints=[(10, 10)])
+    result = transform(image=image, mask=mask, masks=masks, bboxes=[(5, 5, 15, 15)], keypoints=[(10, 10)])
 
     assert result["image"].shape == (60, 70, 3)
     assert result["mask"].shape == (60, 70)
+    assert result["masks"].shape == (2, 60, 70, 1)
     assert len(result["bboxes"]) == 1
     assert len(result["keypoints"]) == 1
+    assert np.count_nonzero(result["image"] == 7) == (60 * 70 - 40 * 50) * 3
+    assert np.count_nonzero(result["mask"] == 3) == 60 * 70 - 40 * 50
+    assert np.count_nonzero(result["masks"] == 3) == 2 * (60 * 70 - 40 * 50)
 
 
 @pytest.mark.parametrize(

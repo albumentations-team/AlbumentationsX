@@ -128,6 +128,35 @@ Implementation: [validation #620](https://github.com/albumentations-team/Albumen
 - Contract: [BBox call boundary](../geometry.md).
 - Tests: [Direct HBB calls, aliases, and older replay](../../tests/contracts/test_geometry_contract.py).
 
+### Box-aware RandomResizedCrop sampling
+
+- Previous behavior: RandomResizedCrop sampled its crop without considering bounding boxes, so small or
+  separated objects could be cropped out.
+- New behavior: `bbox_preservation="one_box"` requires the crop to contain one uniformly selected box
+  across active bbox fields; `"all_boxes"` requires it to contain every box. The default `None` keeps
+  ordinary sampling. Scale and aspect-ratio bounds are relaxed only as needed to meet the selected box
+  constraint.
+- Affected users: Detection pipelines that need RandomResizedCrop to retain at least one object or every
+  annotated object.
+- Migration: Set `bbox_preservation="one_box"` or `"all_boxes"` on RandomResizedCrop when the crop must
+  retain boxes. Existing calls using the default need no change.
+- First affected version: unreleased
+- Contract: [Box-aware RandomResizedCrop sampling](../maintaining/correctness-contracts.md#box-aware-randomresizedcrop-sampling).
+- Tests: [RandomResizedCrop tests](../../tests/test_random_resized_crop.py).
+
+### Macenko stain-plane estimation
+
+- Previous behavior: MacenkoNormalizer treated OpenCV's row-oriented eigenvectors as columns and fitted
+  the projection plane from the wrong vectors.
+- New behavior: MacenkoNormalizer uses the two row eigenvectors associated with the largest eigenvalues.
+  The recovered hematoxylin and eosin vectors now match the largest-principal-component plane.
+- Affected users: MacenkoNormalizer and HEStain with `method="macenko"`; their recovered stain vectors
+  and augmented outputs change.
+- Migration: No API change is required. Re-run Macenko pipelines to use the corrected stain basis and regenerate any cached normalized images.
+- First affected version: unreleased
+- Contract: [Macenko stain estimation](../maintaining/correctness-contracts.md#macenko-stain-estimation).
+- Tests: [Known-stain recovery test](../../tests/functional/test_functional.py).
+
 ### Custom sampled dispatch hooks
 
 - Previous behavior: An apply_with_params override could intercept framework dispatch and diverge from replay or

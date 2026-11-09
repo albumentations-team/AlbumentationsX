@@ -235,13 +235,14 @@ class BaseCropAndPad(BaseCrop):
     crop coordinates and padding parameters based on transform-specific logic.
 
     Args:
-        pad_if_needed (bool): Whether to pad the input if the crop size exceeds input dimensions.
+        pad_if_needed (bool): Whether to pad when needed. Fixed-size crops pad undersized inputs even when this is
+            False.
         border_mode (int): OpenCV border mode used for padding.
         fill (tuple[float, ...] | float): Value to fill the padded area if border_mode is BORDER_CONSTANT.
             For multi-channel images, this can be a tuple with a value for each channel.
         fill_mask (tuple[float, ...] | float): Value to fill the padded area in masks.
         pad_position (Literal['center', 'top_left', 'top_right', 'bottom_left', 'bottom_right', 'random']):
-            Position of padding when pad_if_needed is True.
+            Position of any padding.
         p (float): Probability of applying the transform. Default: 1.0.
 
     Targets:
@@ -386,10 +387,8 @@ class BaseCropAndPad(BaseCrop):
         target_shape: tuple[int, int],
         sampling: SamplingContext,
     ) -> dict[str, Any] | None:
-        """Compute pad amounts (top, right, bottom, left) and position so image reaches
-        target_shape. Returns None if no padding needed or pad_if_needed is False.
-        """
-        if not self.pad_if_needed:
+        """Compute padding needed to reach target_shape; oversized crops are always padded safely."""
+        if not self.pad_if_needed and target_shape[0] <= image_shape[0] and target_shape[1] <= image_shape[1]:
             return None
 
         h_pad_top, h_pad_bottom, w_pad_left, w_pad_right = fgeometric.get_padding_params(

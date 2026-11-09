@@ -38,6 +38,7 @@ def _merge_bbox_envelopes(
     current: tuple[float, float, float, float] | None,
     candidate: tuple[float, float, float, float] | None,
 ) -> tuple[float, float, float, float] | None:
+    """Merge visible XYXY pixel envelopes, ignoring absent candidates."""
     if candidate is None:
         return current
     if current is None:
@@ -55,6 +56,7 @@ def _clip_polygon_to_image(
     image_height: int,
     image_width: int,
 ) -> tuple[float, float, float, float] | None:
+    """Clip a polygon to image bounds and return its visible XYXY pixel envelope."""
     vertices = [(float(x_coord), float(y_coord)) for x_coord, y_coord in polygon]
     boundaries = ((0, 0.0, True), (0, float(image_width), False), (1, 0.0, True), (1, float(image_height), False))
     for axis, boundary, keep_greater in boundaries:
@@ -100,6 +102,7 @@ def _clip_polygon_to_image(
 
 
 def _hbb_bbox_envelope(bbox: np.ndarray, image_shape: tuple[int, int]) -> tuple[float, float, float, float] | None:
+    """Return the visible pixel envelope of a normalized HBB."""
     image_height, image_width = image_shape
     raw_x_min, raw_y_min, raw_x_max, raw_y_max = bbox[:4]
     if not all(math.isfinite(float(value)) for value in (raw_x_min, raw_y_min, raw_x_max, raw_y_max)):
@@ -118,6 +121,7 @@ def _bbox_envelope(
     bbox_type: Literal["hbb", "obb"],
     image_shape: tuple[int, int],
 ) -> tuple[float, float, float, float] | None:
+    """Return the visible pixel envelope of one normalized HBB or OBB."""
     if bbox_type == "hbb":
         return _hbb_bbox_envelope(bbox, image_shape)
     image_height, image_width = image_shape
@@ -158,6 +162,7 @@ def _bbox_views_envelope(
     bbox_type: Literal["hbb", "obb"],
     image_shape: tuple[int, int],
 ) -> tuple[float, float, float, float] | None:
+    """Merge visible pixel envelopes across the active bbox target views."""
     envelope = None
     image_height, image_width = image_shape
     for view in bbox_views:
@@ -220,6 +225,7 @@ def _sample_containing_crop_coords(
     image_shape: tuple[int, int],
     sampling: SamplingContext,
 ) -> tuple[int, int, int, int]:
+    """Sample integer crop coordinates that contain a pixel-space envelope."""
     left, top, right, bottom = envelope
     crop_height, crop_width = crop_shape
     image_height, image_width = image_shape
@@ -239,6 +245,7 @@ def _bbox_envelope_for_policy(
     image_shape: tuple[int, int],
     sampling: SamplingContext,
 ) -> tuple[float, float, float, float] | None:
+    """Select one bbox uniformly or merge all visible envelopes; use the full frame for an invisible selection."""
     if bbox_preservation is None:
         return None
     bbox_count = sum(len(view.value) for view in bbox_views)
@@ -247,10 +254,14 @@ def _bbox_envelope_for_policy(
     if bbox_preservation == "all_boxes":
         return _bbox_views_envelope(bbox_views, bbox_type, image_shape)
 
-    selected_index = int(sampling.random_generator.integers(bbox_count))
+    selected_index = sampling.py_random.randrange(bbox_count)
     for view in bbox_views:
         if selected_index < len(view.value):
-            return _bbox_envelope(np.asarray(view.value)[selected_index], bbox_type, image_shape)
+            envelope = _bbox_envelope(np.asarray(view.value)[selected_index], bbox_type, image_shape)
+            if envelope is not None:
+                return envelope
+            image_height, image_width = image_shape
+            return (0.0, 0.0, float(image_width), float(image_height))
         selected_index -= len(view.value)
     return None
 
@@ -263,6 +274,7 @@ def _sample_bbox_preserving_shape(
     sampling_method: SamplingMethod,
     sampling: SamplingContext,
 ) -> tuple[int, int]:
+    """Sample a minimum-size crop, relaxing ratio before scale and using full frame as a final fallback."""
     crop_shape = sample_2d_crop_shape(
         *image_shape,
         scale,
@@ -281,7 +293,25 @@ def _sample_bbox_preserving_shape(
             sampling.py_random,
             min_crop_shape,
         )
-    return crop_shape if crop_shape is not None else min_crop_shape
+        if crop_shape is None:
+            crop_shape = sample_2d_crop_shape(
+                *image_shape,
+                relaxed_scale,
+                relaxed_ratio,
+                "uniform_scale",
+                sampling.py_random,
+                min_crop_shape,
+            )
+        if crop_shape is None:
+            crop_shape = sample_2d_crop_shape(
+                *image_shape,
+                (0.0, 1.0),
+                relaxed_ratio,
+                "uniform_scale",
+                sampling.py_random,
+                min_crop_shape,
+            )
+    return crop_shape if crop_shape is not None else image_shape
 
 
 def _sample_random_resized_crop_coords(
@@ -292,6 +322,7 @@ def _sample_random_resized_crop_coords(
     protected_envelope: tuple[float, float, float, float] | None,
     sampling: SamplingContext,
 ) -> tuple[int, int, int, int]:
+    """Sample ordinary crop coordinates or coordinates that contain protected geometry."""
     if protected_envelope is not None:
         left, top, right, bottom = protected_envelope
         min_crop_shape = (ceil(bottom) - floor(top), ceil(right) - floor(left))
@@ -544,6 +575,7 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
         - Bounding boxes that end up fully outside the cropped area will be removed.
         - When `bbox_preservation` is set, bbox-aware sampling uses all active bbox fields, including aliases.
           If no boxes are present, ordinary random-resized-crop sampling is used.
+          In `one_box` mode, if the selected box has no visible geometry, the full input image is resized.
         - Bbox preservation keeps visible geometry inside the input image. `scale` and `ratio` are relaxed only when
           needed, in that priority order, and BboxParams filters continue to apply after the resize.
         - Keypoints that end up outside the cropped area will be removed.

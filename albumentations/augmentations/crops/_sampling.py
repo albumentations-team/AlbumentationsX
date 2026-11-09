@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from itertools import combinations, pairwise
-from math import exp, log, sqrt
+from math import exp, log, sqrt, ulp
 from typing import Literal, Protocol
 
 import numpy as np
@@ -46,6 +46,7 @@ def _standard_2d_segments(
     ratio_min: float,
     ratio_max: float,
 ) -> tuple[tuple[float, float, float, float, float, float], ...]:
+    """Return cached area-CDF segments for the unconstrained standard sampler."""
     return _build_standard_2d_segments(
         height,
         width,
@@ -68,6 +69,7 @@ def _build_standard_2d_segments(
     minimum_height: float,
     minimum_width: float,
 ) -> tuple[tuple[float, float, float, float, float, float], ...]:
+    """Build area-CDF segments for the requested crop and minimum-size bounds."""
     upper_height = height + _LOWER_EDGE
     upper_width = width + _LOWER_EDGE
     area_min, area_max = _crop_area_bounds(
@@ -161,6 +163,11 @@ def _sample_standard_2d_area(
     return exp(value)
 
 
+def _is_roundoff_sized_area_gap(area_min: float, area_max: float) -> bool:
+    """Allow four ULPs of error from normalizing and denormalizing area bounds."""
+    return area_min - area_max <= 4 * max(ulp(area_min), ulp(area_max))
+
+
 def _sample_2d_fixed_ratio(
     height: int,
     width: int,
@@ -169,7 +176,9 @@ def _sample_2d_fixed_ratio(
     random_value: float,
     minimum_height: float = _LOWER_EDGE,
     minimum_width: float = _LOWER_EDGE,
+    allow_roundoff: bool = False,
 ) -> float | None:
+    """Sample a valid crop area for a fixed aspect ratio."""
     area = height * width
     area_min = max(
         scale[0] * area,
@@ -179,7 +188,9 @@ def _sample_2d_fixed_ratio(
     )
     area_max = min(scale[1] * area, (width + _LOWER_EDGE) ** 2 / ratio, (height + _LOWER_EDGE) ** 2 * ratio)
     if area_min > area_max:
-        return None
+        if not allow_roundoff or not _is_roundoff_sized_area_gap(area_min, area_max):
+            return None
+        area_max = area_min
     return area_min + random_value * (area_max - area_min)
 
 
@@ -211,6 +222,7 @@ def sample_2d_crop_shape(
             random(),
             minimum_height,
             minimum_width,
+            min_crop_shape is not None,
         )
         if target_area is None:
             return None
@@ -230,7 +242,9 @@ def sample_2d_crop_shape(
             ratio_max * (height + _LOWER_EDGE) ** 2,
         )
         if area_min > area_max:
-            return None
+            if min_crop_shape is None or not _is_roundoff_sized_area_gap(area_min, area_max):
+                return None
+            area_max = area_min
         if area_max - area_min <= _EPSILON:
             target_area = area_min
         elif sampling_method == "uniform_scale":
@@ -322,6 +336,7 @@ def _crop_area_bounds(
     minimum_height: float,
     minimum_width: float,
 ) -> tuple[float, float]:
+    """Return the feasible crop-area interval for scale, ratio, and size bounds."""
     image_area = height * width
     ratio_min, ratio_max = ratio
     area_min = max(

@@ -2,7 +2,6 @@ import numpy as np
 import pytest
 
 import albumentations as A
-from albumentations.augmentations.crops.transforms import CropSizeError
 
 
 def test_random_crop_with_pad_on_volume():
@@ -30,15 +29,16 @@ def test_random_crop_with_pad_on_volume():
         )
 
 
-def test_random_crop_without_pad_raises_error_on_small_volume():
-    """Test that RandomCrop without pad_if_needed correctly raises error on small volume data."""
+def test_random_crop_pads_small_volume_even_when_padding_is_disabled() -> None:
+    """Keep the requested output size for an undersized volume without raising during execution."""
     # Create a volume smaller than crop size
     volume = np.random.randint(0, 256, (8, 100, 100), dtype=np.uint8)
 
     transform = A.RandomCrop(height=256, width=256, pad_if_needed=False, p=1.0)
 
-    with pytest.raises(CropSizeError):
-        transform(volume=volume)
+    result = transform(volume=volume)
+
+    assert result["volume"].shape == (8, 256, 256)
 
 
 def test_random_crop_edge_case_exact_size_after_scale():

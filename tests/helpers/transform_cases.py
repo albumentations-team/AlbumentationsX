@@ -1408,6 +1408,7 @@ def _case_data(
     transform_cls: type[A.BasicTransform],
     init_kwargs: Mapping[str, Any],
 ) -> tuple[ContractDataFactory, ContractContextFactory, dict[str, Any], frozenset[str]]:
+    """Choose target data, context, and Compose settings for a contract case."""
     compose_kwargs: dict[str, Any] = {}
     metadata_keys = frozenset[str]()
     if issubclass(transform_cls, (A.Transform3D, A.VolumeOnlyTransform)):

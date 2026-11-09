@@ -2,6 +2,7 @@
 
 import math
 from collections import Counter
+from random import Random
 from typing import Any, Literal, cast
 from unittest.mock import Mock
 
@@ -153,6 +154,39 @@ def test_relax_2d_crop_ranges_keeps_closest_ratio_before_relaxing_scale() -> Non
         min_crop_shape=(70, 50),
     )
     assert sampled_shape == (80, 50)
+
+
+@pytest.mark.parametrize("sampling_method", ("standard", "uniform_scale"))
+@pytest.mark.parametrize(
+    ("height", "width", "scale", "ratio", "min_crop_shape", "expected_shape"),
+    (
+        (100, 100, (0.01, 0.1), (1.0, 1.0), (10, 80), (80, 80)),
+        (80, 120, (0.01, 0.02), (10.0, 10.0), (25, 10), (25, 120)),
+        (20, 29, (0.08, 1.0), (0.75, 1.33), (5, 29), (20, 29)),
+    ),
+)
+def test_relaxed_bbox_crop_ranges_keep_feasible_shapes(
+    sampling_method: SamplingMethod,
+    height: int,
+    width: int,
+    scale: tuple[float, float],
+    ratio: tuple[float, float],
+    min_crop_shape: tuple[int, int],
+    expected_shape: tuple[int, int],
+) -> None:
+    relaxed_scale, relaxed_ratio = relax_2d_crop_ranges(height, width, scale, ratio, min_crop_shape)
+
+    crop_shape = sample_2d_crop_shape(
+        height,
+        width,
+        relaxed_scale,
+        relaxed_ratio,
+        sampling_method,
+        Random(137),
+        min_crop_shape,
+    )
+
+    assert crop_shape == expected_shape
 
 
 def test_clip_polygon_to_image_returns_visible_polygon_envelope() -> None:
@@ -357,10 +391,10 @@ def test_random_resized_crop_preserves_boxes_from_all_bbox_fields() -> None:
     assert (crop_x_max - crop_x_min) / (crop_y_max - crop_y_min) == pytest.approx(1.25)
 
 
-def test_random_resized_crop_accepts_an_alias_without_main_bbox_key() -> None:
+def test_random_resized_crop_preserves_an_alias_without_main_bbox_key() -> None:
     image = np.zeros((128, 160, 3), dtype=np.uint8)
     alias_bbox = [(20, 25, 80, 85)]
-    transform = A.Compose(
+    transform = A.ReplayCompose(
         [A.RandomResizedCrop(size=(48, 48), bbox_preservation="all_boxes", p=1.0)],
         bbox_params=A.BboxParams(coord_format="pascal_voc"),
         additional_targets={"teacher_bboxes": "bboxes"},
@@ -369,8 +403,33 @@ def test_random_resized_crop_accepts_an_alias_without_main_bbox_key() -> None:
     )
 
     result = transform(image=image, teacher_bboxes=alias_bbox)
+    crop_x_min, crop_y_min, crop_x_max, crop_y_max = result["replay"]["transforms"][0]["params"]["params"][
+        "crop_coords"
+    ]
 
     assert len(result["teacher_bboxes"]) == 1
+    assert crop_x_min <= 20 and crop_x_max >= 80
+    assert crop_y_min <= 25 and crop_y_max >= 85
+
+
+def test_random_resized_crop_uses_full_frame_for_selected_invisible_box() -> None:
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+    transform = A.ReplayCompose(
+        [
+            A.RandomResizedCrop(
+                size=(32, 32),
+                bbox_preservation="one_box",
+                p=1.0,
+            ),
+        ],
+        bbox_params=A.BboxParams(coord_format="pascal_voc", clip_after_transform=False),
+        seed=137,
+    )
+
+    result = transform(image=image, bboxes=[(150, 150, 160, 160)])
+
+    crop_coords = result["replay"]["transforms"][0]["params"]["params"]["crop_coords"]
+    assert crop_coords == (0, 0, 100, 100)
 
 
 def test_random_resized_crop_preserves_boxes_across_bound_frames() -> None:

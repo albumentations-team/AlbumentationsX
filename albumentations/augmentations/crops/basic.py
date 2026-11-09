@@ -28,10 +28,7 @@ from ._transforms_shared import (
     model_validator,
     np,
 )
-from .base import (
-    BaseCropAndPad,
-    CropSizeError,
-)
+from .base import BaseCropAndPad
 
 
 class RandomCrop(BaseCropAndPad):
@@ -41,7 +38,8 @@ class RandomCrop(BaseCropAndPad):
     Args:
         height (int): height of the crop.
         width (int): width of the crop.
-        pad_if_needed (bool): Whether to pad if crop size exceeds image size. Default: False.
+        pad_if_needed (bool): Whether to pad when needed. Inputs smaller than the requested crop are padded even when
+            this is False. Default: False.
         border_mode (OpenCV flag): OpenCV border mode used for padding. Default: cv2.BORDER_CONSTANT.
         fill (tuple[float, ...] | float): Padding value for images if border_mode is
             cv2.BORDER_CONSTANT. Default: 0.
@@ -61,8 +59,8 @@ class RandomCrop(BaseCropAndPad):
     Supported bboxes:
         hbb, obb
     Note:
-        If pad_if_needed is True and crop size exceeds image dimensions, the image will be padded
-        before applying the random crop.
+        If the requested crop exceeds image dimensions, padding is applied before cropping, regardless of
+        `pad_if_needed`.
 
     Examples:
         >>> import numpy as np
@@ -169,14 +167,9 @@ class RandomCrop(BaseCropAndPad):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
+        """Sample random crop coordinates and padding for the requested fixed size."""
         image_shape = targets.require_aligned_spatial_shape(2)
         image_height, image_width = image_shape
-
-        if not self.pad_if_needed and (self.height > image_height or self.width > image_width):
-            raise CropSizeError(
-                f"Crop size (height, width) exceeds image dimensions (height, width):"
-                f" {(self.height, self.width)} vs {image_shape[:2]}",
-            )
 
         pad_params = self._get_pad_params(image_shape, (self.height, self.width), sampling)
 
@@ -217,7 +210,8 @@ class CenterCrop(BaseCropAndPad):
     Args:
         height (int): The height of the crop. Must be greater than 0.
         width (int): The width of the crop. Must be greater than 0.
-        pad_if_needed (bool): Whether to pad if crop size exceeds image size. Default: False.
+        pad_if_needed (bool): Whether to pad when needed. Inputs smaller than the requested crop are padded even when
+            this is False. Default: False.
         border_mode (OpenCV flag): OpenCV border mode used for padding. Default: cv2.BORDER_CONSTANT.
         fill (tuple[float, ...] | float): Padding value for images if border_mode is
             cv2.BORDER_CONSTANT. Default: 0.
@@ -237,8 +231,7 @@ class CenterCrop(BaseCropAndPad):
     Supported bboxes:
         hbb, obb
     Note:
-        - If pad_if_needed is False and crop size exceeds image dimensions, it will raise a CropSizeError.
-        - If pad_if_needed is True and crop size exceeds image dimensions, the image will be padded.
+        - If the crop exceeds image dimensions, padding is applied to reach the requested size.
         - For bounding boxes and keypoints, coordinates are adjusted appropriately for both padding and cropping.
 
     Examples:
@@ -346,14 +339,9 @@ class CenterCrop(BaseCropAndPad):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
+        """Sample centered crop coordinates and padding for the requested fixed size."""
         image_shape = targets.require_aligned_spatial_shape(2)
         image_height, image_width = image_shape
-
-        if not self.pad_if_needed and (self.height > image_height or self.width > image_width):
-            raise CropSizeError(
-                f"Crop size (height, width) exceeds image dimensions (height, width):"
-                f" {(self.height, self.width)} vs {image_shape[:2]}",
-            )
 
         pad_params = self._get_pad_params(image_shape, (self.height, self.width), sampling)
 

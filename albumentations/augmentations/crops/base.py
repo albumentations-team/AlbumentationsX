@@ -235,13 +235,14 @@ class BaseCropAndPad(BaseCrop):
     crop coordinates and padding parameters based on transform-specific logic.
 
     Args:
-        pad_if_needed (bool): Whether to pad the input if the crop size exceeds input dimensions.
+        pad_if_needed (bool): Whether to pad when needed. Fixed-size crops pad undersized inputs even when this is
+            False.
         border_mode (int): OpenCV border mode used for padding.
         fill (tuple[float, ...] | float): Value to fill the padded area if border_mode is BORDER_CONSTANT.
             For multi-channel images, this can be a tuple with a value for each channel.
         fill_mask (tuple[float, ...] | float): Value to fill the padded area in masks.
         pad_position (Literal['center', 'top_left', 'top_right', 'bottom_left', 'bottom_right', 'random']):
-            Position of padding when pad_if_needed is True.
+            Position of any padding.
         p (float): Probability of applying the transform. Default: 1.0.
 
     Targets:
@@ -386,10 +387,8 @@ class BaseCropAndPad(BaseCrop):
         target_shape: tuple[int, int],
         sampling: SamplingContext,
     ) -> dict[str, Any] | None:
-        """Compute pad amounts (top, right, bottom, left) and position so image reaches
-        target_shape. Returns None if no padding needed or pad_if_needed is False.
-        """
-        if not self.pad_if_needed:
+        """Compute padding needed to reach target_shape; oversized crops are always padded safely."""
+        if not self.pad_if_needed and target_shape[0] <= image_shape[0] and target_shape[1] <= image_shape[1]:
             return None
 
         h_pad_top, h_pad_bottom, w_pad_left, w_pad_right = fgeometric.get_padding_params(
@@ -458,6 +457,69 @@ class BaseCropAndPad(BaseCrop):
         # Note' that super().apply would apply the padding twice as it is looped to this.apply
         return BaseCrop.apply(self, mask, crop_coords=crop_coords, **params)
 
+    def apply_to_masks(  # type: ignore[override]  # pyrefly: ignore[bad-override]
+        self,
+        masks: StackedMasks4D,
+        crop_coords: tuple[int, int, int, int],
+        pad_params: dict[str, int] | None,
+        **params: Any,
+    ) -> StackedMasks4D:
+        """Pad mask stacks with fill_mask before applying the shared crop."""
+        if masks.size == 0:
+            crop_height = crop_coords[3] - crop_coords[1]
+            crop_width = crop_coords[2] - crop_coords[0]
+            return StackedMasks4D(np.empty((0, crop_height, crop_width, masks.shape[3]), dtype=masks.dtype))
+        if pad_params is not None:
+            masks = StackedMasks4D(self._pad_batched_targets(masks, pad_params, self.fill_mask))
+        return StackedMasks4D(BaseCrop.apply_to_images(self, masks, crop_coords, **params))
+
+    def _pad_batched_targets(
+        self,
+        targets: NDArray[Any],
+        pad_params: dict[str, int],
+        fill: tuple[float, ...] | float | None,
+    ) -> NDArray[Any]:
+        """Pad batched images or masks with per-channel values when supplied."""
+        pad_top = pad_params["pad_top"]
+        pad_bottom = pad_params["pad_bottom"]
+        pad_left = pad_params["pad_left"]
+        pad_right = pad_params["pad_right"]
+        if fill is None:
+            fill = 0.0
+        if self.border_mode == cv2.BORDER_CONSTANT and isinstance(fill, tuple):
+            fill_values = np.asarray(fill, dtype=targets.dtype)
+            if targets.ndim == 4:
+                channel_count = targets.shape[-1]
+                if fill_values.size != channel_count:
+                    if fill_values.size < channel_count:
+                        fill_values = np.pad(
+                            fill_values,
+                            (0, channel_count - fill_values.size),
+                            mode="edge" if fill_values.size else "constant",
+                        )
+                    else:
+                        fill_values = fill_values[:channel_count]
+                target_count, height, width, _ = targets.shape
+                padded = np.empty(
+                    (target_count, height + pad_top + pad_bottom, width + pad_left + pad_right, channel_count),
+                    dtype=targets.dtype,
+                )
+                padded[...] = fill_values
+                padded[:, pad_top : pad_top + height, pad_left : pad_left + width, :] = targets
+                return padded
+            fill = fill_values[0] if fill_values.size else 0
+        return fcrops.pad_along_axes(
+            targets,
+            pad_top,
+            pad_bottom,
+            pad_left,
+            pad_right,
+            h_axis=1,
+            w_axis=2,
+            border_mode=self.border_mode,
+            pad_value=fill,
+        )
+
     def apply_to_images(  # type: ignore[override]  # pyrefly: ignore[bad-override]
         self,
         images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
@@ -465,18 +527,9 @@ class BaseCropAndPad(BaseCrop):
         pad_params: dict[str, int] | None,
         **params: Any,
     ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
+        """Pad image batches with fill values before applying the shared crop."""
         if pad_params is not None:
-            images = fcrops.pad_along_axes(
-                images,
-                pad_params["pad_top"],
-                pad_params["pad_bottom"],
-                pad_params["pad_left"],
-                pad_params["pad_right"],
-                h_axis=1,
-                w_axis=2,
-                border_mode=self.border_mode,
-                pad_value=self.fill,
-            )
+            images = self._pad_batched_targets(images, pad_params, self.fill)
         return BaseCrop.apply_to_images(self, images, crop_coords, **params)
 
     def apply_to_mask3d(  # type: ignore[override]  # pyrefly: ignore[bad-override]
@@ -486,18 +539,9 @@ class BaseCropAndPad(BaseCrop):
         pad_params: dict[str, int] | None,
         **params: Any,
     ) -> VolumeType:
+        """Pad 3D masks with fill_mask before applying the shared crop."""
         if pad_params is not None:
-            mask3d = fcrops.pad_along_axes(
-                mask3d,
-                pad_params["pad_top"],
-                pad_params["pad_bottom"],
-                pad_params["pad_left"],
-                pad_params["pad_right"],
-                h_axis=1,
-                w_axis=2,
-                border_mode=self.border_mode,
-                pad_value=cast("tuple[float, ...] | float", self.fill_mask),
-            )
+            mask3d = cast("VolumeType", self._pad_batched_targets(mask3d, pad_params, self.fill_mask))
         return BaseCrop.apply_to_images(self, mask3d, crop_coords, **params)
 
     def apply_to_bboxes(  # type: ignore[override]  # pyrefly: ignore[bad-override]

@@ -19,8 +19,10 @@ Then review the behavior the hook cannot prove.
   lengths alone.
 - Check the mathematical operation, coordinate boundaries, dtype range, and annotation semantics.
 - Verify that constructor fields, validators, and defaults express a coherent public policy.
-- Flag runtime validation exceptions and missing boundary coverage under
+- Reject proposed training-time errors under
   [initialization-only validation](../../../docs/contributing/coding_guidelines.md#initialization-only-validation).
+  Check that missing/empty annotations, impossible geometry, and numerical boundaries have documented recovery
+  with correct outputs. Configuration rejection belongs at initialization.
 - Check empty inputs, ownership, aliasing, and unsupported input handling through the public route.
 - Distinguish public grayscale inputs from internal execution: Compose normalizes NumPy inputs to explicit channels
   before dispatch. Use [NumPy and Tensor routing](../../../docs/design/numpy-tensor-routing.md) for boundary changes.

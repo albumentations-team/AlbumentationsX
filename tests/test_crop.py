@@ -177,6 +177,63 @@ def test_bbox_params_edges(
 POSITIONS = ["center", "top_left", "top_right", "bottom_left", "bottom_right"]
 
 
+@pytest.mark.parametrize("crop_cls", (A.RandomCrop, A.CenterCrop))
+def test_fixed_crop_pads_undersized_input_even_when_padding_is_disabled(crop_cls: type[A.DualTransform]) -> None:
+    """Keep image, stacked targets, and annotations aligned after required padding."""
+    image = np.zeros((40, 50, 3), dtype=np.uint8)
+    image[5:15, 5:15] = 1
+    mask = np.zeros((40, 50, 3), dtype=np.uint8)
+    mask[5:15, 5:15] = 1
+    images = np.stack((image, image))
+    masks = np.stack((mask, mask))
+    mask3d = np.stack((mask, mask))
+    transform = A.ReplayCompose(
+        [crop_cls(height=60, width=70, pad_if_needed=False, fill=(7, 8, 9), fill_mask=(3, 4, 5), p=1.0)],
+        bbox_params=A.BboxParams(coord_format="pascal_voc"),
+        keypoint_params=A.KeypointParams(coord_format="xy"),
+        seed=137,
+    )
+
+    result = transform(
+        image=image,
+        images=images,
+        masks=masks,
+        mask3d=mask3d,
+        bboxes=[(5, 5, 15, 15)],
+        keypoints=[(10, 10)],
+    )
+
+    assert result["image"].shape == (60, 70, 3)
+    assert result["images"].shape == (2, 60, 70, 3)
+    assert result["masks"].shape == (2, 60, 70, 3)
+    assert result["mask3d"].shape == (2, 60, 70, 3)
+    crop_params = result["replay"]["transforms"][0]["params"]["params"]
+    pad_params = crop_params["pad_params"]
+    crop_x_min, crop_y_min, _, _ = crop_params["crop_coords"]
+    x_offset = pad_params["pad_left"] - crop_x_min
+    y_offset = pad_params["pad_top"] - crop_y_min
+    np.testing.assert_allclose(
+        result["bboxes"],
+        [[x_offset + 5, y_offset + 5, x_offset + 15, y_offset + 15]],
+    )
+    np.testing.assert_allclose(result["keypoints"][:, :2], [[x_offset + 10, y_offset + 10]])
+    np.testing.assert_array_equal(
+        result["image"][y_offset + 5 : y_offset + 15, x_offset + 5 : x_offset + 15],
+        np.ones((10, 10, 3), dtype=np.uint8),
+    )
+    np.testing.assert_array_equal(
+        result["masks"][:, y_offset + 5 : y_offset + 15, x_offset + 5 : x_offset + 15],
+        np.ones((2, 10, 10, 3), dtype=np.uint8),
+    )
+    padded_area = 60 * 70 - 40 * 50
+    for channel, fill_value in enumerate((7, 8, 9)):
+        assert np.count_nonzero(result["image"][..., channel] == fill_value) == padded_area
+        assert np.count_nonzero(result["images"][..., channel] == fill_value) == 2 * padded_area
+    for target in ("masks", "mask3d"):
+        for channel, fill_value in enumerate((3, 4, 5)):
+            assert np.count_nonzero(result[target][..., channel] == fill_value) == 2 * padded_area
+
+
 @pytest.mark.parametrize(
     ["crop_cls", "crop_params"],
     [

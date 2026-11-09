@@ -1178,6 +1178,8 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
         {"interpolation": cv2.INTER_CUBIC, "mask_interpolation": cv2.INTER_LINEAR, "area_for_downscale": "image_mask"},
     ),
     ("uniform-scale", A.RandomResizedCrop, {"sampling_method": "uniform_scale"}),
+    ("one-box", A.RandomResizedCrop, {"bbox_preservation": "one_box"}),
+    ("all-boxes", A.RandomResizedCrop, {"bbox_preservation": "all_boxes"}),
     ("uniform-scale", A.RandomResizedCrop3D, {"sampling_method": "uniform_scale"}),
     (
         "output-proportions",
@@ -1406,18 +1408,21 @@ def _case_data(
     transform_cls: type[A.BasicTransform],
     init_kwargs: Mapping[str, Any],
 ) -> tuple[ContractDataFactory, ContractContextFactory, dict[str, Any], frozenset[str]]:
+    """Choose target data, context, and Compose settings for a contract case."""
     compose_kwargs: dict[str, Any] = {}
     metadata_keys = frozenset[str]()
     if issubclass(transform_cls, (A.Transform3D, A.VolumeOnlyTransform)):
-        case = (make_volume_data, make_empty_context)
-    elif transform_cls in _BBOX_TRANSFORMS:
+        case: tuple[ContractDataFactory, ContractContextFactory] = (make_volume_data, make_empty_context)
+    elif transform_cls in _BBOX_TRANSFORMS or (
+        transform_cls is A.RandomResizedCrop and init_kwargs.get("bbox_preservation") is not None
+    ):
         compose_kwargs = {
             "bbox_params": A.BboxParams(
                 coord_format="albumentations",
                 label_fields=["bbox_labels"],
             ),
         }
-        context_factory = make_empty_context
+        context_factory: ContractContextFactory = make_empty_context
         if transform_cls is A.RandomCropNearBBox:
             key = init_kwargs.get("cropping_bbox_key", "cropping_bbox")
             context_factory = make_crop_near_bbox_context(key)
@@ -1469,7 +1474,7 @@ def _case_data(
         case = (make_mask_data, make_empty_context)
     else:
         case = (make_image_data, make_empty_context)
-    return (*case, compose_kwargs, metadata_keys)
+    return case[0], case[1], compose_kwargs, metadata_keys
 
 
 def _slugify(name: str) -> str:

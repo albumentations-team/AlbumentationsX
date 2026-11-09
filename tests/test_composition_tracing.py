@@ -36,6 +36,8 @@ def test_trace_unknown_target_clears_previous_observation(
     nested: bool,
     prior_traced: bool,
 ) -> None:
+    """Clear a primed observation without changing retained artifacts or the next random result."""
+
     def make_pipeline() -> tuple[A.Compose, A.RandomBrightnessContrast]:
         leaf = A.RandomBrightnessContrast(p=1.0)
         child = A.Compose([leaf]) if nested else leaf
@@ -466,6 +468,7 @@ def test_trace_snapshots_include_all_synchronized_public_targets() -> None:
 
 @pytest.mark.parametrize("root_type", [A.Compose, A.ReplayCompose])
 def test_trace_options_reject_invalid_snapshot_configuration(root_type: type[A.Compose]) -> None:
+    """Check that a rejected call on a fresh pipeline exposes no observations."""
     with pytest.raises(TypeError, match="not a string"):
         A.TraceOptions(snapshot_targets="image")
 

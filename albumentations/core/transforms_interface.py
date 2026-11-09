@@ -1044,18 +1044,24 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         return self._apply_with_params(sampled_params, targets, **kwargs)
 
     def get_applied_params(self) -> dict[str, Any]:
-        """Returns the parameters that were used in the last transform application; returns empty
-        dict if transform was not applied.
+        """Return this transform's observed parameters from the active invocation or the caller's last completed
+        observation.
+
+        Return an empty dictionary when no parameters are available. Rejecting unknown trace snapshot targets
+        clears the caller's completed observation; an active outer invocation retains its own observation.
         """
         return self.params
 
     def get_applied_config(self) -> dict[str, Any]:
-        """Return the constructor-valid configuration captured by the latest successful application, for JSON
-        transport and public pipeline reconstruction.
+        """Return this transform's observed, constructor-valid configuration for JSON transport and pipeline
+        reconstruction.
 
-        The result is empty when the transform was not applied. Realized values written by
-        sample_parameters replaces its source constructor policy,
-        and aliases expose the fields of their canonical replay class. Values are JSON-safe.
+        The active invocation takes precedence over the caller's last completed observation. Return an empty
+        dictionary when no configuration is available. Rejecting unknown trace snapshot targets clears the caller's
+        completed observation; an active outer invocation retains its own observation.
+
+        Realized values written by sample_parameters replace their source constructor policy, and aliases expose
+        the fields of their canonical replay class. Values are JSON-safe.
         """
         return self.applied_config
 

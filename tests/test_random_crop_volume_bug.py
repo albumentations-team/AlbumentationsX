@@ -34,7 +34,7 @@ def test_random_crop_pads_small_volume_even_when_padding_is_disabled() -> None:
     # Create a volume smaller than crop size
     volume = np.random.randint(0, 256, (8, 100, 100), dtype=np.uint8)
 
-    transform = A.RandomCrop(height=256, width=256, pad_if_needed=False, p=1.0)
+    transform = A.Compose([A.RandomCrop(height=256, width=256, pad_if_needed=False, p=1.0)], seed=137)
 
     result = transform(volume=volume)
 

@@ -47,6 +47,22 @@ composition/tensor route, or a deliberate golden compatibility contract.
 - Serialization contract: supported transforms round-trip through
   serialization and replay checks.
 
+## Box-aware RandomResizedCrop sampling
+
+When `RandomResizedCrop.bbox_preservation` is `"one_box"`, the sampled crop contains one uniformly
+selected box across active bbox fields. The `"all_boxes"` mode contains every box. With no boxes, the
+transform uses ordinary random-resized-crop sampling. The configured `scale` and aspect-ratio bounds
+are relaxed only when needed to satisfy the selected box constraint; `BboxParams` filters still apply
+after the crop. The [permanent transform tests](../../tests/test_random_resized_crop.py) cover both
+selection modes, aliases, replay, and geometry.
+
+## Macenko stain estimation
+
+`MacenkoNormalizer` fits its optical-density plane from the two eigenvectors associated with the
+largest eigenvalues. OpenCV returns these eigenvectors as rows. On the
+[synthetic known-stain test](../../tests/functional/test_functional.py), the recovered hematoxylin
+and eosin vectors each remain within five degrees of their known directions.
+
 ## 3D Orientation Label Mappings
 
 An orientation-reversing `Transform3D` may emit a transform-name event that activates configured semantic mappings.

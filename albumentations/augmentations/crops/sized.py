@@ -190,11 +190,11 @@ def _bbox_views_envelope(
         coordinates = bboxes[:, :5].astype(np.float64, copy=True)
         coordinates[:, [0, 2]] *= image_width
         coordinates[:, [1, 3]] *= image_height
-        coordinates[:, 4] = np.remainder(coordinates[:, 4], 360.0)
         valid = np.isfinite(coordinates).all(axis=1)
-        valid &= (coordinates[:, 2] > coordinates[:, 0]) & (coordinates[:, 3] > coordinates[:, 1])
         if not valid.all():
             coordinates[~valid] = 0.0
+        coordinates[valid, 4] = np.remainder(coordinates[valid, 4], 360.0)
+        valid &= (coordinates[:, 2] > coordinates[:, 0]) & (coordinates[:, 3] > coordinates[:, 1])
         polygons = obb_to_polygons(coordinates)
         inside = valid & (polygons[:, :, 0] >= 0).all(axis=1)
         inside &= (polygons[:, :, 0] <= image_width).all(axis=1)

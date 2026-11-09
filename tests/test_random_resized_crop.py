@@ -1,8 +1,10 @@
 """Focused regression tests for rejection-free 2D RandomResizedCrop sampling."""
 
 import math
+import warnings
 from collections import Counter
 from random import Random
+from types import SimpleNamespace
 from typing import Any, Literal, cast
 from unittest.mock import Mock
 
@@ -19,7 +21,7 @@ from albumentations.augmentations.crops._sampling import (
     relax_2d_crop_ranges,
     sample_2d_crop_shape,
 )
-from albumentations.augmentations.crops.sized import _bbox_envelope, _clip_polygon_to_image
+from albumentations.augmentations.crops.sized import _bbox_envelope, _bbox_views_envelope, _clip_polygon_to_image
 from albumentations.core.bbox_utils import obb_to_polygons
 
 
@@ -273,6 +275,20 @@ def test_obb_envelope_matches_clipped_polygon(bbox: tuple[float, ...]) -> None:
                 float(clipped_points[:, 1].max()),
             ),
         )
+
+
+def test_all_boxes_ignores_nonfinite_obb_angles_without_runtime_warnings() -> None:
+    bboxes = np.array(
+        [[0.2, 0.2, 0.5, 0.5, np.nan], [0.2, 0.2, 0.5, 0.5, np.inf]],
+        dtype=np.float64,
+    )
+    bbox_views = (SimpleNamespace(value=bboxes),)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        envelope = _bbox_views_envelope(bbox_views, "obb", (100, 100))
+
+    assert envelope is None
 
 
 def test_random_resized_crop_normalizes_large_finite_obb_angles() -> None:

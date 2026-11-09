@@ -17,9 +17,11 @@ change beyond the version uses the corresponding dependency, artifact, and insta
 
 ## Workflow
 
-For augmentation parameter changes, test constructor rejection and finite boundary outputs through direct calls and
-`Compose`, as required by
+For augmentation changes, test configuration rejection at initialization and sample-dependent recovery through direct
+calls and `Compose`, as required by
 [initialization-only validation](../../../docs/contributing/coding_guidelines.md#initialization-only-validation).
+Check the recovered geometry, output shape, dtype, and replay as applicable. Do not add tests that expect missing
+annotations, infeasible geometry, or sampled boundary values to raise during training.
 
 1. **Name the decision and failure mode**: identify the changed contract and the smallest test, check, or artifact that can
    reject it.

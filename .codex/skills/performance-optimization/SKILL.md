@@ -77,7 +77,9 @@ belong in the functional helper that owns the operation. The deterministic sourc
 repository's unified AX guidance hook; keep its exact limits and exceptions in `docs/contributing/coding_guidelines.md`.
 
 Follow [initialization-only validation](../../../docs/contributing/coding_guidelines.md#initialization-only-validation)
-when adding numerical guards. Benchmark ordinary settings and recovery boundaries when execution changes.
+for every runtime change. Training execution must not raise on sample-dependent constraints; reject configuration
+at initialization and design bounded recovery for per-sample limits. Benchmark ordinary settings and recovery
+boundaries when execution changes.
 
 Propose an Albucore primitive when an operation:
 

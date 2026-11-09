@@ -478,15 +478,23 @@ explicitly forwards those inputs does not need a new schema. The schema is respo
 
 #### Initialization-only validation
 
-Augmentation validation errors are allowed only during initialization, exclusively through Pydantic `InitSchema`.
-Validate parameter domains, finite values, range ordering, and cross-field constraints there. Do not add manual
-validation exceptions in `__init__`, `__call__`, `sample_parameters`, `apply*`, or functional helpers.
+**Errors are allowed only during initialization. Transform execution must not interrupt training.** This rule applies
+to every transform and execution path, including parameter sampling, target dispatch, and functional helpers.
+Reject invalid transform configuration through Pydantic `InitSchema`; validate static pipeline configuration during
+pipeline construction. Validate parameter domains, finite values, range ordering, and cross-field constraints before
+training starts. Do not defer a construction-time check to `__call__`, `sample_parameters`, `apply*`, or a functional
+helper, or add manual transform-configuration exceptions outside `InitSchema`.
 
-After successful initialization, sampled parameters and image-dependent numerical limits must not interrupt training.
-When a bound depends on the current image or displacement-map shape, deterministically clamp the sampled value before
-unsafe arithmetic. If the effect cannot be produced, use a documented safe no-op. Apply geometric recovery consistently
-to every target, preserve reproducibility, and keep ordinary settings unchanged. Do not wrap the pipeline in a blanket
-exception handler.
+Define recovery for every sample-dependent constraint before implementing the execution path. Missing or empty
+annotations, geometry outside the image, incompatible crop constraints, small images, and sampled numerical limits
+must have documented behavior without runtime exceptions. Depending on the operation, clamp the sampled value,
+preserve the visible geometry, relax lower-priority constraints, or use a safe no-op. Preserve required output shape,
+dtype, target synchronization, reproducibility, and replay. Do not add a public strict/error mode that allows a
+training worker to fail on these cases.
+
+Prevent the failure before unsafe arithmetic or backend execution. Do not wrap the pipeline in a blanket exception
+handler. Verify invalid configuration at initialization and verify the actual recovery outputs through the public
+route; a test that expects a sample-dependent training-time exception violates this contract.
 
 Use fixed Pydantic bounds whenever a supported parameter range can be defined at construction. For example,
 `WaterRefraction.InitSchema` restricts both `wavelength_range` endpoints to `[0.001, 1.0]`, excluding unrealistic

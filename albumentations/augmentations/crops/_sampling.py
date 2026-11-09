@@ -46,15 +46,37 @@ def _standard_2d_segments(
     ratio_min: float,
     ratio_max: float,
 ) -> tuple[tuple[float, float, float, float, float, float], ...]:
-    area = height * width
+    return _build_standard_2d_segments(
+        height,
+        width,
+        scale_min,
+        scale_max,
+        ratio_min,
+        ratio_max,
+        _LOWER_EDGE,
+        _LOWER_EDGE,
+    )
+
+
+def _build_standard_2d_segments(
+    height: int,
+    width: int,
+    scale_min: float,
+    scale_max: float,
+    ratio_min: float,
+    ratio_max: float,
+    minimum_height: float,
+    minimum_width: float,
+) -> tuple[tuple[float, float, float, float, float, float], ...]:
     upper_height = height + _LOWER_EDGE
     upper_width = width + _LOWER_EDGE
-    area_min = max(scale_min * area, _LOWER_EDGE**2, ratio_min * _LOWER_EDGE**2, _LOWER_EDGE**2 / ratio_max)
-    area_max = min(
-        scale_max * area,
-        upper_height * upper_width,
-        upper_width**2 / ratio_min,
-        ratio_max * upper_height**2,
+    area_min, area_max = _crop_area_bounds(
+        height,
+        width,
+        (scale_min, scale_max),
+        (ratio_min, ratio_max),
+        minimum_height,
+        minimum_width,
     )
     if area_min > area_max:
         return ()
@@ -64,8 +86,16 @@ def _standard_2d_segments(
     if x_max - x_min <= _EPSILON:
         return ()
 
-    lower_lines = ((0.0, log(ratio_min)), (1.0, -2.0 * log(upper_height)), (-1.0, 2.0 * log(_LOWER_EDGE)))
-    upper_lines = ((0.0, log(ratio_max)), (-1.0, 2.0 * log(upper_width)), (1.0, -2.0 * log(_LOWER_EDGE)))
+    lower_lines = (
+        (0.0, log(ratio_min)),
+        (1.0, -2.0 * log(upper_height)),
+        (-1.0, 2.0 * log(minimum_width)),
+    )
+    upper_lines = (
+        (0.0, log(ratio_max)),
+        (-1.0, 2.0 * log(upper_width)),
+        (1.0, -2.0 * log(minimum_height)),
+    )
     breakpoints = {x_min, x_max}
     for lines in (lower_lines, upper_lines):
         for first, second in combinations(lines, 2):
@@ -137,9 +167,16 @@ def _sample_2d_fixed_ratio(
     scale: tuple[float, float],
     ratio: float,
     random_value: float,
+    minimum_height: float = _LOWER_EDGE,
+    minimum_width: float = _LOWER_EDGE,
 ) -> float | None:
     area = height * width
-    area_min = max(scale[0] * area, _LOWER_EDGE**2 * ratio, _LOWER_EDGE**2 / ratio)
+    area_min = max(
+        scale[0] * area,
+        minimum_height * minimum_width,
+        minimum_height**2 * ratio,
+        minimum_width**2 / ratio,
+    )
     area_max = min(scale[1] * area, (width + _LOWER_EDGE) ** 2 / ratio, (height + _LOWER_EDGE) ** 2 * ratio)
     if area_min > area_max:
         return None
@@ -153,12 +190,28 @@ def sample_2d_crop_shape(
     ratio: tuple[float, float],
     sampling_method: SamplingMethod,
     py_random: _RandomSource,
+    min_crop_shape: tuple[int, int] | None = None,
 ) -> tuple[int, int] | None:
     """Sample one rounded valid 2D crop shape without stochastic rejection."""
     random = py_random.random
     ratio_min, ratio_max = ratio
+    if min_crop_shape is None:
+        minimum_height = minimum_width = _LOWER_EDGE
+        crop_min_height = crop_min_width = 1
+    else:
+        crop_min_height, crop_min_width = min_crop_shape
+        minimum_height = max(_LOWER_EDGE, crop_min_height - _LOWER_EDGE)
+        minimum_width = max(_LOWER_EDGE, crop_min_width - _LOWER_EDGE)
     if ratio_min == ratio_max:
-        target_area = _sample_2d_fixed_ratio(height, width, scale, ratio_min, random())
+        target_area = _sample_2d_fixed_ratio(
+            height,
+            width,
+            scale,
+            ratio_min,
+            random(),
+            minimum_height,
+            minimum_width,
+        )
         if target_area is None:
             return None
         aspect_ratio = ratio_min
@@ -166,9 +219,9 @@ def sample_2d_crop_shape(
         area = height * width
         area_min = max(
             scale[0] * area,
-            _LOWER_EDGE**2,
-            ratio_min * _LOWER_EDGE**2,
-            _LOWER_EDGE**2 / ratio_max,
+            minimum_height * minimum_width,
+            ratio_min * minimum_height**2,
+            minimum_width**2 / ratio_max,
         )
         area_max = min(
             scale[1] * area,
@@ -183,26 +236,107 @@ def sample_2d_crop_shape(
         elif sampling_method == "uniform_scale":
             target_area = area_min + random() * (area_max - area_min)
         else:
-            segments = _standard_2d_segments(height, width, scale[0], scale[1], ratio_min, ratio_max)
+            segments = (
+                _standard_2d_segments(height, width, scale[0], scale[1], ratio_min, ratio_max)
+                if min_crop_shape is None
+                else _build_standard_2d_segments(
+                    height,
+                    width,
+                    scale[0],
+                    scale[1],
+                    ratio_min,
+                    ratio_max,
+                    minimum_height,
+                    minimum_width,
+                )
+            )
             target_area = _sample_standard_2d_area(segments, random()) if segments else area_min
 
         log_ratio_min = max(
             log(ratio_min),
             log(target_area) - 2.0 * log(height + _LOWER_EDGE),
-            2.0 * log(_LOWER_EDGE) - log(target_area),
+            2.0 * log(minimum_width) - log(target_area),
         )
         log_ratio_max = min(
             log(ratio_max),
             2.0 * log(width + _LOWER_EDGE) - log(target_area),
-            log(target_area) - 2.0 * log(_LOWER_EDGE),
+            log(target_area) - 2.0 * log(minimum_height),
         )
         if log_ratio_min > log_ratio_max + _EPSILON:
             return None
         aspect_ratio = exp(log_ratio_min + random() * (log_ratio_max - log_ratio_min))
 
-    crop_width = min(width, max(1, round(sqrt(target_area * aspect_ratio))))
-    crop_height = min(height, max(1, round(sqrt(target_area / aspect_ratio))))
+    crop_width = min(width, max(crop_min_width, round(sqrt(target_area * aspect_ratio))))
+    crop_height = min(height, max(crop_min_height, round(sqrt(target_area / aspect_ratio))))
     return crop_height, crop_width
+
+
+def relax_2d_crop_ranges(
+    height: int,
+    width: int,
+    scale: tuple[float, float],
+    ratio: tuple[float, float],
+    min_crop_shape: tuple[int, int],
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Keep the closest feasible ratio, then minimize area deviation from the scale range."""
+    minimum_height = max(_LOWER_EDGE, min_crop_shape[0] - _LOWER_EDGE)
+    minimum_width = max(_LOWER_EDGE, min_crop_shape[1] - _LOWER_EDGE)
+    feasible_ratio_min = minimum_width / (height + _LOWER_EDGE)
+    feasible_ratio_max = (width + _LOWER_EDGE) / minimum_height
+
+    ratio_min = max(ratio[0], feasible_ratio_min)
+    ratio_max = min(ratio[1], feasible_ratio_max)
+    if ratio_min > ratio_max:
+        ratio_min = ratio_max = feasible_ratio_min if ratio[1] < feasible_ratio_min else feasible_ratio_max
+
+    image_area = height * width
+    feasible_area_min, feasible_area_max = _crop_area_bounds(
+        height,
+        width,
+        (0.0, 1.0),
+        (ratio_min, ratio_max),
+        minimum_height,
+        minimum_width,
+    )
+    requested_area_min = scale[0] * image_area
+    requested_area_max = scale[1] * image_area
+    effective_area_min = max(feasible_area_min, requested_area_min)
+    effective_area_max = min(feasible_area_max, requested_area_max)
+
+    if effective_area_min > effective_area_max:
+        nearest_area = feasible_area_max if requested_area_min > feasible_area_max else feasible_area_min
+        effective_area_min = nearest_area
+        effective_area_max = nearest_area
+
+    return (
+        (effective_area_min / image_area, effective_area_max / image_area),
+        (ratio_min, ratio_max),
+    )
+
+
+def _crop_area_bounds(
+    height: int,
+    width: int,
+    scale: tuple[float, float],
+    ratio: tuple[float, float],
+    minimum_height: float,
+    minimum_width: float,
+) -> tuple[float, float]:
+    image_area = height * width
+    ratio_min, ratio_max = ratio
+    area_min = max(
+        scale[0] * image_area,
+        minimum_height * minimum_width,
+        ratio_min * minimum_height**2,
+        minimum_width**2 / ratio_max,
+    )
+    area_max = min(
+        scale[1] * image_area,
+        (height + _LOWER_EDGE) * (width + _LOWER_EDGE),
+        (width + _LOWER_EDGE) ** 2 / ratio_min,
+        ratio_max * (height + _LOWER_EDGE) ** 2,
+    )
+    return area_min, area_max
 
 
 def _fixed_shape_volume_bounds(

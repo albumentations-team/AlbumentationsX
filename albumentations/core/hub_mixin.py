@@ -221,6 +221,11 @@ class HubMixin:
         if transform is not None:
             return transform
 
+        if not is_huggingface_hub_available:
+            raise ImportError(
+                "You need to install `huggingface_hub` to load from the Hub. Run `pip install 'albumentationsx[hub]'`.",
+            )
+
         # download the file from the Hub
         if proxies is not None:
             logger.warning(

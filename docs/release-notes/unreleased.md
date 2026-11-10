@@ -12,6 +12,19 @@ Implementation: [validation #620](https://github.com/albumentations-team/Albumen
 
 ## Validation
 
+### Missing optional Hub dependency
+
+- Previous behavior: `Compose.from_pretrained` with a Hub repository ID raised an incidental `NameError`
+  when `huggingface_hub` was not installed.
+- New behavior: The Hub download route raises an actionable `ImportError` with an installation command.
+  Valid local configurations still load without the optional dependency.
+- Affected users: Callers loading Hub repository IDs without the `hub` extra, including offline cache lookups.
+- Migration: Install the extra with `pip install 'albumentationsx[hub]'`, or catch `ImportError` instead of
+  the incidental `NameError`. Valid local loads need no change.
+- First affected version: unreleased
+- Contract: [Optional Hub loading](../maintaining/correctness-contracts.md#optional-hub-loading).
+- Tests: [Optional Hub dependency routes](../../tests/test_hub_optional_dependency.py).
+
 ### Constructor and graph errors
 
 - Previous behavior: Some schema errors could warn and substitute defaults; duplicate arguments could be overwritten.

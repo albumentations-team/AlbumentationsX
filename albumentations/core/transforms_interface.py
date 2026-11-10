@@ -733,9 +733,13 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         if invocation is None:
             if self.can_apply_without_invocation(force_apply=force_apply):
                 return self.apply_without_invocation(force_apply=force_apply, publish_observation=True, **kwargs)
+            if not self.should_skip_for_vector_fields(kwargs):
+                self._validate_vector_field_inputs(kwargs)
             context = self._new_invocation_context()
             with context:
                 return self.apply_in_invocation(context, *args, force_apply=force_apply, **kwargs)
+        if not invocation.vector_fields_validated and not self.should_skip_for_vector_fields(kwargs):
+            self._validate_vector_field_inputs(kwargs)
         return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **kwargs)
 
     def can_apply_without_invocation(self, *, force_apply: bool) -> bool:
@@ -802,8 +806,6 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             skipped_state.applied_config = None
             skipped_state.skip_reason = "unsupported_vector_field"
             return kwargs
-        if not invocation.vector_fields_validated:
-            self._validate_vector_field_inputs(kwargs)
         state = invocation.get_transform_state(self) if invocation.collect_applied else None
         if state is not None:
             state.params = None

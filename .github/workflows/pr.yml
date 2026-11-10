@@ -201,6 +201,11 @@ jobs:
           python-version: ${{ matrix.python-version }}
           dependency-group: ci-test
           runtime-profile: torch-cpu
+      - name: Enable optional Hub coverage
+        if: runner.os == 'Linux' && matrix.python-version == '3.11'
+        run: |
+          uv sync --locked --no-default-groups --group ci-test --group ci-torch-cpu --extra hub --inexact
+          python -c "from albumentations.core.hub_mixin import is_huggingface_hub_available; assert is_huggingface_hub_available"
       - name: Run complete base suite
         shell: bash
         run: |

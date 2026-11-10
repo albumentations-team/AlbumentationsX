@@ -19,10 +19,17 @@ def test_hub_without_optional_dependency(tmp_path: Path, route: str) -> None:
         """
         import importlib.abc
         import sys
+        from collections.abc import Sequence
         from pathlib import Path
+        from types import ModuleType
 
         class BlockHubImports(importlib.abc.MetaPathFinder):
-            def find_spec(self, fullname, path=None, target=None):
+            def find_spec(
+                self,
+                fullname: str,
+                path: Sequence[str] | None = None,
+                target: ModuleType | None = None,
+            ) -> None:
                 if fullname == "huggingface_hub" or fullname.startswith("huggingface_hub."):
                     raise ModuleNotFoundError("Hub import blocked by test", name=fullname)
                 return None
@@ -36,6 +43,7 @@ def test_hub_without_optional_dependency(tmp_path: Path, route: str) -> None:
         assert not hub_mixin.is_huggingface_hub_available
         assert not hasattr(hub_mixin, "hf_hub_download")
         assert not hasattr(hub_mixin, "HfHubHTTPError")
+        assert Path(A.__file__).resolve().is_relative_to(Path(sys.argv[3]).resolve())
         transform = A.Compose([A.NoOp()], telemetry=False)
         route, root = sys.argv[1], Path(sys.argv[2])
 
@@ -58,12 +66,16 @@ def test_hub_without_optional_dependency(tmp_path: Path, route: str) -> None:
                 transform.push_to_hub("example/nonexistent")
         """,
     )
+    repository_root = Path(__file__).resolve().parents[1]
+    existing_pythonpath = os.environ.get("PYTHONPATH")
+    pythonpath = os.pathsep.join(filter(None, (str(repository_root), existing_pythonpath)))
     # The interpreter/script are fixed; arguments come from pytest and no shell is used.
     result = subprocess.run(  # noqa: S603
-        [sys.executable, "-c", script, route, str(tmp_path)],
+        [sys.executable, "-c", script, route, str(tmp_path), str(repository_root)],
         cwd=tmp_path,
         env={
             **os.environ,
+            "PYTHONPATH": pythonpath,
             "NO_ALBUMENTATIONS_UPDATE": "1",
             "ALBUMENTATIONS_NO_TELEMETRY": "1",
             "HF_HUB_OFFLINE": "1",

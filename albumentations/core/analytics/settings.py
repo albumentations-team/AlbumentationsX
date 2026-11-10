@@ -37,7 +37,8 @@ class SettingsManager:
             try:
                 with self.settings_file.open() as f:
                     file_settings = json.load(f)
-                    settings.update(file_settings)
+                    if isinstance(file_settings, dict):
+                        settings.update(file_settings)
             except (OSError, json.JSONDecodeError):
                 pass
 

@@ -12,6 +12,22 @@ Implementation: [validation #620](https://github.com/albumentations-team/Albumen
 
 ## Validation
 
+### Object-only settings files
+
+- Previous behavior: Valid non-object JSON in `settings.json` could prevent package import. Arrays of key/value
+  pairs were accepted, so `[["telemetry", false]]` could disable telemetry.
+- New behavior: Only JSON objects contribute file settings. Other roots are ignored entirely, retaining defaults
+  before environment overrides. This corrects settings-root validation and intentionally stops accepting pair arrays.
+  Valid objects, caught file errors, and malformed-JSON fallback keep their existing behavior; loading never rewrites
+  the settings file.
+- Affected users: Users with non-object settings files, including those relying on pair arrays to disable telemetry.
+  An ignored pair array now leaves telemetry enabled by default unless an existing environment override disables it.
+- Migration: Replace `[["telemetry", false]]` with `{"telemetry": false}`, or set `ALBUMENTATIONS_NO_TELEMETRY=1` or
+  `ALBUMENTATIONS_OFFLINE=1` before import. The original file remains available for correction.
+- First affected version: unreleased
+- Contract: [Settings loading](../maintaining/correctness-contracts.md#settings-loading).
+- Tests: [Fresh-process settings import and overrides](../../tests/test_settings_import.py).
+
 ### Constructor and graph errors
 
 - Previous behavior: Some schema errors could warn and substitute defaults; duplicate arguments could be overwritten.

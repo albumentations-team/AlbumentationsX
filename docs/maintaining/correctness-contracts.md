@@ -78,6 +78,19 @@ The augmented output must match a manual annotation of the transformed volume:
 `semantic_mask_label_mappings` and `KeypointParams.label_mapping` are independent configuration surfaces. A transform
 event activates each mapping only when the caller configured it for that target type.
 
+## Settings loading
+
+Package import loads settings from defaults, then merges every entry of `settings.json` only when its JSON root is
+an object, then applies environment overrides. Non-object roots are ignored entirely, including arrays of key/value
+pairs. Object values and unknown keys are preserved without validation or coercion.
+
+`ALBUMENTATIONS_NO_TELEMETRY` and `ALBUMENTATIONS_OFFLINE` independently disable telemetry when set to `1` or
+case-insensitive `true`, overriding file settings. Without an override or object setting, telemetry defaults to `true`.
+Loading never rewrites the file or creates a missing settings file. Missing files, malformed JSON, and `OSError`
+raised while opening or reading an existing file retain defaults before environment overrides; other errors keep
+their existing propagation behavior. The [settings import tests](../../tests/test_settings_import.py) cover these
+boundaries in isolated processes and simulate the caught read error.
+
 ## Stability Modes
 
 Golden regression cases declare one stability mode:

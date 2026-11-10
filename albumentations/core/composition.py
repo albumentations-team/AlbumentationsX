@@ -2918,43 +2918,45 @@ class Compose(BaseCompose, HubMixin):
         needs_channel_axis = False
         for name, value in data.items():
             canonical = routes.get(name, self._additional_targets.get(name, name))
+            optional_rank = _OPTIONAL_CHANNEL_RANKS.get(canonical)
+            if optional_rank is not None:
+                if value is None and not self.strict and canonical in MASK_KEYS:
+                    continue
+                if isinstance(value, np.ndarray):
+                    needs_channel_axis |= value.ndim == optional_rank
+                    shape = self._numpy_spatial_shape(name, canonical, value, optional_rank)
+                elif isinstance(value, torch.Tensor):
+                    shape = tuple(value.shape[-3:]) if self.is_check_shapes and value.numel() else ()
+                else:
+                    raise TypeError(f"{name} must be a NumPy array or torch.Tensor, got {type(value).__name__}")
+                if shape:
+                    shapes.append((name, shape[-2:]))
+                    if canonical in _VOLUMETRIC_TARGETS:
+                        volume_shapes.append((name, shape[-3:]))
+                continue
             vector_field_info = VECTOR_FIELD_TARGET_INFO_BY_NAME.get(canonical)
             if vector_field_info is not None:
                 spatial_rank, _ = vector_field_info
-                shape = self._vector_field_spatial_shape(name, canonical, value, spatial_rank)
-                if shape:
-                    shapes.append((name, shape[-2:]))
-                    if spatial_rank == 3:
-                        volume_shapes.append((name, shape))
-                continue
-            optional_rank = _OPTIONAL_CHANNEL_RANKS.get(canonical)
-            if optional_rank is None:
-                continue
-            shape, target_needs_channel_axis = self._raster_spatial_shape(name, canonical, value, optional_rank)
-            needs_channel_axis |= target_needs_channel_axis
-            if shape:
-                shapes.append((name, shape[-2:]))
-                if canonical in _VOLUMETRIC_TARGETS:
-                    volume_shapes.append((name, shape[-3:]))
+                self._append_vector_field_shapes(name, canonical, value, spatial_rank, shapes, volume_shapes)
 
         self._check_shape_consistency(shapes, volume_shapes)
         return needs_channel_axis
 
-    def _raster_spatial_shape(
+    def _append_vector_field_shapes(
         self,
         name: str,
         canonical: str,
         value: Any,
-        optional_rank: int,
-    ) -> tuple[tuple[int, ...], bool]:
-        if value is None and not self.strict and canonical in MASK_KEYS:
-            return (), False
-        if isinstance(value, np.ndarray):
-            return self._numpy_spatial_shape(name, canonical, value, optional_rank), value.ndim == optional_rank
-        if isinstance(value, torch.Tensor):
-            shape = tuple(value.shape[-3:]) if self.is_check_shapes and value.numel() else ()
-            return shape, False
-        raise TypeError(f"{name} must be a NumPy array or torch.Tensor, got {type(value).__name__}")
+        spatial_rank: int,
+        shapes: list[tuple[str, tuple[int, ...]]],
+        volume_shapes: list[tuple[str, tuple[int, ...]]],
+    ) -> None:
+        shape = self._vector_field_spatial_shape(name, canonical, value, spatial_rank)
+        if not shape:
+            return
+        shapes.append((name, shape[-2:]))
+        if spatial_rank == 3:
+            volume_shapes.append((name, shape))
 
     def _vector_field_spatial_shape(
         self,

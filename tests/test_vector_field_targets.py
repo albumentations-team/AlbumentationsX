@@ -325,3 +325,20 @@ def test_3d_crop_padding_keeps_vector_field_aligned_with_volume(transform_cls: t
 
     assert result["volume"].shape == (4, 3, 4, 1)
     assert result["gradient3d"].shape == (4, 3, 4, 3)
+
+
+def test_none_vector_field_is_ignored_by_non_strict_compose() -> None:
+    image = np.zeros((4, 6, 1), dtype=np.float32)
+    pipeline = A.Compose([A.Resize(height=8, width=12, p=1.0)], strict=False)
+
+    result = pipeline(image=image, gradient=None)
+
+    assert result["image"].shape == (8, 12, 1)
+    assert result["gradient"] is None
+
+
+def test_strict_compose_rejects_none_vector_field() -> None:
+    image = np.zeros((4, 6, 1), dtype=np.float32)
+
+    with pytest.raises(TypeError, match=r"NumPy array or torch\.Tensor"):
+        A.Compose([], strict=True)(image=image, gradient=None)

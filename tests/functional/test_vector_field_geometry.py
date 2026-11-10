@@ -758,3 +758,56 @@ def test_random_grid_shuffle_preserves_reindexed_z_displacement(monkeypatch: pyt
     expected_z = (4, 5, 6, 7, 0, 1, 2, 3)
     np.testing.assert_array_equal(result["volume"][0, 0, :, 0], expected_z)
     np.testing.assert_array_equal(result["displacement3d"][0, 0, :, 2], expected_z)
+
+
+def test_random_grid_shuffle_reindexes_fields_with_non_involutive_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
+    height, width = 2, 9
+    volume = np.zeros((height, width, 1), dtype=np.float32)
+    field = np.zeros((height, width, 2), dtype=np.float32)
+    tile_values = (10.0, 20.0, 30.0)
+    for tile_index, value in enumerate(tile_values):
+        tile = slice(tile_index * 3, (tile_index + 1) * 3)
+        volume[:, tile, 0] = value
+        field[:, tile, 0] = value
+    tiles = np.asarray(((0, 0, height, 3), (0, 3, height, 6), (0, 6, height, 9)), dtype=np.int32)
+    transform = A.RandomGridShuffle(grid=(1, 3), p=1.0)
+    monkeypatch.setattr(
+        transform,
+        "sample_parameters",
+        lambda *_args, **_kwargs: SampledParams(params={"tiles": tiles, "mapping": [1, 2, 0]}),
+    )
+
+    result = A.Compose([transform], strict=True)(image=volume, vector_field=field)
+
+    for x in (1, 4, 7):
+        np.testing.assert_array_equal(result["vector_field"][:, x, 0], result["image"][:, x, 0])
+
+
+def test_grid_shuffle3d_reindexes_fields_with_non_involutive_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
+    depth, height, width = 2, 2, 9
+    volume = np.zeros((depth, height, width, 1), dtype=np.float32)
+    field = np.zeros((depth, height, width, 3), dtype=np.float32)
+    tile_values = (10.0, 20.0, 30.0)
+    for tile_index, value in enumerate(tile_values):
+        tile = slice(tile_index * 3, (tile_index + 1) * 3)
+        volume[:, :, tile, 0] = value
+        field[:, :, tile, 0] = value
+    tiles = np.asarray(
+        (
+            (0, 0, 0, depth, height, 3),
+            (0, 0, 3, depth, height, 6),
+            (0, 0, 6, depth, height, width),
+        ),
+        dtype=np.int32,
+    )
+    transform = A.GridShuffle3D(grid_zyx=(1, 1, 3), p=1.0)
+    monkeypatch.setattr(
+        transform,
+        "sample_parameters",
+        lambda *_args, **_kwargs: SampledParams(params={"tiles": tiles, "mapping": [1, 2, 0]}),
+    )
+
+    result = A.Compose([transform], strict=True)(volume=volume, vector_field3d=field)
+
+    for x in (1, 4, 7):
+        np.testing.assert_array_equal(result["vector_field3d"][:, :, x, 0], result["volume"][:, :, x, 0])

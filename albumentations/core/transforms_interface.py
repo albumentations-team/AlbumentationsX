@@ -1973,8 +1973,10 @@ class DualTransform(BasicTransform):
         return transformed
 
     def _dispatch_vector_field_target(
-        self, target: str, field: NDArray[np.generic] | torch.Tensor, **params: Any
+        self, target: str, field: NDArray[np.generic] | torch.Tensor | None, **params: Any
     ) -> Any:
+        if field is None:
+            return None
         field_array = tensor_to_numpy_spatial(field, target) if isinstance(field, torch.Tensor) else field
         field_array = cast("NDArray[np.float16] | NDArray[np.float32]", field_array)
         transformed = self._apply_vector_field_target(target, field_array, **params)

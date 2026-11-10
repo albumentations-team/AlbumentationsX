@@ -2936,6 +2936,8 @@ class Compose(BaseCompose, HubMixin):
                 continue
             vector_field_info = VECTOR_FIELD_TARGET_INFO_BY_NAME.get(canonical)
             if vector_field_info is not None:
+                if value is None and not self.strict:
+                    continue
                 spatial_rank, _ = vector_field_info
                 self._append_vector_field_shapes(name, canonical, value, spatial_rank, shapes, volume_shapes)
 

@@ -74,6 +74,7 @@ def test_compatibility_is_exactly_one_job_for_each_os_python_contract() -> None:
 
 
 def test_compatibility_exercises_installed_hub_before_the_base_suite() -> None:
+    """Require the Linux/Python 3.11 job to enable Hub before running the base suite."""
     steps = _workflow()["jobs"]["compatibility"]["steps"]
     hub_steps = [step for step in steps if "--extra hub" in step.get("run", "")]
 

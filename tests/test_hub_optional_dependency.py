@@ -15,6 +15,7 @@ from albumentations.core import hub_mixin
 
 @pytest.mark.parametrize("route", ["remote", "local", "missing-local-file", "push"])
 def test_hub_without_optional_dependency(tmp_path: Path, route: str) -> None:
+    """Verify remote, local, missing-file, and push routes with Hub imports blocked."""
     script = textwrap.dedent(
         """
         import importlib.abc
@@ -24,12 +25,15 @@ def test_hub_without_optional_dependency(tmp_path: Path, route: str) -> None:
         from types import ModuleType
 
         class BlockHubImports(importlib.abc.MetaPathFinder):
+            '''Simulate an absent Hub package in a fresh interpreter.'''
+
             def find_spec(
                 self,
                 fullname: str,
                 path: Sequence[str] | None = None,
                 target: ModuleType | None = None,
             ) -> None:
+                '''Reject Hub imports and let other finders resolve unrelated modules.'''
                 if fullname == "huggingface_hub" or fullname.startswith("huggingface_hub."):
                     raise ModuleNotFoundError("Hub import blocked by test", name=fullname)
                 return None
@@ -94,6 +98,7 @@ def test_hub_download_forwards_arguments(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
+    """Preserve download arguments and warn that proxies are unsupported."""
     monkeypatch.chdir(tmp_path)
     transform = A.Compose([A.NoOp()], telemetry=False)
     save_directory = tmp_path / "saved"
@@ -129,6 +134,7 @@ def test_hub_download_forwards_arguments(
 
 @pytest.mark.skipif(not hub_mixin.is_huggingface_hub_available, reason="huggingface_hub is not available")
 def test_local_load_with_hub_installed(tmp_path: Path) -> None:
+    """Load valid local configurations without downloading when Hub is installed."""
     transform = A.Compose([A.NoOp()], telemetry=False)
     transform.save_pretrained(tmp_path)
 
@@ -141,6 +147,7 @@ def test_local_load_with_hub_installed(tmp_path: Path) -> None:
 
 @pytest.mark.skipif(not hub_mixin.is_huggingface_hub_available, reason="huggingface_hub is not available")
 def test_hub_http_error_preserves_response(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Preserve the Hub HTTP error type, response, and cause when adding context."""
     monkeypatch.chdir(tmp_path)
     response = Mock(headers={}, request=Mock())
     original_error = hub_mixin.HfHubHTTPError("download failed", response=response)

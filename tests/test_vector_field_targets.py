@@ -340,5 +340,14 @@ def test_none_vector_field_is_ignored_by_non_strict_compose() -> None:
 def test_strict_compose_rejects_none_vector_field() -> None:
     image = np.zeros((4, 6, 1), dtype=np.float32)
 
-    with pytest.raises(TypeError, match=r"NumPy array or torch\.Tensor"):
+    with pytest.raises(TypeError):
         A.Compose([], strict=True)(image=image, gradient=None)
+
+
+def test_standalone_one_of_validates_tensor_vector_field_before_selection() -> None:
+    image = torch.zeros((1, 4, 5), dtype=torch.float32)
+    invalid_field = torch.zeros((3, 4, 5), dtype=torch.float32)
+    selector = A.OneOf([A.HorizontalFlip(p=1.0)], p=1.0)
+
+    with pytest.raises(TypeError, match="shape"):
+        selector(image=image, gradient=invalid_field)

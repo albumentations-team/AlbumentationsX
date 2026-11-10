@@ -695,8 +695,8 @@ def warp_vector_field_2d(
         return result
 
     if matrix.shape == (2, 3):
-        lifted_to_3d = semantics in {"gradient3d", "vector_field3d", "normal", "normal3d"}
-        forward_jacobian = np.eye(3 if lifted_to_3d else 2, dtype=np.float32)
+        three_component_semantics = semantics in {"gradient3d", "vector_field3d", "normal3d"}
+        forward_jacobian = np.eye(3 if three_component_semantics else 2, dtype=np.float32)
         forward_jacobian[:2, :2] = matrix[:2, :2]
         transformed = (
             transform_vector_components_3d(
@@ -704,7 +704,7 @@ def warp_vector_field_2d(
                 forward_jacobian,
                 semantics=semantics,
             )
-            if semantics in {"gradient3d", "vector_field3d", "normal3d"}
+            if three_component_semantics
             else transform_vector_components_2d(
                 sampled,
                 matrix[:2, :2],

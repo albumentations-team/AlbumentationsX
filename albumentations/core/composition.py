@@ -900,6 +900,20 @@ class BaseCompose(InvocationRngOwner, Serializable):
             prime_py_random=prime_py_random,
         )
 
+    def _validate_vector_fields_for_invocation(
+        self,
+        data: Mapping[str, Any],
+        invocation: InvocationContext,
+    ) -> None:
+        """Validate fields once at a standalone selector's root before it dispatches a child directly."""
+        if invocation.vector_fields_validated:
+            return
+        for name, value in data.items():
+            canonical = self._additional_targets.get(name, name)
+            if value is not None and canonical in VECTOR_FIELD_TARGET_INFO_BY_NAME:
+                validate_vector_field_input(value, name, canonical)
+        invocation.vector_fields_validated = True
+
     def set_mask_interpolation(self, mask_interpolation: int | None) -> None:
         """Set interpolation mode for mask resizing operations. Propagates recursively to all
         transforms; overrides mask_interpolation on each. Use OpenCV flags.
@@ -3949,7 +3963,9 @@ class OneOf(BaseCompose):
         if invocation is None:
             invocation = self._new_invocation_context()
             with invocation:
+                self._validate_vector_fields_for_invocation(data, invocation)
                 return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
+        self._validate_vector_fields_for_invocation(data, invocation)
         return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
 
     def apply_in_invocation(
@@ -4086,7 +4102,9 @@ class SomeOf(BaseCompose):
         if invocation is None:
             invocation = self._new_invocation_context()
             with invocation:
+                self._validate_vector_fields_for_invocation(data, invocation)
                 return self.apply_in_invocation(invocation, *arg, force_apply=force_apply, **data)
+        self._validate_vector_fields_for_invocation(data, invocation)
         return self.apply_in_invocation(invocation, *arg, force_apply=force_apply, **data)
 
     def apply_in_invocation(
@@ -4254,7 +4272,9 @@ class OneOrOther(BaseCompose):
         if invocation is None:
             invocation = self._new_invocation_context()
             with invocation:
+                self._validate_vector_fields_for_invocation(data, invocation)
                 return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
+        self._validate_vector_fields_for_invocation(data, invocation)
         return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
 
     def apply_in_invocation(
@@ -4354,7 +4374,9 @@ class SelectiveChannelTransform(BaseCompose):
         if invocation is None:
             invocation = self._new_invocation_context()
             with invocation:
+                self._validate_vector_fields_for_invocation(data, invocation)
                 return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
+        self._validate_vector_fields_for_invocation(data, invocation)
         return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
 
     def apply_in_invocation(
@@ -4930,7 +4952,9 @@ class Sequential(BaseCompose):
         if invocation is None:
             invocation = self._new_invocation_context()
             with invocation:
+                self._validate_vector_fields_for_invocation(data, invocation)
                 return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
+        self._validate_vector_fields_for_invocation(data, invocation)
         return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
 
     def apply_in_invocation(

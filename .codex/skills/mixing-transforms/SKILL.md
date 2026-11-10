@@ -147,3 +147,12 @@ if not usable_donors:
 # Mosaic: remaining cells use copies of the primary item.
 final_items = [primary, *usable_donors, *replicated_primary_items]
 ```
+
+## 7. Vector field inputs
+
+`CopyAndPaste`, `Mosaic`, `OverlayElements`, `Morphological`, and `PixelSpread` do not define how their mixing or
+masking operation transforms vector fields. If any canonical field or `additional_targets` alias is present, the
+entire node is skipped before sampling or reading donor metadata. The trace reports `skipped_unsupported_target`.
+Without fields, the transform keeps its regular behavior. Keep this policy synchronized with
+[Vector fields](../../../docs/vector-fields.md) and `tests/test_vector_field_targets.py` when changing one of these
+transforms.

@@ -18,6 +18,10 @@ from pydantic import AfterValidator, field_validator, model_validator
 
 from albumentations.augmentations.crops._sampling import SamplingMethod, sample_3d_crop_shape
 from albumentations.augmentations.geometric import functional as fgeometric
+from albumentations.augmentations.geometric._functional_vector_fields import (
+    transform_vector_components_3d,
+    warp_vector_field_from_pull_grid_3d,
+)
 from albumentations.augmentations.transforms3d import functional as f3d
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.keypoints_utils import KeypointsProcessor
@@ -29,8 +33,9 @@ from albumentations.core.type_definitions import (
     CV2_BORDER_CONSTANT,
     CV2_INTER_LINEAR,
     CV2_INTER_NEAREST,
+    VECTOR_FIELD_3D_TARGET_NAMES,
+    VOLUME_GEOMETRIC_TARGETS,
     C4GroupElement,
-    Targets,
     VolumeType,
     c4_group_elements,
 )
@@ -73,6 +78,176 @@ def _sampling_volume_shape(targets: TargetSet) -> tuple[int, int, int]:
     return targets.require_aligned_spatial_shape(NUM_DIMENSIONS)
 
 
+def _forward_matrix_from_reindex(reindex: Any) -> np.ndarray:
+    depth, height, width = np.mgrid[:3, :3, :3]
+    coordinate_grid = np.stack((width, height, depth), axis=-1).astype(np.float32)
+    mapped = reindex(coordinate_grid)
+    center = mapped[1, 1, 1]
+    pull_jacobian = np.column_stack(
+        (
+            mapped[1, 1, 2] - center,
+            mapped[1, 2, 1] - center,
+            mapped[2, 1, 1] - center,
+        ),
+    )
+    try:
+        return np.linalg.inv(pull_jacobian).astype(np.float32, copy=False)
+    except np.linalg.LinAlgError:
+        return np.full((3, 3), np.nan, dtype=np.float32)
+
+
+def _apply_reindexed_vector_field_3d(field: np.ndarray, target: str, reindex: Any) -> np.ndarray:
+    transformed = reindex(field)
+    matrix = _forward_matrix_from_reindex(reindex)
+    return transform_vector_components_3d(transformed, matrix, semantics=target)
+
+
+def _reindex_vector_field_tiles_3d(
+    field: np.ndarray,
+    tiles: np.ndarray,
+    mapping: list[int],
+) -> tuple[np.ndarray, np.ndarray]:
+    source_to_destination = np.empty(len(mapping), dtype=np.intp)
+    result = np.empty(field.shape, dtype=np.float32)
+    for destination_index, source_index in enumerate(mapping):
+        source_to_destination[source_index] = destination_index
+        dest_z0, dest_y0, dest_x0, dest_z1, dest_y1, dest_x1 = (int(value) for value in tiles[destination_index])
+        src_z0, src_y0, src_x0, src_z1, src_y1, src_x1 = (int(value) for value in tiles[source_index])
+        result[dest_z0:dest_z1, dest_y0:dest_y1, dest_x0:dest_x1] = field[
+            src_z0:src_z1,
+            src_y0:src_y1,
+            src_x0:src_x1,
+        ].astype(np.float32, copy=False)
+    return result, source_to_destination
+
+
+def _tile_boundary_mask_3d(
+    points_x: np.ndarray,
+    points_y: np.ndarray,
+    points_z: np.ndarray,
+    matches: np.ndarray,
+    tile: np.ndarray,
+    shape: tuple[int, int, int],
+) -> np.ndarray:
+    depth, height, width = shape
+    z0, y0, x0, z1, y1, x1 = (int(value) for value in tile)
+    ambiguous = np.zeros(matches.shape, dtype=bool)
+    for coordinate, lower, upper, length in (
+        (points_x, x0, x1, width),
+        (points_y, y0, y1, height),
+        (points_z, z0, z1, depth),
+    ):
+        if lower > 0:
+            ambiguous |= matches & (np.abs(coordinate - (lower - 0.5)) <= 1e-4)
+        if upper < length:
+            ambiguous |= matches & (np.abs(coordinate - (upper - 0.5)) <= 1e-4)
+    return ambiguous
+
+
+def _map_tile_endpoints_3d(
+    endpoint_x: np.ndarray,
+    endpoint_y: np.ndarray,
+    endpoint_z: np.ndarray,
+    valid: np.ndarray,
+    tiles: np.ndarray,
+    source_to_destination: np.ndarray,
+    shape: tuple[int, int, int],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    mapped_x = np.full(endpoint_x.shape, np.nan, dtype=np.float32)
+    mapped_y = np.full_like(mapped_x, np.nan)
+    mapped_z = np.full_like(mapped_x, np.nan)
+    assigned = np.zeros(endpoint_x.shape, dtype=bool)
+    ambiguous = np.zeros(endpoint_x.shape, dtype=bool)
+    for source_index, tile in enumerate(tiles):
+        z0, y0, x0, z1, y1, x1 = (int(value) for value in tile)
+        matches = valid & (endpoint_x >= x0 - 0.5) & (endpoint_x < x1 - 0.5)
+        matches &= (endpoint_y >= y0 - 0.5) & (endpoint_y < y1 - 0.5)
+        matches &= (endpoint_z >= z0 - 0.5) & (endpoint_z < z1 - 0.5)
+        if not matches.any():
+            continue
+        dest_z0, dest_y0, dest_x0, _, _, _ = (int(value) for value in tiles[int(source_to_destination[source_index])])
+        mapped_x[matches] = np.float32(dest_x0) + endpoint_x[matches] - np.float32(x0)
+        mapped_y[matches] = np.float32(dest_y0) + endpoint_y[matches] - np.float32(y0)
+        mapped_z[matches] = np.float32(dest_z0) + endpoint_z[matches] - np.float32(z0)
+        assigned |= matches
+        ambiguous |= _tile_boundary_mask_3d(endpoint_x, endpoint_y, endpoint_z, matches, tile, shape)
+    return mapped_x, mapped_y, mapped_z, valid & assigned & ~ambiguous
+
+
+def _shuffle_displacement_tiles_3d(
+    field: np.ndarray,
+    result: np.ndarray,
+    tiles: np.ndarray,
+    mapping: list[int],
+    source_to_destination: np.ndarray,
+) -> np.ndarray:
+    depth, height, width = field.shape[:3]
+    for destination_index, source_index in enumerate(mapping):
+        z0, y0, x0, z1, y1, x1 = (int(value) for value in tiles[destination_index])
+        src_z0, src_y0, src_x0, _, _, _ = (int(value) for value in tiles[source_index])
+        destination_slice = (slice(z0, z1), slice(y0, y1), slice(x0, x1))
+        tile_depth, tile_height, tile_width = result[destination_slice].shape[:3]
+        local_z, local_y, local_x = np.mgrid[:tile_depth, :tile_height, :tile_width].astype(np.float32)
+        query_x, query_y, query_z = local_x + x0, local_y + y0, local_z + z0
+        tile_field = result[destination_slice]
+        endpoint_x = local_x + src_x0 + tile_field[..., 0]
+        endpoint_y = local_y + src_y0 + tile_field[..., 1]
+        endpoint_z = local_z + src_z0 + tile_field[..., 2]
+        valid = np.isfinite(tile_field).all(axis=-1)
+        valid &= (endpoint_x >= -0.5) & (endpoint_x < width - 0.5)
+        valid &= (endpoint_y >= -0.5) & (endpoint_y < height - 0.5)
+        valid &= (endpoint_z >= -0.5) & (endpoint_z < depth - 0.5)
+        mapped_x, mapped_y, mapped_z, valid = _map_tile_endpoints_3d(
+            endpoint_x,
+            endpoint_y,
+            endpoint_z,
+            valid,
+            tiles,
+            source_to_destination,
+            (depth, height, width),
+        )
+        tile_field[..., 0] = mapped_x - query_x
+        tile_field[..., 1] = mapped_y - query_y
+        tile_field[..., 2] = mapped_z - query_z
+        tile_field[~valid] = np.nan
+    return result
+
+
+def _invalidate_shuffle_tile_faces_3d(result: np.ndarray, tiles: np.ndarray) -> np.ndarray:
+    depth, height, width = result.shape[:3]
+    for tile in tiles:
+        z0, y0, x0, z1, y1, x1 = (int(value) for value in tile)
+        tile_result = result[z0:z1, y0:y1, x0:x1]
+        if z0 > 0:
+            tile_result[0, ...] = np.nan
+        if z1 < depth:
+            tile_result[-1, ...] = np.nan
+        if y0 > 0:
+            tile_result[:, 0, ...] = np.nan
+        if y1 < height:
+            tile_result[:, -1, ...] = np.nan
+        if x0 > 0:
+            tile_result[:, :, 0, :] = np.nan
+        if x1 < width:
+            tile_result[:, :, -1, :] = np.nan
+    return result
+
+
+def _shuffle_vector_field_3d(
+    field: np.ndarray,
+    tiles: np.ndarray,
+    mapping: list[int],
+    *,
+    displacement: bool,
+) -> np.ndarray:
+    if tiles.size == 0 or mapping == list(range(len(mapping))):
+        return field
+    result, source_to_destination = _reindex_vector_field_tiles_3d(field, tiles, mapping)
+    if displacement:
+        return _shuffle_displacement_tiles_3d(field, result, tiles, mapping, source_to_destination)
+    return _invalidate_shuffle_tile_faces_3d(result, tiles)
+
+
 def _crop_3d(
     volume: VolumeType | torch.Tensor,
     crop_coords: tuple[int, int, int, int, int, int],
@@ -112,7 +287,7 @@ class Affine3D(Transform3D):
         p (float): Probability of applying the transform. Default: `0.5`.
 
     Targets:
-        volume, volumes, mask3d, masks3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints, gradient3d, displacement3d, vector_field3d, normal3d
 
     Image types:
         uint8, float16, float32
@@ -156,7 +331,7 @@ class Affine3D(Transform3D):
 
     """
 
-    _targets = (Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D, Targets.KEYPOINTS)
+    _targets = VOLUME_GEOMETRIC_TARGETS
 
     class InitSchema(BaseTransformInitSchema):
         rotate_range: AxisRanges3D
@@ -330,7 +505,7 @@ class ElasticTransform3D(Transform3D):
         p (float): Probability of applying the transform. Default: `0.5`.
 
     Targets:
-        volume, volumes, mask3d, masks3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints, gradient3d, displacement3d, vector_field3d, normal3d
 
     Image types:
         uint8, float16, float32
@@ -376,7 +551,7 @@ class ElasticTransform3D(Transform3D):
 
     """
 
-    _targets = (Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D, Targets.KEYPOINTS)
+    _targets = VOLUME_GEOMETRIC_TARGETS
 
     class InitSchema(BaseTransformInitSchema):
         displacement_range: Annotated[
@@ -442,7 +617,7 @@ class ElasticTransform3D(Transform3D):
         raster_target_count = sum(
             len(view.value) if view.canonical_type in {"volumes", "masks3d"} else 1
             for view in targets.ordered
-            if view.canonical_type in {"volume", "volumes", "mask3d", "masks3d"}
+            if view.canonical_type in {"volume", "volumes", "mask3d", "masks3d", *VECTOR_FIELD_3D_TARGET_NAMES}
         )
         low, high = self.displacement_range
         magnitude = low if low == high else sampling.py_random.uniform(low, high)
@@ -509,6 +684,35 @@ class ElasticTransform3D(Transform3D):
             ),
         )
 
+    def _apply_vector_field_target(
+        self,
+        target: str,
+        field: np.ndarray,
+        **params: Any,
+    ) -> np.ndarray:
+        sampler = params["sampler"]
+        if not sampler["control_coefficients"]:
+            return field
+        sampling_grid = getattr(sampler, "sampling_grid", None)
+        uses_cached_grid = sampling_grid is not None
+        if sampling_grid is None:
+            sampling_grid = f3d.create_elastic_grid_3d(
+                sampler["control_coefficients"],
+                tuple(sampler["volume_shape"]),
+            )
+        try:
+            return warp_vector_field_from_pull_grid_3d(
+                field,
+                sampling_grid,
+                semantics=target,
+                inverse_model=sampler["control_coefficients"] if target == "displacement3d" else None,
+            )
+        finally:
+            if uses_cached_grid:
+                release_sampling_grid = getattr(sampler, "release_sampling_grid", None)
+                if callable(release_sampling_grid):
+                    release_sampling_grid()
+
     def apply_to_keypoints(
         self,
         keypoints: np.ndarray,
@@ -543,7 +747,7 @@ class Resize3D(Transform3D):
         p (float): Probability of applying the transform. Default: `1.0`.
 
     Targets:
-        volume, volumes, mask3d, masks3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints, gradient3d, displacement3d, vector_field3d, normal3d
 
     Image types:
         uint8, float16, float32
@@ -580,7 +784,7 @@ class Resize3D(Transform3D):
 
     """
 
-    _targets = (Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D, Targets.KEYPOINTS)
+    _targets = VOLUME_GEOMETRIC_TARGETS
 
     class InitSchema(BaseTransformInitSchema):
         size: Annotated[tuple[int, int, int], AfterValidator(check_range_bounds(1, None))]
@@ -649,7 +853,7 @@ class RandomResizedCrop3D(Transform3D):
             Default: `"standard"`.
 
     Targets:
-        volume, volumes, mask3d, masks3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints, gradient3d, displacement3d, vector_field3d, normal3d
 
     Image types:
         uint8, float16, float32
@@ -672,7 +876,7 @@ class RandomResizedCrop3D(Transform3D):
 
     """
 
-    _targets = (Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D, Targets.KEYPOINTS)
+    _targets = VOLUME_GEOMETRIC_TARGETS
 
     class InitSchema(BaseTransformInitSchema):
         size: Annotated[tuple[int, int, int], AfterValidator(check_range_bounds(1, None))]
@@ -874,7 +1078,7 @@ class BasePad3D(Transform3D):
 
     """
 
-    _targets = (Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D, Targets.KEYPOINTS)
+    _targets = VOLUME_GEOMETRIC_TARGETS
 
     class InitSchema(BaseTransformInitSchema):
         fill: tuple[float, ...] | float
@@ -947,7 +1151,7 @@ class Pad3D(BasePad3D):
         p (float): probability of applying the transform. Default: 1.0.
 
     Targets:
-        volume, volumes, mask3d, masks3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints, gradient3d, displacement3d, vector_field3d, normal3d
 
     Image types:
         uint8, float16, float32
@@ -1087,7 +1291,7 @@ class PadIfNeeded3D(BasePad3D):
         p (float): Probability of applying the transform. Default: 1.0
 
     Targets:
-        volume, volumes, mask3d, masks3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints, gradient3d, displacement3d, vector_field3d, normal3d
 
     Image types:
         uint8, float16, float32
@@ -1309,7 +1513,7 @@ class BaseCropAndPad3D(Transform3D):
 
     """
 
-    _targets = (Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D, Targets.KEYPOINTS)
+    _targets = VOLUME_GEOMETRIC_TARGETS
 
     InitSchema: ClassVar[type[BaseTransformInitSchema]] = _BaseCropAndPad3DInitSchema
 
@@ -1516,7 +1720,7 @@ class CenterCrop3D(BaseCropAndPad3D):
         p (float): probability of applying the transform. Default: 1.0
 
     Targets:
-        volume, volumes, mask3d, masks3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints, gradient3d, displacement3d, vector_field3d, normal3d
 
     Image types:
         uint8, float16, float32
@@ -1676,7 +1880,7 @@ class RandomCrop3D(BaseCropAndPad3D):
         p (float): probability of applying the transform. Default: 1.0
 
     Targets:
-        volume, volumes, mask3d, masks3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints, gradient3d, displacement3d, vector_field3d, normal3d
 
     Image types:
         uint8, float16, float32
@@ -1824,7 +2028,7 @@ class CoarseDropout3D(Transform3D):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        volume, volumes, mask3d, masks3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints, gradient3d, displacement3d, vector_field3d, normal3d
 
     Image types:
         uint8, float16, float32
@@ -1855,7 +2059,7 @@ class CoarseDropout3D(Transform3D):
 
     """
 
-    _targets = (Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D, Targets.KEYPOINTS)
+    _targets = VOLUME_GEOMETRIC_TARGETS
 
     class InitSchema(BaseTransformInitSchema):
         num_holes_range: Annotated[
@@ -2064,7 +2268,7 @@ class Flip3D(Transform3D):
         p (float): Probability of applying the transform. Default: 1.0.
 
     Targets:
-        volume, volumes, mask3d, masks3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints, gradient3d, displacement3d, vector_field3d, normal3d
 
     Image types:
         uint8, float16, float32
@@ -2090,7 +2294,7 @@ class Flip3D(Transform3D):
 
     """
 
-    _targets = (Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D, Targets.KEYPOINTS)
+    _targets = VOLUME_GEOMETRIC_TARGETS
 
     class InitSchema(BaseTransformInitSchema):
         axes: tuple[AxisIndex3D, ...]
@@ -2175,6 +2379,21 @@ class Flip3D(Transform3D):
         flipped: np.ndarray = np.flip(mask3d, axis=flip_axes)
         return cast("VolumeType", flipped)
 
+    def _apply_vector_field_target(
+        self,
+        target: str,
+        field: np.ndarray,
+        **params: Any,
+    ) -> np.ndarray:
+        flip_axes = params["flip_axes"]
+        if not flip_axes:
+            return field
+        component_matrix = np.eye(3, dtype=np.float32)
+        for spatial_axis in flip_axes:
+            component_matrix[2 - spatial_axis, 2 - spatial_axis] = -1
+        transformed = np.flip(field, axis=flip_axes)
+        return transform_vector_components_3d(transformed, component_matrix, semantics=target)
+
     def apply_to_keypoints(
         self,
         keypoints: np.ndarray,
@@ -2227,7 +2446,7 @@ class CubicSymmetry(Transform3D):
         p (float): Probability of applying the transform. Default: 1.0
 
     Targets:
-        volume, volumes, mask3d, masks3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints, gradient3d, displacement3d, vector_field3d, normal3d
 
     Image types:
         uint8, float16, float32
@@ -2258,7 +2477,7 @@ class CubicSymmetry(Transform3D):
 
     """
 
-    _targets = (Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D, Targets.KEYPOINTS)
+    _targets = VOLUME_GEOMETRIC_TARGETS
 
     def __init__(
         self,
@@ -2300,6 +2519,12 @@ class CubicSymmetry(Transform3D):
     def apply_to_volume(self, volume: VolumeType, index: int, **params: Any) -> VolumeType:
         return f3d.transform_cube(volume, index)
 
+    def _apply_vector_field_target(self, target: str, field: np.ndarray, **params: Any) -> np.ndarray:
+        index = params["index"]
+        if index == 0:
+            return field
+        return _apply_reindexed_vector_field_3d(field, target, lambda value: f3d.transform_cube(value, index))
+
     def apply_to_keypoints(
         self,
         keypoints: np.ndarray,
@@ -2336,7 +2561,7 @@ class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified 
         p (float): Probability of applying the transform. Default: 1.0.
 
     Targets:
-        volume, volumes, mask3d, masks3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints, gradient3d, displacement3d, vector_field3d, normal3d
 
     Image types:
         uint8, float16, float32
@@ -2355,7 +2580,7 @@ class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified 
 
     """
 
-    _targets = (Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D, Targets.KEYPOINTS)
+    _targets = VOLUME_GEOMETRIC_TARGETS
 
     class InitSchema(BaseTransformInitSchema):
         axis_pairs: tuple[AxisPair3D, ...]
@@ -2430,6 +2655,22 @@ class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified 
     ) -> VolumeType:
         return f3d.rotate90_3d(mask3d, rotation_count, axis_pair)
 
+    def _apply_vector_field_target(
+        self,
+        target: str,
+        field: np.ndarray,
+        **params: Any,
+    ) -> np.ndarray:
+        axis_pair = params["axis_pair"]
+        rotation_count = params["rotation_count"]
+        if rotation_count == 0:
+            return field
+        return _apply_reindexed_vector_field_3d(
+            field,
+            target,
+            lambda value: f3d.rotate90_3d(value, rotation_count, axis_pair),
+        )
+
     def apply_to_keypoints(
         self,
         keypoints: np.ndarray,
@@ -2476,7 +2717,7 @@ class GridShuffle3D(Transform3D):
             Default: 0.5
 
     Targets:
-        volume, volumes, mask3d, masks3d, keypoints
+        volume, volumes, mask3d, masks3d, keypoints, gradient3d, displacement3d, vector_field3d, normal3d
 
     Image types:
         uint8, float16, float32
@@ -2528,7 +2769,7 @@ class GridShuffle3D(Transform3D):
     class InitSchema(BaseTransformInitSchema):
         grid_zyx: Annotated[tuple[int, int, int], AfterValidator(check_range_bounds(1, None))]
 
-    _targets = (Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D, Targets.KEYPOINTS)
+    _targets = VOLUME_GEOMETRIC_TARGETS
 
     def __init__(
         self,
@@ -2546,6 +2787,21 @@ class GridShuffle3D(Transform3D):
         **params: Any,
     ) -> VolumeType:
         return f3d.swap_tiles_on_volume(volume, tiles, mapping)
+
+    def _apply_vector_field_target(
+        self,
+        target: str,
+        field: np.ndarray,
+        **params: Any,
+    ) -> np.ndarray:
+        tiles = params["tiles"]
+        mapping = params["mapping"]
+        return _shuffle_vector_field_3d(
+            field,
+            tiles,
+            mapping,
+            displacement=target == "displacement3d",
+        )
 
     def apply_to_keypoints(
         self,

@@ -12,7 +12,11 @@ import numpy as np
 import torch
 from albucore import MAX_VALUES_BY_DTYPE
 
-from .type_definitions import Targets
+from .type_definitions import (
+    VECTOR_FIELD_TARGET_INFO_BY_NAME,
+    VECTOR_FIELD_TARGET_NAMES,
+    Targets,
+)
 from .utils import get_volume_shape, get_volumes_shape
 
 _TARGET_ORDER = {
@@ -27,7 +31,12 @@ _TARGET_ORDER = {
     "bboxes": 8,
     "keypoints": 9,
     "user_data": 10,
+    **{name: 11 + index for index, name in enumerate(sorted(VECTOR_FIELD_TARGET_NAMES))},
 }
+_VECTOR_FIELD_TARGETS = VECTOR_FIELD_TARGET_NAMES
+_VECTOR_FIELD_3D_TARGETS = frozenset(
+    name for name, (spatial_rank, _) in VECTOR_FIELD_TARGET_INFO_BY_NAME.items() if spatial_rank == 3
+)
 _PARAMETER_SCHEMA = 3
 _PARAMETER_PAYLOAD_KEYS = frozenset({"parameter_schema", "target_schema", "params", "target_params"})
 _TARGET_PARAMETER_PAYLOAD_KEYS = frozenset({"targets", "params", "requirements"})
@@ -425,7 +434,8 @@ def _spatial_shape_for_rank(view: TargetView, rank: int) -> tuple[int, ...] | No
     if rank == 3:
         return (
             tuple(spatial_shape)
-            if view.canonical_type in {"volume", "volumes", "mask3d", "masks3d"} and len(spatial_shape) == 3
+            if (view.canonical_type in {"volume", "volumes", "mask3d", "masks3d"} | _VECTOR_FIELD_3D_TARGETS)
+            and len(spatial_shape) == 3
             else None
         )
     return tuple(spatial_shape[-2:]) if len(spatial_shape) >= 2 else None
@@ -441,11 +451,93 @@ def _describe_target(name: str, canonical_type: str, value: Any) -> TargetDescri
     shape = tuple(int(dim) for dim in value.shape) if hasattr(value, "shape") else None
     dtype = getattr(value, "dtype", None)
     volume_shape = (
-        (get_volume_shape(value) if canonical_type in {"volume", "mask3d"} else get_volumes_shape(value))
-        if canonical_type in {"volume", "volumes", "mask3d", "masks3d"} and isinstance(value, np.ndarray | torch.Tensor)
+        (
+            get_volume_shape(value)
+            if canonical_type in {"volume", "mask3d"} | _VECTOR_FIELD_3D_TARGETS
+            else get_volumes_shape(value)
+        )
+        if canonical_type in {"volume", "volumes", "mask3d", "masks3d"} | _VECTOR_FIELD_3D_TARGETS
+        and isinstance(value, np.ndarray | torch.Tensor)
         else None
     )
     return _describe_target_cached(name, canonical_type, shape, dtype, isinstance(value, torch.Tensor), volume_shape)
+
+
+def _describe_vector_field_layout(
+    canonical_type: str,
+    shape: tuple[int, ...],
+    tensor: bool,
+    volume_shape: tuple[int, int, int] | None,
+) -> tuple[tuple[int, ...] | None, int, str, str]:
+    spatial_rank, component_count = VECTOR_FIELD_TARGET_INFO_BY_NAME[canonical_type]
+    spatial_shape: tuple[int, ...] | None
+    if spatial_rank == 2:
+        spatial_shape = shape[1:3] if tensor else shape[:2]
+        layout = f"{canonical_type}_{'chw' if tensor else 'hwc'}"
+        topology = f"{canonical_type}_2d"
+    else:
+        spatial_shape = volume_shape
+        layout = f"{canonical_type}_{'cdhw' if tensor else 'dhwc'}"
+        topology = f"{canonical_type}_3d"
+    return spatial_shape, shape[0] if tensor else component_count, layout, topology
+
+
+def _describe_image_layout(
+    canonical_type: str,
+    shape: tuple[int, ...],
+    tensor: bool,
+    volume_shape: tuple[int, int, int] | None,
+) -> tuple[tuple[int, ...] | None, int, str, str]:
+    spatial_shape: tuple[int, ...] | None
+    channels: int
+    layout: str
+    topology: str
+    if canonical_type == "image":
+        spatial_shape = shape[1:3] if tensor else shape[:2]
+        channels = shape[0] if tensor else (shape[-1] if len(shape) > 2 else 1)
+        layout, topology = ("image_chw", "image_2d") if tensor else ("image_hwc", "image_2d")
+    elif canonical_type == "images":
+        spatial_shape = shape[2:4] if tensor else shape[1:3]
+        channels = shape[1] if tensor else (shape[-1] if len(shape) > 3 else 1)
+        layout, topology = ("images_nchw", "batch_2d") if tensor else ("images_nhwc", "batch_2d")
+    elif canonical_type == "volume":
+        channels = shape[0] if tensor else (shape[-1] if len(shape) > 3 else 1)
+        spatial_shape = volume_shape
+        layout, topology = ("volume_cdhw", "volume_3d") if tensor else ("volume_dhwc", "volume_3d")
+    else:
+        channels = shape[1] if tensor and len(shape) == 5 else (shape[-1] if len(shape) == 5 else 1)
+        spatial_shape = volume_shape
+        layout, topology = ("volumes_ncdhw", "batch_volume_3d") if tensor else ("volumes_ndhwc", "batch_volume_3d")
+    return spatial_shape, channels, layout, topology
+
+
+def _describe_mask_layout(
+    canonical_type: str,
+    shape: tuple[int, ...],
+    tensor: bool,
+    volume_shape: tuple[int, int, int] | None,
+) -> tuple[tuple[int, ...] | None, int, str, str]:
+    spatial_shape: tuple[int, ...] | None
+    channels: int
+    layout: str
+    topology: str
+    if canonical_type == "mask":
+        spatial_shape = shape[1:3] if tensor else shape[:2]
+        channels = shape[0] if tensor else (shape[-1] if len(shape) > 2 else 1)
+        layout, topology = ("mask_chw", "mask_2d") if tensor else ("mask_hwc", "mask_2d")
+    elif canonical_type == "masks":
+        spatial_shape = shape[2:4] if tensor else shape[1:3]
+        channels = shape[1] if tensor else (shape[-1] if len(shape) > 3 else 1)
+        layout, topology = ("masks_nchw", "batch_mask_2d") if tensor else ("masks_nhwc", "batch_mask_2d")
+    elif canonical_type == "masks3d":
+        channels = shape[1] if tensor and len(shape) == 5 else (shape[-1] if len(shape) == 5 else 1)
+        spatial_shape = volume_shape
+        layout, topology = ("masks3d_ncdhw", "batch_mask_3d") if tensor else ("masks3d_ndhwc", "batch_mask_3d")
+    else:
+        channels = shape[0] if tensor else (shape[-1] if len(shape) > 3 else 1)
+        spatial_shape = volume_shape
+        layout, topology = ("mask3d_cdhw", "mask_3d") if tensor else ("mask3d_dhwc", "mask_3d")
+    return spatial_shape, channels, layout, topology
 
 
 def _value_scale(dtype: Any) -> float | None:
@@ -472,38 +564,27 @@ def _describe_target_cached(
     spatial_shape: tuple[int, ...] | None = None
 
     if shape is not None:
-        if canonical_type == "image":
-            spatial_shape = shape[1:3] if tensor else shape[:2]
-            channels = shape[0] if tensor else (shape[-1] if len(shape) > 2 else 1)
-            layout, topology = ("image_chw", "image_2d") if tensor else ("image_hwc", "image_2d")
-        elif canonical_type == "images":
-            spatial_shape = shape[2:4] if tensor else shape[1:3]
-            channels = shape[1] if tensor else (shape[-1] if len(shape) > 3 else 1)
-            layout, topology = ("images_nchw", "batch_2d") if tensor else ("images_nhwc", "batch_2d")
-        elif canonical_type == "volume":
-            spatial_shape = volume_shape
-            channels = shape[0] if tensor else (shape[-1] if len(shape) > 3 else 1)
-            layout, topology = ("volume_cdhw", "volume_3d") if tensor else ("volume_dhwc", "volume_3d")
-        elif canonical_type == "volumes":
-            spatial_shape = volume_shape
-            channels = shape[1] if tensor and len(shape) == 5 else (shape[-1] if len(shape) == 5 else 1)
-            layout, topology = ("volumes_ncdhw", "batch_volume_3d") if tensor else ("volumes_ndhwc", "batch_volume_3d")
-        elif canonical_type == "mask":
-            spatial_shape = shape[1:3] if tensor else shape[:2]
-            channels = shape[0] if tensor else (shape[-1] if len(shape) > 2 else 1)
-            layout, topology = ("mask_chw", "mask_2d") if tensor else ("mask_hwc", "mask_2d")
-        elif canonical_type == "masks":
-            spatial_shape = shape[2:4] if tensor else shape[1:3]
-            channels = shape[1] if tensor else (shape[-1] if len(shape) > 3 else 1)
-            layout, topology = ("masks_nchw", "batch_mask_2d") if tensor else ("masks_nhwc", "batch_mask_2d")
-        elif canonical_type in {"mask3d", "masks3d"}:
-            spatial_shape = volume_shape
-            if canonical_type == "masks3d":
-                channels = shape[1] if tensor and len(shape) == 5 else (shape[-1] if len(shape) == 5 else 1)
-                layout, topology = ("masks3d_ncdhw", "batch_mask_3d") if tensor else ("masks3d_ndhwc", "batch_mask_3d")
-            else:
-                channels = shape[0] if tensor else (shape[-1] if len(shape) > 3 else 1)
-                layout, topology = ("mask3d_cdhw", "mask_3d") if tensor else ("mask3d_dhwc", "mask_3d")
+        if canonical_type in {"image", "images", "volume", "volumes"}:
+            spatial_shape, channels, layout, topology = _describe_image_layout(
+                canonical_type,
+                shape,
+                tensor,
+                volume_shape,
+            )
+        elif canonical_type in {"mask", "masks", "mask3d", "masks3d"}:
+            spatial_shape, channels, layout, topology = _describe_mask_layout(
+                canonical_type,
+                shape,
+                tensor,
+                volume_shape,
+            )
+        elif canonical_type in _VECTOR_FIELD_TARGETS:
+            spatial_shape, channels, layout, topology = _describe_vector_field_layout(
+                canonical_type,
+                shape,
+                tensor,
+                volume_shape,
+            )
 
     return TargetDescriptor(
         name,
@@ -512,7 +593,7 @@ def _describe_target_cached(
         spatial_shape,
         channels,
         dtype,
-        _value_scale(dtype),
+        None if canonical_type in _VECTOR_FIELD_TARGETS else _value_scale(dtype),
         layout,
         topology,
     )

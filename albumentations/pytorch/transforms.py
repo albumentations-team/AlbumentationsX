@@ -6,7 +6,7 @@ expected format (channels first). These transforms are typically used as the fin
 step in an augmentation pipeline before feeding data to a PyTorch model.
 """
 
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 import torch
@@ -35,6 +35,13 @@ def _native_contiguous_array(array: np.ndarray) -> np.ndarray:
     return np.ascontiguousarray(array, dtype=array.dtype.newbyteorder("="))
 
 
+def _vector_field_to_tensor(field: np.ndarray, dimensions: int) -> torch.Tensor:
+    """Move vector components before their spatial axes and preserve field dtype."""
+    if field.ndim != dimensions + 1:
+        raise TypeError(f"Expected a {dimensions}D spatial vector field with a component axis, got {field.ndim}D")
+    return torch.from_numpy(_native_contiguous_array(np.moveaxis(field, -1, 0)))
+
+
 class ToTensorV2(BaseTensorTransform):
     """Converts images/masks to PyTorch Tensors, inheriting from BasicTransform.
     For images:
@@ -46,7 +53,7 @@ class ToTensorV2(BaseTensorTransform):
         p (float): Probability of applying the transform. Default: 1.0.
 
     Targets:
-        image, images, mask, masks
+        image, images, mask, masks, gradient, displacement, vector_field, normal
 
     Image types:
         uint8, float16, float32
@@ -56,7 +63,22 @@ class ToTensorV2(BaseTensorTransform):
 
     """
 
-    _targets = (Targets.IMAGE, Targets.IMAGES, Targets.MASK, Targets.MASKS)
+    _targets = (
+        Targets.IMAGE,
+        Targets.IMAGES,
+        Targets.MASK,
+        Targets.MASKS,
+        Targets.GRADIENT,
+        Targets.DISPLACEMENT,
+        Targets.VECTOR_FIELD,
+        Targets.NORMAL,
+    )
+    _target_apply_methods: ClassVar[dict[str, str]] = {
+        "gradient": "_to_tensor_gradient",
+        "displacement": "_to_tensor_displacement",
+        "vector_field": "_to_tensor_vector_field",
+        "normal": "_to_tensor_normal",
+    }
 
     class InitSchema(BaseTransformInitSchema):
         transpose_mask: bool
@@ -94,6 +116,18 @@ class ToTensorV2(BaseTensorTransform):
     ) -> torch.Tensor:
         return torch.from_numpy(_native_contiguous_array(images.transpose(0, 3, 1, 2)))  # -> (N,C,H,W)
 
+    def _to_tensor_gradient(self, gradient: np.ndarray, **params: Any) -> torch.Tensor:
+        return _vector_field_to_tensor(gradient, 2)
+
+    def _to_tensor_displacement(self, displacement: np.ndarray, **params: Any) -> torch.Tensor:
+        return _vector_field_to_tensor(displacement, 2)
+
+    def _to_tensor_vector_field(self, vector_field: np.ndarray, **params: Any) -> torch.Tensor:
+        return _vector_field_to_tensor(vector_field, 2)
+
+    def _to_tensor_normal(self, normal: np.ndarray, **params: Any) -> torch.Tensor:
+        return _vector_field_to_tensor(normal, 2)
+
 
 class ToTensor3D(BaseTensorTransform):
     """Convert 3D volume data and masks to PyTorch tensors (D,H,W,C or D,H,W -> C,D,H,W).
@@ -116,7 +150,7 @@ class ToTensor3D(BaseTensorTransform):
         p (float): Probability of applying the transform. Default: 1.0
 
     Targets:
-        volume, volumes, mask3d, masks3d
+        volume, volumes, mask3d, masks3d, gradient3d, displacement3d, vector_field3d, normal3d
 
     Image types:
         uint8, float16, float32
@@ -126,7 +160,22 @@ class ToTensor3D(BaseTensorTransform):
 
     """
 
-    _targets = (Targets.VOLUME, Targets.VOLUMES, Targets.MASK3D, Targets.MASKS3D)
+    _targets = (
+        Targets.VOLUME,
+        Targets.VOLUMES,
+        Targets.MASK3D,
+        Targets.MASKS3D,
+        Targets.GRADIENT3D,
+        Targets.DISPLACEMENT3D,
+        Targets.VECTOR_FIELD3D,
+        Targets.NORMAL3D,
+    )
+    _target_apply_methods: ClassVar[dict[str, str]] = {
+        "gradient3d": "_to_tensor_gradient3d",
+        "displacement3d": "_to_tensor_displacement3d",
+        "vector_field3d": "_to_tensor_vector_field3d",
+        "normal3d": "_to_tensor_normal3d",
+    }
 
     def __init__(self, p: float = 1.0):
         super().__init__(p=p)
@@ -150,3 +199,15 @@ class ToTensor3D(BaseTensorTransform):
 
     def apply_to_masks3d(self, masks3d: np.ndarray, **params: Any) -> torch.Tensor:
         return self.apply_to_volumes(masks3d, **params)
+
+    def _to_tensor_gradient3d(self, gradient3d: np.ndarray, **params: Any) -> torch.Tensor:
+        return _vector_field_to_tensor(gradient3d, 3)
+
+    def _to_tensor_displacement3d(self, displacement3d: np.ndarray, **params: Any) -> torch.Tensor:
+        return _vector_field_to_tensor(displacement3d, 3)
+
+    def _to_tensor_vector_field3d(self, vector_field3d: np.ndarray, **params: Any) -> torch.Tensor:
+        return _vector_field_to_tensor(vector_field3d, 3)
+
+    def _to_tensor_normal3d(self, normal3d: np.ndarray, **params: Any) -> torch.Tensor:
+        return _vector_field_to_tensor(normal3d, 3)

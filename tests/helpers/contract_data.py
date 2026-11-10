@@ -127,6 +127,38 @@ def make_target_volume_data(rng: np.random.Generator) -> dict[str, Any]:
     return data
 
 
+def make_target_vector_fields_2d_data(rng: np.random.Generator) -> dict[str, Any]:
+    """Return an image with all four 2D vector-field semantics on the same grid."""
+    data = make_target_image_data(rng)
+    height, width = TARGET_IMAGE_SHAPE[:2]
+    data.update(
+        gradient=np.full((height, width, 2), (1.0, 2.0), dtype=np.float32),
+        displacement=np.full((height, width, 2), (0.125, -0.25), dtype=np.float32),
+        vector_field=np.full((height, width, 2), (2.0, -1.0), dtype=np.float32),
+        normal=np.broadcast_to(
+            np.asarray((1.0, 2.0, 3.0), dtype=np.float32) / np.sqrt(np.float32(14)),
+            (height, width, 3),
+        ).copy(),
+    )
+    return data
+
+
+def make_target_vector_fields3d_data(rng: np.random.Generator) -> dict[str, Any]:
+    """Return a volume with all four 3D vector-field semantics on the same grid."""
+    data = make_target_volume_only_data(rng)
+    depth, height, width, _ = TARGET_VOLUME_SHAPE
+    data.update(
+        gradient3d=np.full((depth, height, width, 3), (1.0, 2.0, 3.0), dtype=np.float32),
+        displacement3d=np.full((depth, height, width, 3), (0.125, -0.25, 0.5), dtype=np.float32),
+        vector_field3d=np.full((depth, height, width, 3), (2.0, -1.0, 0.5), dtype=np.float32),
+        normal3d=np.broadcast_to(
+            np.asarray((1.0, 2.0, 3.0), dtype=np.float32) / np.sqrt(np.float32(14)),
+            (depth, height, width, 3),
+        ).copy(),
+    )
+    return data
+
+
 def make_target_volumes_masks3d_data(rng: np.random.Generator) -> dict[str, Any]:
     """Return aligned, coordinate-coded volume and mask collections with distinct items."""
     volumes = []

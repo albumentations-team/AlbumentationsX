@@ -176,6 +176,7 @@ class CopyAndPaste(DualTransform):
     """
 
     _targets = (Targets.IMAGE, Targets.MASK, Targets.MASKS, Targets.BBOXES, Targets.KEYPOINTS)
+    _skip_when_vector_fields_present = True
 
     class InitSchema(BaseTransformInitSchema):
         min_visibility_after_paste: float

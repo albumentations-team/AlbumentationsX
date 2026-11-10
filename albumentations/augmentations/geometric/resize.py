@@ -18,7 +18,7 @@ from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.transforms_interface import BaseTransformInitSchema, BasicTransform, DualTransform
 from albumentations.core.type_definitions import (
-    ALL_TARGETS,
+    ALL_GEOMETRIC_TARGETS,
     CV2_INTER_AREA,
     CV2_INTER_LINEAR,
     CV2_INTER_NEAREST,
@@ -26,8 +26,25 @@ from albumentations.core.type_definitions import (
 )
 
 from . import functional as fgeometric
+from ._functional_vector_fields import warp_vector_field_2d
 
 __all__ = ["LetterBox", "LongestMaxSize", "RandomScale", "Resize", "SmallestMaxSize"]
+
+
+def _resize_vector_field(
+    field: np.ndarray,
+    target: str,
+    output_shape: tuple[int, int],
+) -> np.ndarray:
+    source_height, source_width = field.shape[-3:-1] if field.ndim == 4 else field.shape[:2]
+    output_height, output_width = output_shape
+    scale_x = output_width / source_width
+    scale_y = output_height / source_height
+    matrix = np.asarray(
+        ((scale_x, 0.0, (scale_x - 1.0) / 2), (0.0, scale_y, (scale_y - 1.0) / 2)),
+        dtype=np.float32,
+    )
+    return warp_vector_field_2d(field, matrix, output_shape, semantics=target)
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,8 +86,15 @@ def _materialize_fixed_resize_params(
 
 
 class _ResizeByScale(DualTransform):
+    _targets = ALL_GEOMETRIC_TARGETS
     _runtime_generated_params = frozenset({"output_shape"})
     _runtime_param_materializer: ClassVar[ScaledResizeShape] = ScaledResizeShape("scale", "scale", round)
+
+    def _apply_vector_field_target(self, target: str, field: np.ndarray, **params: Any) -> np.ndarray:
+        output_shape = params.get("output_shape")
+        if output_shape is None:
+            return field
+        return _resize_vector_field(field, target, tuple(output_shape[:2]))
 
     def _sampled_scale(
         self,
@@ -132,7 +156,8 @@ class RandomScale(_ResizeByScale):
         p (float): probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -236,7 +261,7 @@ class RandomScale(_ResizeByScale):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
     _runtime_param_materializer = ScaledResizeShape("scale_x", "scale_y", int)
 
@@ -433,7 +458,7 @@ class BaseMaxSizeTransform(_ResizeByScale):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):
@@ -520,7 +545,8 @@ class LongestMaxSize(BaseMaxSizeTransform):
         p (float): probability of applying the transform. Default: 1.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -647,7 +673,8 @@ class SmallestMaxSize(BaseMaxSizeTransform):
         p (float): Probability of applying the transform. Default: 1.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -763,7 +790,8 @@ class Resize(DualTransform):
         p (float): probability of applying the transform. Default: 1.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -830,7 +858,7 @@ class Resize(DualTransform):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
     _runtime_param_materializer = staticmethod(_materialize_fixed_resize_params)
 
@@ -869,6 +897,9 @@ class Resize(DualTransform):
 
         result = fgeometric.resize(img, (self.height, self.width), interpolation=interpolation)
         return fgeometric.clip_if_interpolation_can_overshoot(result, interpolation, source=img)
+
+    def _apply_vector_field_target(self, target: str, field: np.ndarray, **params: Any) -> np.ndarray:
+        return _resize_vector_field(field, target, (self.height, self.width))
 
     def apply_to_mask(
         self, mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
@@ -925,7 +956,8 @@ class LetterBox(DualTransform):
         p (float): Probability of applying the transform. Default: `1.0`.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -968,7 +1000,7 @@ class LetterBox(DualTransform):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
     _runtime_param_materializer = staticmethod(_materialize_fixed_resize_params)
 
@@ -1020,6 +1052,28 @@ class LetterBox(DualTransform):
             value=self.fill,
         )
         return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation, source=img)
+
+    def _apply_vector_field_target(
+        self,
+        target: str,
+        field: np.ndarray,
+        **params: Any,
+    ) -> np.ndarray:
+        new_height = params["new_height"]
+        new_width = params["new_width"]
+        pad_top = params["pad_top"]
+        pad_left = params["pad_left"]
+        source_height, source_width = field.shape[-3:-1] if field.ndim == 4 else field.shape[:2]
+        scale_x = new_width / source_width
+        scale_y = new_height / source_height
+        matrix = np.asarray(
+            (
+                (scale_x, 0, (scale_x - 1) / 2 + pad_left),
+                (0, scale_y, (scale_y - 1) / 2 + pad_top),
+            ),
+            dtype=np.float32,
+        )
+        return warp_vector_field_2d(field, matrix, self.size, semantics=target)
 
     def apply_to_mask(
         self,

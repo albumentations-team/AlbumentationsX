@@ -20,7 +20,7 @@ from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.pydantic import check_range_bounds
 from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
-from albumentations.core.type_definitions import Targets
+from albumentations.core.type_definitions import VECTOR_FIELD_TARGETS, Targets
 
 __all__ = ["MaskDropout"]
 
@@ -50,7 +50,8 @@ class MaskDropout(DualTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, mask, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d, displacement,
+        displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -129,6 +130,7 @@ class MaskDropout(DualTransform):
         Targets.VOLUMES,
         Targets.MASK3D,
         Targets.MASKS3D,
+        *VECTOR_FIELD_TARGETS,
     )
 
     class InitSchema(BaseTransformInitSchema):

@@ -81,15 +81,24 @@ event activates each mapping only when the caller configured it for that target 
 ## Settings loading
 
 Package import loads settings from defaults, then merges every entry of `settings.json` only when its JSON root is
-an object, then applies environment overrides. Non-object roots are ignored entirely, including arrays of key/value
-pairs. Object values and unknown keys are preserved without validation or coercion.
+an object, then applies environment overrides. Object values and unknown keys are preserved without validation or
+coercion. Non-object roots contribute no general settings.
+
+One compatibility exception preserves telemetry opt-outs in legacy arrays accepted by the previous dictionary
+merge. If the entire array converts to a dictionary and its final `telemetry` value is falsey (`false`, `0`, `null`,
+`""`, `[]`, or `{}`), telemetry is set to Boolean `false` in memory. The last duplicate key wins; other entries are
+ignored. Missing or truthy telemetry values do not change defaults. If any element prevents conversion, the entire
+array is ignored, including a valid opt-out prefix. Loading never partially applies an array. Prefer an object such
+as `{"telemetry": false}` for settings; this exception does not restore general array settings.
 
 `ALBUMENTATIONS_NO_TELEMETRY` and `ALBUMENTATIONS_OFFLINE` independently disable telemetry when set to `1` or
-case-insensitive `true`, overriding file settings. Without an override or object setting, telemetry defaults to `true`.
+case-insensitive `true`, overriding file settings. Other environment values do not undo a stored opt-out. Without an
+object setting, preserved legacy opt-out, or disabling environment override, telemetry defaults to `true`.
 Loading never rewrites the file or creates a missing settings file. Missing files, malformed JSON, and `OSError`
 raised while opening or reading an existing file retain defaults before environment overrides; other errors keep
 their existing propagation behavior. The [settings import tests](../../tests/test_settings_import.py) cover these
-boundaries in isolated processes and simulate the caught read error.
+boundaries in isolated processes, simulate the caught read error, and check Compose/client delivery with a transport
+spy and an enabled positive control without contacting a telemetry endpoint.
 
 ## Stability Modes
 

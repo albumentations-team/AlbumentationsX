@@ -39,6 +39,15 @@ class SettingsManager:
                     file_settings = json.load(f)
                     if isinstance(file_settings, dict):
                         settings.update(file_settings)
+                    elif isinstance(file_settings, list):
+                        # Preserve only effective legacy opt-outs, never a partially valid array.
+                        try:
+                            legacy_settings = dict(file_settings)
+                        except (TypeError, ValueError):
+                            pass
+                        else:
+                            if not legacy_settings.get("telemetry", True):
+                                settings["telemetry"] = False
             except (OSError, json.JSONDecodeError):
                 pass
 

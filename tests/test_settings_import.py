@@ -16,7 +16,9 @@ _WORKTREE_ROOT = Path(__file__).resolve().parents[1]
 _OVERRIDE_VARIABLES = ("ALBUMENTATIONS_NO_TELEMETRY", "ALBUMENTATIONS_OFFLINE")
 _IMPORT_SETTINGS = """
 import json
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 with (
@@ -28,12 +30,39 @@ with (
     from albumentations.core.analytics import settings as settings_module
 
     settings = settings_module.settings
+    telemetry_calls = {}
+    if sys.argv[1] == "check-telemetry":
+        from albumentations.core.analytics import telemetry as telemetry_module
+
+        with (
+            patch.object(telemetry_module, "is_ci_environment", return_value=False),
+            patch.object(telemetry_module, "is_pytest_running", return_value=False),
+            patch.object(
+                telemetry_module,
+                "Thread",
+                side_effect=lambda *, target, args, **kwargs: SimpleNamespace(start=lambda: target(*args)),
+            ),
+        ):
+            client = telemetry_module.get_telemetry_client()
+            assert client.enabled
+            with (
+                patch.object(client.user_id_manager, "get_or_create_user_id", return_value="settings-test-user"),
+                patch.object(client.backend, "send_event") as send_event,
+            ):
+                albumentations.Compose([], telemetry=True)
+                telemetry_calls["compose"] = send_event.call_count
+                send_event.reset_mock()
+                client.reset()
+                client.track_compose_init({"pipeline_hash": "settings-test"}, use_thread=False)
+                telemetry_calls["client"] = send_event.call_count
+
     print(json.dumps({
         "package_file": str(Path(albumentations.__file__).resolve()),
         "module_file": str(Path(settings_module.__file__).resolve()),
         "settings_file": str(settings.settings_file.resolve()),
         "settings": settings._settings,
         "telemetry_enabled": settings.telemetry_enabled,
+        "telemetry_calls": telemetry_calls,
     }))
 """
 
@@ -42,6 +71,8 @@ def _import_settings(
     tmp_path: Path,
     content: str | None,
     overrides: dict[str, str] | None = None,
+    *,
+    check_telemetry: bool = False,
 ) -> dict[str, Any]:
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
@@ -61,7 +92,7 @@ def _import_settings(
     environment.update(overrides or {})
     # The interpreter and embedded script are fixed; settings contents are passed only through the file.
     result = subprocess.run(  # noqa: S603
-        [sys.executable, "-c", _IMPORT_SETTINGS],
+        [sys.executable, "-c", _IMPORT_SETTINGS, "check-telemetry" if check_telemetry else "settings-only"],
         cwd=_WORKTREE_ROOT,
         env=environment,
         capture_output=True,
@@ -91,14 +122,41 @@ def _import_settings(
         pytest.param("false", id="boolean"),
         pytest.param('"settings"', id="string"),
         pytest.param("[]", id="empty-array"),
-        pytest.param('[["telemetry", false], ["sentinel", 137]]', id="pair-array"),
         pytest.param('[["telemetry", false], ["broken"]]', id="mixed-pair-array"),
+        pytest.param('[["telemetry", false], [[], 137]]', id="unhashable-key"),
+        pytest.param('[["telemetry", false], 137]', id="non-iterable-element"),
     ],
 )
 def test_import_ignores_non_object_settings(tmp_path: Path, content: str) -> None:
     state = _import_settings(tmp_path, content)
     assert state["settings"] == {"telemetry": True}
     assert state["telemetry_enabled"] is True
+
+
+@pytest.mark.parametrize(
+    ("content", "expected_telemetry"),
+    [
+        pytest.param('[["telemetry", false], ["sentinel", 137]]', False, id="false"),
+        pytest.param('[["telemetry", 0]]', False, id="zero"),
+        pytest.param('[["telemetry", null]]', False, id="null"),
+        pytest.param('[["telemetry", ""]]', False, id="empty-string"),
+        pytest.param('[["telemetry", []]]', False, id="empty-array"),
+        pytest.param('[["telemetry", {}]]', False, id="empty-object"),
+        pytest.param('[["telemetry", false], ["telemetry", true]]', True, id="last-value-true"),
+        pytest.param('[["telemetry", true], ["telemetry", false]]', False, id="last-value-false"),
+        pytest.param('[["telemetry", "false"], ["sentinel", 137]]', True, id="truthy-string"),
+        pytest.param('[["sentinel", 137]]', True, id="missing-telemetry"),
+        pytest.param('[["telemetry", false], "ab"]', False, id="legacy-string-element"),
+    ],
+)
+def test_import_preserves_only_legacy_telemetry_opt_out(
+    tmp_path: Path,
+    content: str,
+    expected_telemetry: bool,
+) -> None:
+    state = _import_settings(tmp_path, content)
+    assert state["settings"] == {"telemetry": expected_telemetry}
+    assert state["telemetry_enabled"] is expected_telemetry
 
 
 @pytest.mark.parametrize(
@@ -129,6 +187,14 @@ def test_import_preserves_settings_controls(
     assert state["telemetry_enabled"] == expected_settings["telemetry"]
 
 
+@pytest.mark.parametrize("value", [0, None, "", [], {}])
+def test_import_preserves_falsey_object_values(tmp_path: Path, value: Any) -> None:
+    state = _import_settings(tmp_path, json.dumps({"telemetry": value, "sentinel": 137}))
+    assert state["settings"] == {"telemetry": value, "sentinel": 137}
+    assert state["telemetry_enabled"] == value
+    assert type(state["telemetry_enabled"]) is type(value)
+
+
 @pytest.mark.parametrize("variable", _OVERRIDE_VARIABLES)
 @pytest.mark.parametrize(
     ("value", "expected_telemetry"),
@@ -136,7 +202,11 @@ def test_import_preserves_settings_controls(
 )
 @pytest.mark.parametrize(
     "content",
-    [pytest.param("null", id="non-object"), pytest.param('{"telemetry": true}', id="object")],
+    [
+        pytest.param("null", id="non-object"),
+        pytest.param('{"telemetry": true}', id="object"),
+        pytest.param('[["telemetry", true]]', id="legacy-enabled"),
+    ],
 )
 def test_import_applies_each_environment_override(
     tmp_path: Path,
@@ -148,6 +218,34 @@ def test_import_applies_each_environment_override(
     state = _import_settings(tmp_path, content, {variable: value})
     assert state["settings"] == {"telemetry": expected_telemetry}
     assert state["telemetry_enabled"] is expected_telemetry
+
+
+@pytest.mark.parametrize("variable", _OVERRIDE_VARIABLES)
+@pytest.mark.parametrize("value", ["1", "true", "TRUE", "0", "false"])
+def test_environment_overrides_preserve_legacy_opt_out(tmp_path: Path, variable: str, value: str) -> None:
+    state = _import_settings(tmp_path, '[["telemetry", false]]', {variable: value})
+    assert state["settings"] == {"telemetry": False}
+    assert state["telemetry_enabled"] is False
+
+
+@pytest.mark.parametrize("content", ['{"telemetry": true}', '[["telemetry", false]]'])
+def test_import_applies_both_environment_overrides(tmp_path: Path, content: str) -> None:
+    state = _import_settings(tmp_path, content, dict.fromkeys(_OVERRIDE_VARIABLES, "1"))
+    assert state["settings"] == {"telemetry": False}
+    assert state["telemetry_enabled"] is False
+
+
+@pytest.mark.parametrize(
+    ("content", "expected_calls"),
+    [
+        pytest.param('[["telemetry", false]]', 0, id="legacy-opt-out"),
+        pytest.param('[["telemetry", true]]', 1, id="enabled-positive-control"),
+        pytest.param('{"telemetry": false}', 0, id="object-opt-out-control"),
+    ],
+)
+def test_loaded_settings_control_telemetry_delivery(tmp_path: Path, content: str, expected_calls: int) -> None:
+    state = _import_settings(tmp_path, content, check_telemetry=True)
+    assert state["telemetry_calls"] == {"compose": expected_calls, "client": expected_calls}
 
 
 def test_settings_read_error_preserves_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

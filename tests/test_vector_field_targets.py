@@ -302,3 +302,26 @@ def test_vector_field_input_rejects_unsupported_dtypes_and_layouts(target: str, 
 
     with pytest.raises(TypeError):
         pipeline(image=image, **{target: field})
+
+
+@pytest.mark.parametrize(("target", "spatial_rank", "components"), _VECTOR_FIELD_TARGET_CASES)
+def test_vector_field_tensor_rejects_wrong_component_count(target: str, spatial_rank: int, components: int) -> None:
+    spatial_shape = (5, 7) if spatial_rank == 2 else (3, 5, 7)
+    invalid_field = torch.zeros((components + 1, *spatial_shape), dtype=torch.float32)
+    primary_key = "image" if spatial_rank == 2 else "volume"
+    primary = torch.zeros((1, *spatial_shape), dtype=torch.float32)
+
+    with pytest.raises(TypeError, match="shape"):
+        A.Compose([], strict=True)(**{primary_key: primary, target: invalid_field})
+
+
+@pytest.mark.parametrize("transform_cls", (A.CenterCrop3D, A.RandomCrop3D))
+def test_3d_crop_padding_keeps_vector_field_aligned_with_volume(transform_cls: type[Any]) -> None:
+    volume = np.zeros((2, 3, 4, 1), dtype=np.float32)
+    field = np.ones((2, 3, 4, 3), dtype=np.float32)
+    transform = A.Compose([transform_cls(size=(4, 3, 4), pad_if_needed=True, p=1.0)], strict=True, seed=137)
+
+    result = transform(volume=volume, gradient3d=field)
+
+    assert result["volume"].shape == (4, 3, 4, 1)
+    assert result["gradient3d"].shape == (4, 3, 4, 3)

@@ -4,6 +4,7 @@ from typing import Annotated, Any, ClassVar
 
 from numpy.typing import NDArray
 
+from albumentations.augmentations.geometric._functional_vector_fields import crop_and_resize_vector_field_2d
 from albumentations.core.bbox_utils import BboxProcessor
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet
@@ -380,6 +381,14 @@ class RandomSizedBBoxSafeCrop(BBoxSafeRandomCrop):
         crop = fcrops.crop(img, *crop_coords)
         result = fgeometric.resize(crop, (self.height, self.width), self.interpolation)
         return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
+
+    def _apply_vector_field_target(self, target: str, field: np.ndarray, **params: Any) -> np.ndarray:
+        return crop_and_resize_vector_field_2d(
+            field,
+            params["crop_coords"],
+            (self.height, self.width),
+            semantics=target,
+        )
 
     def apply_to_mask(
         self,

@@ -5,7 +5,10 @@ from typing import Annotated, Any, Literal, Self, cast
 
 from numpy.typing import NDArray
 
-from albumentations.augmentations.geometric._functional_vector_fields import warp_vector_field_2d
+from albumentations.augmentations.geometric._functional_vector_fields import (
+    crop_vector_field_2d,
+    warp_vector_field_2d,
+)
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet
 
@@ -886,21 +889,21 @@ class CropAndPad(DualTransform):
         pad_params = params["pad_params"]
         result_shape = params["result_shape"]
         shape = params["shape"]
-        x_min, y_min = (0, 0) if crop_params is None else crop_params[:2]
+        field = field if crop_params is None else crop_vector_field_2d(field, crop_params)
         pad_top, _, pad_left, _ = (0, 0, 0, 0) if pad_params is None else pad_params
         if self.keep_size:
             scale_x = shape[1] / result_shape[1]
             scale_y = shape[0] / result_shape[0]
             matrix = np.asarray(
                 (
-                    (scale_x, 0, scale_x * (pad_left - x_min + 0.5) - 0.5),
-                    (0, scale_y, scale_y * (pad_top - y_min + 0.5) - 0.5),
+                    (scale_x, 0, scale_x * (pad_left + 0.5) - 0.5),
+                    (0, scale_y, scale_y * (pad_top + 0.5) - 0.5),
                 ),
                 dtype=np.float32,
             )
             output_shape = shape[:2]
         else:
-            matrix = np.asarray(((1, 0, pad_left - x_min), (0, 1, pad_top - y_min)), dtype=np.float32)
+            matrix = np.asarray(((1, 0, pad_left), (0, 1, pad_top)), dtype=np.float32)
             output_shape = result_shape
         return warp_vector_field_2d(field, matrix, output_shape, semantics=target)
 

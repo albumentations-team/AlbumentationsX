@@ -170,13 +170,11 @@ def _map_tile_endpoints_2d(
 
 def _shuffle_displacement_tiles_2d(
     result: np.ndarray,
-    field: np.ndarray,
     tiles: np.ndarray,
     mapping: list[int],
     destination_sources: np.ndarray,
-    target: str,
 ) -> np.ndarray:
-    height, width = field.shape[:2]
+    height, width = result.shape[:2]
     output_y, output_x = np.mgrid[:height, :width].astype(np.float32)
     for destination_index, source_index_value in enumerate(destination_sources):
         source_y0, source_x0, _, _ = (int(value) for value in tiles[int(source_index_value)])
@@ -201,8 +199,6 @@ def _shuffle_displacement_tiles_2d(
         )
         tile_field[..., 0] = mapped_x - output_x[destination_slice]
         tile_field[..., 1] = mapped_y - output_y[destination_slice]
-        if target == "displacement3d":
-            tile_field[..., 2] = field[destination_slice][..., 2]
         tile_field[~valid] = np.nan
     return result
 
@@ -226,7 +222,7 @@ def _shuffle_vector_field_2d(
         destination_sources[destination_index] = source_index
     result, map_x, map_y = _reindex_vector_field_tiles_2d(field, tiles, destination_sources)
     if target in {"displacement", "displacement3d"}:
-        return _shuffle_displacement_tiles_2d(result, field, tiles, mapping, destination_sources, target)
+        return _shuffle_displacement_tiles_2d(result, tiles, mapping, destination_sources)
     result[_grid_shuffle_seams(map_x, map_y)] = np.nan
     return result
 

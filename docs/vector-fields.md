@@ -101,6 +101,14 @@ Output points outside the input pixel or voxel cells are NaN regardless of the i
 therefore adds NaN field values. A known displacement endpoint can remain finite outside the visible output when the
 transform can still compute its mapped location.
 
+## Numerical limits and cost
+
+Component calculations use float32 and are cast back to the input dtype. If a result overflows that dtype, the complete
+vector becomes NaN. Use float32 when field magnitudes or transform scales may approach float16's finite range.
+
+Nonlinear displacement transforms may iteratively invert their spatial map. The work grows with field size, so high-
+resolution 3D fields can take substantially longer than affine transforms or local-vector fields.
+
 Dropout transforms preserve fields unchanged, as they preserve masks. `CopyAndPaste`, `Mosaic`, `OverlayElements`,
 `Morphological`, and `PixelSpread` skip their entire node when a field is present; they continue to run normally when
 fields are absent. Check a transform's `Targets:` section for its declared field support.

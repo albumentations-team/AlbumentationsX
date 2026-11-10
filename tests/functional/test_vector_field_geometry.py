@@ -21,6 +21,7 @@ from albumentations.augmentations.geometric._functional_vector_fields import (
     warp_vector_field_from_pull_grid_3d,
     warp_vector_field_from_pull_map_2d,
 )
+from albumentations.core.transform_params import SampledParams
 
 
 @pytest.mark.parametrize("dtype", (np.float16, np.float32))
@@ -587,3 +588,173 @@ def test_elastic_transform3d_reuses_its_pull_grid_for_gradient_and_volume(mocker
     assert result["volume"].shape == volume.shape
     assert result["gradient3d"].shape == gradient.shape
     assert np.isfinite(result["gradient3d"][2, 3, 4]).all()
+
+
+@pytest.mark.parametrize(
+    ("target", "components", "expected"),
+    (
+        ("gradient3d", (2.0, 4.0, 6.0), (1.0, 2.0, 6.0)),
+        ("displacement3d", (1.0, 2.0, 3.0), (2.0, 4.0, 3.0)),
+        ("vector_field3d", (1.0, 2.0, 3.0), (2.0, 4.0, 3.0)),
+        ("normal3d", (1.0, 0.0, 1.0), (1 / np.sqrt(5), 0.0, 2 / np.sqrt(5))),
+    ),
+)
+def test_2d_resize_lifts_its_component_map_for_3d_fields(
+    target: str,
+    components: tuple[float, float, float],
+    expected: tuple[float, float, float],
+) -> None:
+    volume = np.zeros((2, 3, 4, 1), dtype=np.float32)
+    field = np.broadcast_to(np.asarray(components, dtype=np.float32), (2, 3, 4, 3)).copy()
+
+    result = A.Compose([A.Resize(height=6, width=8, p=1.0)], strict=True)(volume=volume, **{target: field})
+
+    assert result[target].shape == (2, 6, 8, 3)
+    np.testing.assert_allclose(result[target][0, 2, 2], expected, atol=2e-6)
+
+
+@pytest.mark.parametrize("transform_name", ("RandomSizedCrop", "RandomResizedCrop"))
+@pytest.mark.parametrize(("target", "components"), (("vector_field", 2), ("vector_field3d", 3)))
+def test_crop_resize_uses_only_values_inside_the_selected_crop(
+    monkeypatch: pytest.MonkeyPatch,
+    transform_name: str,
+    target: str,
+    components: int,
+) -> None:
+    transform = (
+        A.RandomSizedCrop(min_max_height=(2, 2), size=(4, 4), p=1.0)
+        if transform_name == "RandomSizedCrop"
+        else A.RandomResizedCrop(size=(4, 4), p=1.0)
+    )
+    monkeypatch.setattr(
+        transform,
+        "sample_parameters",
+        lambda *_args, **_kwargs: SampledParams(params={"crop_coords": (1, 1, 3, 3)}),
+    )
+    if target == "vector_field":
+        spatial_input = {"image": np.zeros((4, 4, 1), dtype=np.float32)}
+        field = np.ones((4, 4, components), dtype=np.float32)
+        field[1:3, 1:3] = 0
+        expected_shape = (4, 4, components)
+    else:
+        spatial_input = {"volume": np.zeros((2, 4, 4, 1), dtype=np.float32)}
+        field = np.ones((2, 4, 4, components), dtype=np.float32)
+        field[:, 1:3, 1:3] = 0
+        expected_shape = (2, 4, 4, components)
+
+    result = A.Compose([transform], strict=True)(**spatial_input, **{target: field})
+
+    assert result[target].shape == expected_shape
+    np.testing.assert_array_equal(result[target], np.zeros(expected_shape, dtype=np.float32))
+
+
+@pytest.mark.parametrize(("target", "components"), (("vector_field", 2), ("vector_field3d", 3)))
+def test_crop_and_pad_resizes_only_values_inside_the_retained_crop(
+    monkeypatch: pytest.MonkeyPatch,
+    target: str,
+    components: int,
+) -> None:
+    transform = A.CropAndPad(px=-1, keep_size=True, p=1.0)
+    monkeypatch.setattr(
+        transform,
+        "sample_parameters",
+        lambda *_args, **_kwargs: SampledParams(
+            params={
+                "crop_params": (1, 1, 3, 3),
+                "pad_params": None,
+                "result_shape": (2, 2),
+                "shape": (4, 4),
+            },
+        ),
+    )
+    if target == "vector_field":
+        spatial_input = {"image": np.zeros((4, 4, 1), dtype=np.float32)}
+        field = np.ones((4, 4, components), dtype=np.float32)
+        field[1:3, 1:3] = 0
+        expected_shape = (4, 4, components)
+    else:
+        spatial_input = {"volume": np.zeros((2, 4, 4, 1), dtype=np.float32)}
+        field = np.ones((2, 4, 4, components), dtype=np.float32)
+        field[:, 1:3, 1:3] = 0
+        expected_shape = (2, 4, 4, components)
+
+    result = A.Compose([transform], strict=True)(**spatial_input, **{target: field})
+
+    assert result[target].shape == expected_shape
+    np.testing.assert_array_equal(result[target], np.zeros(expected_shape, dtype=np.float32))
+
+
+def test_crop_and_pad_marks_padding_invalid_relative_to_the_cropped_field(monkeypatch: pytest.MonkeyPatch) -> None:
+    transform = A.CropAndPad(px=-1, keep_size=True, p=1.0)
+    monkeypatch.setattr(
+        transform,
+        "sample_parameters",
+        lambda *_args, **_kwargs: SampledParams(
+            params={
+                "crop_params": (1, 1, 3, 3),
+                "pad_params": (1, 1, 1, 1),
+                "result_shape": (4, 4),
+                "shape": (4, 4),
+            },
+        ),
+    )
+    image = np.zeros((4, 4, 1), dtype=np.float32)
+    field = np.ones((4, 4, 2), dtype=np.float32)
+    field[1:3, 1:3] = 0
+
+    result = A.Compose([transform], strict=True)(image=image, vector_field=field)
+
+    expected = np.full((4, 4, 2), np.nan, dtype=np.float32)
+    expected[1:3, 1:3] = 0
+    np.testing.assert_array_equal(result["vector_field"], expected)
+
+
+@pytest.mark.parametrize(("target", "components"), (("vector_field", 2), ("vector_field3d", 3)))
+def test_random_sized_bbox_safe_crop_resizes_vector_fields(
+    monkeypatch: pytest.MonkeyPatch,
+    target: str,
+    components: int,
+) -> None:
+    transform = A.RandomSizedBBoxSafeCrop(height=4, width=4, p=1.0)
+    monkeypatch.setattr(
+        transform,
+        "sample_parameters",
+        lambda *_args, **_kwargs: SampledParams(params={"crop_coords": (1, 1, 3, 3)}),
+    )
+    if target == "vector_field":
+        spatial_input = {"image": np.zeros((4, 4, 1), dtype=np.float32)}
+        field = np.full((4, 4, components), 50.0, dtype=np.float32)
+        field[1:3, 1:3] = (1.0, 2.0)
+        expected = (2.0, 4.0)
+        expected_shape = (4, 4, components)
+    else:
+        spatial_input = {"volume": np.zeros((2, 4, 4, 1), dtype=np.float32)}
+        field = np.full((2, 4, 4, components), 50.0, dtype=np.float32)
+        field[:, 1:3, 1:3] = (1.0, 2.0, 3.0)
+        expected = (2.0, 4.0, 3.0)
+        expected_shape = (2, 4, 4, components)
+
+    result = A.Compose([transform], strict=True)(**spatial_input, **{target: field})
+
+    assert result[target].shape == expected_shape
+    np.testing.assert_allclose(result[target], np.broadcast_to(expected, expected_shape))
+
+
+def test_random_grid_shuffle_preserves_reindexed_z_displacement(monkeypatch: pytest.MonkeyPatch) -> None:
+    height, width = 2, 8
+    volume = np.broadcast_to(np.arange(width, dtype=np.float32)[None, None, :, None], (1, height, width, 1)).copy()
+    field = np.zeros((1, height, width, 3), dtype=np.float32)
+    field[..., 2] = np.arange(width, dtype=np.float32)[None, None, :]
+    tiles = np.asarray(((0, 0, height, 4), (0, 4, height, 8)), dtype=np.int32)
+    transform = A.RandomGridShuffle(grid=(1, 2), p=1.0)
+    monkeypatch.setattr(
+        transform,
+        "sample_parameters",
+        lambda *_args, **_kwargs: SampledParams(params={"tiles": tiles, "mapping": [1, 0]}),
+    )
+
+    result = A.Compose([transform], strict=True)(volume=volume, displacement3d=field)
+
+    expected_z = (4, 5, 6, 7, 0, 1, 2, 3)
+    np.testing.assert_array_equal(result["volume"][0, 0, :, 0], expected_z)
+    np.testing.assert_array_equal(result["displacement3d"][0, 0, :, 2], expected_z)

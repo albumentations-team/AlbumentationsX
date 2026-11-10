@@ -4,7 +4,10 @@ from typing import Annotated, Any, ClassVar, Literal, cast
 
 from numpy.typing import NDArray
 
-from albumentations.augmentations.geometric._functional_vector_fields import warp_vector_field_2d
+from albumentations.augmentations.geometric._functional_vector_fields import (
+    crop_and_resize_vector_field_2d,
+    warp_vector_field_2d,
+)
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.type_definitions import ALL_GEOMETRIC_TARGETS, Targets
 
@@ -820,20 +823,12 @@ class _BaseRandomSizedCrop(DualTransform):
         **params: Any,
     ) -> np.ndarray:
         crop_coords = params["crop_coords"]
-        x_min, y_min, x_max, y_max = crop_coords
-        crop_height = y_max - y_min
-        crop_width = x_max - x_min
-        output_height, output_width = self.size
-        scale_x = output_width / crop_width
-        scale_y = output_height / crop_height
-        matrix = np.asarray(
-            (
-                (scale_x, 0, (scale_x - 1) / 2 - scale_x * x_min),
-                (0, scale_y, (scale_y - 1) / 2 - scale_y * y_min),
-            ),
-            dtype=np.float32,
+        return crop_and_resize_vector_field_2d(
+            field,
+            crop_coords,
+            self.size,
+            semantics=target,
         )
-        return warp_vector_field_2d(field, matrix, self.size, semantics=target)
 
     def apply(
         self,

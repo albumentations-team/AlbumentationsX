@@ -167,6 +167,11 @@ def validate_vector_field_input(value: Any, data_name: str, canonical_name: str)
         validate_vector_field_numpy_input(value, data_name, canonical_name)
     elif isinstance(value, torch.Tensor):
         validate_tensor_input(value, data_name, canonical_name)
+        _, components = VECTOR_FIELD_TARGET_INFO_BY_NAME[canonical_name]
+        if value.shape[0] != components:
+            raise TypeError(
+                f"{data_name} must have shape {TENSOR_SHAPE_DESCRIPTIONS[canonical_name]}, got {tuple(value.shape)}",
+            )
     else:
         raise TypeError(f"{data_name} must be a NumPy array or torch.Tensor, got {type(value).__name__}")
 
@@ -197,6 +202,8 @@ def validate_tensor_metadata_input(value: torch.Tensor, data_name: str, target: 
     """Validate a Tensor read through `targets_as_params` before sampling."""
     if target is None:
         _validate_plain_cpu_tensor(value, data_name)
+    elif target in VECTOR_FIELD_TARGET_INFO_BY_NAME:
+        validate_vector_field_input(value, data_name, target)
     else:
         validate_tensor_input(value, data_name, target)
 

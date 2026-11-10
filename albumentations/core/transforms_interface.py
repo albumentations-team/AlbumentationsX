@@ -2429,7 +2429,10 @@ class Transform3D(DualTransform):
         field: np.ndarray,
         **params: Any,
     ) -> np.ndarray:
-        from albumentations.augmentations.geometric._functional_vector_fields import warp_vector_field_3d
+        from albumentations.augmentations.geometric._functional_vector_fields import (
+            crop_and_resize_vector_field_3d,
+            warp_vector_field_3d,
+        )
 
         vector_field = cast("NDArray[np.float16] | NDArray[np.float32]", field)
         matrix = params.get("matrix")
@@ -2450,28 +2453,19 @@ class Transform3D(DualTransform):
                     dtype=np.float32,
                 )
                 output_shape = (
-                    z_max - z_min + (0 if pad_params is None else pad_params["pad_front"] + pad_params["pad_back"]),
-                    y_max - y_min + (0 if pad_params is None else pad_params["pad_top"] + pad_params["pad_bottom"]),
-                    x_max - x_min + (0 if pad_params is None else pad_params["pad_left"] + pad_params["pad_right"]),
+                    z_max - z_min,
+                    y_max - y_min,
+                    x_max - x_min,
                 )
-            elif hasattr(self, "size"):
+                return warp_vector_field_3d(vector_field, matrix, output_shape, semantics=target)
+            if hasattr(self, "size"):
                 output_shape = tuple(self.size)
-                source_depth, source_height, source_width = vector_field.shape[:3]
-                output_depth, output_height, output_width = output_shape
-                scale_x = output_width / (x_max - x_min)
-                scale_y = output_height / (y_max - y_min)
-                scale_z = output_depth / (z_max - z_min)
-                matrix = np.asarray(
-                    (
-                        (scale_x, 0, 0, scale_x * (0.5 - x_min) - 0.5),
-                        (0, scale_y, 0, scale_y * (0.5 - y_min) - 0.5),
-                        (0, 0, scale_z, scale_z * (0.5 - z_min) - 0.5),
-                    ),
-                    dtype=np.float32,
+                return crop_and_resize_vector_field_3d(
+                    vector_field,
+                    crop_coords,
+                    output_shape,
+                    semantics=target,
                 )
-            else:
-                return field
-            return warp_vector_field_3d(vector_field, matrix, output_shape, semantics=target)
 
         padding = params.get("padding")
         if padding is not None and len(padding) == 6:
@@ -2502,9 +2496,10 @@ class Transform3D(DualTransform):
                 ),
                 dtype=np.float32,
             )
-            return warp_vector_field_3d(vector_field, matrix, self.size, semantics=target)
-
-        return field
+            output_shape = self.size
+        else:
+            return field
+        return warp_vector_field_3d(vector_field, matrix, output_shape, semantics=target)
 
     def apply_to_mask3d(self, mask3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
         """Apply transform to a single 3D mask. Delegates to apply_to_volume. Input shape (D, H, W) or

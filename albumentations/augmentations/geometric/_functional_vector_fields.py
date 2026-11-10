@@ -285,6 +285,32 @@ def warp_vector_field_3d(
     return result
 
 
+def crop_and_resize_vector_field_3d(
+    field: NDArray[np.float16] | NDArray[np.float32],
+    crop_coords: tuple[int, int, int, int, int, int],
+    output_shape: tuple[int, int, int],
+    *,
+    semantics: str,
+) -> NDArray[np.float32]:
+    """Crop a 3D field before resizing so discarded voxels cannot enter interpolation support."""
+    z_min, z_max, y_min, y_max, x_min, x_max = crop_coords
+    cropped = field[z_min:z_max, y_min:y_max, x_min:x_max]
+    crop_depth, crop_height, crop_width = cropped.shape[:3]
+    output_depth, output_height, output_width = output_shape
+    scale_x = output_width / crop_width
+    scale_y = output_height / crop_height
+    scale_z = output_depth / crop_depth
+    matrix = np.asarray(
+        (
+            (scale_x, 0, 0, (scale_x - 1) / 2),
+            (0, scale_y, 0, (scale_y - 1) / 2),
+            (0, 0, scale_z, (scale_z - 1) / 2),
+        ),
+        dtype=np.float32,
+    )
+    return warp_vector_field_3d(cropped, matrix, output_shape, semantics=semantics)
+
+
 def _evaluate_control_grid_float32(
     points: NDArray[np.float32],
     coefficients: NDArray[np.float32],
@@ -669,7 +695,8 @@ def warp_vector_field_2d(
         return result
 
     if matrix.shape == (2, 3):
-        forward_jacobian = np.eye(3 if semantics in {"normal", "normal3d"} else 2, dtype=np.float32)
+        lifted_to_3d = semantics in {"gradient3d", "vector_field3d", "normal", "normal3d"}
+        forward_jacobian = np.eye(3 if lifted_to_3d else 2, dtype=np.float32)
         forward_jacobian[:2, :2] = matrix[:2, :2]
         transformed = (
             transform_vector_components_3d(
@@ -715,6 +742,40 @@ def warp_vector_field_2d(
         local_valid &= normal_valid
     result[~local_valid] = np.nan
     return result
+
+
+def crop_vector_field_2d(
+    field: NDArray[np.float16] | NDArray[np.float32],
+    crop_coords: tuple[int, int, int, int],
+) -> NDArray[np.float16] | NDArray[np.float32]:
+    """Return the 2D crop view for a single field or a depth stack of fields."""
+    x_min, y_min, x_max, y_max = crop_coords
+    if field.ndim == 4:
+        return field[:, y_min:y_max, x_min:x_max]
+    return field[y_min:y_max, x_min:x_max]
+
+
+def crop_and_resize_vector_field_2d(
+    field: NDArray[np.float16] | NDArray[np.float32],
+    crop_coords: tuple[int, int, int, int],
+    output_shape: tuple[int, int],
+    *,
+    semantics: str,
+) -> NDArray[np.float32]:
+    """Crop a 2D field before resizing so discarded pixels cannot enter interpolation support."""
+    x_min, y_min, x_max, y_max = crop_coords
+    cropped = crop_vector_field_2d(field, crop_coords)
+    output_height, output_width = output_shape
+    scale_x = output_width / (x_max - x_min)
+    scale_y = output_height / (y_max - y_min)
+    matrix = np.asarray(
+        (
+            (scale_x, 0, (scale_x - 1) / 2),
+            (0, scale_y, (scale_y - 1) / 2),
+        ),
+        dtype=np.float32,
+    )
+    return warp_vector_field_2d(cropped, matrix, output_shape, semantics=semantics)
 
 
 def _pull_jacobian_2d(

@@ -12,6 +12,26 @@ Implementation: [validation #620](https://github.com/albumentations-team/Albumen
 
 ## Validation
 
+### Safe settings import with legacy telemetry opt-out
+
+- Previous behavior: Valid non-object JSON in `settings.json` could prevent package import. Arrays of key/value
+  pairs were accepted, so `[["telemetry", false]]` could disable telemetry.
+- New behavior: Only JSON objects merge general settings. A legacy array that fully converts to a dictionary
+  preserves only an effective telemetry opt-out: its last `telemetry` value must be falsey, and is normalized to
+  Boolean `false` in memory. Other array entries are ignored. Invalid arrays, including an opt-out followed by an
+  invalid element, and other roots retain defaults before environment overrides. Valid objects, caught file errors,
+  and malformed-JSON fallback keep their existing behavior; loading never rewrites the settings file.
+- Affected users: Users with non-object settings files can import the package. Previously effective legacy telemetry
+  opt-outs remain disabled, including non-boolean falsey values. Other settings from arrays no longer apply.
+  Telemetry remains enabled by default when no object setting, preserved legacy opt-out, or environment override
+  disables it.
+- Migration: Legacy opt-outs continue to work. Prefer `{"telemetry": false}` instead of `[["telemetry", false]]`,
+  or set `ALBUMENTATIONS_NO_TELEMETRY=1` or `ALBUMENTATIONS_OFFLINE=1` before import. Migrate other array entries
+  to an object if needed. The original file remains available for correction.
+- First affected version: unreleased
+- Contract: [Settings loading](../maintaining/correctness-contracts.md#settings-loading).
+- Tests: [Fresh-process settings import and overrides](../../tests/test_settings_import.py).
+
 ### Constructor and graph errors
 
 - Previous behavior: Some schema errors could warn and substitute defaults; duplicate arguments could be overwritten.

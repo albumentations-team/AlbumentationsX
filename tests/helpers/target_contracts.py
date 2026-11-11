@@ -320,6 +320,7 @@ def run_tensor_target_cluster_contract(
     numpy_pipeline.set_random_seed(seed)
 
     numpy_result = numpy_pipeline(**numpy_data)
+    assert_contract_values_equal(numpy_data, source, "numpy_input")
     tensor_result = A.ReplayCompose.replay(numpy_result["replay"], **tensor_data)
 
     assert_contract_values_equal(tensor_data, tensor_snapshot, "tensor_input")
@@ -348,26 +349,10 @@ def run_target_cluster_contract(
     seed: int,
     *,
     image_dtype: np.dtype[np.float16] | None = None,
-    vector_field_dtype: np.dtype[np.float16] | np.dtype[np.float32] | None = None,
-    sparse_vector_field_nan: bool = False,
 ) -> None:
     """Execute one registered mode against one reusable target workload."""
-    source_data = make_target_contract_data(
-        case,
-        profile,
-        np.random.default_rng(seed),
-        image_dtype=image_dtype,
-        vector_field_dtype=vector_field_dtype,
-        sparse_vector_field_nan=sparse_vector_field_nan,
-    )
-    replay_data = make_target_contract_data(
-        case,
-        profile,
-        np.random.default_rng(seed),
-        image_dtype=image_dtype,
-        vector_field_dtype=vector_field_dtype,
-        sparse_vector_field_nan=sparse_vector_field_nan,
-    )
+    source_data = make_target_contract_data(case, profile, np.random.default_rng(seed), image_dtype=image_dtype)
+    replay_data = make_target_contract_data(case, profile, np.random.default_rng(seed), image_dtype=image_dtype)
     source_snapshot = copy.deepcopy(source_data)
     replay_snapshot = copy.deepcopy(replay_data)
     compose_kwargs = copy.deepcopy(dict(profile.compose_kwargs))
@@ -396,14 +381,7 @@ def run_target_cluster_contract(
         for key in source_snapshot:
             assert_contract_values_equal(replay_result[key], result[key], key)
 
-    replay_compose_data = make_target_contract_data(
-        case,
-        profile,
-        np.random.default_rng(seed),
-        image_dtype=image_dtype,
-        vector_field_dtype=vector_field_dtype,
-        sparse_vector_field_nan=sparse_vector_field_nan,
-    )
+    replay_compose_data = make_target_contract_data(case, profile, np.random.default_rng(seed), image_dtype=image_dtype)
     replay_compose_snapshot = copy.deepcopy(replay_compose_data)
     replay_transform = case.transform_cls(**copy.deepcopy(dict(case.init_kwargs)), p=1)
     replay_pipeline = A.ReplayCompose([replay_transform], **copy.deepcopy(dict(profile.compose_kwargs)))
@@ -412,14 +390,7 @@ def run_target_cluster_contract(
     assert_contract_values_equal(replay_compose_data, replay_compose_snapshot, "replay_compose_input")
     replayed_result = A.ReplayCompose.replay(
         replay_compose_result["replay"],
-        **make_target_contract_data(
-            case,
-            profile,
-            np.random.default_rng(seed),
-            image_dtype=image_dtype,
-            vector_field_dtype=vector_field_dtype,
-            sparse_vector_field_nan=sparse_vector_field_nan,
-        ),
+        **make_target_contract_data(case, profile, np.random.default_rng(seed), image_dtype=image_dtype),
     )
     for key in replay_compose_snapshot:
         assert_contract_values_equal(replayed_result[key], replay_compose_result[key], key)

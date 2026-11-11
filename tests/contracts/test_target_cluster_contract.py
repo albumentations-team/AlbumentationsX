@@ -51,27 +51,7 @@ def test_core_target_cluster_contract(pair: TargetContractPair) -> None:
     ),
     ids=("float16", "sparse-nan-float32", "sparse-nan-float16"),
 )
-def test_vector_field_dtype_and_nan_modes(pair: TargetContractPair, field_dtype: np.dtype, sparse_nan: bool) -> None:
-    run_target_cluster_contract(
-        pair.case,
-        pair.profile,
-        seed=137,
-        vector_field_dtype=field_dtype,
-        sparse_vector_field_nan=sparse_nan,
-    )
-
-
-@pytest.mark.parametrize("pair", _VECTOR_FIELD_CONTRACT_PAIRS, ids=lambda pair: pair.pair_id)
-@pytest.mark.parametrize(
-    ("field_dtype", "sparse_nan"),
-    (
-        (np.dtype(np.float16), False),
-        (np.dtype(np.float32), True),
-        (np.dtype(np.float16), True),
-    ),
-    ids=("float16", "sparse-nan-float32", "sparse-nan-float16"),
-)
-def test_vector_field_tensor_dtype_and_nan_modes(
+def test_vector_field_dtype_and_nan_parity(
     pair: TargetContractPair,
     field_dtype: np.dtype,
     sparse_nan: bool,

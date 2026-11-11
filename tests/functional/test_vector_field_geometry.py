@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pytest
 from pytest_mock import MockerFixture
@@ -508,6 +510,25 @@ def test_pad_marks_added_vector_field_cells_as_nan() -> None:
     assert np.isnan(result["gradient"][0]).all()
     np.testing.assert_array_equal(result["gradient"][1:3, 1:4], field)
     assert np.isnan(result["gradient"][-1]).all()
+
+
+def test_pad_if_needed3d_replays_sparse_float16_field() -> None:
+    field = np.arange(1, 73, dtype=np.float16).reshape(2, 3, 4, 3)
+    field[0, 1, 2] = np.nan
+    data = {"volume": np.zeros((2, 3, 4, 1), dtype=np.uint8), "gradient3d": field}
+    expected = np.pad(field, ((1, 1), (1, 2), (1, 1), (0, 0)), constant_values=np.nan)
+    pipeline = A.Compose(
+        [A.PadIfNeeded3D(min_zyx=(3, 5, 5), pad_divisor_zyx=(2, 2, 2))],
+        save_applied_params=True,
+    )
+
+    result = pipeline(**data)
+    record = json.loads(json.dumps(result["applied_transforms"], allow_nan=False))
+    replayed = A.Compose.from_applied_transforms(record)(**data)
+
+    for output in (result, replayed):
+        assert output["gradient3d"].dtype == np.float16
+        np.testing.assert_array_equal(output["gradient3d"], expected)
 
 
 def test_center_crop_keeps_displacement_values_and_output_endpoint_semantics() -> None:

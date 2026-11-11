@@ -6,10 +6,10 @@ from numpy.typing import NDArray
 
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet
-from albumentations.core.type_definitions import Targets
+from albumentations.core.type_definitions import VECTOR_FIELD_TARGETS, Targets
 
 from ._transforms_shared import (
-    ALL_TARGETS,
+    ALL_GEOMETRIC_TARGETS,
     NUM_MULTI_CHANNEL_DIMENSIONS,
     AfterValidator,
     BaseTransformInitSchema,
@@ -47,7 +47,8 @@ class CropNonEmptyMaskIfExists(BaseCrop):
         p (float): Probability of applying the transform. Default: 1.0.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, mask, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d, displacement,
+        displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -152,6 +153,7 @@ class CropNonEmptyMaskIfExists(BaseCrop):
         Targets.VOLUMES,
         Targets.MASK3D,
         Targets.MASKS3D,
+        *VECTOR_FIELD_TARGETS,
     )
 
     class InitSchema(BaseTransformInitSchema):
@@ -247,7 +249,8 @@ class RandomCropNearBBox(BaseCrop):
         p (float): probability of applying the transform. Default: 1.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -262,7 +265,7 @@ class RandomCropNearBBox(BaseCrop):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
 
     class InitSchema(BaseTransformInitSchema):
         max_part_shift: Annotated[
@@ -337,7 +340,8 @@ class RandomCropFromBorders(BaseCrop):
         p (float): Probability of applying the transform. Default: 1.0
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -404,7 +408,7 @@ class RandomCropFromBorders(BaseCrop):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
 
     class InitSchema(BaseTransformInitSchema):
         crop_left: float = Field(

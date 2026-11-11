@@ -19,6 +19,7 @@ Document small fixes in their pull requests.
 | [Target-Specific Parameter Sampling](target-specific-parameter-sampling.md) | Shared parameters, actual-target-key records, determinism, and replay. |
 | [Sampling Inventory](target-specific-parameter-sampling-inventory.md) | Sampler ownership and representation-dependent behavior. |
 | [NumPy and CPU Tensor Routing](numpy-tensor-routing.md) | Container preservation, layouts, and NumPy fallback. |
+| [Vector fields](../vector-fields.md) | Field meanings, component geometry, layouts, and NaN boundaries. |
 
 ## CI and dependencies
 

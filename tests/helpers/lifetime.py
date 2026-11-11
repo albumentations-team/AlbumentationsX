@@ -28,12 +28,19 @@ def watch_array_references(value: Any, references: list[weakref.ReferenceType[An
             watch_array_references(item, references)
 
 
+@pytest.fixture(scope="module")
+def _collect_lifetime_garbage() -> Iterator[None]:
+    """Collect cycles at module boundaries to keep per-case setup inexpensive."""
+    gc.collect()
+    yield
+    gc.collect()
+
+
 @pytest.fixture
-def refcount_only() -> Iterator[None]:
+def refcount_only(_collect_lifetime_garbage: None) -> Iterator[None]:
     """Require reference counting to release buffers without production GC calls."""
     was_enabled = gc.isenabled()
     clear_completed_observation()
-    gc.collect()
     gc.disable()
     try:
         with pytest.MonkeyPatch.context() as patch:
@@ -46,4 +53,3 @@ def refcount_only() -> Iterator[None]:
             gc.enable()
         else:
             gc.disable()
-        gc.collect()

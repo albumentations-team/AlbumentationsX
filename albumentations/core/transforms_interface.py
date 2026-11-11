@@ -47,6 +47,7 @@ from albumentations.core.tensor import (
     tensor_to_numpy_spatial,
     validate_tensor_input,
     validate_tensor_metadata_input,
+    validate_vector_field_input,
 )
 from albumentations.core.transform_params import (
     SampledParams,
@@ -58,7 +59,7 @@ from albumentations.core.transform_params import (
 from albumentations.core.validation import ValidatedTransformMeta
 
 from .serialization import Serializable, SerializableMeta, get_shortest_class_fullname
-from .type_definitions import ALL_TARGETS, StackedMasks4D, Targets, VolumeType
+from .type_definitions import ALL_TARGETS, VECTOR_FIELD_TARGET_NAMES, StackedMasks4D, Targets, VolumeType
 from .utils import format_args, get_volume_shape, get_volumes_shape
 
 _ArrayTargetT = TypeVar("_ArrayTargetT", bound=NDArray[np.generic] | torch.Tensor)
@@ -180,10 +181,18 @@ _TARGET_APPLY_METHODS = {
     "masks": "apply_to_masks",
     "bboxes": "apply_to_bboxes",
     "keypoints": "apply_to_keypoints",
+    "gradient": "apply_to_gradient",
+    "displacement": "apply_to_displacement",
+    "vector_field": "apply_to_vector_field",
+    "normal": "apply_to_normal",
     "volume": "apply_to_volume",
     "volumes": "apply_to_volumes",
     "mask3d": "apply_to_mask3d",
     "masks3d": "apply_to_masks3d",
+    "gradient3d": "apply_to_gradient3d",
+    "displacement3d": "apply_to_displacement3d",
+    "vector_field3d": "apply_to_vector_field3d",
+    "normal3d": "apply_to_normal3d",
     "user_data": "apply_to_user_data",
 }
 
@@ -414,6 +423,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
     _runtime_generated_params: ClassVar[frozenset[str]] = frozenset()
     _runtime_binding_params: ClassVar[Mapping[str, None]] = {}
     _preserves_input_image_range: ClassVar[bool] = True  # image targets retain the input dtype's normalized range
+    _skip_when_vector_fields_present: ClassVar[bool] = False
     _removed_sampling_hooks: ClassVar[frozenset[str]] = frozenset({"get_params", "get_params_dependent_on_data"})
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
@@ -723,9 +733,16 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         if invocation is None:
             if self.can_apply_without_invocation(force_apply=force_apply):
                 return self.apply_without_invocation(force_apply=force_apply, publish_observation=True, **kwargs)
+            skip_for_vector_fields = self.should_skip_for_vector_fields(kwargs)
+            if not skip_for_vector_fields:
+                self._validate_vector_field_inputs(kwargs)
             context = self._new_invocation_context()
+            context.vector_fields_validated = not skip_for_vector_fields
             with context:
                 return self.apply_in_invocation(context, *args, force_apply=force_apply, **kwargs)
+        if not invocation.vector_fields_validated and not self.should_skip_for_vector_fields(kwargs):
+            self._validate_vector_field_inputs(kwargs)
+            invocation.vector_fields_validated = True
         return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **kwargs)
 
     def can_apply_without_invocation(self, *, force_apply: bool) -> bool:
@@ -757,6 +774,14 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             msg = "Transform requires an active invocation"
             raise RuntimeError(msg)
         state = TransformInvocationState() if publish_observation else None
+        if self._skip_when_vector_fields_present and self.should_skip_for_vector_fields(kwargs):
+            if state is not None:
+                state.skip_reason = "unsupported_vector_field"
+            result = kwargs
+            if state is not None:
+                publish_completed_transform_state(self, state)
+            return result
+        self._validate_vector_field_inputs(kwargs)
         result = self._apply_sampled(state, publish_observation, None, **kwargs)
         if state is not None:
             publish_completed_transform_state(self, state)
@@ -778,20 +803,52 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
             raise TypeError(msg)
         if getattr(self, "_is_tensor_terminal", False):
             self._tensor_fallback_route(kwargs)
+        if self._skip_when_vector_fields_present and self.should_skip_for_vector_fields(kwargs):
+            skipped_state = invocation.transform_state(self)
+            skipped_state.params = None
+            skipped_state.applied_config = None
+            skipped_state.skip_reason = "unsupported_vector_field"
+            return kwargs
         state = invocation.get_transform_state(self) if invocation.collect_applied else None
         if state is not None:
             state.params = None
             state.applied_config = None
+            state.skip_reason = None
         if not self.replay_mode and not force_apply and self.p <= 0.0:
             return kwargs
         if self.replay_mode:
-            state = invocation.transform_state(self) if invocation.collect_applied else None
-            return self._apply_replay(state, invocation=invocation, **kwargs)
+            replay_state = invocation.transform_state(self) if invocation.collect_applied else None
+            return self._apply_replay(replay_state, invocation=invocation, **kwargs)
 
         if not self._should_apply_in_invocation(invocation, force_apply=force_apply):
             return kwargs
-        state = invocation.transform_state(self) if invocation.collect_applied else None
-        return self._apply_sampled(state, invocation.collect_applied, invocation, **kwargs)
+        applied_state = invocation.transform_state(self) if invocation.collect_applied else None
+        return self._apply_sampled(applied_state, invocation.collect_applied, invocation, **kwargs)
+
+    def should_skip_for_vector_fields(self, data: Mapping[str, Any]) -> bool:
+        """Return whether this node's unsupported-field policy makes it a no-op for the current inputs."""
+        return self._skip_when_vector_fields_present and any(
+            value is not None and self._additional_targets.get(name, name) in VECTOR_FIELD_TARGET_NAMES
+            for name, value in data.items()
+        )
+
+    def _validate_vector_field_inputs(self, data: Mapping[str, Any]) -> None:
+        if len(data) == 1:
+            name, value = next(iter(data.items()))
+            canonical_name = self._additional_targets.get(name, name)
+            if canonical_name not in VECTOR_FIELD_TARGET_NAMES or value is None:
+                return
+            validate_vector_field_input(value, name, canonical_name)
+            return
+        if VECTOR_FIELD_TARGET_NAMES.isdisjoint(data) and not any(
+            alias in data and canonical_name in VECTOR_FIELD_TARGET_NAMES
+            for alias, canonical_name in self._additional_targets.items()
+        ):
+            return
+        for name, value in data.items():
+            canonical_name = self._additional_targets.get(name, name)
+            if value is not None and canonical_name in VECTOR_FIELD_TARGET_NAMES:
+                validate_vector_field_input(value, name, canonical_name)
 
     def _apply_sampled(
         self,
@@ -1871,6 +1928,95 @@ class DualTransform(BasicTransform):
     def apply_to_mask3d(self, mask3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
         return self._apply_to_batch(mask3d, lambda mask: self.apply_to_mask(mask, *args, **params))
 
+    def _apply_vector_field_target(self, target: str, field: np.ndarray, **params: Any) -> np.ndarray:
+        from albumentations.augmentations.geometric._functional_vector_fields import (
+            warp_vector_field_2d,
+            warp_vector_field_from_pull_map_2d,
+        )
+
+        vector_field = cast("NDArray[np.float16] | NDArray[np.float32]", field)
+        semantics = target
+        map_x = params.get("map_x")
+        map_y = params.get("map_y")
+        if isinstance(map_x, np.ndarray) and isinstance(map_y, np.ndarray):
+            control_coefficients = params.get("control_coefficients")
+            inverse_model = None
+            if semantics in {"displacement", "displacement3d"} and control_coefficients is not None:
+                coefficients_array = np.asarray(control_coefficients, dtype=np.float32)
+                if coefficients_array.ndim == 3 and coefficients_array.shape[-1] == 2:
+                    inverse_model = coefficients_array
+            return warp_vector_field_from_pull_map_2d(
+                vector_field,
+                map_x,
+                map_y,
+                semantics=semantics,
+                inverse_model=inverse_model,
+            )
+
+        matrix = params.get("output_matrix", params.get("matrix"))
+        if not isinstance(matrix, np.ndarray) or matrix.shape not in {(2, 3), (3, 3)}:
+            return field
+        output_shape = params.get("output_shape", params.get("shape"))
+        source_shape = vector_field.shape[-3:-1] if vector_field.ndim == 4 else vector_field.shape[:2]
+        spatial_shape = tuple(output_shape[:2]) if output_shape is not None else source_shape
+        transformed = warp_vector_field_2d(
+            vector_field,
+            matrix.astype(np.float32, copy=False),
+            spatial_shape,
+            semantics=semantics,
+        )
+        if all(name in params for name in ("x_min", "x_max", "y_min", "y_max")):
+            x_min, x_max, y_min, y_max = (int(params[name]) for name in ("x_min", "x_max", "y_min", "y_max"))
+            if min(x_min, y_min) >= 0 and x_max > x_min and y_max > y_min:
+                transformed = (
+                    transformed[y_min:y_max, x_min:x_max]
+                    if transformed.ndim == 3
+                    else transformed[:, y_min:y_max, x_min:x_max]
+                )
+        return transformed
+
+    def _dispatch_vector_field_target(
+        self, target: str, field: NDArray[np.generic] | torch.Tensor | None, **params: Any
+    ) -> Any:
+        if field is None:
+            return None
+        field_array = tensor_to_numpy_spatial(field, target) if isinstance(field, torch.Tensor) else field
+        field_array = cast("NDArray[np.float16] | NDArray[np.float32]", field_array)
+        transformed = self._apply_vector_field_target(target, field_array, **params)
+        if transformed is field_array:
+            return field
+
+        from albumentations.augmentations.geometric._functional_vector_fields import restore_vector_field_dtype
+
+        restored = restore_vector_field_dtype(np.asarray(transformed, dtype=np.float32), field_array.dtype)
+        if isinstance(field, torch.Tensor):
+            return numpy_to_tensor_spatial(restored, target)
+        return restored
+
+    def apply_to_gradient(self, gradient: NDArray[np.generic] | torch.Tensor, **params: Any) -> Any:
+        return self._dispatch_vector_field_target("gradient", gradient, **params)
+
+    def apply_to_displacement(self, displacement: NDArray[np.generic] | torch.Tensor, **params: Any) -> Any:
+        return self._dispatch_vector_field_target("displacement", displacement, **params)
+
+    def apply_to_vector_field(self, vector_field: NDArray[np.generic] | torch.Tensor, **params: Any) -> Any:
+        return self._dispatch_vector_field_target("vector_field", vector_field, **params)
+
+    def apply_to_normal(self, normal: NDArray[np.generic] | torch.Tensor, **params: Any) -> Any:
+        return self._dispatch_vector_field_target("normal", normal, **params)
+
+    def apply_to_gradient3d(self, gradient3d: NDArray[np.generic] | torch.Tensor, **params: Any) -> Any:
+        return self._dispatch_vector_field_target("gradient3d", gradient3d, **params)
+
+    def apply_to_displacement3d(self, displacement3d: NDArray[np.generic] | torch.Tensor, **params: Any) -> Any:
+        return self._dispatch_vector_field_target("displacement3d", displacement3d, **params)
+
+    def apply_to_vector_field3d(self, vector_field3d: NDArray[np.generic] | torch.Tensor, **params: Any) -> Any:
+        return self._dispatch_vector_field_target("vector_field3d", vector_field3d, **params)
+
+    def apply_to_normal3d(self, normal3d: NDArray[np.generic] | torch.Tensor, **params: Any) -> Any:
+        return self._dispatch_vector_field_target("normal3d", normal3d, **params)
+
     def apply_to_masks3d(
         self,
         masks3d: Annotated[NDArray[np.generic], torch.Tensor],
@@ -2281,6 +2427,84 @@ class Transform3D(DualTransform):
         or (D, H, W). Returns same shape and dtype.
         """
         raise NotImplementedError
+
+    def _apply_vector_field_target(
+        self,
+        target: str,
+        field: np.ndarray,
+        **params: Any,
+    ) -> np.ndarray:
+        from albumentations.augmentations.geometric._functional_vector_fields import (
+            crop_and_resize_vector_field_3d,
+            warp_vector_field_3d,
+        )
+
+        vector_field = cast("NDArray[np.float16] | NDArray[np.float32]", field)
+        matrix = params.get("matrix")
+        if isinstance(matrix, np.ndarray) and matrix.shape in {(3, 4), (4, 4)}:
+            output_shape = tuple(params.get("output_shape", vector_field.shape[:3]))
+            return warp_vector_field_3d(vector_field, matrix, output_shape, semantics=target)
+
+        crop_coords = params.get("crop_coords")
+        if crop_coords is not None:
+            z_min, z_max, y_min, y_max, x_min, x_max = crop_coords
+            if "pad_params" in params:
+                pad_params = params["pad_params"]
+                pad_front = 0 if pad_params is None else pad_params["pad_front"]
+                pad_top = 0 if pad_params is None else pad_params["pad_top"]
+                pad_left = 0 if pad_params is None else pad_params["pad_left"]
+                matrix = np.asarray(
+                    ((1, 0, 0, pad_left - x_min), (0, 1, 0, pad_top - y_min), (0, 0, 1, pad_front - z_min)),
+                    dtype=np.float32,
+                )
+                output_shape = (
+                    z_max - z_min,
+                    y_max - y_min,
+                    x_max - x_min,
+                )
+                return warp_vector_field_3d(vector_field, matrix, output_shape, semantics=target)
+            if hasattr(self, "size"):
+                output_shape = tuple(self.size)
+                return crop_and_resize_vector_field_3d(
+                    vector_field,
+                    crop_coords,
+                    output_shape,
+                    semantics=target,
+                )
+
+        padding = params.get("padding")
+        if padding is not None and len(padding) == 6:
+            pad_front, pad_back, pad_top, pad_bottom, pad_left, pad_right = padding
+            depth, height, width = vector_field.shape[:3]
+            matrix = np.asarray(
+                ((1, 0, 0, pad_left), (0, 1, 0, pad_top), (0, 0, 1, pad_front)),
+                dtype=np.float32,
+            )
+            output_shape = (
+                depth + pad_front + pad_back,
+                height + pad_top + pad_bottom,
+                width + pad_left + pad_right,
+            )
+            return warp_vector_field_3d(vector_field, matrix, output_shape, semantics=target)
+
+        if hasattr(self, "size") and len(self.size) == 3:
+            output_depth, output_height, output_width = self.size
+            source_depth, source_height, source_width = vector_field.shape[:3]
+            scale_x = output_width / source_width
+            scale_y = output_height / source_height
+            scale_z = output_depth / source_depth
+            matrix = np.asarray(
+                (
+                    (scale_x, 0, 0, (scale_x - 1) / 2),
+                    (0, scale_y, 0, (scale_y - 1) / 2),
+                    (0, 0, scale_z, (scale_z - 1) / 2),
+                ),
+                dtype=np.float32,
+            )
+            output_shape = self.size
+        else:
+            return field
+        return warp_vector_field_3d(vector_field, matrix, output_shape, semantics=target)
 
     def apply_to_mask3d(self, mask3d: VolumeType, *args: Any, **params: Any) -> VolumeType:
         """Apply transform to a single 3D mask. Delegates to apply_to_volume. Input shape (D, H, W) or

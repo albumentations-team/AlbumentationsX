@@ -4,12 +4,13 @@ from typing import Annotated, Any, ClassVar
 
 from numpy.typing import NDArray
 
+from albumentations.augmentations.geometric._functional_vector_fields import crop_and_resize_vector_field_2d
 from albumentations.core.bbox_utils import BboxProcessor
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet
 
 from ._transforms_shared import (
-    ALL_TARGETS,
+    ALL_GEOMETRIC_TARGETS,
     CV2_INTER_LINEAR,
     CV2_INTER_NEAREST,
     AfterValidator,
@@ -71,7 +72,8 @@ class BBoxSafeRandomCrop(BaseCrop):
         p (float, optional): Probability of applying the transform. Defaults to 1.0.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -142,7 +144,7 @@ class BBoxSafeRandomCrop(BaseCrop):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
 
     InitSchema: ClassVar[type[BaseTransformInitSchema]] = _BBoxSafeRandomCropInitSchema
 
@@ -227,7 +229,8 @@ class RandomSizedBBoxSafeCrop(BBoxSafeRandomCrop):
         p (float): Probability of applying the transform. Default: 1.0.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -342,7 +345,7 @@ class RandomSizedBBoxSafeCrop(BBoxSafeRandomCrop):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
 
     class InitSchema(BaseTransformInitSchema):
         height: Annotated[int, Field(ge=1)]
@@ -378,6 +381,14 @@ class RandomSizedBBoxSafeCrop(BBoxSafeRandomCrop):
         crop = fcrops.crop(img, *crop_coords)
         result = fgeometric.resize(crop, (self.height, self.width), self.interpolation)
         return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
+
+    def _apply_vector_field_target(self, target: str, field: np.ndarray, **params: Any) -> np.ndarray:
+        return crop_and_resize_vector_field_2d(
+            field,
+            params["crop_coords"],
+            (self.height, self.width),
+            semantics=target,
+        )
 
     def apply_to_mask(
         self,
@@ -454,7 +465,8 @@ class BBoxSubsetSafeRandomCrop(BBoxSafeRandomCrop):
         p (float, optional): Probability of applying the transform. Defaults to 1.0.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -498,7 +510,7 @@ class BBoxSubsetSafeRandomCrop(BBoxSafeRandomCrop):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
 
     class InitSchema(BaseTransformInitSchema):
         subset_fraction_range: Annotated[
@@ -643,7 +655,8 @@ class AtLeastOneBBoxRandomCrop(BaseCrop):
         p (float, optional): Probability of applying the transform. Defaults to 1.0.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -736,7 +749,7 @@ class AtLeastOneBBoxRandomCrop(BaseCrop):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
 
     class InitSchema(BaseTransformInitSchema):
         height: Annotated[int, Field(ge=1)]

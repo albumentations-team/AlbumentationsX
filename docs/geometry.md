@@ -1,8 +1,10 @@
 # 2D geometry contract
 
-Pass an image and its masks, boxes, and keypoints to one `Compose` call so they use the same realized geometry. This
-page defines how to interpret the coordinates, when an annotation can disappear, and which results the tests compare.
+Pass an image, its vector fields, masks, boxes, and keypoints to one `Compose` call so they use the same realized
+geometry. This page defines how to interpret the coordinates, when an annotation can disappear, and which results the
+tests compare.
 Use the [transform target declarations](../README.md#list-of-augmentations) to check which targets a transform accepts.
+For vector-field component rules, layouts, and NaN behavior, see the [vector-field guide](vector-fields.md).
 
 ## Coordinate systems
 
@@ -30,19 +32,24 @@ first pixel has edges `[0, 1]` along x and moves to `[6, 7]`. The keypoint rule 
 
 ## Geometry is shared across targets
 
-Images, masks, and spatial aliases in the same sample use an aligned frame when they consume shared geometry. The
-transform samples its policy once in `sample_parameters`. The realized values describe the window, offsets, matrix,
-grid, or permutation that the raster and annotation handlers use. A transform may express the same operation in the
-pixel-center and box-edge systems. The `TargetParams` contract carries parameters that depend on a target's
-representation. [Parameter contract](design/target-specific-parameter-sampling.md)
+Images, masks, vector fields, and spatial aliases in the same sample use an aligned frame when they consume shared
+geometry. The transform samples its policy once in `sample_parameters`. The realized values describe the window,
+offsets, matrix, grid, or permutation that the raster and annotation handlers use. Vector fields use that geometry
+with component rules selected by field meaning; they do not inherit image or mask interpolation settings. A transform
+may express the same operation in the pixel-center and box-edge systems. The `TargetParams` contract carries
+parameters that depend on a target's representation. [Parameter contract](design/target-specific-parameter-sampling.md)
 
 ```mermaid
 flowchart LR
-    Sample["Image, masks, boxes, keypoints"] --> Validate["Compose validates the sample"]
+    Sample["Image, fields, masks, boxes, keypoints"] --> Validate["Compose validates the sample"]
     Validate --> Geometry["Transform realizes shared geometry"]
     Geometry --> Raster["Resample or rearrange the raster"]
+    Geometry --> Fields["Resample fields and transform components by meaning"]
     Geometry --> Annotation["Map annotation coordinates"]
+    Fields --> Output["Aligned outputs"]
     Annotation --> Filter["Filter annotations and their label rows"]
+    Raster --> Output
+    Filter --> Output
 ```
 
 `ReplayCompose` uses the saved parameters. Rebuilding derived matrices or maps from a saved mesh or control grid is

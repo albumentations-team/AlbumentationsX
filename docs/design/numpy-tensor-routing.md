@@ -48,6 +48,22 @@ For video passed as `images`, `N=T`; the Tensor layout is `T,C,H,W`. Normal `Dat
 Mask channels may hold categorical labels, independent binary planes, depth values, or another target-specific value.
 Transforms apply masks only through their declared target methods.
 
+### Vector fields
+
+Vector fields have a required component axis. Unlike masks, their channels are ordered spatial components and their
+values may be negative, exceed one, or contain NaN. Compose validates the component count and float16/float32 dtype at
+the root. No image range scaling, clipping, or optional-channel insertion applies.
+
+| Targets | NumPy layout | CPU Tensor layout | Components |
+|---|---|---|---|
+| `gradient`, `displacement`, `vector_field` | `(H,W,2)` | `(2,H,W)` | X, Y |
+| `normal` | `(H,W,3)` | `(3,H,W)` | X, Y, Z |
+| `gradient3d`, `displacement3d`, `vector_field3d`, `normal3d` | `(D,H,W,3)` | `(3,D,H,W)` | X, Y, Z |
+
+One field target represents one field; there are no plural or collection field targets. `additional_targets` can pass a
+second named field through the same single-field handler. Fields share the image or volume spatial axes, so shape checks
+compare their `(H,W)` or `(D,H,W)` dimensions with the other active spatial targets.
+
 For `volumes` and `masks3d`, one transform invocation samples its parameters once and reuses them across the
 collection. `Affine3D` sends the collection to Albucore's batch resampling route with one shared grid.
 `RandomGamma` applies its pointwise operation to the complete `volumes` array. `RandomBrightnessContrast` batches the
@@ -109,6 +125,7 @@ may materialize contiguous or writable storage when its kernel requires it.
 | --- | --- |
 | `image`, `images`, `volume`, `volumes` | `torch.uint8`, `torch.float16`, `torch.float32` |
 | `mask`, `masks`, `mask3d`, `masks3d` | `torch.uint8`, `torch.int16`, `torch.float16`, `torch.float32` |
+| `gradient`, `displacement`, `vector_field`, `normal`, and 3D counterparts | `torch.float16`, `torch.float32` |
 | `bboxes`, `keypoints` | `torch.float32` |
 
 This table describes validation at the `Compose` boundary. An applied fallback uses the transform's existing NumPy
@@ -119,6 +136,8 @@ Full float16 transform coverage remains in progress; boundary acceptance does no
 The Compose-level float16 matrix runs `tests/contracts/test_target_cluster_contract.py` and
 `tests/contracts/test_image_range_contract.py` for NumPy and Tensor routes. These check target/dtype preservation and
 range contracts; operation-specific numerical references and two-platform speed/memory acceptance remain separate.
+Vector fields have their own generated target matrix: every 2D mode and every 3D constructor mode runs through NumPy and
+CPU Tensor paths, with float16 all-valid, float32 sparse-NaN, and float16 sparse-NaN variants on every field mode.
 
 ## Execution model
 
@@ -216,7 +235,8 @@ The fallback restores the original metadata container after the leaf invocation.
 
 ### `ToTensorV2` and `ToTensor3D`
 
-`ToTensorV2` and `ToTensor3D` are NumPy-to-Tensor terminal transforms. They accept NumPy inputs only. The base target
+`ToTensorV2` and `ToTensor3D` are NumPy-to-Tensor terminal transforms. They accept NumPy inputs only. They convert
+2D and 3D field component axes to channel-first and preserve float16/float32 and NaN values. The base target
 interface permits NumPy or Tensor outputs; concrete terminal handlers declare Tensor returns without untyped
 intermediate overrides. Default NumPy batch handlers require array-producing callbacks. Collection identity handlers preserve
 the caller's container and NumPy dtype in their return types.

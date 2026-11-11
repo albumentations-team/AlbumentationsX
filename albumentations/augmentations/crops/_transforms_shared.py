@@ -18,6 +18,7 @@ from albumentations.core.pydantic import (
 )
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
 from albumentations.core.type_definitions import (
+    ALL_GEOMETRIC_TARGETS,
     ALL_TARGETS,
     CV2_BORDER_CONSTANT,
     CV2_INTER_LINEAR,
@@ -37,6 +38,7 @@ from albumentations.core.type_definitions import (
 from . import functional as fcrops
 
 __all__ = [
+    "ALL_GEOMETRIC_TARGETS",
     "ALL_TARGETS",
     "CV2_BORDER_CONSTANT",
     "CV2_INTER_LINEAR",

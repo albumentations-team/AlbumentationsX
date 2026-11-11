@@ -1,7 +1,7 @@
 # Generated Transform Target Contracts
 
 **Status:** Implemented
-**Scope:** public `DualTransform` execution plus Tensor routing for `ImageOnlyTransform` targets
+**Scope:** public `DualTransform` execution plus Tensor routing for `ImageOnlyTransform` and vector-field targets
 **Primary readers:** maintainers adding transform modes, targets, metadata requirements, or target-specific behavior
 
 ## Declaration and execution are one contract
@@ -18,6 +18,33 @@ a transform may opt in with an explicit declaration and its own handler. `Compos
 `tests/test_docstrings.py` reads this section from `albu-spec`'s parsed docstring and compares it with `_targets`;
 `tests/test_targets.py` checks that dispatch keys match the declaration and do not resolve to base-class stubs.
 The generated target cluster then executes each selected target through the public `Compose` route.
+
+## Vector-field targets
+
+Vector fields are eight independent single targets. They are never batched implicitly and never enter `image_like()`.
+The vector channel is mandatory; NumPy is channel-last and a plain CPU Tensor is channel-first.
+
+| Target family | NumPy shape | CPU Tensor shape | Components |
+|---|---|---|---|
+| `gradient`, `displacement`, `vector_field` | `(H, W, 2)` | `(2, H, W)` | X, Y |
+| `normal` | `(H, W, 3)` | `(3, H, W)` | X, Y, Z |
+| `gradient3d`, `displacement3d`, `vector_field3d`, `normal3d` | `(D, H, W, 3)` | `(3, D, H, W)` | X, Y, Z |
+
+Only float16 and float32 are accepted. NaN marks an invalid vector; any non-finite component invalidates the complete vector
+after interpolation or computed geometry. Bilinear/trilinear sampling excludes invalid neighbours and renormalizes the
+remaining weights. Sampling outside source pixel/voxel cells produces NaN independently of image border mode.
+
+`gradient` transforms as a covector (`J^-T g`), `vector_field` as a local vector (`J v`), and `displacement` by
+transforming both endpoints (`T(p+d)-T(p)`). `normal` and `normal3d` use inverse transpose and unit normalization. A
+2D transform applied to a 3D field lifts XY geometry with an unchanged Z axis. `normal` is a camera-frame surface
+normal under that lift; tangent-space basis conversion remains the caller's responsibility.
+
+Compose recognizes the eight canonical names even when a selected transform leaves them unchanged. Only a transform
+that declares a field in `_targets` participates in the generated field profile. Unsupported nodes use a leaf-local
+skip capability instead of a fake identity handler; an active field makes the node a no-op, including under force-apply
+and replay. Dropout targets are explicit passthroughs.
+
+`additional_targets` can alias one named field to another target name. It does not create a collection or a batch route.
 
 ## What adding a registry case now covers
 
@@ -53,7 +80,8 @@ transform inventory.
 
 ## Numerical comparisons
 
-Input ownership, metadata, categorical masks, annotations and same-container replay remain exact. The final
+Input ownership, metadata, categorical masks, annotations and same-container replay remain exact. Float vector fields
+compare NaN sentinels as equal only at matching positions; finite values remain exact. The final
 NumPy-versus-Tensor image comparison is exact by default. A case may declare `tensor_uint8_atol` for uint8 image or
 volume results; this never applies to float16/float32, masks, input snapshots or replay checks.
 
@@ -101,9 +129,18 @@ several asymmetric class regions, and annotations carry multiple aligned label f
 | `obb-labels` | image, mask, OBBs, two label fields | Finite normalized geometry, angle column, and aligned fields |
 | `keypoints-labels` | image, mask, keypoints, labels | Finite keypoints and aligned labels |
 | `volume-mask3d` | `volume`, `mask3d` | Slice/depth behavior, spatial synchronization, and dtype |
+| `image-vector-fields` | image, four 2D field targets | Output shape/dtype, vector validity, and unit normals |
+| `volume-vector-fields3d` | volume, four 3D field targets | Output shape/dtype, vector validity, and unit normals |
 
 The HBB and OBB profiles use separate `BboxParams`. A case collects only for bbox types declared in
 `_supported_bbox_types`.
+
+The 3D field profile is extended because nonlinear displacement inversion has a higher cost than ordinary volume
+geometry. The ordinary extended profile exercises one primary mode per class; the additional
+`ALL_MODE_VOLUME_FIELD_CONTRACT_PAIRS` runs every remaining registered 3D constructor mode with fields, through both
+NumPy and CPU Tensor containers. Every collected 2D and 3D field mode also runs float16 all-valid, float32 sparse-NaN,
+and float16 sparse-NaN variants in both containers. All pairs come from the existing transform case and capability
+registries.
 
 ## Extended profiles cover representation hazards
 

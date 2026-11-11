@@ -3,9 +3,11 @@
 **Status:** implemented
 
 `ElasticTransform` applies one bounded, smooth XY pull field to an image and
-all synchronized targets. The field is sampled from a compact cubic B-spline
-coefficient lattice. Map construction therefore depends on the lattice and the
-output shape, not on a full-resolution random-noise sample.
+all synchronized targets, including supported 2D vector fields and the XY planes
+of a volume. Fields use the same pull map but transform components according to
+their meaning. The field is sampled from a compact cubic B-spline coefficient
+lattice. Map construction therefore depends on the lattice and the output shape,
+not on a full-resolution random-noise sample.
 
 For deformation that also moves voxels along depth, use
 [ElasticTransform3D](elastic-transform3d.md). `ElasticTransform` deliberately
@@ -78,6 +80,10 @@ invocation's NumPy generator. No process-global RNG is used.
 - `image` uses `interpolation`, `border_mode`, and `fill`.
 - `mask` and `mask3d` use `mask_interpolation`, `border_mode`, and `fill_mask`.
 - `images` and `volume` reuse one XY map for every member or depth slice.
+- `gradient`, `displacement`, `vector_field`, and `normal` use bilinear field
+  sampling independent of image and mask interpolation. Displacement transforms
+  both endpoints with the continuous control-grid map, including endpoints beyond
+  the visible output when that map can evaluate them.
 - HBB and OBB use the existing raster-support route with constant-zero
   annotation exterior.
 - Keypoints use a bounded fixed-point inverse of the continuous pull map. The
@@ -105,22 +111,24 @@ different spatial shape.
 
 ## Implementation boundary
 
-`BaseRemapTransform` owns synchronized raster, batch, volume, mask3d, and bbox
+`BaseRemapTransform` owns synchronized raster, batch, volume, field, and bbox
 dispatch. `ElasticTransform` owns cubic coefficient sampling and its continuous
-keypoint inverse. Other remap transforms retain `BaseDistortion`'s independent
-map-resolution and direct/mask keypoint policies.
+keypoint and displacement-endpoint inverses. Other remap transforms retain
+`BaseDistortion`'s independent map-resolution and direct/mask keypoint policies.
 
 The functional layer builds one pair of float32 maps per invocation. It uses
-the same maps for every raster target, avoiding repeated random generation and
-repeated field expansion.
+the same maps for every raster target and field, avoiding repeated random
+generation and repeated field expansion. Field component rules and NaN boundary
+semantics are defined in [Vector fields](../vector-fields.md).
 
 ## Verification
 
 The focused suite covers constructor and topology validation, scalar agreement
 with the cubic basis, constant fields, coefficient bounds, strict-JSON replay,
 applied-config reconstruction, fixed-point inverse accuracy, volume slice
-consistency, and exact identity. Shared distortion, OBB, serialization, and
-target-contract suites cover integration with the rest of the library.
+consistency, exact identity, vector-field semantics, and displacement endpoints.
+Shared distortion, OBB, serialization, and target-contract suites cover
+integration with the rest of the library.
 
 Performance evidence must compare the exact baseline and exact candidate head on
 the direct and `Compose` routes for 256, 512, and 1024-pixel inputs, 1, 3, and 5

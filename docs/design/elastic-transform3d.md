@@ -4,7 +4,9 @@
 
 ## Overview
 
-`ElasticTransform3D` applies one smooth XYZ pull field to `volume`, `volumes`, `mask3d`, `masks3d`, and XYZ keypoints. It samples compact cubic B-spline coefficient planes, expands them into one normalized `(D, H, W, 3)` sampling grid, and reuses that grid for every item in each collection.
+`ElasticTransform3D` applies one smooth XYZ pull field to `volume`, `volumes`, `mask3d`, `masks3d`, 3D vector fields,
+and XYZ keypoints. It samples compact cubic B-spline coefficient planes, expands them into one normalized
+`(D, H, W, 3)` sampling grid, and reuses that grid for every item in each collection.
 
 Use it when a label remains valid under small, smooth changes to volumetric anatomy or acquisition geometry. It changes voxel-index coordinates only. Voxel spacing, orientation metadata, and 3D bounding boxes are outside this transform's contract.
 
@@ -74,12 +76,16 @@ d(z, y, x) = mean(V_xy(y, x), V_xz(z, x), V_yz(z, y))
 
 where the mean includes all three planes.
 
-The sampler converts the compact planes to Albucore's normalized `(x, y, z)` grid once and passes it to every raster target. `ReplayCompose` persists only the compact sampler data and rebuilds the grid after a JSON round trip.
+The sampler converts the compact planes to Albucore's normalized `(x, y, z)` grid once and passes it to every raster
+and field target. `ReplayCompose` persists only the compact sampler data and rebuilds the grid after a JSON round trip.
 
 ### Targets and persistence
 
 - `volume` and each member of `volumes` use `interpolation`, `border_mode`, and `fill`.
 - `mask3d` and each member of `masks3d` use `mask_interpolation`, `border_mode`, and `fill_mask`; channel-less integer masks retain their dtype.
+- `gradient3d`, `vector_field3d`, and `normal3d` use the pull-map differential with the semantics in
+  [Vector fields](../vector-fields.md). `displacement3d` transforms both endpoints and uses the compact control planes
+  when an endpoint lies outside the visible output grid but remains computable.
 - Keypoints use a bounded fixed-point inverse of `S`. Accepted rows have forward residual at most `1e-3` voxel units, and trailing keypoint columns remain unchanged.
 - `ReplayCompose` stores compact coefficient planes and the input spatial shape. It reproduces the geometry for the same shape and raises `ValueError` for another shape.
 - Applied configuration records the realized magnitude as `displacement_range=(m, m)` and samples fresh coefficient planes when reconstructed.
@@ -90,7 +96,11 @@ Parameter replay stores empty coefficients and `(1, 1, 1)`, and still rejects an
 
 ## Testing Strategy
 
-Focused tests cover constructor validation, the strict topology boundary, every supported raster dtype path, fill behavior, target alignment, keypoint inversion, exact identity, seeded execution, strict-JSON replay, applied-configuration reconstruction, additional targets, and native Tensor output parity for one, three, and five channels.
+Focused tests cover constructor validation, the strict topology boundary, every supported raster dtype path, fill behavior,
+target alignment, keypoint inversion, exact identity, seeded execution, strict-JSON replay, applied-configuration
+reconstruction, additional targets, and native Tensor output parity for one, three, and five channels. The generated
+vector-field target profile checks every 3D constructor mode and separately exercises displacement inversion, field
+dtype preservation, and sparse-NaN interpolation.
 
 The permanent ASV coverage has two layers:
 
@@ -105,4 +115,5 @@ External MONAI and TorchIO transforms use dense Gaussian and full 3D B-spline fi
 - [Bounded 2D ElasticTransform](elastic-transform.md)
 - [Applied configuration and replay contracts](applied-config-replay-contracts.md)
 - [NumPy and CPU Tensor Transform Routing](numpy-tensor-routing.md)
+- [Vector fields](../vector-fields.md)
 - [Albucore](https://github.com/albumentations-team/albucore)

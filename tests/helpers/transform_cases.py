@@ -583,7 +583,7 @@ _BASE_CASE_SPECS: list[list[Any]] = [
     [
         A.PadIfNeeded3D,
         {
-            "min_zyx": (300, 200, 400),
+            "min_zyx": (7, 101, 131),
             "pad_divisor_zyx": (10, 10, 10),
             "position": "center",
             "fill": 10,

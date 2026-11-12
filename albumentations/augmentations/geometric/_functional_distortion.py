@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from albucore import pairwise_distances_squared
 
@@ -10,6 +10,12 @@ from ._functional_shared import (
     cv2,
     np,
 )
+
+if TYPE_CHECKING:
+    from scipy.sparse import csr_matrix
+
+_NUMPY_BUILD = np.show_config(mode="dicts") or {}
+_NUMPY_USES_OPENBLAS = "openblas" in _NUMPY_BUILD.get("Build Dependencies", {}).get("blas", {}).get("name", "").lower()
 
 
 def generate_inverse_distortion_map(
@@ -150,6 +156,9 @@ def expand_control_grid(
     if control.ndim != 3 or control.shape[-1] != 2 or min(control.shape[:2]) < 4:
         raise ValueError("control_coefficients must have shape (rows >= 4, columns >= 4, 2)")
 
+    if _NUMPY_USES_OPENBLAS:
+        return _expand_control_grid_sparse(control, output_shape)
+
     height, width = output_shape
     row_indices, row_weights = _spline_axis_parameters(height, control.shape[0])
     column_indices, column_weights = _spline_axis_parameters(width, control.shape[1])
@@ -163,6 +172,31 @@ def expand_control_grid(
         control,
         column_basis,
         optimize=True,
+    )
+
+
+def _expand_control_grid_sparse(control: np.ndarray, output_shape: tuple[int, int]) -> np.ndarray:
+    # Each coordinate uses four coefficients. CSR keeps the two passes out of OpenBLAS's thread pool.
+    height, width = output_shape
+    rows, columns, components = control.shape
+    column_basis = _sparse_spline_axis_basis(width, columns)
+    row_basis = _sparse_spline_axis_basis(height, rows)
+
+    horizontal = column_basis @ control.transpose(1, 0, 2).reshape(columns, rows * components)
+    intermediate = horizontal.reshape(width, rows, components).transpose(1, 2, 0).reshape(rows, components * width)
+    displacement = row_basis @ intermediate
+    return displacement.reshape(height, components, width).transpose(1, 0, 2)
+
+
+def _sparse_spline_axis_basis(output_length: int, coefficient_count: int) -> csr_matrix:
+    from scipy.sparse import csr_matrix
+
+    indices, weights = _spline_axis_parameters(output_length, coefficient_count)
+    taps = weights.shape[1]
+    offsets = np.arange(0, taps * (output_length + 1), taps, dtype=np.intp)
+    return csr_matrix(
+        (weights.ravel(), indices.ravel(), offsets),
+        shape=(output_length, coefficient_count),
     )
 
 

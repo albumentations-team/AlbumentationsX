@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 import albumentations as A
+from albumentations.augmentations.geometric import _functional_distortion
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.core.invocation import SamplingContext
 from tests.utils import make_sampling_args
@@ -64,8 +65,13 @@ def test_elastic_constructor_rejects_invalid_contract(kwargs: dict[str, object])
         A.ElasticTransform(**kwargs)
 
 
-def test_cubic_control_grid_expansion_matches_scalar_reference() -> None:
-    control = np.random.default_rng(137).uniform(-1, 1, (6, 7, 2)).astype(np.float32)
+@pytest.mark.parametrize("uses_openblas", [False, True])
+def test_cubic_control_grid_expansion_matches_scalar_reference(
+    uses_openblas: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(_functional_distortion, "_NUMPY_USES_OPENBLAS", uses_openblas)
+    control = np.random.default_rng(137).uniform(-1, 1, (29, 31, 2)).astype(np.float32)
     image_shape = (9, 13)
 
     dense = fgeometric.expand_control_grid(control, image_shape)

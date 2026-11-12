@@ -105,8 +105,7 @@ These samplers produce values independent of active target representation. If a 
 depend on shape, channels, dtype, topology, or target content, move it to one of the two sections above and add a mixed
 representation test before changing the implementation.
 
-- `albumentations/augmentations/blur/transforms.py`: `Blur`, `MotionBlur`, `ModeFilter`, `AdvancedBlur`, `Defocus`,
-  `ZoomBlur`.
+- `albumentations/augmentations/blur/transforms.py`: `Blur`, `MotionBlur`, `AdvancedBlur`, `Defocus`, `ZoomBlur`.
 - `albumentations/augmentations/dropout/transforms.py`: `BaseDropout` (abstract contract only).
 - `albumentations/augmentations/geometric/flip.py`: `D4`.
 - `albumentations/augmentations/geometric/pad.py`: `Pad`.

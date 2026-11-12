@@ -254,7 +254,6 @@ See [data collection and opt-out](https://github.com/albumentations-team/Albumen
 - [InvertImg](https://albumentations.ai/explore/transform/InvertImg/)
 - [LensFlare](https://albumentations.ai/explore/transform/LensFlare/)
 - [MedianBlur](https://albumentations.ai/explore/transform/MedianBlur/)
-- [ModeFilter](https://albumentations.ai/explore/transform/ModeFilter/)
 - [MotionBlur](https://albumentations.ai/explore/transform/MotionBlur/)
 - [MultiplicativeNoise](https://albumentations.ai/explore/transform/MultiplicativeNoise/)
 - [Normalize](https://albumentations.ai/explore/transform/Normalize/)

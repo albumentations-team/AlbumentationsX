@@ -9,6 +9,10 @@ from torch import Tensor
 triton: Any = import_module("triton")
 tl: Any = import_module("triton.language")
 
+COMPILATION_ERRORS: tuple[type[Exception], ...] = (import_module("triton.compiler.errors").CompilationError,)
+if ptxas_error := getattr(import_module("triton.runtime.errors"), "PTXASError", None):
+    COMPILATION_ERRORS += (ptxas_error,)
+
 _BLOCK_SIZE = 1024
 _STAT_TILE_SIZE = 2048
 
@@ -84,20 +88,33 @@ def _zscore_tile_stats(
 ) -> None:
     tile = tl.program_id(0)
     plane = tile // tiles_per_plane
-    position = tile % tiles_per_plane * tile_size + tl.arange(0, tile_size)
+    tile_start = tile % tiles_per_plane * tile_size
+    position = tile_start + tl.arange(0, tile_size)
     valid = position < plane_size
-    position = tl.where(valid, position, 0)
     if channels_last:
-        index = (plane // channels * plane_size + position) * channels + plane % channels
+        start = plane // channels * plane_size * channels + plane % channels
+        stride = channels
     else:
-        index = plane * plane_size + position
+        start = plane * plane_size
+        stride = 1
+    index = start + tl.where(valid, position, 0) * stride
     value = tl.load(data + index, valid, other=0).to(tl.float32)
     if nonzero:
         valid = valid & (value != 0.0)
+        first = tl.min(tl.where(valid, position, plane_size), 0)
+        anchor_index = start + tl.where(first < plane_size, first, 0) * stride
+        anchor = tl.load(data + anchor_index, first < plane_size, other=0).to(tl.float32)
+        count = tl.sum(valid.to(tl.float32), 0)
+    else:
+        anchor = tl.load(data + start + tile_start * stride).to(tl.float32)
+        count = tl.minimum(plane_size - tile_start, tile_size).to(tl.float32)
     if inverse_scale != 1.0:
-        value = value * tl.full((), inverse_scale, tl.float32)
-    count = tl.sum(valid.to(tl.float32), 0)
-    mean = tl.div_rn(tl.sum(tl.where(valid, value, 0.0), 0), tl.maximum(count, 1.0))
+        scale = tl.full((), inverse_scale, tl.float32)
+        value *= scale
+        anchor *= scale
+    # Summing differences keeps the mean exact for a constant tile, even after scaling.
+    delta = tl.where(valid, value - anchor, 0.0)
+    mean = anchor + tl.div_rn(tl.sum(delta, 0), tl.maximum(count, 1.0))
     centered = tl.where(valid, value - mean, 0.0)
     m2 = tl.sum(centered * centered, 0)
     tl.store(partials + tile, count)

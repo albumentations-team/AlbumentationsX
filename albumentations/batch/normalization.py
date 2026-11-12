@@ -21,6 +21,8 @@ InputNormalizationMode = Literal["none", "fixed", "per_sample", "per_sample_nonz
 _UNBATCHED_IMAGE_DIMENSIONS: Final = 3
 _MIN_BATCHED_IMAGE_DIMENSIONS: Final = 4
 _FP32_MAX: Final = torch.finfo(torch.float32).max
+# Each plane needs at least one tile, even when it contains very few elements.
+_ZSCORE_MIN_PLANE_SIZE: Final = 16
 # With at most 2**24 FP16 elements per plane, this keeps the FP32 M2 sum below overflow.
 _ZSCORE_MIN_INPUT_SCALE: Final = 2.0**-32
 _FUSED_LOW_PRECISION_INPUTS: Final = (torch.uint8, torch.float16)
@@ -147,16 +149,19 @@ class InputNormalizer(nn.Module):
                 and (data.dtype == torch.uint8 or self.output_dtype == torch.bfloat16)
                 and self.input_scale >= _ZSCORE_MIN_INPUT_SCALE
                 and (route := self._cuda_reduced_precision_route(data)) is not None
-                and (plane_size := math.prod(data.shape[2:])) <= 2**24
+                and _ZSCORE_MIN_PLANE_SIZE <= (plane_size := math.prod(data.shape[2:])) <= 2**24
             ):
                 cuda, inverse_scale = route
-                return cuda.normalize_zscore(
-                    data,
-                    plane_size,
-                    self.mode == "per_sample_nonzero",
-                    inverse_scale,
-                    self.output_dtype,
-                )
+                try:
+                    return cuda.normalize_zscore(
+                        data,
+                        plane_size,
+                        self.mode == "per_sample_nonzero",
+                        inverse_scale,
+                        self.output_dtype,
+                    )
+                except cuda.COMPILATION_ERRORS:
+                    pass
         result = data.to(dtype=torch.float32, copy=True)
         if self.mode == "per_sample_nonzero":
             spatial_dimensions = tuple(range(2, data.ndim))
@@ -201,14 +206,17 @@ class InputNormalizer(nn.Module):
             and _can_use_fixed_statistics(data, mean, standard_deviation)
         ):
             cuda, inverse_scale = route
-            return cuda.normalize_fixed(
-                data,
-                mean,
-                standard_deviation,
-                channel_dimension,
-                inverse_scale,
-                self.output_dtype,
-            )
+            try:
+                return cuda.normalize_fixed(
+                    data,
+                    mean,
+                    standard_deviation,
+                    channel_dimension,
+                    inverse_scale,
+                    self.output_dtype,
+                )
+            except cuda.COMPILATION_ERRORS:
+                pass
         result = data.to(dtype=torch.float32, copy=True)
         if self.input_scale != 1.0:
             result.div_(self.input_scale)

@@ -216,15 +216,68 @@ def test_zscore_cuda_writes_the_requested_dtype_without_a_workspace(
 
 
 @pytest.mark.usefixtures("triton_cuda")
+@pytest.mark.parametrize("mode", ["per_sample", "per_sample_nonzero"])
+def test_zscore_cuda_keeps_scaled_constant_planes_at_zero(mode: InputNormalizationMode) -> None:
+    values = torch.full((1, 1, 4, 6), 34368, device="cuda", dtype=torch.float16)
+    if mode == "per_sample_nonzero":
+        values = torch.nn.functional.pad(values, (3, 0))
+    normalizer = InputNormalizer(mode, output_precision="bf16", input_scale=3.14159265).cuda()
+
+    torch.testing.assert_close(normalizer(values), torch.zeros_like(values, dtype=torch.bfloat16), rtol=0, atol=0)
+
+
+@pytest.mark.usefixtures("triton_cuda")
+@pytest.mark.parametrize("mode", ["per_sample", "per_sample_nonzero"])
+def test_zscore_cuda_scales_variance_below_the_epsilon_floor(mode: InputNormalizationMode) -> None:
+    values = torch.tensor([1, 2], device="cuda", dtype=torch.uint8).repeat(8).reshape(1, 1, 4, 4)
+    normalizer = InputNormalizer(mode, output_precision="bf16", input_scale=4096).cuda()
+    expected = ((values.float() - 1.5) / (4096 * math.sqrt(torch.finfo(torch.float32).eps))).bfloat16()
+
+    torch.testing.assert_close(normalizer(values), expected, rtol=0, atol=0)
+
+
+@pytest.mark.usefixtures("triton_cuda")
+def test_zscore_cuda_short_planes_skip_the_tile_workspace() -> None:
+    values = torch.ones((137, 3, 1, 1), device="cuda", dtype=torch.float16)
+    normalizer = InputNormalizer("per_sample", output_precision="bf16").cuda()
+    cuda = pytest.importorskip("albumentations.batch._normalization_cuda")
+
+    with patch.object(cuda, "normalize_zscore") as normalize:
+        result = normalizer(values)
+    normalize.assert_not_called()
+    torch.testing.assert_close(result, torch.zeros_like(values, dtype=torch.bfloat16), rtol=0, atol=0)
+
+
+@pytest.mark.usefixtures("triton_cuda")
+@pytest.mark.parametrize("mode", ["fixed", "per_sample", "per_sample_nonzero"])
+def test_normalization_cuda_falls_back_on_compilation_failure(mode: InputNormalizationMode) -> None:
+    values = torch.ones((1, 1, 4, 4), device="cuda", dtype=torch.float16)
+    normalizer = InputNormalizer(
+        mode,
+        output_precision="bf16",
+        mean=1.0 if mode == "fixed" else None,
+        standard_deviation=1.0 if mode == "fixed" else None,
+    ).cuda()
+    cuda = pytest.importorskip("albumentations.batch._normalization_cuda")
+    operation = "normalize_fixed" if mode == "fixed" else "normalize_zscore"
+    error = cuda.COMPILATION_ERRORS[0](None, None, "Unable to compile")
+
+    with patch.object(cuda, operation, side_effect=error) as normalize:
+        result = normalizer(values)
+    normalize.assert_called_once()
+    torch.testing.assert_close(result, torch.zeros_like(values, dtype=torch.bfloat16), rtol=0, atol=0)
+
+
+@pytest.mark.usefixtures("triton_cuda")
 def test_zscore_cuda_handles_extreme_input_scale() -> None:
     normalizer = InputNormalizer("per_sample", output_precision="bf16", input_scale=1e-36).cuda()
-    values = torch.ones((1, 1, 32, 64), device="cuda", dtype=torch.float16)
+    values = torch.tensor([1, 2], device="cuda", dtype=torch.float16).repeat(1024).reshape(1, 1, 32, 64)
     torch.testing.assert_close(normalizer(values), torch.zeros_like(values, dtype=torch.bfloat16), rtol=0, atol=0)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="Requires CUDA.")
 @pytest.mark.parametrize("input_dtype", [torch.float16, torch.uint8])
-def test_fixed_cuda_accepts_vmap_and_strided_inputs(input_dtype: torch.dtype) -> None:
+def test_fixed_cuda_falls_back_for_vmap_and_strided_inputs(input_dtype: torch.dtype) -> None:
     normalizer = InputNormalizer("fixed", output_precision="fp16", mean=0.137, standard_deviation=0.371).cuda()
     values = torch.arange(2 * 3 * 5 * 7, device="cuda").reshape(2, 3, 5, 7).to(input_dtype)
     expected = ((values.float() - 0.137) / cast("torch.Tensor", normalizer.standard_deviation)).half()

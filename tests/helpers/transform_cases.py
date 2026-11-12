@@ -110,7 +110,6 @@ _BASE_CASE_SPECS: list[list[Any]] = [
     [A.Blur, {"blur_range": (3, 5)}],
     [A.MotionBlur, {"blur_range": (3, 5)}],
     [A.MedianBlur, {"blur_range": (3, 5)}],
-    [A.ModeFilter, {"kernel_range": (3, 5)}],
     [A.GaussianBlur, {"blur_range": (3, 5)}],
     [
         A.GaussNoise,

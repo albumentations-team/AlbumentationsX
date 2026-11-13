@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 import albumentations as A
+from albumentations.augmentations.pixel import dithering_functional
 from albumentations.augmentations.pixel.dithering_functional import (
     apply_dithering,
     error_diffusion_dither,
@@ -178,6 +179,20 @@ class TestDitheringFunctional:
 
         self._assert_uint8_binary_floyd_steinberg_matches_reference(img)
 
+    @pytest.mark.parametrize("steps", [(1, 1), (2, -2)])
+    def test_uint8_binary_floyd_steinberg_diagonals_match_scalar(
+        self,
+        steps: tuple[int, int],
+    ) -> None:
+        rng = np.random.default_rng(137)
+        img = rng.integers(0, 256, (173, 137, 3), dtype=np.uint8)[:: steps[0], :: steps[1], 1:2]
+        img.setflags(write=False)
+
+        result = apply_dithering(img, method="error_diffusion", n_colors=2)
+        expected = dithering_functional._floyd_steinberg_binary_uint8_scalar(img)
+        np.testing.assert_array_equal(result, expected)
+        assert result.dtype == img.dtype
+
     def test_apply_dithering_grayscale_mode(self):
         """Test dithering with grayscale conversion."""
         rng = np.random.default_rng(137)
@@ -217,6 +232,21 @@ class TestDitheringFunctional:
 
 class TestDitheringTransform:
     """Test Dithering transform class."""
+
+    def test_rgb_binary_floyd_steinberg_compose_matches_scalar(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        image = np.random.default_rng(137).integers(0, 256, (137, 173, 3), dtype=np.uint8)
+        transform = A.Compose(
+            [A.Resize(64, 64, p=1), A.Dithering(method="error_diffusion", p=1)],
+            telemetry=False,
+        )
+        result = transform(image=image)["image"]
+        monkeypatch.setattr(
+            dithering_functional,
+            "_floyd_steinberg_binary_uint8",
+            dithering_functional._floyd_steinberg_binary_uint8_scalar,
+        )
+
+        np.testing.assert_array_equal(result, transform(image=image)["image"])
 
     @pytest.mark.parametrize(
         "method",

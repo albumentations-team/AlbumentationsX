@@ -34,6 +34,46 @@ def _make_image(shape: tuple[int, int, int] = (64, 48, 3)) -> np.ndarray:
     return np.random.default_rng(137).integers(0, 256, shape, dtype=np.uint8)
 
 
+@pytest.mark.parametrize(
+    ("shape", "map_resolution", "radius"),
+    [((67, 53, 3), 1.0, 2), ((67, 53, 3), 0.5, 2), ((1, 1, 3), 0.5, 2), ((67, 53, 3), 1.0, 2**25)],
+)
+def test_pixel_spread_preserves_seeded_coordinate_maps(
+    shape: tuple[int, int, int],
+    map_resolution: float,
+    radius: int,
+) -> None:
+    image = _make_image(shape)
+    transform = A.PixelSpread(radius=radius, map_resolution_range=(map_resolution, map_resolution), p=1)
+    transform.set_random_seed(137)
+    result = transform.sample_parameters(
+        *make_sampling_args(transform, {"image": image}),
+        SamplingContext.from_owner(transform, {}),
+    ).params
+
+    height, width = (max(2, int(size * map_resolution)) for size in shape[:2])
+    scaled_radius = max(1, round(radius * map_resolution))
+    offsets = np.random.default_rng(137).integers(
+        -scaled_radius,
+        scaled_radius + 1,
+        size=(height, width, 2),
+        dtype=np.int32,
+    )
+    rows, cols = np.meshgrid(
+        np.arange(height, dtype=np.float32),
+        np.arange(width, dtype=np.float32),
+        indexing="ij",
+    )
+    expected_x, expected_y = fgeometric.upscale_distortion_maps(
+        (cols + offsets[..., 1]).astype(np.float32),
+        (rows + offsets[..., 0]).astype(np.float32),
+        shape[:2],
+        transform.interpolation,
+    )
+    np.testing.assert_array_equal(result["map_x"].view(np.uint32), expected_x.view(np.uint32))
+    np.testing.assert_array_equal(result["map_y"].view(np.uint32), expected_y.view(np.uint32))
+
+
 @pytest.mark.parametrize(("num_control_points", "map_resolution"), [(2, 1.0), (4, 0.5)])
 def test_thin_plate_spline_cached_maps_and_outputs_match_uncached(
     num_control_points: int,

@@ -2851,9 +2851,12 @@ def test_additive_noise_rejects_patch_options_for_other_modes() -> None:
         A.AdditiveNoise(spatial_mode="shared", patch_count_range=(2, 2))
 
 
-def test_add_noise_passes_shared_float32_plane_to_albucore(monkeypatch):
-    image = np.full((64, 64, 3), 128, dtype=np.uint8)
-    noise = np.ones((64, 64, 1), dtype=np.float32)
+@pytest.mark.parametrize(("side", "materialized"), [(63, True), (64, False)])
+def test_add_noise_prepares_shared_float32_plane_for_albucore(
+    side: int, materialized: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    image = np.full((side, side, 3), 128, dtype=np.uint8)
+    noise = np.ones((side, side, 1), dtype=np.float32)
     captured_noise: list[np.ndarray] = []
 
     def capture_add(image: np.ndarray, noise: np.ndarray) -> np.ndarray:
@@ -2865,7 +2868,8 @@ def test_add_noise_passes_shared_float32_plane_to_albucore(monkeypatch):
 
     assert len(captured_noise) == 1
     assert captured_noise[0].shape == image.shape
-    assert np.shares_memory(captured_noise[0], noise)
+    assert captured_noise[0].flags.c_contiguous == materialized
+    assert np.shares_memory(captured_noise[0], noise) != materialized
 
 
 @pytest.mark.parametrize(

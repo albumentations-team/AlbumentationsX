@@ -4,6 +4,13 @@ from typing import Any, Final
 
 import numpy as np
 import torch
+from albucore import TensorLayout
+from albucore.tensor_bridge import (
+    numpy_to_tensor_layout,
+    numpy_to_tensor_storage,
+    tensor_to_numpy_channel_last,
+    tensor_to_numpy_storage,
+)
 from numpy.typing import NDArray
 
 from .type_definitions import (
@@ -19,32 +26,25 @@ TENSOR_VECTOR_FIELD_2D_TARGETS = frozenset(
 TENSOR_VECTOR_FIELD_3D_TARGETS = frozenset(
     name for name, (spatial_rank, _) in VECTOR_FIELD_TARGET_INFO_BY_NAME.items() if spatial_rank == 3
 )
-TENSOR_SPATIAL_TARGETS: Final[frozenset[str]] = frozenset(
-    {
-        "image",
-        "images",
-        "volume",
-        "volumes",
-        "mask",
-        "masks",
-        "mask3d",
-        "masks3d",
-        *TENSOR_VECTOR_FIELD_TARGETS,
-    },
-)
+_VECTOR_FIELD_2D_LAYOUT: Final[TensorLayout] = "CHW"
+_VECTOR_FIELD_3D_LAYOUT: Final[TensorLayout] = "CDHW"
+_TENSOR_SPATIAL_LAYOUTS: Final[dict[str, TensorLayout]] = {
+    "image": "CHW",
+    "images": "NCHW",
+    "volume": "CDHW",
+    "volumes": "NCDHW",
+    "mask": "CHW",
+    "masks": "NCHW",
+    "mask3d": "CDHW",
+    "masks3d": "NCDHW",
+    **dict.fromkeys(TENSOR_VECTOR_FIELD_2D_TARGETS, _VECTOR_FIELD_2D_LAYOUT),
+    **dict.fromkeys(TENSOR_VECTOR_FIELD_3D_TARGETS, _VECTOR_FIELD_3D_LAYOUT),
+}
+TENSOR_SPATIAL_TARGETS: Final[frozenset[str]] = frozenset(_TENSOR_SPATIAL_LAYOUTS)
 TENSOR_TARGETS: Final[frozenset[str]] = TENSOR_SPATIAL_TARGETS | TENSOR_ANNOTATION_TARGETS
 
 TENSOR_CANONICAL_RANKS: Final[dict[str, int]] = {
-    "image": 3,
-    "images": 4,
-    "volume": 4,
-    "volumes": 5,
-    "mask": 3,
-    "masks": 4,
-    "mask3d": 4,
-    "masks3d": 5,
-    **dict.fromkeys(TENSOR_VECTOR_FIELD_2D_TARGETS, 3),
-    **dict.fromkeys(TENSOR_VECTOR_FIELD_3D_TARGETS, 4),
+    **{target: len(layout) for target, layout in _TENSOR_SPATIAL_LAYOUTS.items()},
     "bboxes": 2,
     "keypoints": 2,
 }
@@ -56,16 +56,7 @@ TENSOR_CHANNELLESS_RANKS: Final[dict[str, int]] = {
     "masks3d": 4,
 }
 TENSOR_CHANNEL_AXIS: Final[dict[str, int]] = {
-    "image": 0,
-    "images": 1,
-    "volume": 0,
-    "volumes": 1,
-    "mask": 0,
-    "masks": 1,
-    "mask3d": 0,
-    "masks3d": 1,
-    **dict.fromkeys(TENSOR_VECTOR_FIELD_2D_TARGETS, 0),
-    **dict.fromkeys(TENSOR_VECTOR_FIELD_3D_TARGETS, 0),
+    target: layout.index("C") for target, layout in _TENSOR_SPATIAL_LAYOUTS.items()
 }
 TENSOR_IMAGE_DTYPES: Final[frozenset[torch.dtype]] = frozenset({torch.uint8, torch.float16, torch.float32})
 TENSOR_MASK_DTYPES: Final[frozenset[torch.dtype]] = frozenset({torch.uint8, torch.int16, torch.float16, torch.float32})
@@ -176,26 +167,12 @@ def validate_vector_field_input(value: Any, data_name: str, canonical_name: str)
         raise TypeError(f"{data_name} must be a NumPy array or torch.Tensor, got {type(value).__name__}")
 
 
-def tensor_to_numpy_annotation(value: torch.Tensor, target: str) -> NDArray[np.generic]:
-    """Return a NumPy view of a validated Tensor annotation matrix."""
-    return value.numpy()
-
-
 def tensor_to_numpy_spatial(value: torch.Tensor, target: str) -> NDArray[np.generic]:
     """Return a canonical channel-last NumPy view of a canonical Tensor target."""
-    if target == "image":
-        return value.permute(1, 2, 0).numpy()
-    if target == "images":
-        return value.permute(0, 2, 3, 1).numpy()
-    if target in {"volume", "mask3d", *TENSOR_VECTOR_FIELD_3D_TARGETS}:
-        return value.permute(1, 2, 3, 0).numpy()
-    if target in {"volumes", "masks3d"}:
-        return value.permute(0, 2, 3, 4, 1).numpy()
-    if target in {"mask", *TENSOR_VECTOR_FIELD_2D_TARGETS}:
-        return value.permute(1, 2, 0).numpy()
-    if target == "masks":
-        return value.permute(0, 2, 3, 1).numpy()
-    raise TypeError(f"{target} is not a spatial Tensor target")
+    layout = _TENSOR_SPATIAL_LAYOUTS.get(target)
+    if layout is None:
+        raise TypeError(f"{target} is not a spatial Tensor target")
+    return tensor_to_numpy_channel_last(value, layout)
 
 
 def validate_tensor_metadata_input(value: torch.Tensor, data_name: str, target: str | None) -> None:
@@ -217,17 +194,9 @@ def tensor_metadata_field_target(name: object) -> str | None:
 
 def tensor_metadata_to_numpy(value: torch.Tensor, target: str | None) -> NDArray[np.generic]:
     """Convert one validated `targets_as_params` Tensor to the NumPy layout consumed by a transform."""
-    if target is None or target in TENSOR_ANNOTATION_TARGETS:
-        return value.numpy()
-    if value.ndim == TENSOR_CHANNELLESS_RANKS.get(target):
-        return value.numpy()
+    if target is None or target in TENSOR_ANNOTATION_TARGETS or value.ndim == TENSOR_CHANNELLESS_RANKS.get(target):
+        return tensor_to_numpy_storage(value)
     return tensor_to_numpy_spatial(value, target)
-
-
-def _numpy_to_tensor(value: NDArray[np.generic]) -> torch.Tensor:
-    if not value.flags.writeable or any(stride < 0 for stride in value.strides):
-        value = np.array(value, copy=True, order="K")
-    return torch.from_numpy(value)
 
 
 def numpy_to_tensor_spatial(value: NDArray[np.generic], target: str) -> torch.Tensor:
@@ -235,17 +204,10 @@ def numpy_to_tensor_spatial(value: NDArray[np.generic], target: str) -> torch.Te
     expected_rank = TENSOR_CANONICAL_RANKS[target]
     if value.ndim != expected_rank:
         raise TypeError(f"{target} fallback expected a {expected_rank}D NumPy array, got {value.ndim}D")
-    if target in {"image", *TENSOR_VECTOR_FIELD_2D_TARGETS} or target in TENSOR_VECTOR_FIELD_3D_TARGETS:
-        value = np.moveaxis(value, -1, 0)
-    elif target == "images":
-        value = np.moveaxis(value, -1, 1)
-    elif target in {"volume", "mask", "mask3d"}:
-        value = np.moveaxis(value, -1, 0)
-    elif target in {"volumes", "masks3d"} or target == "masks":
-        value = np.moveaxis(value, -1, 1)
-    else:
+    layout = _TENSOR_SPATIAL_LAYOUTS.get(target)
+    if layout is None:
         raise TypeError(f"{target} is not a spatial Tensor target")
-    return _numpy_to_tensor(value)
+    return numpy_to_tensor_layout(value, layout)
 
 
 def numpy_to_tensor_annotation(value: NDArray[np.generic], target: str) -> torch.Tensor:
@@ -255,4 +217,4 @@ def numpy_to_tensor_annotation(value: NDArray[np.generic], target: str) -> torch
         raise TypeError(f"{target} bridge expected a {expected_rank}D NumPy array, got {value.ndim}D")
     if value.dtype != np.float32:
         value = value.astype(np.float32, copy=False)
-    return _numpy_to_tensor(value)
+    return numpy_to_tensor_storage(value)

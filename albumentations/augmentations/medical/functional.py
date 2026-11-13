@@ -8,6 +8,7 @@ import torch
 from albucore import add, clip, convert_dtype, matmul, multiply, resize3d, warp_affine3d
 from albucore import exp as albucore_exp
 from albucore import mean as albucore_mean
+from albucore.tensor_bridge import numpy_to_tensor_storage, tensor_to_numpy_storage
 from numpy.typing import NDArray
 from scipy import fft
 
@@ -193,8 +194,8 @@ def rician_noise(
         and imaginary_noise.flags.writeable
         and all(stride >= 0 and stride % imaginary_noise.itemsize == 0 for stride in imaginary_noise.strides)
     ):
-        working = torch.from_numpy(result)
-        imaginary = torch.from_numpy(imaginary_noise)
+        working = numpy_to_tensor_storage(result)
+        imaginary = numpy_to_tensor_storage(imaginary_noise)
         with torch.no_grad():
             working.square_().addcmul_(imaginary, imaginary).sqrt_().clamp_(0, 1)
         return convert_dtype(result, input_dtype)
@@ -421,7 +422,7 @@ def motion_artifact(
     )
     with torch.no_grad():
         if use_torch:
-            spectrum = torch.fft.fft(torch.from_numpy(volume), dim=axis).numpy()
+            spectrum = tensor_to_numpy_storage(torch.fft.fft(numpy_to_tensor_storage(volume), dim=axis))
         else:
             spectrum = fft.fft(volume, axis=axis, workers=1)
         for matrix, begin, end in zip(matrices, boundaries, (*boundaries[1:], volume.shape[axis]), strict=True):
@@ -436,14 +437,14 @@ def motion_artifact(
                 border_value=0,
             )
             if use_torch:
-                moved_spectrum = torch.fft.fft(torch.from_numpy(moved), dim=axis).numpy()
+                moved_spectrum = tensor_to_numpy_storage(torch.fft.fft(numpy_to_tensor_storage(moved), dim=axis))
             else:
                 moved_spectrum = fft.fft(moved, axis=axis, workers=1)
             _replace_motion_segment(spectrum, moved_spectrum, axis, begin, end)
             del moved, moved_spectrum
 
         if use_torch:
-            working = torch.from_numpy(spectrum)
+            working = numpy_to_tensor_storage(spectrum)
             torch.fft.ifft(working, dim=axis, out=working)
             reconstructed = spectrum
         else:

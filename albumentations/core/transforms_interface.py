@@ -19,6 +19,7 @@ import cv2
 import numpy as np
 import torch
 from albucore import apply_uint8_lut
+from albucore.tensor_bridge import tensor_to_numpy_storage
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -43,7 +44,6 @@ from albumentations.core.tensor import (
     numpy_to_tensor_spatial,
     tensor_metadata_field_target,
     tensor_metadata_to_numpy,
-    tensor_to_numpy_annotation,
     tensor_to_numpy_spatial,
     validate_tensor_input,
     validate_tensor_metadata_input,
@@ -540,7 +540,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         for data_name, target in route.targets:
             value = data[data_name]
             numpy_data[data_name] = (
-                tensor_to_numpy_annotation(value, target)
+                tensor_to_numpy_storage(value)
                 if target in TENSOR_ANNOTATION_TARGETS
                 else tensor_to_numpy_spatial(value, target)
             )

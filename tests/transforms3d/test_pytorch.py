@@ -6,6 +6,37 @@ import albumentations as A
 
 pytestmark = pytest.mark.pytorch
 
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("batched", [False, True])
+def test_to_tensor_3d_preserves_interleaved_volume_and_mask_bits(dtype, batched):
+    rng = np.random.default_rng(137)
+    shape = (2, 5, 43, 47, 4) if batched else (5, 43, 47, 4)
+    bits_dtype = {np.uint8: np.uint8, np.float16: np.uint16, np.float32: np.uint32}[dtype]
+    volume = rng.integers(0, np.iinfo(bits_dtype).max, shape, dtype=bits_dtype, endpoint=True).view(dtype)
+    volume.setflags(write=False)
+    volume_key, mask_key = ("volumes", "masks3d") if batched else ("volume", "mask3d")
+    pipeline = A.Compose([A.ToTensor3D()], telemetry=False)
+
+    result = pipeline(**{volume_key: volume, mask_key: volume})
+
+    expected = np.moveaxis(volume, -1, 1 if batched else 0).view(bits_dtype)
+    for key in (volume_key, mask_key):
+        assert result[key].is_contiguous()
+        assert result[key].numpy().dtype == dtype
+        np.testing.assert_array_equal(result[key].numpy().view(bits_dtype), expected)
+
+
+def test_to_tensor_3d_materializes_flipped_scalar_mask():
+    mask = np.arange(4 * 37 * 43, dtype=np.uint8).reshape(4, 37, 43)
+    pipeline = A.Compose([A.HorizontalFlip(p=1), A.ToTensor3D()], telemetry=False)
+
+    result = pipeline(mask3d=mask)["mask3d"]
+
+    assert result.is_contiguous()
+    np.testing.assert_array_equal(result.numpy(), mask[None, ..., ::-1])
+
+
 test_cases = [
     pytest.param(
         (64, 64, 64, 3),  # volume shape

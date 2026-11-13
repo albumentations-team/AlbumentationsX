@@ -6,7 +6,7 @@
     "pypi": "Locked distribution METADATA and license files, cross-checked at https://pypi.org/project/<name>/<version>/."
   },
   "components": [
-    {"name": "albucore", "reviewed_versions": ["0.2.18", "0.2.20", "0.2.21", "0.3.0", "0.3.1", "0.3.2", "0.3.3", "0.3.4", "0.3.5", "0.3.6"], "license_expression": "MIT", "evidence_source": "pypi", "decision": "accepted", "notice": "Separately installed dependency."},
+    {"name": "albucore", "reviewed_versions": ["0.2.18", "0.2.20", "0.2.21", "0.3.0", "0.3.1", "0.3.2", "0.3.3", "0.3.4", "0.3.5", "0.3.6", "0.3.7"], "license_expression": "MIT", "evidence_source": "pypi", "decision": "accepted", "notice": "Separately installed dependency."},
     {"name": "annotated-types", "reviewed_versions": ["0.7.0", "0.8.0"], "license_expression": "MIT", "evidence_source": "pypi", "decision": "accepted", "notice": "Separately installed dependency."},
     {"name": "numkong", "reviewed_versions": ["7.8.0", "7.8.2", "7.8.4", "7.8.5", "7.8.6", "7.8.7"], "license_expression": "Apache-2.0", "evidence_source": "pypi", "decision": "accepted", "notice": "Separately installed dependency."},
     {"name": "numpy", "reviewed_versions": ["2.2.6", "2.4.6", "2.5.1", "2.5.4"], "license_expression": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0", "metadata_identifiers": ["BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0", "License :: OSI Approved :: BSD License"], "evidence_source": "pypi", "decision": "accepted", "notice": "Binary-wheel notices remain with the separately installed distribution."},

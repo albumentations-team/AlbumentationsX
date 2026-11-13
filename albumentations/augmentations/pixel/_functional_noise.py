@@ -50,6 +50,7 @@ def add_noise(
         if img.dtype == np.uint8 and not noise.flags.c_contiguous:
             shared_rgb_field = (
                 noise.ndim == 3
+                and img.size >= 4_096 * NUM_RGB_CHANNELS
                 and noise.shape[-1] == NUM_RGB_CHANNELS
                 and noise.dtype == np.float32
                 and noise.strides[-1] == 0

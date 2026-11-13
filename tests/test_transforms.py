@@ -2852,8 +2852,8 @@ def test_additive_noise_rejects_patch_options_for_other_modes() -> None:
 
 
 def test_add_noise_passes_shared_float32_plane_to_albucore(monkeypatch):
-    image = np.full((4, 6, 3), 128, dtype=np.uint8)
-    noise = np.ones((4, 6, 1), dtype=np.float32)
+    image = np.full((64, 64, 3), 128, dtype=np.uint8)
+    noise = np.ones((64, 64, 1), dtype=np.float32)
     captured_noise: list[np.ndarray] = []
 
     def capture_add(image: np.ndarray, noise: np.ndarray) -> np.ndarray:

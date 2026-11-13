@@ -140,6 +140,18 @@ class TestChannelSwap:
         assert result.flags.c_contiguous
         assert not np.shares_memory(result, img)
 
+    @pytest.mark.parametrize("shape", [(27, 31, 3), (4, 27, 31, 3)])
+    @pytest.mark.parametrize("column_slice", [slice(1, -1), slice(None, None, -2)])
+    def test_identity_order_copies_readonly_rgb_view(self, shape: tuple[int, ...], column_slice: slice) -> None:
+        image = _make_image(shape=shape)[..., column_slice, :]
+        image.flags.writeable = False
+
+        result = fpixel.channel_shuffle(image, [0, 1, 2])
+
+        np.testing.assert_array_equal(result, image, strict=True)
+        assert result.flags.c_contiguous and result.flags.writeable
+        assert not np.shares_memory(result, image)
+
     def test_double_application_is_identity(self):
         img = _make_image(seed=2)
         aug = A.ChannelSwap(channel_order=(2, 1, 0), p=1.0)

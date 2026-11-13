@@ -1341,6 +1341,29 @@ def _build_colorize_lut(
     return lut
 
 
+_COLORIZE_STRINGZILLA_MIN_PIXELS = 16_384
+
+
+def _colorize_uint8(img: ImageUInt8, lut: ImageUInt8) -> ImageUInt8:
+    if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS and 0 < img.size < _COLORIZE_STRINGZILLA_MIN_PIXELS:
+        rgb = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+        return cast("ImageUInt8", cv2.LUT(rgb, lut.reshape(1, 256, 3)))
+
+    out = np.empty((*img.shape[:-1], NUM_RGB_CHANNELS), dtype=np.uint8)
+    if not img.size:
+        return out
+
+    spatial_shape = img.shape[-3:-1]
+    tables = np.ascontiguousarray(lut.T)
+    planes = np.empty((NUM_RGB_CHANNELS, *spatial_shape), dtype=np.uint8)
+    for index in np.ndindex(img.shape[:-3]):
+        source = np.ascontiguousarray(img[index][..., 0])
+        for table, plane in zip(tables, planes, strict=True):
+            apply_uint8_lut(source, table, out=plane)
+        cv2.merge(tuple(planes), dst=out[index])
+    return out
+
+
 def colorize(
     img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     black: tuple[int, int, int],
@@ -1372,16 +1395,7 @@ def colorize(
         lut_float = _build_colorize_lut(black, white, mid, mid_value)
         # Floor-quantize to match `PIL.ImageOps.colorize` (integer floor division) bit-for-bit.
         lut_uint8 = np.clip(np.floor(lut_float), 0, 255).astype(np.uint8)
-        lut_cv = lut_uint8.reshape(1, 256, 3)
-        if img.ndim == 3:
-            gray_3ch = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-            return cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", cv2.LUT(gray_3ch, lut_cv))
-        out = np.empty((*img.shape[:-1], 3), dtype=np.uint8)
-        flat_in = img.reshape(-1, *img.shape[-3:])
-        flat_out = out.reshape(-1, *img.shape[-3:-1], 3)
-        for frame_index in range(flat_in.shape[0]):
-            flat_out[frame_index] = cv2.LUT(cv2.cvtColor(flat_in[frame_index], cv2.COLOR_GRAY2BGR), lut_cv)
-        return out
+        return _colorize_uint8(cast("ImageUInt8", img), lut_uint8)
 
     if img.dtype.type not in (np.float16, np.float32):
         raise ValueError(f"colorize: unsupported dtype {img.dtype}; expected uint8, float16 or float32")

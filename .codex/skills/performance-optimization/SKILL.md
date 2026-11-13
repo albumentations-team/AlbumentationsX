@@ -35,6 +35,10 @@ Compose benchmark workflow to Core changes unless the user explicitly requests A
    seeded-replay contracts unless the change explicitly documents a compatibility break.
 7. Run the project validation workflow after the final implementation.
 
+For shared uint8-to-uint8 lookup, start with Albucore's StringZilla-backed `apply_uint8_lut`.
+Benchmark distinct channel tables with the actual image layout and all split and merge costs.
+Use the [LUT selection guidance](references/performance-optimization.md#5-check-whether-the-operation-is-a-lut).
+
 ## Torch Runtime Contract
 
 Torch is already an externally managed, soft-required AlbumentationsX runtime dependency: package metadata does not

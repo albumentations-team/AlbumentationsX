@@ -86,6 +86,26 @@ def test_equalize_preserves_inputs(route: str, channels: int, mode: Literal["pil
     assert result.flags.writeable
 
 
+@pytest.mark.parametrize("layout", ["dense", "row-strided", "flipped"])
+def test_equalize_pil_rgb_noncontiguous_inputs_match_pillow(layout: str) -> None:
+    rng = np.random.default_rng(137)
+    source = rng.integers(0, 256, (226, 231, 3), dtype=np.uint8)
+    source[..., 0] = 137
+    image = source[1:-1, 3:227]
+    if layout == "dense":
+        image = image.copy()
+    elif layout == "flipped":
+        image = image[:, ::-1]
+    image.flags.writeable = False
+    before = image.copy()
+
+    result = run_equalize(image, "compose")
+
+    np.testing.assert_array_equal(result, pil_equalize(before), strict=True)
+    np.testing.assert_array_equal(image, before)
+    assert result.flags.writeable
+
+
 def test_equalize_compose_channel_free_grayscale() -> None:
     image = issue_image(1)[..., 0]
     before = image.copy()

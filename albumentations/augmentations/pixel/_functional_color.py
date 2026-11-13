@@ -246,24 +246,40 @@ def posterize(
 def _equalize_pil(
     img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], mask: np.ndarray | None = None
 ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
+    lut = _create_equalize_pil_lut(img, mask)
+    if lut is None:
+        return img.copy()
+    result = cast("ImageUInt8", img.copy())
+    return apply_uint8_lut(result, lut, out=result)
+
+
+def _create_equalize_pil_lut(img: np.ndarray, mask: np.ndarray | None = None) -> np.ndarray | None:
     histogram = cv2.calcHist([img], [0], mask, [256], (0, 256)).ravel()
     h = histogram[histogram > 0]
-
     if len(h) <= 1:
-        return img.copy()
+        return None
 
     step = int(reduce_sum(h[:-1])) // 255
     if not step:
-        return img.copy()
+        return None
 
     # Pillow emits each LUT entry before adding the current histogram bin.
     cumulative = np.empty(256, dtype=np.int64)
     cumulative[0] = 0
     np.cumsum(histogram[:-1], dtype=np.int64, out=cumulative[1:])
-    lut = np.minimum((cumulative + step // 2) // step, 255).astype(np.uint8)
+    return np.minimum((cumulative + step // 2) // step, 255).astype(np.uint8)
 
-    result = cast("ImageUInt8", img.copy())
-    return apply_uint8_lut(result, lut, out=result)
+
+def _equalize_pil_rgb(img: ImageUInt8) -> ImageUInt8:
+    result = np.empty_like(img, order="C")
+    plane = np.empty(img.shape[:2], dtype=np.uint8)
+    for channel in range(NUM_RGB_CHANNELS):
+        cv2.extractChannel(img, channel, dst=plane)
+        lut = _create_equalize_pil_lut(plane)
+        if lut is not None:
+            apply_uint8_lut(plane, lut, out=plane)
+        cv2.insertChannel(plane, result, channel)
+    return result
 
 
 def _equalize_cv(
@@ -408,18 +424,6 @@ def equalize(
         result = cast("ImageUInt8", function(img, _handle_mask(mask)))
         return restore_uint8_working_image(result, input_dtype)
 
-    if mask is None and by_channels and mode == "cv" and is_rgb_image(img):
-        if img.shape[0] * img.shape[1] >= MULTICHANNEL_LUT_LARGE_IMAGE_PIXELS:
-            result = cast("ImageUInt8", _equalize_cv_multichannel_lut(img))
-            return restore_uint8_working_image(result, input_dtype)
-        channels = cv2.split(img)
-        result = cast("ImageUInt8", cv2.merge([cv2.equalizeHist(channel) for channel in channels]))
-        return restore_uint8_working_image(result, input_dtype)
-
-    if mask is None and by_channels and mode == "cv" and get_num_channels(img) > NUM_RGB_CHANNELS:
-        result = cast("ImageUInt8", _equalize_cv_multichannel_lut(img))
-        return restore_uint8_working_image(result, input_dtype)
-
     if not by_channels:
         result_img = cast(
             "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", cv2.cvtColor(img, cv2.COLOR_RGB2YCrCb)
@@ -428,16 +432,32 @@ def equalize(
         result = cast("ImageUInt8", cv2.cvtColor(result_img, cv2.COLOR_YCrCb2RGB))
         return restore_uint8_working_image(result, input_dtype)
 
-    result_img = np.empty_like(img)
-    for i in range(get_num_channels(img)):
-        _mask = _handle_mask(mask, i)
-        channel_result = function(img[..., i], _mask)
-        # Remove any extra dimensions that might have been added
-        if channel_result.ndim > 2:
-            channel_result = channel_result.squeeze()
-        result_img[..., i] = channel_result
+    result = _equalize_channels(uint8_img, mask, mode)
+    return restore_uint8_working_image(result, input_dtype)
 
-    return restore_uint8_working_image(result_img, input_dtype)
+
+def _equalize_channels(img: ImageUInt8, mask: np.ndarray | None, mode: Literal["cv", "pil"]) -> ImageUInt8:
+    channels = get_num_channels(img)
+    if mask is None and mode == "cv" and channels >= NUM_RGB_CHANNELS:
+        if channels > NUM_RGB_CHANNELS or img.shape[0] * img.shape[1] >= MULTICHANNEL_LUT_LARGE_IMAGE_PIXELS:
+            return cast("ImageUInt8", _equalize_cv_multichannel_lut(img))
+        return cast("ImageUInt8", cv2.merge([cv2.equalizeHist(channel) for channel in cv2.split(img)]))
+
+    if (
+        mask is None
+        and mode == "pil"
+        and is_rgb_image(img)
+        and img.size
+        and img.strides[1:] == (NUM_RGB_CHANNELS, 1)
+        and img.strides[0] >= img.shape[1] * NUM_RGB_CHANNELS
+    ):
+        return _equalize_pil_rgb(img)
+    function = _equalize_pil if mode == "pil" else _equalize_cv
+    result = np.empty_like(img)
+    for channel in range(channels):
+        channel_result = function(img[..., channel], _handle_mask(mask, channel))
+        result[..., channel] = channel_result.squeeze() if channel_result.ndim > 2 else channel_result
+    return result
 
 
 def evaluate_bez(

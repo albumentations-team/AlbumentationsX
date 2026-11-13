@@ -721,11 +721,8 @@ def invert(
 def channel_shuffle(
     img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], channels_shuffled: list[int]
 ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
-    """Shuffle image channels via cv2.mixChannels. channels_shuffled gives new order; supports
-    (H, W, C) or batch (N, H, W, C).
-
-    This function shuffles the channels of an image by using the cv2.mixChannels function.
-    The channels are shuffled according to the channels_shuffled array.
+    """Reorder channels of an HWC image or NHWC batch. Use an explicit index order to swap RGB and BGR
+    or to arrange multispectral bands for a model.
 
     Args:
         img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): The image to shuffle.
@@ -735,6 +732,18 @@ def channel_shuffle(
         NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: The shuffled image.
 
     """
+    if (
+        img.dtype in (np.uint8, np.float16, np.float32)
+        and channels_shuffled == [2, 1, 0]
+        and img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS
+        and img.shape[-1] == NUM_RGB_CHANNELS
+        and img.size
+    ):
+        if img.dtype == np.float16:
+            # OpenCV accepts uint16 for this channel permutation. A view preserves every FP16 bit.
+            return cast("NDArray[np.float16]", cv2.cvtColor(img.view(np.uint16), cv2.COLOR_RGB2BGR).view(np.float16))
+        return cast("NDArray[np.uint8] | NDArray[np.float32]", cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
+
     img = cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", np.ascontiguousarray(img))
     output = np.empty(img.shape, dtype=img.dtype)
     from_to = []

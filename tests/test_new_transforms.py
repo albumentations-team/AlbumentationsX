@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 from albucore import clip
 from pydantic import ValidationError
+from pytest_mock import MockerFixture
 
 import albumentations as A
 import albumentations.augmentations.pixel.functional as fpixel
@@ -102,13 +103,37 @@ class TestVignetting:
 
 
 class TestChannelSwap:
-    def test_rgb_to_bgr_swap(self):
-        img = _make_image(seed=1)
-        aug = A.ChannelSwap(channel_order=(2, 1, 0), p=1.0)
+    @pytest.mark.parametrize("column_slice", [slice(None), slice(1, -1), slice(None, None, -2)])
+    @pytest.mark.parametrize(
+        ("dtype", "bits_dtype"), [(np.uint8, np.uint8), (np.float16, np.uint16), (np.float32, np.uint32)]
+    )
+    def test_rgb_to_bgr_swap(
+        self,
+        column_slice: slice,
+        dtype: type[np.uint8 | np.float16 | np.float32],
+        bits_dtype: type[np.uint8 | np.uint16 | np.uint32],
+        mocker: MockerFixture,
+    ) -> None:
+        rng = np.random.default_rng(137)
+        bits = rng.integers(0, np.iinfo(bits_dtype).max, (27, 31, 3), dtype=bits_dtype, endpoint=True)
+        img = bits.view(dtype)
+        if dtype != np.uint8:
+            img[0, :3] = (0.0, -0.0, np.nan)
+        img = img[:, column_slice, :]
+        img.setflags(write=False)
+        expected = np.empty(img.shape, dtype=img.dtype)
+        cv2.mixChannels([np.ascontiguousarray(img)], [expected], [2, 0, 1, 1, 0, 2])
+        convert = mocker.spy(cv2, "cvtColor")
+        aug = A.Compose([A.ChannelSwap(p=1.0)], telemetry=False)
+
         result = aug(image=img)["image"]
-        np.testing.assert_array_equal(result[:, :, 0], img[:, :, 2])
-        np.testing.assert_array_equal(result[:, :, 1], img[:, :, 1])
-        np.testing.assert_array_equal(result[:, :, 2], img[:, :, 0])
+
+        convert.assert_called_once()
+        assert convert.call_args.args[1] == cv2.COLOR_RGB2BGR
+        assert result.dtype == img.dtype
+        np.testing.assert_array_equal(result.view(bits_dtype), expected.view(bits_dtype), strict=True)
+        assert result.flags.c_contiguous
+        assert not np.shares_memory(result, img)
 
     def test_double_application_is_identity(self):
         img = _make_image(seed=2)

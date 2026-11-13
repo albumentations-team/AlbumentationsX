@@ -257,6 +257,7 @@ class Mosaic(DualTransform):
     """
 
     _targets = (Targets.IMAGE, Targets.MASK, Targets.MASKS, Targets.BBOXES, Targets.KEYPOINTS)
+    _skip_when_vector_fields_present = True
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):

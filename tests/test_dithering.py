@@ -2,8 +2,10 @@
 
 import numpy as np
 import pytest
+from pytest_mock import MockerFixture
 
 import albumentations as A
+from albumentations.augmentations.pixel import dithering_functional
 from albumentations.augmentations.pixel.dithering_functional import (
     apply_dithering,
     error_diffusion_dither,
@@ -178,6 +180,24 @@ class TestDitheringFunctional:
 
         self._assert_uint8_binary_floyd_steinberg_matches_reference(img)
 
+    @pytest.mark.parametrize("steps", [(1, 1), (2, -2)])
+    def test_uint8_binary_floyd_steinberg_diagonals_match_scalar(
+        self,
+        steps: tuple[int, int],
+        mocker: MockerFixture,
+    ) -> None:
+        rng = np.random.default_rng(137)
+        img = rng.integers(0, 256, (173, 137, 3), dtype=np.uint8)[:: steps[0], :: steps[1], 1:2]
+        img.setflags(write=False)
+
+        expected = dithering_functional._floyd_steinberg_binary_uint8_scalar(img)
+        scalar = mocker.spy(dithering_functional, "_floyd_steinberg_binary_uint8_scalar")
+        result = apply_dithering(img, method="error_diffusion", n_colors=2)
+
+        scalar.assert_not_called()
+        np.testing.assert_array_equal(result, expected)
+        assert result.dtype == img.dtype
+
     def test_apply_dithering_grayscale_mode(self):
         """Test dithering with grayscale conversion."""
         rng = np.random.default_rng(137)
@@ -217,6 +237,23 @@ class TestDitheringFunctional:
 
 class TestDitheringTransform:
     """Test Dithering transform class."""
+
+    def test_rgb_binary_floyd_steinberg_compose_matches_scalar(self, mocker: MockerFixture) -> None:
+        image = np.random.default_rng(137).integers(0, 256, (137, 173, 3), dtype=np.uint8)
+        transform = A.Compose(
+            [A.Resize(64, 64, p=1), A.Dithering(method="error_diffusion", p=1)],
+            telemetry=False,
+        )
+        scalar = mocker.spy(dithering_functional, "_floyd_steinberg_binary_uint8_scalar")
+        result = transform(image=image)["image"]
+        scalar.assert_not_called()
+        mocker.patch.object(
+            dithering_functional,
+            "_floyd_steinberg_binary_uint8",
+            scalar,
+        )
+
+        np.testing.assert_array_equal(result, transform(image=image)["image"])
 
     @pytest.mark.parametrize(
         "method",

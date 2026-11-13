@@ -36,9 +36,16 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
 )
-from albumentations.core.type_definitions import ALL_TARGETS, D4_INVERSE, ArrayT, StackedMasks4D, d4_group_elements
+from albumentations.core.type_definitions import (
+    ALL_GEOMETRIC_TARGETS,
+    D4_INVERSE,
+    ArrayT,
+    StackedMasks4D,
+    d4_group_elements,
+)
 
 from . import functional as fgeometric
+from ._functional_vector_fields import transform_vector_field_symmetry as _transform_vector_field_symmetry
 
 __all__ = [
     "D4",
@@ -57,7 +64,8 @@ class VerticalFlip(DualTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -109,7 +117,7 @@ class VerticalFlip(DualTransform):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     @overload
@@ -122,6 +130,9 @@ class VerticalFlip(DualTransform):
         if isinstance(img, torch.Tensor):
             return fgeometric.flip_tensor(img, dims=(-2,))
         return fgeometric.vflip(img)
+
+    def _apply_vector_field_target(self, target: str, field: np.ndarray, **params: Any) -> np.ndarray:
+        return _transform_vector_field_symmetry(field, target, "v")
 
     def apply_to_bboxes(self, bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"], **params: Any) -> np.ndarray:
         return fgeometric.bboxes_vflip(bboxes, bbox_type=bbox_type)
@@ -219,7 +230,8 @@ class HorizontalFlip(DualTransform):
         p (float): probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -266,7 +278,7 @@ class HorizontalFlip(DualTransform):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     @overload
@@ -279,6 +291,9 @@ class HorizontalFlip(DualTransform):
         if isinstance(img, torch.Tensor):
             return fgeometric.flip_tensor(img, dims=(-1,))
         return fgeometric.hflip(img)
+
+    def _apply_vector_field_target(self, target: str, field: np.ndarray, **params: Any) -> np.ndarray:
+        return _transform_vector_field_symmetry(field, target, "h")
 
     def apply_to_bboxes(self, bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"], **params: Any) -> np.ndarray:
         return fgeometric.bboxes_hflip(bboxes, bbox_type=bbox_type)
@@ -379,7 +394,8 @@ class Transpose(DualTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -430,7 +446,7 @@ class Transpose(DualTransform):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     @overload
@@ -443,6 +459,9 @@ class Transpose(DualTransform):
         if isinstance(img, torch.Tensor):
             return fgeometric.transpose_tensor(img)
         return fgeometric.transpose(img)
+
+    def _apply_vector_field_target(self, target: str, field: np.ndarray, **params: Any) -> np.ndarray:
+        return _transform_vector_field_symmetry(field, target, "t")
 
     def apply_to_bboxes(self, bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"], **params: Any) -> np.ndarray:
         return fgeometric.bboxes_transpose(bboxes, bbox_type=bbox_type)
@@ -546,7 +565,8 @@ class D4(DualTransform):
             Default: None (random choice).
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -587,7 +607,7 @@ class D4(DualTransform):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):
@@ -608,6 +628,9 @@ class D4(DualTransform):
         **params: Any,
     ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fgeometric.d4(img, group_element)
+
+    def _apply_vector_field_target(self, target: str, field: np.ndarray, **params: Any) -> np.ndarray:
+        return _transform_vector_field_symmetry(field, target, params["group_element"])
 
     def apply_to_bboxes(
         self,
@@ -809,7 +832,8 @@ class SquareSymmetry(D4):
             Default: None (random choice).
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32

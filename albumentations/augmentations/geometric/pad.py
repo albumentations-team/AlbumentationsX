@@ -33,9 +33,10 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
 )
-from albumentations.core.type_definitions import ALL_TARGETS, CV2_BORDER_CONSTANT, BorderModeType
+from albumentations.core.type_definitions import ALL_GEOMETRIC_TARGETS, CV2_BORDER_CONSTANT, BorderModeType
 
 from . import functional as fgeometric
+from ._functional_vector_fields import warp_vector_field_2d
 
 __all__ = [
     "Pad",
@@ -68,7 +69,8 @@ class Pad(DualTransform):
         p (float): probability of applying the transform. Default: 1.0.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -182,7 +184,7 @@ class Pad(DualTransform):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     InitSchema: ClassVar[type[BaseTransformInitSchema]] = _PadInitSchema
@@ -218,6 +220,25 @@ class Pad(DualTransform):
             pad_right,
             border_mode=self.border_mode,
             value=self.fill,
+        )
+
+    def _apply_vector_field_target(
+        self,
+        target: str,
+        field: np.ndarray,
+        **params: Any,
+    ) -> np.ndarray:
+        pad_top = params["pad_top"]
+        pad_bottom = params["pad_bottom"]
+        pad_left = params["pad_left"]
+        pad_right = params["pad_right"]
+        height, width = field.shape[-3:-1] if field.ndim == 4 else field.shape[:2]
+        matrix = np.asarray(((1, 0, pad_left), (0, 1, pad_top)), dtype=np.float32)
+        return warp_vector_field_2d(
+            field,
+            matrix,
+            (height + pad_top + pad_bottom, width + pad_left + pad_right),
+            semantics=target,
         )
 
     def apply_to_mask(
@@ -364,7 +385,8 @@ class PadIfNeeded(Pad):
         p (float): Probability of applying the transform. Default is 1.0.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32

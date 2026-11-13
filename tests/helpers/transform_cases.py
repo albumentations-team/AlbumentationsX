@@ -110,7 +110,6 @@ _BASE_CASE_SPECS: list[list[Any]] = [
     [A.Blur, {"blur_range": (3, 5)}],
     [A.MotionBlur, {"blur_range": (3, 5)}],
     [A.MedianBlur, {"blur_range": (3, 5)}],
-    [A.ModeFilter, {"kernel_range": (3, 5)}],
     [A.GaussianBlur, {"blur_range": (3, 5)}],
     [
         A.GaussNoise,
@@ -583,7 +582,7 @@ _BASE_CASE_SPECS: list[list[Any]] = [
     [
         A.PadIfNeeded3D,
         {
-            "min_zyx": (300, 200, 400),
+            "min_zyx": (7, 101, 131),
             "pad_divisor_zyx": (10, 10, 10),
             "position": "center",
             "fill": 10,

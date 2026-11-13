@@ -12,7 +12,7 @@ from pydantic import Field
 from albumentations.augmentations.dropout.xy_masking import XYMasking
 from albumentations.augmentations.geometric.flip import HorizontalFlip
 from albumentations.core.transforms_interface import BaseTransformInitSchema
-from albumentations.core.type_definitions import ALL_TARGETS
+from albumentations.core.type_definitions import ALL_GEOMETRIC_TARGETS
 
 __all__ = [
     "FrequencyMasking",
@@ -38,7 +38,8 @@ class TimeReverse(HorizontalFlip):
         p (float): probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -63,7 +64,7 @@ class TimeReverse(HorizontalFlip):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _applied_replay_class = HorizontalFlip
 
     class InitSchema(BaseTransformInitSchema):
@@ -101,7 +102,8 @@ class TimeMasking(XYMasking):
         p (float): probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -182,7 +184,8 @@ class FrequencyMasking(XYMasking):
         p (float): probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32

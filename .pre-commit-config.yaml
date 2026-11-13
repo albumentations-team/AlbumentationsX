@@ -109,7 +109,7 @@ repos:
         language: system
         files: ^(pyproject\.toml|conda\.recipe/meta\.yaml|tools/check_conda_dependencies\.py)$
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.17.3
+    rev: v0.17.4
     hooks:
       - id: ruff
         exclude: '__pycache__/'
@@ -146,7 +146,7 @@ repos:
         pass_filenames: false
         args: [ --config-file=pyproject.toml, albumentations ]
   - repo: https://github.com/facebook/pyrefly-pre-commit
-    rev: 1.4.0
+    rev: 1.4.1
     hooks:
       - id: pyrefly-check
         name: Pyrefly type check

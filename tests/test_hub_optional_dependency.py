@@ -145,6 +145,31 @@ def test_local_load_with_hub_installed(tmp_path: Path) -> None:
     download.assert_not_called()
 
 
+def test_hub_uncached_offline_lookup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Preserve the real Hub cache-miss error without opening a network connection."""
+    hub_errors = pytest.importorskip("huggingface_hub.errors")
+    hub_constants = pytest.importorskip("huggingface_hub.constants")
+    # Hub user-agent discovery can fetch metadata independently of the download route.
+    monkeypatch.setattr(hub_constants, "HF_HUB_DISABLE_TELEMETRY", True)
+    monkeypatch.chdir(tmp_path)
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+
+    with patch(
+        "socket.socket.connect",
+        side_effect=pytest.fail.Exception("Offline Hub lookup attempted a network connection"),
+    ) as connect:
+        with pytest.raises(hub_errors.LocalEntryNotFoundError):
+            A.Compose.from_pretrained(
+                "example/nonexistent",
+                cache_dir=cache_dir,
+                local_files_only=True,
+                token=False,
+            )
+
+    connect.assert_not_called()
+
+
 @pytest.mark.skipif(not hub_mixin.is_huggingface_hub_available, reason="huggingface_hub is not available")
 def test_hub_http_error_preserves_response(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Preserve the Hub HTTP error type, response, and cause when adding context."""

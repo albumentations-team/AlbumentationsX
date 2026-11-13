@@ -718,14 +718,18 @@ def invert(
     return MAX_VALUES_BY_DTYPE[img.dtype] - img
 
 
+def _swap_rgb_channels(img: np.ndarray) -> np.ndarray:
+    # OpenCV accepts uint16 for this permutation. A view preserves every FP16 bit.
+    if img.dtype == np.float16:
+        return cv2.cvtColor(img.view(np.uint16), cv2.COLOR_RGB2BGR).view(np.float16)
+    return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+
 def channel_shuffle(
     img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], channels_shuffled: list[int]
 ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
-    """Shuffle image channels via cv2.mixChannels. channels_shuffled gives new order; supports
-    (H, W, C) or batch (N, H, W, C).
-
-    This function shuffles the channels of an image by using the cv2.mixChannels function.
-    The channels are shuffled according to the channels_shuffled array.
+    """Reorder channels of an HWC image or NHWC batch. Use an explicit index order to swap RGB and BGR
+    or to arrange multispectral bands for a model.
 
     Args:
         img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): The image to shuffle.
@@ -735,6 +739,20 @@ def channel_shuffle(
         NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: The shuffled image.
 
     """
+    if img.ndim == 4:
+        return cast(
+            "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]",
+            volume_channel_shuffle(img, channels_shuffled),
+        )
+    if (
+        img.dtype in (np.uint8, np.float16, np.float32)
+        and channels_shuffled == [2, 1, 0]
+        and img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS
+        and img.shape[-1] == NUM_RGB_CHANNELS
+        and img.size
+    ):
+        return cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", _swap_rgb_channels(img))
+
     img = cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", np.ascontiguousarray(img))
     output = np.empty(img.shape, dtype=img.dtype)
     from_to = []
@@ -756,7 +774,18 @@ def volume_channel_shuffle(volume: np.ndarray, channels_shuffled: Sequence[int])
         np.ndarray: Volume with channels shuffled.
 
     """
-    return volume.copy()[..., channels_shuffled] if volume.ndim == 4 else volume
+    if volume.ndim != 4:
+        return volume
+    if (
+        volume.shape[-1] == NUM_RGB_CHANNELS
+        and volume.size
+        and volume.dtype in (np.uint8, np.float16, np.float32)
+        and isinstance(channels_shuffled, Sequence)
+        and tuple(channels_shuffled) == (2, 1, 0)
+    ):
+        source, shape = _reshape_xhwc_for_opencv(volume)
+        return _restore_xhwc_from_opencv(_swap_rgb_channels(source), shape)
+    return volume.copy()[..., channels_shuffled]
 
 
 def get_exposure_gains(

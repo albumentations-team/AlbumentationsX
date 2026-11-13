@@ -55,6 +55,7 @@ from albumentations.core.transforms_interface import (
     DualTransform,
 )
 from albumentations.core.type_definitions import (
+    ALL_GEOMETRIC_TARGETS,
     ALL_TARGETS,
     CV2_BORDER_CONSTANT,
     CV2_BORDER_REFLECT_101,
@@ -66,6 +67,7 @@ from albumentations.core.type_definitions import (
 )
 
 from . import functional as fgeometric
+from ._functional_distortion import _tps_transform_grid
 
 __all__ = [
     "ElasticTransform",
@@ -88,7 +90,7 @@ class BaseRemapTransform(DualTransform):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):
@@ -297,7 +299,8 @@ class ElasticTransform(BaseRemapTransform):
         p (float): Probability of applying the transform.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -487,7 +490,8 @@ class PiecewiseAffine(BaseDistortion):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -638,7 +642,8 @@ class OpticalDistortion(BaseDistortion):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -768,7 +773,8 @@ class GridDistortion(BaseDistortion):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -943,7 +949,8 @@ class ThinPlateSpline(BaseDistortion):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -1069,12 +1076,9 @@ class ThinPlateSpline(BaseDistortion):
 
         weights, affine = fgeometric.compute_tps_weights(src_points, dst_points)
 
-        points = np.empty((scaled_height * scaled_width, 2), dtype=np.float32)
-        points[:, 0] = np.tile(np.arange(scaled_width, dtype=np.float32) / scaled_width, scaled_height)
-        points[:, 1] = np.repeat(np.arange(scaled_height, dtype=np.float32) / scaled_height, scaled_width)
-
-        transformed = fgeometric.tps_transform(
-            points,
+        transformed = _tps_transform_grid(
+            scaled_shape,
+            self.num_control_points,
             src_points,
             weights,
             affine,
@@ -1120,7 +1124,8 @@ class WaterRefraction(BaseDistortion):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -1305,6 +1310,9 @@ class PixelSpread(BaseDistortion):
         >>> transformed_mask = result['mask']
 
     """
+
+    _targets = ALL_TARGETS
+    _skip_when_vector_fields_present = True
 
     class InitSchema(BaseDistortion.InitSchema):
         radius: Annotated[int, Field(ge=1)]

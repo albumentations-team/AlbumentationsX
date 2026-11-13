@@ -24,7 +24,7 @@ from albumentations.augmentations.geometric.functional import scale
 from albumentations.augmentations.pixel.functional import convolve
 from albumentations.core.type_definitions import EIGHT, ImageFloat32, ImageUInt8
 
-__all__ = ["box_blur", "central_zoom", "defocus", "glass_blur", "mode_filter", "zoom_blur"]
+__all__ = ["box_blur", "central_zoom", "defocus", "glass_blur", "zoom_blur"]
 
 
 _PILLOW_FIXED_POINT_BITS = 24
@@ -205,46 +205,6 @@ def zoom_blur(
     np.multiply(out, np.float32(1.0 / (len(zoom_factors) + 1)), out=out)
     clip(out, out=out)
     return convert_dtype(out, dtype=input_dtype)
-
-
-def mode_filter(
-    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], kernel_size: int
-) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
-    """Replace each pixel with the most frequent value in its local square neighborhood.
-
-    Float inputs are quantized to uint8 for the discrete mode operation, then restored to the
-    input dtype. Ties choose the smallest value and borders use reflect padding.
-    """
-    input_dtype = img.dtype
-    uint8_img = cast("ImageUInt8", img) if input_dtype == np.uint8 else convert_dtype(img, np.uint8)
-    result = _mode_filter_uint8(uint8_img, kernel_size)
-    if input_dtype == np.uint8:
-        return result
-    return convert_dtype(convert_dtype(result, np.float32), input_dtype)
-
-
-def _mode_filter_uint8(img: ImageUInt8, kernel_size: int) -> ImageUInt8:
-    pad = kernel_size // 2
-    padded = np.pad(img, ((pad, pad), (pad, pad), (0, 0)), mode="reflect")
-    windows = np.lib.stride_tricks.sliding_window_view(padded, (kernel_size, kernel_size, 1))
-    flat = windows.reshape(windows.shape[0], windows.shape[1], windows.shape[2], -1)
-    sorted_flat = np.sort(flat, axis=-1)
-
-    best_values = sorted_flat[..., 0].copy()
-    best_counts = np.ones(sorted_flat.shape[:-1], dtype=np.uint8)
-    current_counts = np.ones_like(best_counts)
-
-    for value_idx in range(1, sorted_flat.shape[-1]):
-        previous_values = sorted_flat[..., value_idx - 1]
-        current_values = sorted_flat[..., value_idx]
-        same_as_previous = current_values == previous_values
-
-        current_counts = np.where(same_as_previous, current_counts + 1, 1)
-        better_run = current_counts > best_counts
-        best_counts = np.where(better_run, current_counts, best_counts)
-        best_values = np.where(better_run, current_values, best_values)
-
-    return best_values.astype(img.dtype, copy=False)
 
 
 def _ensure_min_value(result: tuple[int, int], min_value: int, field_name: str | None) -> tuple[int, int]:

@@ -33,7 +33,7 @@ from albumentations.core.transform_params import (
     requirements_for_views,
 )
 from albumentations.core.transforms_interface import BaseTransformInitSchema, DualTransform
-from albumentations.core.type_definitions import ALL_TARGETS, Targets, VolumeType
+from albumentations.core.type_definitions import ALL_GEOMETRIC_TARGETS, Targets, VolumeType
 
 __all__ = ["PixelDropout"]
 
@@ -172,7 +172,7 @@ class BaseDropout(DualTransform):
 
     """
 
-    _targets: tuple[Targets | str, ...] | Targets | str = ALL_TARGETS
+    _targets: tuple[Targets | str, ...] | Targets | str = ALL_GEOMETRIC_TARGETS
 
     InitSchema: ClassVar[type[BaseTransformInitSchema]] = BaseDropoutInitSchema
 
@@ -327,7 +327,8 @@ class PixelDropout(DualTransform):
             Default: 0.5
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -362,7 +363,7 @@ class PixelDropout(DualTransform):
         drop_value: tuple[float, ...] | float | None
         mask_drop_value: tuple[float, ...] | float | None
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     def __init__(

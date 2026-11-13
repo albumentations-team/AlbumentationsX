@@ -72,7 +72,6 @@
   "LongestMaxSize": ["max_size", "max_size_hw", "interpolation", "mask_interpolation", "area_for_downscale", "p"],
   "MaskDropout": ["max_objects_range", "fill", "fill_mask", "p"],
   "MedianBlur": ["blur_range", "p"],
-  "ModeFilter": ["kernel_range", "p"],
   "Morphological": ["scale", "operation", "p"],
   "Mosaic": ["grid_yx", "target_size", "cell_shape", "center_range", "fit_mode", "interpolation", "mask_interpolation", "fill", "fill_mask", "metadata_key", "p"],
   "MotionBlur": ["blur_range", "allow_shifted", "angle_range", "direction_range", "p"],

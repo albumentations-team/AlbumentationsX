@@ -458,6 +458,7 @@ class TransformInvocationState:
 
     params: dict[Any, Any] | None = None
     applied_config: dict[str, Any] | None = None
+    skip_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -516,6 +517,7 @@ class InvocationContext:
     collect_applied: bool = False
     root_key: object | None = None
     has_tensor_inputs: bool | None = None
+    vector_fields_validated: bool = False
     frame_state: FrameBinding | None = None
     _py_random: random.Random | None = None
     _random_generator: np.random.Generator | None = None

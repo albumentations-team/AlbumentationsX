@@ -28,7 +28,7 @@ wheels = [
 
 [[package]]
 name = "albucore"
-version = "0.3.5"
+version = "0.3.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numkong" },
@@ -36,14 +36,14 @@ dependencies = [
     { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "stringzilla" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/78/be/9f5514c09325524fbcf395e6348953507ae316dd2637654093c069540eea/albucore-0.3.5.tar.gz", hash = "sha256:f921b8b61dbc06524bb9ab085e06be9deb151a09d5303a98e88fa6249180bda8", size = 252895, upload-time = "2026-11-05T01:43:28.338Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d9/da/a6299ed5d0aba7a076ace187f5c45b78ad37f116c7c8ec795442b083f452/albucore-0.3.6.tar.gz", hash = "sha256:5a4c99e93cca2e8551fe92a71b8ff2e91edc924d24d1da234c1b93f969500a1c", size = 255647, upload-time = "2026-11-13T08:03:58.59Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d2/10/31918107a5c594eeafd160df0739dd125adebca3175815bf9f4c6c3eda18/albucore-0.3.5-py3-none-any.whl", hash = "sha256:7489a4cdae140febf724a29ed77605a7bef1e8a76b416b03c21af5b2d81e61ce", size = 81457, upload-time = "2026-11-05T01:43:26.505Z" },
+    { url = "https://files.pythonhosted.org/packages/48/73/a1e6d46297ed8742f7922e6c541605e4af51bca07ee29afafd774f43601c/albucore-0.3.6-py3-none-any.whl", hash = "sha256:f9a039534a457c8464ef59572336ff9ba8e54aba4fdce8b69fd4b65f6054439f", size = 83658, upload-time = "2026-11-13T08:03:57.26Z" },
 ]
 
 [[package]]
 name = "albumentationsx"
-version = "2.6.1"
+version = "2.6.2"
 source = { editable = "." }
 dependencies = [
     { name = "albucore" },
@@ -190,7 +190,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "albucore", specifier = "==0.3.5" },
+    { name = "albucore", specifier = "==0.3.6" },
     { name = "huggingface-hub", marker = "extra == 'hub'" },
     { name = "numkong", specifier = ">=7.8.7" },
     { name = "numpy", specifier = ">=2.2.6" },

@@ -21,6 +21,7 @@ from typing import Any, Protocol, Union, cast
 import cv2
 import numpy as np
 import torch
+from albucore.tensor_bridge import tensor_to_numpy_storage
 from numpy.typing import NDArray
 from pydantic import PydanticSchemaGenerationError, PydanticUserError, TypeAdapter, ValidationError
 
@@ -56,14 +57,19 @@ from .tensor import (
     TENSOR_TARGETS,
     numpy_to_tensor_annotation,
     numpy_to_tensor_spatial,
-    tensor_to_numpy_annotation,
     tensor_to_numpy_spatial,
     validate_tensor_input,
     validate_tensor_metadata_input,
+    validate_vector_field_input,
 )
 from .tracing import TraceOptions, TraceResult, _ExecutionTrace
 from .transforms_interface import BasicTransform, DualTransform
-from .type_definitions import StackedMasks4D, Targets
+from .type_definitions import (
+    VECTOR_FIELD_TARGET_INFO_BY_NAME,
+    VECTOR_FIELD_TARGET_NAMES,
+    StackedMasks4D,
+    Targets,
+)
 from .utils import DataProcessor, format_args, get_shape
 
 __all__ = [
@@ -89,6 +95,7 @@ _TRACE_STATUS_APPLIED = "applied"
 _TRACE_STATUS_SKIPPED_PROBABILITY = "skipped_probability"
 _TRACE_STATUS_SKIPPED_REPLAY = "skipped_replay"
 _TRACE_STATUS_SKIPPED_SELECTION = "skipped_selection"
+_TRACE_STATUS_SKIPPED_UNSUPPORTED_TARGET = "skipped_unsupported_target"
 
 _REPLAY_PARAM_ANNOTATIONS_CACHE: dict[type, dict[str, Any]] = {}
 
@@ -262,6 +269,7 @@ AVAILABLE_KEYS = (
     "volumes",
     "mask3d",
     "masks3d",
+    *sorted(VECTOR_FIELD_TARGET_NAMES),
     "user_data",
 )
 
@@ -285,8 +293,15 @@ _SPATIAL_AXES = {
     "mask3d": ("D", "H", "W"),
     "volumes": ("N", "D", "H", "W"),
     "masks3d": ("N", "D", "H", "W"),
+    **{
+        target: (("H", "W") if spatial_rank == 2 else ("D", "H", "W"))
+        for target, (spatial_rank, _) in VECTOR_FIELD_TARGET_INFO_BY_NAME.items()
+    },
 }
-_OPTIONAL_CHANNEL_RANKS = {target: len(axes) for target, axes in _SPATIAL_AXES.items()}
+_VECTOR_FIELD_TARGETS = VECTOR_FIELD_TARGET_NAMES
+_OPTIONAL_CHANNEL_RANKS = {
+    target: len(axes) for target, axes in _SPATIAL_AXES.items() if target not in _VECTOR_FIELD_TARGETS
+}
 _VOLUMETRIC_TARGETS = frozenset(target for target, axes in _SPATIAL_AXES.items() if "D" in axes)
 _CANONICAL_TARGETS = frozenset((*AVAILABLE_KEYS, *_SPATIAL_AXES))
 
@@ -767,7 +782,7 @@ class BaseCompose(InvocationRngOwner, Serializable):
                 applied = bool(transform.params)
                 trace.emit_leaf(
                     class_fullname=transform.get_applied_replay_class().get_class_fullname(),
-                    status=_TRACE_STATUS_APPLIED if applied else self._leaf_skip_status(transform),
+                    status=_TRACE_STATUS_APPLIED if applied else self._leaf_skip_status(transform, invocation),
                     params=transform.applied_config if applied else None,
                     data=data if applied else None,
                     elapsed_ns=None if start_ns is None else perf_counter_ns() - start_ns,
@@ -884,6 +899,20 @@ class BaseCompose(InvocationRngOwner, Serializable):
             invocation_seed=invocation_seed,
             prime_py_random=prime_py_random,
         )
+
+    def _validate_vector_fields_for_invocation(
+        self,
+        data: Mapping[str, Any],
+        invocation: InvocationContext,
+    ) -> None:
+        """Validate fields once at a standalone selector's root before it dispatches a child directly."""
+        if invocation.vector_fields_validated:
+            return
+        for name, value in data.items():
+            canonical = self._additional_targets.get(name, name)
+            if value is not None and canonical in VECTOR_FIELD_TARGET_INFO_BY_NAME:
+                validate_vector_field_input(value, name, canonical)
+        invocation.vector_fields_validated = True
 
     def set_mask_interpolation(self, mask_interpolation: int | None) -> None:
         """Set interpolation mode for mask resizing operations. Propagates recursively to all
@@ -1099,6 +1128,7 @@ class BaseCompose(InvocationRngOwner, Serializable):
         """Set _available_keys from additional_targets and child transforms and targets_as_params.
         Updates processor data_fields; warns if processor has no transform.
         """
+        self._available_keys.update(VECTOR_FIELD_TARGET_NAMES)
         self._available_keys.update(self._additional_targets.keys())
         for t in self.transforms:
             self._available_keys.update(t.available_keys)
@@ -1187,10 +1217,13 @@ class BaseCompose(InvocationRngOwner, Serializable):
         del data
 
     @staticmethod
-    def _leaf_skip_status(transform: BasicTransform) -> str:
+    def _leaf_skip_status(transform: BasicTransform, invocation: InvocationContext | None = None) -> str:
         """Choose trace skip status from leaf policy, distinguishing replay suppression from probability
         non-selection for consumers reconstructing the graph run.
         """
+        state = None if invocation is None else invocation.get_transform_state(transform)
+        if state is not None and state.skip_reason == "unsupported_vector_field":
+            return _TRACE_STATUS_SKIPPED_UNSUPPORTED_TARGET
         return _TRACE_STATUS_SKIPPED_REPLAY if transform.replay_mode else _TRACE_STATUS_SKIPPED_PROBABILITY
 
     @staticmethod
@@ -1539,7 +1572,7 @@ class BaseCompose(InvocationRngOwner, Serializable):
             return None
 
         mask, instance_axis = mask_with_axis
-        mask_array = mask.numpy()
+        mask_array = tensor_to_numpy_storage(mask)
         reduction_axes = tuple(axis for axis in range(mask_array.ndim) if axis != instance_axis % mask_array.ndim)
         return np.any(mask_array, axis=reduction_axes)
 
@@ -2281,6 +2314,7 @@ class Compose(BaseCompose, HubMixin):
                 prime_py_random=may_skip,
             )
             context.has_tensor_inputs = False
+            context.vector_fields_validated = True
             if not self._should_apply_in_context(context, force_apply=force_apply):
                 return data
             return self._apply_unactivated_compiled_transforms(data, context)
@@ -2291,6 +2325,7 @@ class Compose(BaseCompose, HubMixin):
             prime_py_random=may_skip and not preprocess_before_draw,
         )
         context.has_tensor_inputs = tensor_boundary_state.has_tensor_inputs
+        context.vector_fields_validated = True
         context.trace_session = trace
         with context:
             return self._execute_with_preprocessing(
@@ -2668,7 +2703,7 @@ class Compose(BaseCompose, HubMixin):
         for transform in transforms:
             if isinstance(transform, BaseCompose):
                 yield from Compose._iter_declared_tensor_metadata_inputs(transform.transforms, data)
-            elif isinstance(transform, BasicTransform):
+            elif isinstance(transform, BasicTransform) and not transform.should_skip_for_vector_fields(data):
                 yield from transform.iter_tensor_metadata_inputs(data)
 
     @staticmethod
@@ -2807,7 +2842,7 @@ class Compose(BaseCompose, HubMixin):
                 arrays = [
                     processor.prepare_coordinates(
                         f"frame_annotations[{index}].{name}",
-                        tensor_to_numpy_annotation(value, canonical) if isinstance(value, torch.Tensor) else value,
+                        tensor_to_numpy_storage(value) if isinstance(value, torch.Tensor) else value,
                     ).astype(np.float32, copy=False)
                     for index, value in entries
                 ]
@@ -2880,10 +2915,10 @@ class Compose(BaseCompose, HubMixin):
         """Convert accepted Tensor bbox and keypoint matrices once for existing NumPy-only
         processors, keeping all public annotations Tensor at Compose entry and exit.
         """
-        for data_name, canonical_name in tensor_boundary_state.annotation_targets:
+        for data_name, _ in tensor_boundary_state.annotation_targets:
             value = data.get(data_name)
             if isinstance(value, torch.Tensor):
-                data[data_name] = tensor_to_numpy_annotation(value, canonical_name)
+                data[data_name] = tensor_to_numpy_storage(value)
 
     def _validate_spatial_inputs(
         self,
@@ -2898,24 +2933,59 @@ class Compose(BaseCompose, HubMixin):
         for name, value in data.items():
             canonical = routes.get(name, self._additional_targets.get(name, name))
             optional_rank = _OPTIONAL_CHANNEL_RANKS.get(canonical)
-            if optional_rank is None:
+            if optional_rank is not None:
+                if value is None and not self.strict and canonical in MASK_KEYS:
+                    continue
+                if isinstance(value, np.ndarray):
+                    needs_channel_axis |= value.ndim == optional_rank
+                    shape = self._numpy_spatial_shape(name, canonical, value, optional_rank)
+                elif isinstance(value, torch.Tensor):
+                    shape = tuple(value.shape[-3:]) if self.is_check_shapes and value.numel() else ()
+                else:
+                    raise TypeError(f"{name} must be a NumPy array or torch.Tensor, got {type(value).__name__}")
+                if shape:
+                    shapes.append((name, shape[-2:]))
+                    if canonical in _VOLUMETRIC_TARGETS:
+                        volume_shapes.append((name, shape[-3:]))
                 continue
-            if value is None and not self.strict and canonical in MASK_KEYS:
-                continue
-            if isinstance(value, np.ndarray):
-                needs_channel_axis |= value.ndim == optional_rank
-                shape = self._numpy_spatial_shape(name, canonical, value, optional_rank)
-            elif isinstance(value, torch.Tensor):
-                shape = tuple(value.shape[-3:]) if self.is_check_shapes and value.numel() else ()
-            else:
-                raise TypeError(f"{name} must be a NumPy array or torch.Tensor, got {type(value).__name__}")
-            if shape:
-                shapes.append((name, shape[-2:]))
-                if canonical in _VOLUMETRIC_TARGETS:
-                    volume_shapes.append((name, shape[-3:]))
+            vector_field_info = VECTOR_FIELD_TARGET_INFO_BY_NAME.get(canonical)
+            if vector_field_info is not None:
+                if value is None and not self.strict:
+                    continue
+                spatial_rank, _ = vector_field_info
+                self._append_vector_field_shapes(name, canonical, value, spatial_rank, shapes, volume_shapes)
 
         self._check_shape_consistency(shapes, volume_shapes)
         return needs_channel_axis
+
+    def _append_vector_field_shapes(
+        self,
+        name: str,
+        canonical: str,
+        value: Any,
+        spatial_rank: int,
+        shapes: list[tuple[str, tuple[int, ...]]],
+        volume_shapes: list[tuple[str, tuple[int, ...]]],
+    ) -> None:
+        shape = self._vector_field_spatial_shape(name, canonical, value, spatial_rank)
+        if not shape:
+            return
+        shapes.append((name, shape[-2:]))
+        if spatial_rank == 3:
+            volume_shapes.append((name, shape))
+
+    def _vector_field_spatial_shape(
+        self,
+        name: str,
+        canonical: str,
+        value: Any,
+        spatial_rank: int,
+    ) -> tuple[int, ...]:
+        validate_vector_field_input(value, name, canonical)
+        if not self.is_check_shapes or (value.size if isinstance(value, np.ndarray) else value.numel()) == 0:
+            return ()
+        spatial_axes = value.shape[:spatial_rank] if isinstance(value, np.ndarray) else value.shape[-spatial_rank:]
+        return tuple(spatial_axes)
 
     def _numpy_spatial_shape(
         self,
@@ -3893,7 +3963,9 @@ class OneOf(BaseCompose):
         if invocation is None:
             invocation = self._new_invocation_context()
             with invocation:
+                self._validate_vector_fields_for_invocation(data, invocation)
                 return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
+        self._validate_vector_fields_for_invocation(data, invocation)
         return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
 
     def apply_in_invocation(
@@ -4030,7 +4102,9 @@ class SomeOf(BaseCompose):
         if invocation is None:
             invocation = self._new_invocation_context()
             with invocation:
+                self._validate_vector_fields_for_invocation(data, invocation)
                 return self.apply_in_invocation(invocation, *arg, force_apply=force_apply, **data)
+        self._validate_vector_fields_for_invocation(data, invocation)
         return self.apply_in_invocation(invocation, *arg, force_apply=force_apply, **data)
 
     def apply_in_invocation(
@@ -4198,7 +4272,9 @@ class OneOrOther(BaseCompose):
         if invocation is None:
             invocation = self._new_invocation_context()
             with invocation:
+                self._validate_vector_fields_for_invocation(data, invocation)
                 return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
+        self._validate_vector_fields_for_invocation(data, invocation)
         return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
 
     def apply_in_invocation(
@@ -4298,7 +4374,9 @@ class SelectiveChannelTransform(BaseCompose):
         if invocation is None:
             invocation = self._new_invocation_context()
             with invocation:
+                self._validate_vector_fields_for_invocation(data, invocation)
                 return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
+        self._validate_vector_fields_for_invocation(data, invocation)
         return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
 
     def apply_in_invocation(
@@ -4874,7 +4952,9 @@ class Sequential(BaseCompose):
         if invocation is None:
             invocation = self._new_invocation_context()
             with invocation:
+                self._validate_vector_fields_for_invocation(data, invocation)
                 return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
+        self._validate_vector_fields_for_invocation(data, invocation)
         return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
 
     def apply_in_invocation(

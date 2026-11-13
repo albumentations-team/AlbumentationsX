@@ -8,6 +8,7 @@ import pytest
 import albumentations as A
 from albumentations.augmentations.crops.functional import crop_bboxes_by_coords
 from albumentations.core.invocation import SamplingContext
+from albumentations.core.type_definitions import VECTOR_FIELD_TARGET_NAMES
 
 from .conftest import IMAGES, RECTANGULAR_UINT8_IMAGE
 from .utils import make_sampling_args
@@ -104,6 +105,7 @@ def test_crop_near_bbox(image, bboxes, keypoints):
         "mask3d",
         "masks3d",
         "user_data",
+        *VECTOR_FIELD_TARGET_NAMES,
         bbox_key,
     }
 

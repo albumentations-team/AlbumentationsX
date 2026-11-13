@@ -19,7 +19,7 @@ from albumentations.core.bbox_utils import denormalize_bboxes
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
 from albumentations.core.transform_params import SampledParams, TargetSet
-from albumentations.core.type_definitions import Targets
+from albumentations.core.type_definitions import VECTOR_FIELD_TARGETS, Targets
 
 __all__ = ["CoarseDropout", "ConstrainedCoarseDropout", "Erasing"]
 
@@ -55,7 +55,8 @@ class CoarseDropout(BaseDropout):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -234,7 +235,8 @@ class Erasing(BaseDropout):
         p (float): Probability of applying the transform. Default: 0.5
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -408,7 +410,8 @@ class ConstrainedCoarseDropout(BaseDropout):
             label field is used for filtering.
 
     Targets:
-        image, mask, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, mask, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d, displacement,
+        displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -470,6 +473,7 @@ class ConstrainedCoarseDropout(BaseDropout):
         Targets.VOLUMES,
         Targets.MASK3D,
         Targets.MASKS3D,
+        *VECTOR_FIELD_TARGETS,
     )
 
     class InitSchema(BaseDropoutInitSchema):

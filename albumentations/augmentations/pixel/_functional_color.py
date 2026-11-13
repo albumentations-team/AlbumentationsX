@@ -17,7 +17,6 @@ from albumentations.core.utils import get_volume_shape
 
 from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
-    MULTICHANNEL_LUT_LARGE_IMAGE_PIXELS,
     NUM_MULTI_CHANNEL_DIMENSIONS,
     NUM_RGB_CHANNELS,
     PCA,
@@ -37,7 +36,6 @@ from ._functional_shared import (
     normalize_per_image,
     np,
     power,
-    reduce_sum,
     restore_uint8_working_image,
     to_uint8_working_image,
     warn,
@@ -243,98 +241,6 @@ def posterize(
     return restore_uint8_working_image(cast("ImageUInt8", result), input_dtype)
 
 
-def _equalize_pil(
-    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], mask: np.ndarray | None = None
-) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
-    lut = _create_equalize_pil_lut(img, mask)
-    if lut is None:
-        return img.copy()
-    result = cast("ImageUInt8", img.copy())
-    return apply_uint8_lut(result, lut, out=result)
-
-
-def _create_equalize_pil_lut(img: np.ndarray, mask: np.ndarray | None = None) -> np.ndarray | None:
-    histogram = cv2.calcHist([img], [0], mask, [256], (0, 256)).ravel()
-    h = histogram[histogram > 0]
-    if len(h) <= 1:
-        return None
-
-    step = int(reduce_sum(h[:-1])) // 255
-    if not step:
-        return None
-
-    # Pillow emits each LUT entry before adding the current histogram bin.
-    cumulative = np.empty(256, dtype=np.int64)
-    cumulative[0] = 0
-    np.cumsum(histogram[:-1], dtype=np.int64, out=cumulative[1:])
-    return np.minimum((cumulative + step // 2) // step, 255).astype(np.uint8)
-
-
-def _equalize_pil_rgb(img: ImageUInt8) -> ImageUInt8:
-    result = np.empty_like(img, order="C")
-    plane = np.empty(img.shape[:2], dtype=np.uint8)
-    for channel in range(NUM_RGB_CHANNELS):
-        cv2.extractChannel(img, channel, dst=plane)
-        lut = _create_equalize_pil_lut(plane)
-        if lut is not None:
-            apply_uint8_lut(plane, lut, out=plane)
-        cv2.insertChannel(plane, result, channel)
-    return result
-
-
-def _equalize_cv(
-    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], mask: np.ndarray | None = None
-) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
-    if mask is None:
-        if img.ndim == 3 and img.shape[-1] == 1:
-            result = np.empty_like(img)
-            cv2.equalizeHist(img, dst=result)
-            return result
-        return cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", cv2.equalizeHist(img))
-
-    histogram = cv2.calcHist([img], [0], mask, [256], (0, 256)).ravel()
-    lut = _create_equalize_cv_lut(histogram)
-    if lut is None:
-        return img
-
-    result = cast("ImageUInt8", img.copy())
-    return apply_uint8_lut(result, lut, out=result)
-
-
-def _create_equalize_cv_lut(histogram: np.ndarray) -> np.ndarray | None:
-    nonzero = np.flatnonzero(histogram)
-    if len(nonzero) == 0:
-        return np.arange(256, dtype=np.uint8)
-
-    first_nonzero = nonzero[0]
-    total = reduce_sum(histogram)
-    denominator = total - histogram[first_nonzero]
-    if denominator == 0:
-        return None
-
-    scale = 255.0 / denominator
-    cumsum_histogram = np.cumsum(histogram)
-    return np.clip(((cumsum_histogram - cumsum_histogram[first_nonzero]) * scale).round(), 0, 255).astype(np.uint8)
-
-
-def _equalize_cv_multichannel_lut(
-    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
-) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
-    """Apply OpenCV-style equalization with one multichannel LUT pass for large
-    RGB images and multispectral inputs where per-channel assignment is slower.
-    """
-    num_channels = get_num_channels(img)
-    lut = np.empty((256, 1, num_channels), dtype=np.uint8)
-    identity_lut = np.arange(256, dtype=np.uint8)
-    for channel_idx in range(num_channels):
-        channel = img[..., channel_idx]
-        histogram = cv2.calcHist([channel], [0], None, [256], (0, 256)).ravel()
-        channel_lut = _create_equalize_cv_lut(histogram)
-        lut[:, 0, channel_idx] = identity_lut if channel_lut is None else channel_lut
-
-    return apply_uint8_lut(cast("ImageUInt8", img), lut)
-
-
 def _check_preconditions(
     img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     mask: np.ndarray | None,
@@ -348,22 +254,6 @@ def _check_preconditions(
         if not by_channels and not is_grayscale_image(mask):
             msg = f"When by_channels=False only 1-channel mask supports. Mask shape: {mask.shape}"
             raise ValueError(msg)
-
-
-def _handle_mask(
-    mask: np.ndarray | None,
-    i: int | None = None,
-) -> np.ndarray | None:
-    if mask is None:
-        return None
-    mask = mask.astype(
-        np.uint8,
-        copy=False,
-    )  # Use copy=False to avoid unnecessary copying
-    if i is not None and not is_grayscale_image(mask):
-        mask = mask[..., i]
-
-    return mask
 
 
 def equalize(
@@ -416,48 +306,19 @@ def equalize(
 
     """
     uint8_img, input_dtype = to_uint8_working_image(img)
-    img = uint8_img
-    _check_preconditions(img, mask, by_channels)
-    function = _equalize_pil if mode == "pil" else _equalize_cv
+    _check_preconditions(uint8_img, mask, by_channels)
+    selection = mask.astype(np.uint8, copy=False) if mask is not None else None
 
-    if is_grayscale_image(img):
-        result = cast("ImageUInt8", function(img, _handle_mask(mask)))
-        return restore_uint8_working_image(result, input_dtype)
+    if uint8_img.ndim == 2:
+        result = albucore.equalize_uint8(uint8_img[..., None], mode=mode, mask=selection)[..., 0]
+    elif by_channels or is_grayscale_image(uint8_img):
+        result = albucore.equalize_uint8(uint8_img, mode=mode, mask=selection)
+    else:
+        ycrcb = cast("ImageUInt8", cv2.cvtColor(uint8_img, cv2.COLOR_RGB2YCrCb))
+        ycrcb[..., :1] = albucore.equalize_uint8(ycrcb[..., :1], mode=mode, mask=selection)
+        result = cast("ImageUInt8", cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2RGB))
 
-    if not by_channels:
-        result_img = cast(
-            "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", cv2.cvtColor(img, cv2.COLOR_RGB2YCrCb)
-        )
-        result_img[..., 0] = function(result_img[..., 0], _handle_mask(mask))
-        result = cast("ImageUInt8", cv2.cvtColor(result_img, cv2.COLOR_YCrCb2RGB))
-        return restore_uint8_working_image(result, input_dtype)
-
-    result = _equalize_channels(uint8_img, mask, mode)
     return restore_uint8_working_image(result, input_dtype)
-
-
-def _equalize_channels(img: ImageUInt8, mask: np.ndarray | None, mode: Literal["cv", "pil"]) -> ImageUInt8:
-    channels = get_num_channels(img)
-    if mask is None and mode == "cv" and channels >= NUM_RGB_CHANNELS:
-        if channels > NUM_RGB_CHANNELS or img.shape[0] * img.shape[1] >= MULTICHANNEL_LUT_LARGE_IMAGE_PIXELS:
-            return cast("ImageUInt8", _equalize_cv_multichannel_lut(img))
-        return cast("ImageUInt8", cv2.merge([cv2.equalizeHist(channel) for channel in cv2.split(img)]))
-
-    if (
-        mask is None
-        and mode == "pil"
-        and is_rgb_image(img)
-        and img.size
-        and img.strides[1:] == (NUM_RGB_CHANNELS, 1)
-        and img.strides[0] >= img.shape[1] * NUM_RGB_CHANNELS
-    ):
-        return _equalize_pil_rgb(img)
-    function = _equalize_pil if mode == "pil" else _equalize_cv
-    result = np.empty_like(img)
-    for channel in range(channels):
-        channel_result = function(img[..., channel], _handle_mask(mask, channel))
-        result[..., channel] = channel_result.squeeze() if channel_result.ndim > 2 else channel_result
-    return result
 
 
 def evaluate_bez(
@@ -1595,9 +1456,6 @@ def noop(input_obj: Any, **params: Any) -> Any:
 __all__ = [
     "_build_colorize_lut",
     "_check_preconditions",
-    "_equalize_cv",
-    "_equalize_pil",
-    "_handle_mask",
     "channel_shuffle",
     "clahe",
     "colorize",

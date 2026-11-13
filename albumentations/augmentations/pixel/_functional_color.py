@@ -626,6 +626,12 @@ def channel_shuffle(
             volume_channel_shuffle(img, channels_shuffled),
         )
     if (
+        img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS
+        and img.shape[-1] == NUM_RGB_CHANNELS
+        and channels_shuffled == [0, 1, 2]
+    ):
+        return img.copy()
+    if (
         img.dtype in (np.uint8, np.float16, np.float32)
         and channels_shuffled == [2, 1, 0]
         and img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS
@@ -657,15 +663,13 @@ def volume_channel_shuffle(volume: np.ndarray, channels_shuffled: Sequence[int])
     """
     if volume.ndim != 4:
         return volume
-    if (
-        volume.shape[-1] == NUM_RGB_CHANNELS
-        and volume.size
-        and volume.dtype in (np.uint8, np.float16, np.float32)
-        and isinstance(channels_shuffled, Sequence)
-        and tuple(channels_shuffled) == (2, 1, 0)
-    ):
-        source, shape = _reshape_xhwc_for_opencv(volume)
-        return _restore_xhwc_from_opencv(_swap_rgb_channels(source), shape)
+    if volume.shape[-1] == NUM_RGB_CHANNELS and isinstance(channels_shuffled, Sequence):
+        order = tuple(channels_shuffled)
+        if order == (0, 1, 2):
+            return volume.copy()
+        if order == (2, 1, 0) and volume.size and volume.dtype in (np.uint8, np.float16, np.float32):
+            source, shape = _reshape_xhwc_for_opencv(volume)
+            return _restore_xhwc_from_opencv(_swap_rgb_channels(source), shape)
     return volume.copy()[..., channels_shuffled]
 
 

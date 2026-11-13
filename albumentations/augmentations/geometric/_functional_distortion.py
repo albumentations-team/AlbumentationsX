@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import cast
 
 from albucore import pairwise_distances_squared
@@ -10,6 +11,9 @@ from ._functional_shared import (
     cv2,
     np,
 )
+
+_TPS_GRID_BASIS_MAX_BYTES = 8 * 1024 * 1024
+_TPS_AFFINE_COLUMNS = 3
 
 
 def generate_inverse_distortion_map(
@@ -568,6 +572,31 @@ def compute_tps_weights(
     return weights[:num_points], weights[num_points:]
 
 
+def _tps_basis(target_points: np.ndarray, control_points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    distances = pairwise_distances_squared(target_points, control_points)
+    kernel_matrix = _compute_tps_kernel(distances)
+
+    affine_terms = np.empty((len(target_points), _TPS_AFFINE_COLUMNS), dtype=np.float32)
+    affine_terms[:, 0] = 1
+    affine_terms[:, 1:] = target_points
+    return kernel_matrix, affine_terms
+
+
+def _apply_tps_basis(
+    basis: tuple[np.ndarray, np.ndarray],
+    nonlinear_weights: np.ndarray,
+    affine_weights: np.ndarray,
+) -> np.ndarray:
+    kernel_matrix, affine_terms = basis
+    nonlinear_weights = np.ascontiguousarray(nonlinear_weights, dtype=np.float32)
+    affine_weights = np.ascontiguousarray(affine_weights, dtype=np.float32)
+    empty_matrix = np.empty((0,), dtype=np.float32)
+    nonlinear_part = cast("np.ndarray", cv2.gemm(kernel_matrix, nonlinear_weights, 1.0, empty_matrix, 0.0))
+    affine_part = cast("np.ndarray", cv2.gemm(affine_terms, affine_weights, 1.0, empty_matrix, 0.0))
+
+    return nonlinear_part + affine_part
+
+
 def tps_transform(
     target_points: np.ndarray,
     control_points: np.ndarray,
@@ -577,26 +606,45 @@ def tps_transform(
     """Apply TPS transformation to target_points given control_points and
     nonlinear_weights, affine_weights. All float32. For ThinPlateSpline remap.
     """
-    target_points = np.ascontiguousarray(target_points, dtype=np.float32)
-    control_points = np.ascontiguousarray(control_points, dtype=np.float32)
-    nonlinear_weights = np.ascontiguousarray(nonlinear_weights, dtype=np.float32)
-    affine_weights = np.ascontiguousarray(affine_weights, dtype=np.float32)
+    basis = _tps_basis(
+        np.ascontiguousarray(target_points, dtype=np.float32),
+        np.ascontiguousarray(control_points, dtype=np.float32),
+    )
+    return _apply_tps_basis(basis, nonlinear_weights, affine_weights)
 
-    distances = pairwise_distances_squared(target_points, control_points)
-    kernel_matrix = _compute_tps_kernel(distances)
 
-    # Prepare affine terms
-    num_points = len(target_points)
-    affine_terms = np.empty((num_points, 3), dtype=np.float32)
-    affine_terms[:, 0] = 1
-    affine_terms[:, 1:] = target_points
+def _tps_grid_basis(shape: tuple[int, int], control_points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    height, width = shape
+    points = np.empty((height * width, 2), dtype=np.float32)
+    points[:, 0] = np.tile(np.arange(width, dtype=np.float32) / width, height)
+    points[:, 1] = np.repeat(np.arange(height, dtype=np.float32) / height, width)
+    return _tps_basis(points, control_points)
 
-    # Matrix multiplications with consistent float32 type
-    empty_matrix = np.empty((0,), dtype=np.float32)
-    nonlinear_part = cast("np.ndarray", cv2.gemm(kernel_matrix, nonlinear_weights, 1.0, empty_matrix, 0.0))
-    affine_part = cast("np.ndarray", cv2.gemm(affine_terms, affine_weights, 1.0, empty_matrix, 0.0))
 
-    return nonlinear_part + affine_part
+@lru_cache(maxsize=2)
+def _cached_tps_grid_basis(shape: tuple[int, int], num_control_points: int) -> tuple[np.ndarray, np.ndarray]:
+    # Admission in _tps_transform_grid caps each entry at 8 MiB of array data.
+    basis = _tps_grid_basis(shape, generate_control_points(num_control_points))
+    for matrix in basis:
+        matrix.setflags(write=False)
+    return basis
+
+
+def _tps_transform_grid(
+    shape: tuple[int, int],
+    num_control_points: int,
+    control_points: np.ndarray,
+    nonlinear_weights: np.ndarray,
+    affine_weights: np.ndarray,
+) -> np.ndarray:
+    height, width = shape
+    basis_bytes = height * width * (len(control_points) + _TPS_AFFINE_COLUMNS) * np.dtype(np.float32).itemsize
+    basis = (
+        _cached_tps_grid_basis(shape, num_control_points)
+        if basis_bytes <= _TPS_GRID_BASIS_MAX_BYTES
+        else _tps_grid_basis(shape, control_points)
+    )
+    return _apply_tps_basis(basis, nonlinear_weights, affine_weights)
 
 
 def get_camera_matrix_distortion_maps(

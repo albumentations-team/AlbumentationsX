@@ -67,6 +67,7 @@ from albumentations.core.type_definitions import (
 )
 
 from . import functional as fgeometric
+from ._functional_distortion import _tps_transform_grid
 
 __all__ = [
     "ElasticTransform",
@@ -1075,12 +1076,9 @@ class ThinPlateSpline(BaseDistortion):
 
         weights, affine = fgeometric.compute_tps_weights(src_points, dst_points)
 
-        points = np.empty((scaled_height * scaled_width, 2), dtype=np.float32)
-        points[:, 0] = np.tile(np.arange(scaled_width, dtype=np.float32) / scaled_width, scaled_height)
-        points[:, 1] = np.repeat(np.arange(scaled_height, dtype=np.float32) / scaled_height, scaled_width)
-
-        transformed = fgeometric.tps_transform(
-            points,
+        transformed = _tps_transform_grid(
+            scaled_shape,
+            self.num_control_points,
             src_points,
             weights,
             affine,

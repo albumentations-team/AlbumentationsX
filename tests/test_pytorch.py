@@ -11,30 +11,31 @@ pytestmark = pytest.mark.pytorch
 @pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
 @pytest.mark.parametrize("batched", [False, True])
 @pytest.mark.parametrize("flip", [False, True])
-def test_to_tensor_v2_preserves_bits_after_crop(dtype, batched, flip):
+def test_to_tensor_v2_preserves_bits_after_crop(dtype: type[np.generic], batched: bool, flip: bool) -> None:
     rng = np.random.default_rng(137)
     shape = (4, 117, 123, 3) if batched else (117, 123, 3)
     bits_dtype = {np.uint8: np.uint8, np.float16: np.uint16, np.float32: np.uint32}[dtype]
     image = rng.integers(0, np.iinfo(bits_dtype).max, shape, dtype=bits_dtype, endpoint=True).view(dtype)
-    mask = image.copy()
+    mask = rng.integers(0, np.iinfo(bits_dtype).max, shape, dtype=bits_dtype, endpoint=True).view(dtype)
     pipeline = [A.CenterCrop(97, 103, p=1)]
-    expected = image[..., 10:107, 10:113, :]
     if flip:
         pipeline.append(A.HorizontalFlip(p=1))
-        expected = expected[..., ::-1, :]
     pipeline.append(A.ToTensorV2(transpose_mask=True))
     image_key, mask_key = ("images", "masks") if batched else ("image", "mask")
 
     result = A.Compose(pipeline, telemetry=False)(**{image_key: image, mask_key: mask})
 
-    expected = np.moveaxis(expected, -1, 1 if batched else 0).view(bits_dtype)
-    for key in (image_key, mask_key):
+    for key, source in ((image_key, image), (mask_key, mask)):
+        cropped = source[..., 10:107, 10:113, :]
+        if flip:
+            cropped = cropped[..., ::-1, :]
+        expected = np.moveaxis(cropped, -1, int(batched)).view(bits_dtype)
         assert result[key].is_contiguous()
         assert result[key].numpy().dtype == dtype
         np.testing.assert_array_equal(result[key].numpy().view(bits_dtype), expected)
 
 
-def test_to_tensor_v2_accepts_negative_stride_on_singleton_axis():
+def test_to_tensor_v2_accepts_negative_stride_on_singleton_axis() -> None:
     image = np.arange(19, dtype=np.uint8).reshape(19, 1, 1)[:, ::-1, :]
     pipeline = A.Compose([A.ToTensorV2()], telemetry=False)
 
@@ -45,7 +46,7 @@ def test_to_tensor_v2_accepts_negative_stride_on_singleton_axis():
 
 
 @pytest.mark.parametrize("readonly", [False, True])
-def test_to_tensor_v2_wraps_only_writable_dense_mask_storage(readonly):
+def test_to_tensor_v2_wraps_only_writable_dense_mask_storage(readonly: bool) -> None:
     mask = np.arange(19 * 23, dtype=np.int64).reshape(19, 23)
     mask.setflags(write=not readonly)
 

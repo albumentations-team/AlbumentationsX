@@ -103,12 +103,14 @@ class TestVignetting:
 
 
 class TestChannelSwap:
+    @pytest.mark.parametrize("route", ["compose", "functional"])
     @pytest.mark.parametrize("column_slice", [slice(None), slice(1, -1), slice(None, None, -2)])
     @pytest.mark.parametrize(
         ("dtype", "bits_dtype"), [(np.uint8, np.uint8), (np.float16, np.uint16), (np.float32, np.uint32)]
     )
     def test_rgb_to_bgr_swap(
         self,
+        route: str,
         column_slice: slice,
         dtype: type[np.uint8 | np.float16 | np.float32],
         bits_dtype: type[np.uint8 | np.uint16 | np.uint32],
@@ -124,9 +126,12 @@ class TestChannelSwap:
         expected = np.empty(img.shape, dtype=img.dtype)
         cv2.mixChannels([np.ascontiguousarray(img)], [expected], [2, 0, 1, 1, 0, 2])
         convert = mocker.spy(cv2, "cvtColor")
-        aug = A.Compose([A.ChannelSwap(p=1.0)], telemetry=False)
 
-        result = aug(image=img)["image"]
+        if route == "compose":
+            aug = A.Compose([A.ChannelSwap(p=1.0)], telemetry=False)
+            result = aug(image=img)["image"]
+        else:
+            result = fpixel.channel_shuffle(img, [2, 1, 0])
 
         convert.assert_called_once()
         assert convert.call_args.args[1] == cv2.COLOR_RGB2BGR

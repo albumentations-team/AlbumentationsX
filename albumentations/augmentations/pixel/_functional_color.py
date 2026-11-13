@@ -721,8 +721,8 @@ def invert(
 def channel_shuffle(
     img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], channels_shuffled: list[int]
 ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
-    """Shuffle image channels. channels_shuffled gives new order; supports
-    (H, W, C) or batch (N, H, W, C).
+    """Reorder channels of an HWC image or NHWC batch. Use an explicit index order to swap RGB and BGR
+    or to arrange multispectral bands for a model.
 
     Args:
         img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): The image to shuffle.

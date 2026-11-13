@@ -10,6 +10,7 @@ from typing import Any, ClassVar
 
 import numpy as np
 import torch
+from albucore.tensor_bridge import numpy_to_tensor_layout, numpy_to_tensor_storage
 from numpy.typing import NDArray
 
 from albumentations.core.transforms_interface import BaseTransformInitSchema, BasicTransform
@@ -31,15 +32,11 @@ class BaseTensorTransform(BasicTransform):
     _is_tensor_terminal = True
 
 
-def _native_contiguous_array(array: np.ndarray) -> np.ndarray:
-    return np.ascontiguousarray(array, dtype=array.dtype.newbyteorder("="))
-
-
 def _vector_field_to_tensor(field: np.ndarray, dimensions: int) -> torch.Tensor:
     """Move vector components before their spatial axes and preserve field dtype."""
     if field.ndim != dimensions + 1:
         raise TypeError(f"Expected a {dimensions}D spatial vector field with a component axis, got {field.ndim}D")
-    return torch.from_numpy(_native_contiguous_array(np.moveaxis(field, -1, 0)))
+    return numpy_to_tensor_layout(field, "CHW" if dimensions == 2 else "CDHW", contiguous=True)
 
 
 class ToTensorV2(BaseTensorTransform):
@@ -94,27 +91,26 @@ class ToTensorV2(BaseTensorTransform):
             msg = "Albumentations only supports images in HW or HWC format"
             raise ValueError(msg)
 
-        image = np.expand_dims(img, 2) if img.ndim == MONO_CHANNEL_DIMENSIONS else img
-
-        return torch.from_numpy(_native_contiguous_array(image.transpose(2, 0, 1)))
+        if img.ndim == MONO_CHANNEL_DIMENSIONS:
+            return numpy_to_tensor_storage(img[np.newaxis, ...], contiguous=True)
+        return numpy_to_tensor_layout(img, "CHW", contiguous=True)
 
     def apply_to_mask(
         self, mask: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
     ) -> torch.Tensor:
         if self.transpose_mask and mask.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
-            mask = mask.transpose(2, 0, 1)
-        return torch.from_numpy(_native_contiguous_array(mask))
+            return numpy_to_tensor_layout(mask, "CHW", contiguous=True)
+        return numpy_to_tensor_storage(mask, contiguous=True)
 
     def apply_to_masks(self, masks: StackedMasks4D, **params: Any) -> torch.Tensor:
-        arr: np.ndarray = masks
-        if self.transpose_mask and arr.ndim == NUM_VOLUME_DIMENSIONS:  # (N, H, W, C)
-            arr = np.transpose(arr, (0, 3, 1, 2))  # -> (N, C, H, W)
-        return torch.from_numpy(_native_contiguous_array(arr))
+        if self.transpose_mask and masks.ndim == NUM_VOLUME_DIMENSIONS:
+            return numpy_to_tensor_layout(masks, "NCHW", contiguous=True)
+        return numpy_to_tensor_storage(masks, contiguous=True)
 
     def apply_to_images(
         self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], *args: Any, **params: Any
     ) -> torch.Tensor:
-        return torch.from_numpy(_native_contiguous_array(images.transpose(0, 3, 1, 2)))  # -> (N,C,H,W)
+        return numpy_to_tensor_layout(images, "NCHW", contiguous=True)
 
     def _to_tensor_gradient(self, gradient: np.ndarray, **params: Any) -> torch.Tensor:
         return _vector_field_to_tensor(gradient, 2)
@@ -182,9 +178,9 @@ class ToTensor3D(BaseTensorTransform):
 
     def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> torch.Tensor:
         if volume.ndim == NUM_VOLUME_DIMENSIONS:  # D,H,W,C
-            return torch.from_numpy(_native_contiguous_array(volume.transpose(3, 0, 1, 2)))
+            return numpy_to_tensor_layout(volume, "CDHW", contiguous=True)
         if volume.ndim == NUM_VOLUME_DIMENSIONS - 1:  # D,H,W
-            return torch.from_numpy(_native_contiguous_array(volume[np.newaxis, ...]))
+            return numpy_to_tensor_storage(volume[np.newaxis, ...], contiguous=True)
         raise TypeError(f"volume must be 3D or 4D array (D,H,W) or (D,H,W,C), got {volume.ndim}D array")
 
     def apply_to_mask3d(self, mask3d: VolumeType, **params: Any) -> torch.Tensor:
@@ -192,9 +188,9 @@ class ToTensor3D(BaseTensorTransform):
 
     def apply_to_volumes(self, volumes: np.ndarray, **params: Any) -> torch.Tensor:
         if volumes.ndim == NUM_VOLUME_DIMENSIONS + 1:  # N,D,H,W,C
-            return torch.from_numpy(_native_contiguous_array(volumes.transpose(0, 4, 1, 2, 3)))
+            return numpy_to_tensor_layout(volumes, "NCDHW", contiguous=True)
         if volumes.ndim == NUM_VOLUME_DIMENSIONS:  # N,D,H,W
-            return torch.from_numpy(_native_contiguous_array(volumes[:, np.newaxis, ...]))
+            return numpy_to_tensor_storage(volumes[:, np.newaxis, ...], contiguous=True)
         raise TypeError(f"volumes must be a 4D or 5D array (N,D,H,W) or (N,D,H,W,C), got {volumes.ndim}D array")
 
     def apply_to_masks3d(self, masks3d: np.ndarray, **params: Any) -> torch.Tensor:

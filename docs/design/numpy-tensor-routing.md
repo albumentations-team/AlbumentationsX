@@ -246,10 +246,10 @@ graph raises an error before probability or parameter sampling. Mixed-container 
 
 ### Conversion and storage
 
-Fallback uses `Tensor.numpy()` and `torch.from_numpy()` views when the dtype, strides, and writability permit them.
-Axis changes such as `C,H,W` to `H,W,C` are views when possible. A helper materializes data when a kernel requires contiguous
-or writable input. Before wrapping a NumPy result as a Tensor, the bridge copies readonly storage and arrays with
-negative strides, including negative strides on singleton axes. Compatible writable results retain zero-copy conversion.
+AX selects the target layout and calls the CPU bridge in `albucore.tensor_bridge`. Leaf fallback and annotation
+processors preserve compatible views, including strided views. `ToTensorV2` and `ToTensor3D` request contiguous storage.
+The bridge copies read-only arrays, normalizes foreign byte order, and materializes strides PyTorch cannot represent,
+including negative strides on singleton axes. Compatible writable arrays can share storage.
 
 Transforms must not modify caller input values in place. Applied outputs carry no public storage-sharing guarantee.
 

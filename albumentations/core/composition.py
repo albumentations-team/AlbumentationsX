@@ -21,6 +21,7 @@ from typing import Any, Protocol, Union, cast
 import cv2
 import numpy as np
 import torch
+from albucore.tensor_bridge import tensor_to_numpy_storage
 from numpy.typing import NDArray
 from pydantic import PydanticSchemaGenerationError, PydanticUserError, TypeAdapter, ValidationError
 
@@ -56,7 +57,6 @@ from .tensor import (
     TENSOR_TARGETS,
     numpy_to_tensor_annotation,
     numpy_to_tensor_spatial,
-    tensor_to_numpy_annotation,
     tensor_to_numpy_spatial,
     validate_tensor_input,
     validate_tensor_metadata_input,
@@ -1572,7 +1572,7 @@ class BaseCompose(InvocationRngOwner, Serializable):
             return None
 
         mask, instance_axis = mask_with_axis
-        mask_array = mask.numpy()
+        mask_array = tensor_to_numpy_storage(mask)
         reduction_axes = tuple(axis for axis in range(mask_array.ndim) if axis != instance_axis % mask_array.ndim)
         return np.any(mask_array, axis=reduction_axes)
 
@@ -2842,7 +2842,7 @@ class Compose(BaseCompose, HubMixin):
                 arrays = [
                     processor.prepare_coordinates(
                         f"frame_annotations[{index}].{name}",
-                        tensor_to_numpy_annotation(value, canonical) if isinstance(value, torch.Tensor) else value,
+                        tensor_to_numpy_storage(value) if isinstance(value, torch.Tensor) else value,
                     ).astype(np.float32, copy=False)
                     for index, value in entries
                 ]
@@ -2915,10 +2915,10 @@ class Compose(BaseCompose, HubMixin):
         """Convert accepted Tensor bbox and keypoint matrices once for existing NumPy-only
         processors, keeping all public annotations Tensor at Compose entry and exit.
         """
-        for data_name, canonical_name in tensor_boundary_state.annotation_targets:
+        for data_name, _ in tensor_boundary_state.annotation_targets:
             value = data.get(data_name)
             if isinstance(value, torch.Tensor):
-                data[data_name] = tensor_to_numpy_annotation(value, canonical_name)
+                data[data_name] = tensor_to_numpy_storage(value)
 
     def _validate_spatial_inputs(
         self,

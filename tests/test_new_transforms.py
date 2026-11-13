@@ -228,13 +228,42 @@ class TestChannelSwap:
         assert result.flags.c_contiguous
         assert not np.shares_memory(result, images)
 
-    def test_volume_channel_permutation(self):
+    @pytest.mark.parametrize(
+        ("shape", "order"),
+        [
+            ((4, 7, 11, 1), [0]),
+            ((4, 7, 11, 3), [0, 2, 1]),
+            ((4, 7, 11, 5), [4, 3, 2, 1, 0]),
+            ((0, 7, 11, 3), [2, 1, 0]),
+        ],
+    )
+    def test_functional_batch_general_permutation(self, shape: tuple[int, ...], order: list[int]) -> None:
+        images = _make_image(shape=shape)
+
+        result = fpixel.channel_shuffle(images, order)
+
+        np.testing.assert_array_equal(result, images[..., order], strict=True)
+        assert not np.shares_memory(result, images)
+
+    def test_volume_channel_permutation_accepts_range(self, mocker: MockerFixture) -> None:
+        volume = _make_image(shape=(4, 7, 11, 3))
+        convert = mocker.spy(cv2, "cvtColor")
+
+        result = fpixel.volume_channel_shuffle(volume, range(2, -1, -1))
+
+        convert.assert_called_once()
+        np.testing.assert_array_equal(result, volume[..., ::-1], strict=True)
+
+    def test_volume_channel_permutation(self, mocker: MockerFixture) -> None:
         volume = _make_image(shape=(4, 50, 50, 3), seed=8)
         aug = A.ChannelSwap(channel_order=(2, 1, 0), p=1.0)
+        convert = mocker.spy(cv2, "cvtColor")
+
         result = aug(volume=volume)["volume"]
-        assert result.shape == volume.shape
-        np.testing.assert_array_equal(result[:, :, :, 0], volume[:, :, :, 2])
-        np.testing.assert_array_equal(result[:, :, :, 2], volume[:, :, :, 0])
+
+        convert.assert_called_once()
+        assert convert.call_args.args[0].shape == (200, 50, 3)
+        np.testing.assert_array_equal(result, volume[..., ::-1], strict=True)
 
     def test_volume_channel_mismatch_unchanged(self):
         volume = _make_image(shape=(4, 50, 50, 1), seed=9)

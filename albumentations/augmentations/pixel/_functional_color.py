@@ -718,25 +718,6 @@ def invert(
     return MAX_VALUES_BY_DTYPE[img.dtype] - img
 
 
-def _is_rgb_reversal(img: np.ndarray, channel_order: Sequence[int]) -> bool:
-    return (
-        (
-            (isinstance(channel_order, list) and channel_order == [2, 1, 0])
-            or (isinstance(channel_order, tuple) and channel_order == (2, 1, 0))
-        )
-        and img.shape[-1] == NUM_RGB_CHANNELS
-        and img.size > 0
-        and img.dtype in (np.uint8, np.float16, np.float32)
-    )
-
-
-def _reverse_rgb_channels(img: np.ndarray) -> np.ndarray:
-    if img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
-        return _swap_rgb_channels(img)
-    source, shape = _reshape_xhwc_for_opencv(img)
-    return _restore_xhwc_from_opencv(_swap_rgb_channels(source), shape)
-
-
 def _swap_rgb_channels(img: np.ndarray) -> np.ndarray:
     # OpenCV accepts uint16 for this permutation. A view preserves every FP16 bit.
     if img.dtype == np.float16:
@@ -758,8 +739,19 @@ def channel_shuffle(
         NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: The shuffled image.
 
     """
-    if img.ndim in (3, 4) and _is_rgb_reversal(img, channels_shuffled):
-        return cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", _reverse_rgb_channels(img))
+    if img.ndim == 4:
+        return cast(
+            "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]",
+            volume_channel_shuffle(img, channels_shuffled),
+        )
+    if (
+        img.dtype in (np.uint8, np.float16, np.float32)
+        and channels_shuffled == [2, 1, 0]
+        and img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS
+        and img.shape[-1] == NUM_RGB_CHANNELS
+        and img.size
+    ):
+        return cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", _swap_rgb_channels(img))
 
     img = cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", np.ascontiguousarray(img))
     output = np.empty(img.shape, dtype=img.dtype)
@@ -784,8 +776,15 @@ def volume_channel_shuffle(volume: np.ndarray, channels_shuffled: Sequence[int])
     """
     if volume.ndim != 4:
         return volume
-    if _is_rgb_reversal(volume, channels_shuffled):
-        return _reverse_rgb_channels(volume)
+    if (
+        volume.shape[-1] == NUM_RGB_CHANNELS
+        and volume.size
+        and volume.dtype in (np.uint8, np.float16, np.float32)
+        and isinstance(channels_shuffled, Sequence)
+        and tuple(channels_shuffled) == (2, 1, 0)
+    ):
+        source, shape = _reshape_xhwc_for_opencv(volume)
+        return _restore_xhwc_from_opencv(_swap_rgb_channels(source), shape)
     return volume.copy()[..., channels_shuffled]
 
 

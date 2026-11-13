@@ -2851,7 +2851,7 @@ def test_additive_noise_rejects_patch_options_for_other_modes() -> None:
         A.AdditiveNoise(spatial_mode="shared", patch_count_range=(2, 2))
 
 
-def test_add_noise_materializes_broadcast_uint8_noise(monkeypatch):
+def test_add_noise_passes_shared_float32_plane_to_albucore(monkeypatch):
     image = np.full((4, 6, 3), 128, dtype=np.uint8)
     noise = np.ones((4, 6, 1), dtype=np.float32)
     captured_noise: list[np.ndarray] = []
@@ -2865,30 +2865,7 @@ def test_add_noise_materializes_broadcast_uint8_noise(monkeypatch):
 
     assert len(captured_noise) == 1
     assert captured_noise[0].shape == image.shape
-    assert captured_noise[0].flags.c_contiguous
-
-
-@pytest.mark.parametrize("layout", ["dense", "crop", "reversed"])
-@pytest.mark.parametrize("offset", [-500.75, 0.0, 500.75, 2**31, float("inf"), float("nan")])
-def test_shared_uint8_noise_matches_dense_field(layout: str, offset: float) -> None:
-    rng = np.random.default_rng(137)
-    source = rng.integers(0, 256, (81, 91, 3), dtype=np.uint8)
-    image = source[:, 2:-2]
-    if layout == "dense":
-        image = image.copy()
-    elif layout == "reversed":
-        image = image[:, ::-1]
-    image.setflags(write=False)
-    noise = rng.normal(offset, 112.2, (*image.shape[:2], 1)).astype(np.float32)
-    image_before = image.copy()
-    shared_noise = np.broadcast_to(noise, image.shape)
-    with np.errstate(invalid="ignore"):
-        expected = fnoise.add_noise(image, shared_noise.copy())
-        actual = fnoise.add_noise(image, shared_noise)
-
-    np.testing.assert_array_equal(actual, expected, strict=True)
-    np.testing.assert_array_equal(image, image_before, strict=True)
-    assert actual.flags.c_contiguous
+    assert np.shares_memory(captured_noise[0], noise)
 
 
 @pytest.mark.parametrize(

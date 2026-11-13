@@ -140,6 +140,18 @@ class TestChannelSwap:
         assert result.flags.c_contiguous
         assert not np.shares_memory(result, img)
 
+    @pytest.mark.parametrize("shape", [(27, 31, 3), (4, 27, 31, 3)])
+    @pytest.mark.parametrize("column_slice", [slice(1, -1), slice(None, None, -2)])
+    def test_identity_order_copies_readonly_rgb_view(self, shape: tuple[int, ...], column_slice: slice) -> None:
+        image = _make_image(shape=shape)[..., column_slice, :]
+        image.flags.writeable = False
+
+        result = fpixel.channel_shuffle(image, [0, 1, 2])
+
+        np.testing.assert_array_equal(result, image, strict=True)
+        assert result.flags.c_contiguous and result.flags.writeable
+        assert not np.shares_memory(result, image)
+
     def test_double_application_is_identity(self):
         img = _make_image(seed=2)
         aug = A.ChannelSwap(channel_order=(2, 1, 0), p=1.0)
@@ -896,6 +908,22 @@ class TestColorize:
                 np.broadcast_to(np.array(white) / 255.0, (img.shape[0], 3)),
                 atol=1e-6,
             )
+
+    def test_uint8_batch_of_flipped_grayscale_views_matches_pillow(self) -> None:
+        from PIL import Image, ImageOps
+
+        rng = np.random.default_rng(137)
+        images = rng.integers(0, 256, size=(2, 132, 141, 1), dtype=np.uint8)[:, 1:-1, 2:-2][:, :, ::-1]
+        images.flags.writeable = False
+        black, white = (19, 37, 83), (231, 193, 141)
+        transform = A.Compose([A.Colorize(black_range=_fixed(black), white_range=_fixed(white), p=1.0)])
+
+        result = transform(images=images)["images"]
+
+        expected = np.stack(
+            [np.asarray(ImageOps.colorize(Image.fromarray(image[..., 0]), black, white)) for image in images]
+        )
+        np.testing.assert_array_equal(result, expected, strict=True)
 
     def test_two_color_ramp_is_monotonic(self):
         img = _gradient_grayscale()

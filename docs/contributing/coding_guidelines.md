@@ -41,7 +41,7 @@ We use pre-commit hooks to maintain consistent code quality. These hooks automat
 AX repository checks run through one configurable hook: `pre-commit run check-ax-rules --all-files`. Its enabled
 rules are listed in `[tool.ax-rules.rules]` in `pyproject.toml`; set an entry to `false` to disable it. On commit,
 each enabled rule runs only for the files in its own scope; `uv run python -m tools.ax_rules` without filenames runs
-every enabled rule. The `coding-guidance` rule emits `AXG001`–`AXG026` diagnostics for transform API, sampling, schema, naming,
+every enabled rule. The `coding-guidance` rule emits `AXG001`–`AXG028` diagnostics for transform API, sampling, schema, naming,
 performance-shape, documentation, bbox propagation, and target-specific sampling contracts. The public
 `BboxParams.__init__(bbox_type="hbb")` compatibility default is intentional. At the call boundary, `BasicTransform`
 treats box targets as normalized HBBs when no bounding-box processor is configured. Internal transform, processor,
@@ -212,6 +212,12 @@ requirement and define a safe no-op for inputs that cannot produce the effect, f
   layouts above. The annotation is its runtime contract.
 - It is fine to branch on `img.ndim` when selecting image, batch, and volume semantics. Do not use rank to guess where
   a channel axis is.
+
+### CPU NumPy–Tensor conversion
+
+In `albumentations/`, use `albucore.tensor_bridge` to convert between NumPy arrays and CPU Tensors.
+Use the storage helpers to preserve axes or the layout helpers to move the channel axis.
+`AXG028` rejects direct `torch.from_numpy` and `.numpy` access, including imports of `torch.from_numpy`.
 
 ### Handling Auxiliary Data via Metadata
 

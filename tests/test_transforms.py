@@ -2571,6 +2571,33 @@ def test_additive_noise_uniform_channel_ranges(spatial_mode: str, per_channel: b
     np.testing.assert_allclose(result, expected)
 
 
+@pytest.mark.parametrize("shape", [(23, 17), (23, 17, 1), (224, 224, 3), (23, 17, 5), (3, 23, 17, 3)])
+@pytest.mark.parametrize(("mean_range", "std_range"), [((0.0, 0.0), (0.44, 0.44)), ((-0.7, 0.2), (0.13, 0.4))])
+def test_sample_gaussian_preserves_seeded_values(
+    shape: tuple[int, ...], mean_range: tuple[float, float], std_range: tuple[float, float]
+) -> None:
+    reference_rng = np.random.default_rng(137)
+    mean = mean_range[0] if mean_range[0] == mean_range[1] else reference_rng.uniform(*mean_range)
+    std = std_range[0] if std_range[0] == std_range[1] else reference_rng.uniform(*std_range)
+    channels = shape[-1] if len(shape) >= 3 else 1
+    expected = np.empty(shape, dtype=np.float32)
+    destination = expected.reshape(-1, *shape[-2:]) if len(shape) == 4 else expected
+    cv2.setRNGSeed(137)
+    cv2.randn(destination, mean * np.ones(channels, dtype=np.float32), std * np.ones(channels, dtype=np.float32))
+    expected_next = np.empty(16, dtype=np.float32)
+    cv2.randn(expected_next, 0.0, 1.0)
+
+    cv2.setRNGSeed(137)
+    rng = np.random.default_rng(137)
+    actual = fnoise.sample_gaussian(shape, {"mean_range": mean_range, "std_range": std_range}, rng)
+    actual_next = np.empty_like(expected_next)
+    cv2.randn(actual_next, 0.0, 1.0)
+
+    np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32), strict=True)
+    np.testing.assert_array_equal(actual_next.view(np.uint32), expected_next.view(np.uint32), strict=True)
+    assert rng.random() == reference_rng.random()
+
+
 def test_sample_uniform_resolved_channel_ranges_preserves_seeded_values() -> None:
     size = (6, 8, 3)
     ranges = [(-0.2, -0.1), (0.0, 0.1), (0.2, 0.3)]

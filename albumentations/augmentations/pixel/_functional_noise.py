@@ -441,19 +441,11 @@ def sample_gaussian(
         if params["std_range"][0] == params["std_range"][1]
         else random_generator.uniform(*params["std_range"])
     )
-    num_channels = size[-1] if len(size) > MONO_CHANNEL_DIMENSIONS else 1
-    mean_vector = mean * np.ones(shape=(num_channels,), dtype=np.float32)
-    std_dev_vector = std * np.ones(shape=(num_channels,), dtype=np.float32)
-    gaussian_sampled_arr = np.empty(shape=size, dtype=np.float32)
-    if len(size) == 4:
-        cv2.randn(
-            dst=gaussian_sampled_arr.reshape(-1, size[-2], num_channels),
-            mean=mean_vector,
-            stddev=std_dev_vector,
-        )
-    else:
-        cv2.randn(dst=gaussian_sampled_arr, mean=mean_vector, stddev=std_dev_vector)
-    return gaussian_sampled_arr.astype(np.float32)
+    samples = np.empty(size, dtype=np.float32)
+    if samples.size:
+        # Every channel uses the same parameters, rounded to float32 as in the channel-vector form.
+        cv2.randn(samples.reshape(-1), np.asarray(mean, dtype=np.float32), np.asarray(std, dtype=np.float32))
+    return samples
 
 
 def sample_laplace(

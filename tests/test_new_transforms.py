@@ -140,6 +140,18 @@ class TestChannelSwap:
         assert result.flags.c_contiguous
         assert not np.shares_memory(result, img)
 
+    @pytest.mark.parametrize("column_slice", [slice(1, -1), slice(None, None, -2)])
+    def test_identity_order_copies_readonly_rgb_view(self, column_slice: slice) -> None:
+        image = _make_image(seed=137)[:, column_slice]
+        image.flags.writeable = False
+        transform = A.Compose([A.ChannelSwap(channel_order=(0, 1, 2), p=1.0)], telemetry=False)
+
+        result = transform(image=image)["image"]
+
+        np.testing.assert_array_equal(result, image, strict=True)
+        assert result.flags.c_contiguous and result.flags.writeable
+        assert not np.shares_memory(result, image)
+
     def test_double_application_is_identity(self):
         img = _make_image(seed=2)
         aug = A.ChannelSwap(channel_order=(2, 1, 0), p=1.0)

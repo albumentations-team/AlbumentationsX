@@ -745,6 +745,12 @@ def channel_shuffle(
             volume_channel_shuffle(img, channels_shuffled),
         )
     if (
+        img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS
+        and img.shape[-1] == NUM_RGB_CHANNELS
+        and channels_shuffled == [0, 1, 2]
+    ):
+        return img.copy()
+    if (
         img.dtype in (np.uint8, np.float16, np.float32)
         and channels_shuffled == [2, 1, 0]
         and img.ndim == NUM_MULTI_CHANNEL_DIMENSIONS

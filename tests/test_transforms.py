@@ -2841,6 +2841,53 @@ def test_add_noise_materializes_broadcast_uint8_noise(monkeypatch):
     assert captured_noise[0].flags.c_contiguous
 
 
+@pytest.mark.parametrize("layout", ["dense", "crop", "reversed"])
+@pytest.mark.parametrize("offset", [-500.75, 0.0, 500.75, 2**31, float("inf"), float("nan")])
+def test_shared_uint8_noise_matches_dense_field(layout: str, offset: float) -> None:
+    rng = np.random.default_rng(137)
+    source = rng.integers(0, 256, (81, 91, 3), dtype=np.uint8)
+    image = source[:, 2:-2]
+    if layout == "dense":
+        image = image.copy()
+    elif layout == "reversed":
+        image = image[:, ::-1]
+    image.setflags(write=False)
+    noise = rng.normal(offset, 112.2, (*image.shape[:2], 1)).astype(np.float32)
+    image_before = image.copy()
+    shared_noise = np.broadcast_to(noise, image.shape)
+    with np.errstate(invalid="ignore"):
+        expected = fnoise.add_noise(image, shared_noise.copy())
+        actual = fnoise.add_noise(image, shared_noise)
+
+    np.testing.assert_array_equal(actual, expected, strict=True)
+    np.testing.assert_array_equal(image, image_before, strict=True)
+    assert actual.flags.c_contiguous
+
+
+@pytest.mark.parametrize(
+    "transform",
+    [
+        A.GaussNoise(per_channel=False, p=1),
+        A.AdditiveNoise(noise_type="uniform", spatial_mode="shared", noise_params={"ranges": [(-0.4, 0.4)]}, p=1),
+    ],
+)
+def test_compose_shared_uint8_noise_matches_dense_field(
+    transform: A.BasicTransform, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    image = np.random.default_rng(137).integers(0, 256, (96, 112, 3), dtype=np.uint8)
+    pipeline = A.Compose([A.RandomCrop(80, 80, p=1), transform], telemetry=False)
+    add_noise = fnoise.add_noise
+    actual = pipeline(image=image, invocation_seed=137)["image"]
+
+    def dense_add(image: np.ndarray, noise: np.ndarray) -> np.ndarray:
+        return add_noise(image, np.ascontiguousarray(noise))
+
+    monkeypatch.setattr(fpixel, "add_noise", dense_add)
+    expected = pipeline(image=image, invocation_seed=137)["image"]
+
+    np.testing.assert_array_equal(actual, expected, strict=True)
+
+
 @pytest.mark.parametrize(
     "params",
     [

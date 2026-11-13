@@ -9,6 +9,7 @@ from numpy.typing import NDArray
 from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
     MONO_CHANNEL_DIMENSIONS,
+    NUM_RGB_CHANNELS,
     add,
     add_weighted,
     clip,
@@ -20,6 +21,20 @@ from ._functional_shared import (
     power,
     random,
 )
+
+
+def _add_shared_rgb_noise(img: NDArray[np.uint8], noise: NDArray[np.float32]) -> NDArray[np.uint8] | None:
+    # Mixed-depth OpenCV addition uses an integer intermediate. Keep extreme and nonfinite values on Albucore's path.
+    if not (np.min(noise) >= -(2**30) and np.max(noise) < 2**30):
+        return None
+    operand = np.trunc(noise, order="C")
+    result = np.empty(img.shape, dtype=np.uint8)
+    channel_buffer = np.empty(img.shape[:2], dtype=np.uint8)
+    for channel in range(NUM_RGB_CHANNELS):
+        cv2.extractChannel(img, channel, dst=channel_buffer)
+        cv2.add(channel_buffer, operand, dst=channel_buffer, dtype=cv2.CV_8U)
+        cv2.insertChannel(channel_buffer, result, channel)
+    return result
 
 
 def add_noise(
@@ -47,6 +62,18 @@ def add_noise(
                 noise = np.tile(noise, (n_tiles,) + (1,) * noise.ndim).reshape(img.shape)
 
         if img.dtype == np.uint8 and not noise.flags.c_contiguous:
+            if (
+                img.ndim == 3
+                and img.shape[-1] == NUM_RGB_CHANNELS
+                and img.size >= 4096 * NUM_RGB_CHANNELS
+                and img.strides[1:] == (NUM_RGB_CHANNELS, 1)
+                and img.strides[0] >= img.shape[1] * NUM_RGB_CHANNELS
+                and noise.dtype == np.float32
+                and noise.strides[-1] == 0
+            ):
+                shared_result = _add_shared_rgb_noise(cast("NDArray[np.uint8]", img), noise[..., 0])
+                if shared_result is not None:
+                    return shared_result
             noise = np.ascontiguousarray(noise)
 
         result = add(img, noise)

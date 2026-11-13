@@ -9,6 +9,7 @@ from numpy.typing import NDArray
 from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
     MONO_CHANNEL_DIMENSIONS,
+    NUM_RGB_CHANNELS,
     add,
     add_weighted,
     clip,
@@ -47,7 +48,15 @@ def add_noise(
                 noise = np.tile(noise, (n_tiles,) + (1,) * noise.ndim).reshape(img.shape)
 
         if img.dtype == np.uint8 and not noise.flags.c_contiguous:
-            noise = np.ascontiguousarray(noise)
+            shared_rgb_field = (
+                noise.ndim == 3
+                and img.size >= 4_096 * NUM_RGB_CHANNELS
+                and noise.shape[-1] == NUM_RGB_CHANNELS
+                and noise.dtype == np.float32
+                and noise.strides[-1] == 0
+            )
+            if not shared_rgb_field:
+                noise = np.ascontiguousarray(noise)
 
         result = add(img, noise)
     return result if img.dtype == np.uint8 else clip(result, img.dtype)

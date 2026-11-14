@@ -45,7 +45,7 @@ jobs:
           sed -i 's/^type Uint8Array =/Uint8Array =/' rgb-catalog/src/augbench/datasets/loaders.py
           mkdir -p results
           lscpu > results/cpu.txt
-          PYTHONPATH="$PWD/ax:$PWD/core:$PWD/rgb-catalog/src" python -u bench-r14.py "$PWD/rgb-catalog" "${RUNNER_TEMP}/r14-jpegs" results/linux.csv results/checks.txt | tee results/environment.log
+          PYTHONPATH="$PWD/ax:$PWD/core:$PWD/rgb-catalog/src" python -u bench-r14.py "$PWD/rgb-catalog" "${RUNNER_TEMP}/r14-jpegs" results/linux.csv results/checks.txt "$PWD/final-route.py" | tee results/environment.log
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:

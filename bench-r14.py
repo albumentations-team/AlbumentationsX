@@ -82,6 +82,8 @@ vectors = [np.array(v,dtype=np.float32) for v in (
     (0,0,0), (0.99,-0.99,-1.0), (-254.999,254.999,1.75), (-255,255,127),
     (500,-600,-0.25), (float('inf'),-float('inf'),float('nan')),
 )]
+almost_one = np.nextafter(np.longdouble(1), np.longdouble(0))
+vectors.append(np.array([almost_one, -almost_one, 1], dtype=np.longdouble))
 vectors.extend(rng.uniform(-255,255,(50,3)).astype('f4'))
 with np.errstate(invalid='ignore',over='ignore'):
     for shape in ((1,1,3),(1,2,3),(1,4,3),(1,257,3),(2,1,3),(256,256,3),(3,9,14,3)):
@@ -90,11 +92,11 @@ with np.errstate(invalid='ignore',over='ignore'):
             src[:] = (np.arange(257,dtype=np.int16) % 256).astype('u1')[None,:,None]
         for img in (src, src[...,::2,:], src[...,::-1,:], src[...,::-1]):
             for vector in vectors:
-                for storage in ('new','alias','strided'):
+                for storage in ('new','alias','separate','strided'):
                     a=img.copy() if storage=='alias' else img
                     b=img.copy() if storage=='alias' else img
-                    da=a if storage=='alias' else np.empty((*img.shape[:-1],6),dtype='u1')[...,::2] if storage=='strided' else None
-                    db=b if storage=='alias' else np.empty((*img.shape[:-1],6),dtype='u1')[...,::2] if storage=='strided' else None
+                    da=a if storage=='alias' else np.empty((*img.shape[:-1],6),dtype='u1')[...,::2] if storage=='strided' else np.empty_like(img) if storage=='separate' else None
+                    db=b if storage=='alias' else np.empty((*img.shape[:-1],6),dtype='u1')[...,::2] if storage=='strided' else np.empty_like(img) if storage=='separate' else None
                     expect=with_route(baseline,lambda:core.add(a,vector,out=da))
                     actual=with_route(prospective,lambda:core.add(b,vector,out=db))
                     if db is not None: assert actual is db

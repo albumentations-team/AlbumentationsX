@@ -13,13 +13,13 @@ def _add_channels(
             and img.strides[0] >= img.shape[1] * NUM_RGB_CHANNELS
             and (destination_u8 is None or destination_u8.flags.c_contiguous)
         ):
-            red, green, blue = map(float, value)
+            # Match the LUT's truncation before narrowing extended-precision offsets.
+            red, green, blue = map(float, np.trunc(value))
             if -255 <= red <= 255 and -255 <= green <= 255 and -255 <= blue <= 255:
-                # Match the LUT's truncation toward zero before saturating the sum.
                 dst = None if destination_u8 is None else destination_u8.reshape(-1).reshape(img.shape)
-                result = cv2.add(img, (int(red), int(green), int(blue), 0), dst=dst)
+                shifted = cv2.add(img, (int(red), int(green), int(blue), 0), dst=dst)
                 return (
-                    cast("NDArray[np.uint8]", result.reshape(img.shape)) if destination_u8 is None else destination_u8
+                    cast("NDArray[np.uint8]", shifted.reshape(img.shape)) if destination_u8 is None else destination_u8
                 )
         return _apply_lut(img, value, "add", out=destination_u8)
     if _is_float16_image(img):

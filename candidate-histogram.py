@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Literal
 
 import cv2
@@ -12,6 +11,8 @@ from albucore.lut import apply_uint8_lut
 from albucore.utils import NUM_RGB_CHANNELS, get_opencv_max_channels
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from numpy.typing import NDArray
 
 

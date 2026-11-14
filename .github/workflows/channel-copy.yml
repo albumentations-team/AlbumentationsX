@@ -24,7 +24,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          uv pip install 'albucore==0.3.8' numpy opencv-python-headless numkong stringzilla pydantic pyyaml scipy typing-extensions pytest pytest-mock hypothesis pytest-xdist
+          uv pip install 'albucore==0.3.8' numpy opencv-python-headless numkong stringzilla pydantic pyyaml scipy typing-extensions pillow pytest pytest-mock hypothesis pytest-xdist
           uv pip install torch --index https://download.pytorch.org/whl/cpu
           mkdir -p results
           lscpu > results/cpu.txt

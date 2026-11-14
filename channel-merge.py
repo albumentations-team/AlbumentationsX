@@ -50,11 +50,12 @@ def compare(calls):
     a, b = [fn() for fn in calls]
     np.testing.assert_array_equal(a.view(f'u{a.itemsize}'), b.view(f'u{b.itemsize}'), strict=True)
     timers = [Timer(fn) for fn in calls]
-    count = max(4, min(1000, int(.07 / (timers[0].timeit(5) / 5))))
+    count = max(4, min(1000, int(.22 / (timers[0].timeit(5) / 5))))
     times = [[], []]
-    for repeat in range(8):
+    for repeat in range(14):
         for i in ((0, 1) if repeat % 2 == 0 else (1, 0)):
             times[i].append(timers[i].timeit(count) * 1e6 / count)
+    print("Paired percentage changes:", [round(100 * (b / a - 1), 1) for a, b in zip(*times)], flush=True)
     return [median(values) for values in times]
 
 
@@ -86,7 +87,9 @@ with open(sys.argv[1], 'w', newline='', buffering=1) as output:
         else:
             transform = A.ImageCompression(quality_range=(75, 75), compression_type='jpeg', p=1)
             args = (75, '.jpg')
-        for size, channels, dtype in shapes:
+        if operation != "chromatic_aberration":
+            continue
+        for size, channels, dtype in ((1024, 3, np.uint8), (1024, 3, np.uint8), (512, 3, np.uint8), (1024, 3, np.uint8)):
             raw = rng.integers(0, 256, (size + 8, size + 12, channels), dtype=np.uint8)
             if dtype != np.uint8:
                 raw = (raw.astype(np.float32) / 255).astype(dtype)

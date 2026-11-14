@@ -752,6 +752,21 @@ def apply_salt_and_pepper(
     return np.where(salt_mask, max_value, np.where(pepper_mask, 0, img))
 
 
+def apply_salt_and_pepper_indices(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+    noise_positions: np.ndarray,
+    num_salt: int,
+    spatial_ndim: int,
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
+    """Write sampled spatial positions in a fresh channel-last image, batch, or volume."""
+    result = img.copy(order="C")
+    spatial_start = img.ndim - spatial_ndim - 1
+    pixels = result.reshape(*img.shape[:spatial_start], math.prod(img.shape[spatial_start:-1]), img.shape[-1])
+    pixels[..., noise_positions[:num_salt], :] = MAX_VALUES_BY_DTYPE[img.dtype]
+    pixels[..., noise_positions[num_salt:], :] = 0
+    return result
+
+
 DIAMOND_KERNEL = np.array(
     [
         [0.25, 0.0, 0.25],
@@ -782,6 +797,7 @@ __all__ = [
     "add_noise",
     "add_noise_by_patches",
     "apply_salt_and_pepper",
+    "apply_salt_and_pepper_indices",
     "generate_constant_noise_with_py_random",
     "generate_enhance_matrix",
     "generate_patch_noise",

@@ -1908,6 +1908,33 @@ def test_plasma_pattern_basic_properties(shape, roughness):
     assert not np.allclose(pattern, pattern.mean())
 
 
+@pytest.mark.parametrize("shape", [(3, 3), (11, 17), (224, 224), (225, 331)])
+@pytest.mark.parametrize("roughness", [0.5, 3.0])
+def test_plasma_pattern_matches_original_diamond_square(shape, roughness):
+    reference_rng = np.random.default_rng(137)
+    actual_rng = np.random.default_rng(137)
+    reference = reference_rng.uniform(-1, 1, (3, 3)).astype(np.float32)
+    step_count = (max(shape) - 2).bit_length() - 1
+    for step in range(step_count):
+        side = 2 * reference.shape[0] - 1
+        noise_scale = np.float32(roughness**step)
+        noise = reference_rng.uniform(-noise_scale, noise_scale, (side, side)).astype(np.float32)
+        expanded = np.zeros_like(noise)
+        expanded[::2, ::2] = reference + noise[::2, ::2]
+        for kernel in (fpixel.DIAMOND_KERNEL, fpixel.SQUARE_KERNEL):
+            interpolation = cv2.filter2D(expanded, -1, kernel, borderType=cv2.BORDER_CONSTANT)
+            expanded += (interpolation + noise) * (interpolation > 0)
+        reference = cv2.normalize(expanded, None, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F)
+    expected = cv2.normalize(reference[: shape[0], : shape[1]], None, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F).clip(
+        0, 1
+    )
+
+    result = fpixel.generate_plasma_pattern(shape, roughness, actual_rng)
+
+    np.testing.assert_array_equal(result.view(np.uint32), expected.view(np.uint32), strict=True)
+    assert actual_rng.bit_generator.state == reference_rng.bit_generator.state
+
+
 @pytest.mark.parametrize(
     ["seed1", "seed2", "should_be_different"],
     [

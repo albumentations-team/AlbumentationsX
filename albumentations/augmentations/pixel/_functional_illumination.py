@@ -82,27 +82,23 @@ def generate_plasma_pattern(
         next_height = (current_grid.shape[0] - 1) * 2 + 1
         next_width = (current_grid.shape[1] - 1) * 2 + 1
 
-        # Pre-allocate expanded grid
-        expanded_grid = np.zeros((next_height, next_width), dtype=np.float32)
+        grid_shape = (next_height, next_width)
+        expanded_grid = np.zeros(grid_shape, dtype=np.float32)
+        all_noise = random_generator.uniform(-noise_scale, noise_scale, grid_shape).astype(np.float32)
+        np.add(current_grid, all_noise[::2, ::2], out=expanded_grid[::2, ::2])
 
-        # Generate all noise at once for both steps (already scaled by noise_scale)
-        all_noise = random_generator.uniform(-noise_scale, noise_scale, (next_height, next_width)).astype(np.float32)
+        interpolation = np.empty_like(expanded_grid)
+        mask = np.empty_like(expanded_grid)
+        for kernel in (DIAMOND_KERNEL, SQUARE_KERNEL):
+            cv2.filter2D(expanded_grid, -1, kernel, dst=interpolation, borderType=cv2.BORDER_CONSTANT)
+            cv2.threshold(interpolation, 0, 1, cv2.THRESH_BINARY, dst=mask)
+            cv2.add(interpolation, all_noise, dst=interpolation)
+            cv2.multiply(interpolation, mask, dst=interpolation)
+            cv2.add(expanded_grid, interpolation, dst=expanded_grid)
 
-        # Copy existing points with noise
-        expanded_grid[::2, ::2] = current_grid + all_noise[::2, ::2]
-
-        # Diamond step - keep separate for natural look
-        diamond_interpolation = cv2.filter2D(expanded_grid, -1, DIAMOND_KERNEL, borderType=cv2.BORDER_CONSTANT)
-        diamond_mask = diamond_interpolation > 0
-        expanded_grid += (diamond_interpolation + all_noise) * diamond_mask
-
-        # Square step - keep separate for natural look
-        square_interpolation = cv2.filter2D(expanded_grid, -1, SQUARE_KERNEL, borderType=cv2.BORDER_CONSTANT)
-        square_mask = square_interpolation > 0
-        expanded_grid += (square_interpolation + all_noise) * square_mask
-
-        # Normalize after each step to prevent value drift
-        return _normalize_minmax_float32(expanded_grid)
+        # Normalize after each step to prevent value drift.
+        cv2.normalize(expanded_grid, expanded_grid, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F)
+        return expanded_grid
 
     # Pre-compute noise scales
     max_dimension = max(target_shape)
@@ -116,11 +112,8 @@ def generate_plasma_pattern(
     for noise_scale in noise_scales:
         plasma_grid = one_diamond_square_step(plasma_grid, cast("float", noise_scale))
 
-    return np.clip(
-        _normalize_minmax_float32(plasma_grid[: target_shape[0], : target_shape[1]]),
-        0,
-        1,
-    )
+    pattern = _normalize_minmax_float32(plasma_grid[: target_shape[0], : target_shape[1]])
+    return np.clip(pattern, 0, 1, out=pattern)
 
 
 def apply_plasma_brightness_contrast(

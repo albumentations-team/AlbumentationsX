@@ -726,17 +726,12 @@ def apply_salt_and_pepper(
     spatial_ndim: int = 2,
     **params: Any,
 ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
-    """Apply salt and pepper noise using sampled positions or precomputed masks.
-
-    This function applies salt and pepper noise to an image using pre-computed masks.
-    Salt pixels are set to maximum value, pepper pixels are set to 0.
+    """Set salt pixels to the dtype maximum and pepper pixels to zero.
 
     Args:
-        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image of any dtype and dimensions:
-            - 3D: (H, W, C) - RGB/multi-channel
-            - 4D: (D, H, W, C) - volume with depth
-        salt_mask (np.ndarray): Boolean mask indicating salt pixels (H, W)
-        pepper_mask (np.ndarray): Boolean mask indicating pepper pixels (H, W)
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Channel-last image, batch, or volume.
+        salt_mask (np.ndarray | None): Boolean salt mask over the spatial dimensions.
+        pepper_mask (np.ndarray | None): Boolean pepper mask over the spatial dimensions.
         noise_positions (np.ndarray | None): Flat spatial indices, with salt positions first.
         num_salt (int): Number of salt positions at the start of the index array.
         spatial_ndim (int): Number of spatial dimensions indexed per sample.

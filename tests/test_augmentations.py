@@ -1,3 +1,5 @@
+from math import prod
+
 import cv2
 import numpy as np
 import pytest
@@ -2057,6 +2059,62 @@ def test_salt_and_pepper_grayscale():
     pepper_pixels = (transformed == 0) & changed_mask
 
     assert (salt_pixels | pepper_pixels | ~changed_mask).all(), "Changed pixels should only be salt (255) or pepper (0)"
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize("amount", [0.0, 0.05, 0.16, 0.17, 1.0])
+@pytest.mark.parametrize("channels", [1, 3])
+def test_salt_and_pepper_replay_matches_mask_reference(dtype, amount, channels):
+    rng = np.random.default_rng(137)
+    source = rng.integers(1, 255, (2, 3, 10, 25, channels), dtype=np.uint8)
+    if dtype is not np.uint8:
+        source = (source.astype(np.float32) / 255).astype(dtype)
+    source = source[..., 1:-1:2, :]
+    source.setflags(write=False)
+    data = {"image": source[0, 0], "images": source[0], "volume": source[0], "volumes": source}
+    pipeline = A.ReplayCompose(
+        [A.SaltAndPepper(amount_range=(amount, amount), salt_vs_pepper_range=(0.6, 0.6), p=1)],
+        seed=137,
+        telemetry=False,
+    )
+    result = pipeline(**data)
+    replay = result["replay"]
+    groups = replay["transforms"][0]["params"]["target_params"]
+    replayed = A.ReplayCompose.replay(replay, **data)
+    for group in groups:
+        target = group["targets"][0]
+        spatial_ndim = 3 if target in {"volume", "volumes"} else 2
+        shape = data[target].shape[-spatial_ndim - 1 : -1]
+        area = prod(shape)
+        count = int(area * amount)
+        params = group["params"]
+        if count <= area * fpixel.SPARSE_SALT_AND_PEPPER_THRESHOLD:
+            assert set(params) == {"noise_positions", "num_salt"}
+            positions = params["noise_positions"]
+            num_salt = params["num_salt"]
+            mask = np.zeros(area, dtype=np.uint8)
+            mask[positions[:num_salt]] = 1
+            mask[positions[num_salt:]] = 2
+            salt_mask = mask.reshape(shape) == 1
+            pepper_mask = mask.reshape(shape) == 2
+        else:
+            assert set(params) == {"salt_mask", "pepper_mask"}
+            salt_mask, pepper_mask = params["salt_mask"], params["pepper_mask"]
+        assert np.count_nonzero(salt_mask) == int(count * 0.6)
+        assert np.count_nonzero(salt_mask | pepper_mask) == count
+        for target in group["targets"]:
+            expected = np.where(salt_mask[..., None], 255 if dtype is np.uint8 else 1, data[target])
+            expected = np.where(pepper_mask[..., None], 0, expected).astype(dtype)
+            np.testing.assert_array_equal(result[target], expected, strict=True)
+            assert not np.shares_memory(result[target], data[target])
+
+        group["params"] = {"salt_mask": salt_mask, "pepper_mask": pepper_mask}
+
+    legacy_replayed = A.ReplayCompose.replay(replay, **data)
+    for target in data:
+        bits = f"u{result[target].itemsize}"
+        np.testing.assert_array_equal(result[target].view(bits), replayed[target].view(bits), strict=True)
+        np.testing.assert_array_equal(result[target].view(bits), legacy_replayed[target].view(bits), strict=True)
 
 
 @pytest.mark.parametrize(

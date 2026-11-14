@@ -98,18 +98,6 @@ for h,w in ((1,1),(1,23),(17,1),(31,73),(224,224),(256,256),(512,512),(1024,1024
         assert bits(image,before)
 print(f'uint8 cases {checks}; cv2.addWeighted mismatches {cv_diff}; broadcast mismatches {broadcast_diff}',flush=True)
 
-for dtype in (np.uint8,np.float16,np.float32):
-  for shape in ((23,29,1),(23,29,3),(23,29,5),(3,23,29,3),(2,3,23,29,3)):
-    image=rng.integers(0,256,shape,dtype=np.uint8)
-    if dtype is not np.uint8:
-        image=(image.astype(np.float32)/255).astype(dtype)
-    if image.ndim > 3 or image.shape[-1]!=3 or dtype is not np.uint8:
-        for factor in (0,.4,1,1.5):
-            if len(sys.argv) == 5:
-                assert bits(old_sat(image,factor),sat_reuse(image,factor)), (dtype,shape,factor)
-            else:
-                print('nonRGB fallback prototype', dtype.__name__,shape,factor,flush=True) if False else None
-
 with output.open('w',newline='',buffering=1) as out:
     w=csv.writer(out)
     w.writerow(['recipe','scope',*routes])

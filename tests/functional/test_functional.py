@@ -1153,6 +1153,29 @@ def test_clahe(shape, dtype, clip_limit, tile_grid_size):
     assert np.any(result != img)  # Ensure the image has changed
 
 
+@pytest.mark.parametrize("shape", [(224, 224), (65, 97)])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+def test_clahe_rgb_matches_strided_lightness_reference(shape: tuple[int, int], dtype: type[np.generic]) -> None:
+    height, width = shape
+    source = np.random.default_rng(137).integers(0, 256, (height, width + 4, 3), dtype=np.uint8)
+    image = (source if dtype == np.uint8 else (source.astype(np.float32) / 255).astype(dtype))[:, 2:-2]
+    image.setflags(write=False)
+    before = image.copy()
+    clip_limit, grid = 2.3, (8, 8)
+    lab = cv2.cvtColor(convert_dtype(image, np.uint8), cv2.COLOR_RGB2LAB)
+    lab[..., 0] = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=grid).apply(lab[..., 0])
+    expected = convert_dtype(cv2.cvtColor(lab, cv2.COLOR_LAB2RGB), dtype)
+
+    result = fpixel.clahe(image, clip_limit, grid)
+
+    np.testing.assert_array_equal(
+        result.view(f"u{result.itemsize}"), expected.view(f"u{expected.itemsize}"), strict=True
+    )
+    np.testing.assert_array_equal(image, before, strict=True)
+    assert result.dtype == image.dtype
+    assert not np.shares_memory(result, image)
+
+
 @pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
 def test_chromatic_aberration_matches_strided_channel_reference(dtype: type[np.generic]) -> None:
     source = np.random.default_rng(137).integers(0, 256, (63, 75, 3), dtype=np.uint8)

@@ -1,0 +1,58 @@
+name: OpenCV fractional area A-B
+on:
+  push:
+    branches: [codex/opencv-area-upstream-bench]
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: opencv/opencv
+          ref: 205613a29728c2217049bdddbbe98322b485b34e
+          path: opencv-src
+          persist-credentials: false
+      - name: Build, bitwise comparison, and benchmark
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          lscpu > results/cpu.txt
+          c++ --version > results/compiler.txt
+          cmake -S opencv-src -B build -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_LIST=core,ts,imgproc -DBUILD_TESTS=ON -DBUILD_PERF_TESTS=ON \
+            -DBUILD_EXAMPLES=OFF -DBUILD_opencv_apps=OFF -DBUILD_JAVA=OFF \
+            -DWITH_IPP=OFF -DWITH_KLEIDICV=OFF -DWITH_OPENCL=OFF -DWITH_ITT=OFF \
+            -DWITH_FFMPEG=OFF -DWITH_GSTREAMER=OFF -DWITH_GTK=OFF -DWITH_LAPACK=OFF > results/configure.log 2>&1
+          cmake --build build --target opencv_imgproc -j 4 > results/build-base.log 2>&1
+          mkdir baseline-libs
+          cp -a build/lib/. baseline-libs/
+          for file in compare timing; do
+            c++ -std=c++17 -O2 -Ibuild -Iopencv-src/modules/core/include -Iopencv-src/modules/imgproc/include \
+                "$file.cpp" -Lbuild/lib -lopencv_imgproc -lopencv_core -Wl,-rpath,"$PWD/build/lib" -o "$file"
+          done
+          git -C opencv-src apply ../candidate.patch
+          cmake --build build --target opencv_test_imgproc opencv_perf_imgproc -j 4 > results/build-patch.log 2>&1
+          build/bin/opencv_test_imgproc '--gtest_filter=Resize.Area*:*Resize*BitExact*' | tee results/tests.log
+          build/bin/opencv_perf_imgproc '--gtest_filter=*resizeDownAreaFractional*' --perf_threads=1 | tee results/perf.log
+          for threads in 1 4; do
+            LD_LIBRARY_PATH="$PWD/baseline-libs" ./compare "$threads" | sha256sum | tee "results/base-$threads.sha256"
+            LD_LIBRARY_PATH="$PWD/build/lib" ./compare "$threads" | sha256sum | tee "results/patched-$threads.sha256"
+            cmp "results/base-$threads.sha256" "results/patched-$threads.sha256"
+          done
+          for arm in base patch patch base; do
+            libs="$PWD/build/lib"
+            if [[ "$arm" == base ]]; then libs="$PWD/baseline-libs"; fi
+            LD_LIBRARY_PATH="$libs" ./timing | tee -a "results/timing-$arm.txt"
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: opencv-area-upstream-results
+          path: results/

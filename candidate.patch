@@ -1,0 +1,75 @@
+diff --git a/modules/imgproc/perf/perf_resize.cpp b/modules/imgproc/perf/perf_resize.cpp
+index 67ca928bfa..4224362fdb 100644
+--- a/modules/imgproc/perf/perf_resize.cpp
++++ b/modules/imgproc/perf/perf_resize.cpp
+@@ -180,6 +180,20 @@ PERF_TEST_P(MatInfo_Size_Scale, ResizeAreaFast,
+ }
+ 
+ 
++PERF_TEST_P(MatInfo_Size_Size, resizeDownAreaFractional,
++            testing::Values(MatInfo_Size_Size_t(CV_8UC3, szVGA, Size(224, 224)),
++                            MatInfo_Size_Size_t(CV_8UC3, sz1080p, Size(910, 512))))
++{
++    const MatInfo_Size_Size_t& params = GetParam();
++    Mat src(get<1>(params), get<0>(params)), dst(get<2>(params), get<0>(params));
++    declare.in(src, WARMUP_RNG).out(dst);
++
++    TEST_CYCLE() resize(src, dst, dst.size(), 0, 0, INTER_AREA);
++
++    EXPECT_GT(countNonZero(dst.reshape(1)), 0);
++    SANITY_CHECK_NOTHING();
++}
++
+ typedef TestBaseWithParam<tuple<MatType, Size, double> > MatInfo_Size_Scale_Area;
+ 
+ PERF_TEST_P(MatInfo_Size_Scale_Area, ResizeArea,
+diff --git a/modules/imgproc/src/resize.cpp b/modules/imgproc/src/resize.cpp
+index 06e080bde6..bf40bb8103 100644
+--- a/modules/imgproc/src/resize.cpp
++++ b/modules/imgproc/src/resize.cpp
+@@ -2800,6 +2800,8 @@ public:
+         WT *buf = _buffer.data(), *sum = buf + dsize.width;
+         int j_start = tabofs[range.start], j_end = tabofs[range.end], j, k, dx, prev_dy = ytab[j_start].di;
+ 
++        int prev_sy = -1;
++
+         for( dx = 0; dx < dsize.width; dx++ )
+             sum[dx] = (WT)0;
+ 
+@@ -2809,7 +2811,10 @@ public:
+             int dy = ytab[j].di;
+             int sy = ytab[j].si;
+ 
++            // Adjacent destination rows can share a horizontally filtered source row.
++            if( sy != prev_sy )
+             {
++                prev_sy = sy;
+                 const T* S = src->template ptr<T>(sy);
+                 for( dx = 0; dx < dsize.width; dx++ )
+                     buf[dx] = (WT)0;
+diff --git a/modules/imgproc/test/test_imgwarp.cpp b/modules/imgproc/test/test_imgwarp.cpp
+index a3cb7b4cdd..606c8b4a7e 100644
+--- a/modules/imgproc/test/test_imgwarp.cpp
++++ b/modules/imgproc/test/test_imgwarp.cpp
+@@ -798,6 +798,21 @@ void resizeArea(const cv::Mat & src, cv::Mat & dst)
+     }
+ }
+ 
++TEST(Resize, Area_fractional_shared_rows)
++{
++    Mat storage(5, 7, CV_8UC3);
++    Mat src = storage(Rect(1, 1, 3, 3));
++    for (int y = 0; y < src.rows; ++y)
++        for (int x = 0; x < src.cols; ++x)
++            src.at<Vec3b>(y, x) = Vec3b(uchar(9 * y + 3 * x), uchar(3 * y + 9 * x), uchar(9 * (y + x)));
++
++    Vec3b expectedPixels[] = {Vec3b(4, 4, 6), Vec3b(8, 16, 18), Vec3b(16, 8, 18), Vec3b(20, 20, 30)};
++    const Mat expected(2, 2, CV_8UC3, expectedPixels);
++    Mat dst;
++    resize(src, dst, expected.size(), 0, 0, INTER_AREA);
++    EXPECT_EQ(0.0, cv::norm(dst, expected, NORM_INF));
++}
++
+ TEST(Resize, Area_half)
+ {
+     const int size = 1000;

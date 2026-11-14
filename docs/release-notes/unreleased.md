@@ -46,18 +46,7 @@ none
 
 ## Deprecations
 
-### ModeFilter removal
-
-- Previous behavior: `A.ModeFilter` replaced each pixel with the most frequent value in its neighborhood per channel.
-- New behavior: Loading a saved pipeline, replay, or applied configuration containing the removed transform
-  raises `ValueError` for an unknown transform.
-- Affected users: Pipelines that call `A.ModeFilter` or load saved records that contain it.
-- Migration: Remove the transform from the pipeline and regenerate its saved records. Use `albumentationsx==2.6.2`
-  to reproduce existing pipelines and saved records that require this filter.
-- First affected version: unreleased
-- Contract: [Replay and deserialization validation](../validation.md).
-- Tests: [Public constructor coverage](../../tests/contracts/test_constructor_parameter_coverage.py),
-  [unknown transform validation](../../tests/contracts/test_validation_contract.py).
+none
 
 ## Regression vectors
 

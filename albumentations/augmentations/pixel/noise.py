@@ -5,6 +5,7 @@ ISO, multiplicative, Rician, shot, salt-and-pepper, additive, and film grain noi
 """
 
 from collections.abc import Sequence
+from math import prod
 from typing import Annotated, Any, ClassVar, Literal, Self, TypeAlias, cast
 
 import cv2
@@ -33,7 +34,7 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     ImageOnlyTransform,
 )
-from albumentations.core.type_definitions import CV2_BORDER_REFLECT_101, PAIR
+from albumentations.core.type_definitions import CV2_BORDER_REFLECT_101, PAIR, VolumeType
 
 __all__ = [
     "AdditiveNoise",
@@ -1319,55 +1320,51 @@ class SaltAndPepper(_FullVolumeNoiseTransform):
         ):
             view = views[0]
             spatial_shape = tuple(view.descriptor.spatial_shape or ())
-            salt_mask, pepper_mask = self._sample_masks(spatial_shape, total_amount, salt_ratio, sampling)
+            noise = self._sample_noise(spatial_shape, total_amount, salt_ratio, sampling)
             groups.append(
                 TargetParams(
                     targets=tuple(item.name for item in views),
-                    params={"salt_mask": salt_mask, "pepper_mask": pepper_mask},
+                    params=noise,
                     requirements=requirements_for_views(views, shape=True, sampling_topology=True),
                 ),
             )
         return SampledParams(params={}, target_params=tuple(groups))
 
     @staticmethod
-    def _sample_masks(
+    def _sample_noise(
         spatial_shape: tuple[int, ...],
         total_amount: float,
         salt_ratio: float,
         sampling: SamplingContext,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        area = int(np.prod(spatial_shape))
+    ) -> dict[str, Any]:
+        area = prod(spatial_shape)
         num_pixels = int(area * total_amount)
         num_salt = int(num_pixels * salt_ratio)
         noise_positions = sampling.random_generator.choice(area, size=num_pixels, replace=False)
-        salt_mask: np.ndarray = np.zeros(area, dtype=bool)
-        pepper_mask: np.ndarray = np.zeros(area, dtype=bool)
+        if num_pixels <= area * fpixel.SPARSE_SALT_AND_PEPPER_THRESHOLD:
+            return {"noise_positions": noise_positions, "num_salt": num_salt}
+
+        salt_mask = np.zeros(area, dtype=bool)
+        pepper_mask = np.zeros(area, dtype=bool)
         salt_mask[noise_positions[:num_salt]] = True
         pepper_mask[noise_positions[num_salt:]] = True
-        return salt_mask.reshape(spatial_shape), pepper_mask.reshape(spatial_shape)
+        return {"salt_mask": salt_mask.reshape(spatial_shape), "pepper_mask": pepper_mask.reshape(spatial_shape)}
 
     def apply(
         self,
         img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
-        salt_mask: np.ndarray,
-        pepper_mask: np.ndarray,
+        *masks: np.ndarray,
         **params: Any,
     ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
-        return fpixel.apply_salt_and_pepper(img, salt_mask, pepper_mask)
+        return fpixel.apply_salt_and_pepper(img, *masks, spatial_ndim=2, **params)
 
     def apply_to_images(
         self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
     ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self.apply(images, **params)
 
-    def apply_to_volume(
-        self,
-        volume: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
-        salt_mask: np.ndarray,
-        pepper_mask: np.ndarray,
-        **params: Any,
-    ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
-        return self.apply(volume, salt_mask, pepper_mask, **params)
+    def apply_to_volume(self, volume: VolumeType, *masks: np.ndarray, **params: Any) -> VolumeType:
+        return fpixel.apply_salt_and_pepper(volume, *masks, spatial_ndim=3, **params)
 
 
 class FilmGrain(_FullVolumeNoiseTransform):

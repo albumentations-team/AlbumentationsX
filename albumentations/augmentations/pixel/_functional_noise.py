@@ -718,26 +718,34 @@ SPARSE_SALT_AND_PEPPER_THRESHOLD = 0.16
 
 def apply_salt_and_pepper(
     img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
-    salt_mask: np.ndarray,
-    pepper_mask: np.ndarray,
+    salt_mask: np.ndarray | None = None,
+    pepper_mask: np.ndarray | None = None,
+    *,
+    noise_positions: np.ndarray | None = None,
+    num_salt: int = 0,
+    spatial_ndim: int = 2,
+    **params: Any,
 ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
-    """Apply salt and pepper noise using pre-computed masks. Replaces pixels with
-    min or max value; amount controlled by masks.
-
-    This function applies salt and pepper noise to an image using pre-computed masks.
-    Salt pixels are set to maximum value, pepper pixels are set to 0.
+    """Set salt pixels to the dtype maximum and pepper pixels to zero.
 
     Args:
-        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image of any dtype and dimensions:
-            - 3D: (H, W, C) - RGB/multi-channel
-            - 4D: (D, H, W, C) - volume with depth
-        salt_mask (np.ndarray): Boolean mask indicating salt pixels (H, W)
-        pepper_mask (np.ndarray): Boolean mask indicating pepper pixels (H, W)
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Channel-last image, batch, or volume.
+        salt_mask (np.ndarray | None): Boolean salt mask over the spatial dimensions.
+        pepper_mask (np.ndarray | None): Boolean pepper mask over the spatial dimensions.
+        noise_positions (np.ndarray | None): Flat spatial indices, with salt positions first.
+        num_salt (int): Number of salt positions at the start of the index array.
+        spatial_ndim (int): Number of spatial dimensions indexed per sample.
+        **params (Any): Additional transform metadata.
 
     Returns:
         NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: The image with salt and pepper noise applied.
 
     """
+    if noise_positions is not None:
+        return _apply_salt_and_pepper_indices(img, noise_positions, num_salt, spatial_ndim)
+    if salt_mask is None or pepper_mask is None:
+        raise ValueError("SaltAndPepper requires sampled noise positions or both masks.")
+
     max_value = MAX_VALUES_BY_DTYPE[img.dtype]
     if img.shape[-1] > 1:
         noisy_fraction = (np.count_nonzero(salt_mask) + np.count_nonzero(pepper_mask)) / salt_mask.size
@@ -750,6 +758,21 @@ def apply_salt_and_pepper(
     salt_mask = salt_mask[..., None]
     pepper_mask = pepper_mask[..., None]
     return np.where(salt_mask, max_value, np.where(pepper_mask, 0, img))
+
+
+def _apply_salt_and_pepper_indices(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+    noise_positions: np.ndarray,
+    num_salt: int,
+    spatial_ndim: int,
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
+    """Write sampled spatial positions in a fresh channel-last image, batch, or volume."""
+    result = img.copy(order="C")
+    spatial_start = img.ndim - spatial_ndim - 1
+    pixels = result.reshape(*img.shape[:spatial_start], math.prod(img.shape[spatial_start:-1]), img.shape[-1])
+    pixels[..., noise_positions[:num_salt], :] = MAX_VALUES_BY_DTYPE[img.dtype]
+    pixels[..., noise_positions[num_salt:], :] = 0
+    return result
 
 
 DIAMOND_KERNEL = np.array(

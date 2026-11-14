@@ -41,6 +41,8 @@ from ._functional_shared import (
     warn,
 )
 
+_OPENCV_MAX_CHANNELS = albucore.get_opencv_max_channels()
+
 
 def _reshape_xhwc_for_opencv(data: np.ndarray) -> tuple[np.ndarray, tuple[int, ...]]:
     """Flatten the leading batch or depth axis before a channel-last OpenCV operation."""
@@ -574,7 +576,11 @@ def image_compression(
     extra_channels = [
         encode_decode(img[..., i], cv2.IMREAD_GRAYSCALE)[..., np.newaxis] for i in range(NUM_RGB_CHANNELS, num_channels)
     ]
-    result = cast("ImageUInt8", np.dstack([decoded_bgr, *extra_channels]))
+    channels = [decoded_bgr, *extra_channels]
+    result = cast(
+        "ImageUInt8",
+        cv2.merge(channels) if image_type == ".jpg" and num_channels <= _OPENCV_MAX_CHANNELS else np.dstack(channels),
+    )
     return restore_uint8_working_image(result, input_dtype)
 
 

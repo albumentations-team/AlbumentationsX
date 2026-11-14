@@ -47,6 +47,14 @@ composition/tensor route, or a deliberate golden compatibility contract.
 - Serialization contract: supported transforms round-trip through
   serialization and replay checks.
 
+## Optional Hub loading
+
+[`Compose.from_pretrained`](../../albumentations/core/hub_mixin.py) loads valid local configurations without
+`huggingface_hub`. Loading a Hub repository ID without that optional dependency raises `ImportError` with an
+installation command. An existing local directory missing its configuration retains `FileNotFoundError` with a
+dependency hint. The [offline Hub tests](../../tests/test_hub_optional_dependency.py) cover these routes, the
+existing push guard, and installed-Hub download forwarding and HTTP errors.
+
 ## Box-aware RandomResizedCrop sampling
 
 When `RandomResizedCrop.bbox_preservation` is `"one_box"`, the sampled crop contains one uniformly

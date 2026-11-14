@@ -73,6 +73,19 @@ def test_compatibility_is_exactly_one_job_for_each_os_python_contract() -> None:
     assert len(set(product(matrix["operating-system"], matrix["python-version"]))) == 12
 
 
+def test_compatibility_exercises_installed_hub_before_the_base_suite() -> None:
+    """Require the Linux/Python 3.11 job to enable Hub before running the base suite."""
+    steps = _workflow()["jobs"]["compatibility"]["steps"]
+    hub_steps = [step for step in steps if "--extra hub" in step.get("run", "")]
+
+    assert len(hub_steps) == 1
+    hub_step = hub_steps[0]
+    assert hub_step["if"] == "runner.os == 'Linux' && matrix.python-version == '3.11'"
+    assert "assert is_huggingface_hub_available" in hub_step["run"]
+    suite_step = next(step for step in steps if step.get("name") == "Run complete base suite")
+    assert steps.index(hub_step) < steps.index(suite_step)
+
+
 def test_test_handoffs_are_portable() -> None:
     text = WORKFLOW_PATH.read_text(encoding="utf-8")
     compatibility = text.split("\n  compatibility:\n", maxsplit=1)[1].split("\n  targeted:\n", maxsplit=1)[0]

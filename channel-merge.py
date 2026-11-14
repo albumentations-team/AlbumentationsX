@@ -46,16 +46,27 @@ def baseline(module, name):
     return namespace[name]
 
 
+def merge_only(module):
+    original = subprocess.check_output(["git", "show", "2fa2d18:albumentations/augmentations/pixel/_functional_sharpness.py"], text=True)
+    start = original.index("def chromatic_aberration(")
+    stop = original.index("\n\ndef ", start)
+    source = original[start:stop]
+    before = "result = np.dstack([red_distorted, img[..., 1], blue_distorted])"
+    assert before in source
+    namespace = vars(module).copy()
+    exec(source.replace(before, "result = cv2.merge((red_distorted, cv2.extractChannel(img, 1), blue_distorted))"), namespace)
+    return namespace["chromatic_aberration"]
+
+
 def compare(calls):
     a, b = [fn() for fn in calls]
     np.testing.assert_array_equal(a.view(f'u{a.itemsize}'), b.view(f'u{b.itemsize}'), strict=True)
     timers = [Timer(fn) for fn in calls]
-    count = max(4, min(1000, int(.22 / (timers[0].timeit(5) / 5))))
+    count = max(4, min(1000, int(.07 / (timers[0].timeit(5) / 5))))
     times = [[], []]
-    for repeat in range(14):
+    for repeat in range(8):
         for i in ((0, 1) if repeat % 2 == 0 else (1, 0)):
             times[i].append(timers[i].timeit(count) * 1e6 / count)
-    print("Paired percentage changes:", [round(100 * (b / a - 1), 1) for a, b in zip(*times)], flush=True)
     return [median(values) for values in times]
 
 
@@ -80,25 +91,21 @@ with open(sys.argv[1], 'w', newline='', buffering=1) as output:
         ('chromatic_aberration', sharp, tuple(product((256, 512, 1024), (3,), (np.uint8, np.float16, np.float32)))),
         ('image_compression', color, ((224, 4, np.uint8), (256, 9, np.uint8), *product((256, 512, 1024), (5,), (np.uint8,)), (256, 5, np.float16), (256, 5, np.float32))),
     ):
-        old, new = baseline(module, operation), getattr(module, operation)
-        if operation == 'chromatic_aberration':
-            transform = A.ChromaticAberration(p=1)
-            args = (.1, .06, -.1, -.06, cv2.INTER_LINEAR)
-        else:
-            transform = A.ImageCompression(quality_range=(75, 75), compression_type='jpeg', p=1)
-            args = (75, '.jpg')
-        if operation != "chromatic_aberration":
+        if operation != 'chromatic_aberration':
             continue
-        for size, channels, dtype in ((1024, 3, np.uint8), (1024, 3, np.uint8), (512, 3, np.uint8), (1024, 3, np.uint8)):
-            raw = rng.integers(0, 256, (size + 8, size + 12, channels), dtype=np.uint8)
+        old = baseline(module, operation)
+        new = merge_only(module)
+        for size, dtype in ((256, np.uint8), (512, np.uint8), (768, np.uint8), (1024, np.uint8), (1536, np.uint8), (1024, np.float16), (1024, np.float32)):
+            raw = rng.integers(0, 256, (size + 8, size + 12, 3), dtype=np.uint8)
             if dtype != np.uint8:
                 raw = (raw.astype(np.float32) / 255).astype(dtype)
+            pipeline = A.Compose([A.RandomCrop(size, size, p=1), A.ChromaticAberration(p=1)], telemetry=False)
             crop = raw[2:size + 2, 3:size + 3]
             crop.flags.writeable = False
+            args = (.1, .06, -.1, -.06, cv2.INTER_LINEAR)
             for image in (crop.copy(), crop, crop[:, ::-1]):
                 a, b = [fn(image, *args) for fn in (old, new)]
                 np.testing.assert_array_equal(a.view(f'u{a.itemsize}'), b.view(f'u{b.itemsize}'), strict=True)
-            rows.writerow((operation, 'kernel', size, channels, dtype.__name__, *compare([lambda fn=fn: fn(crop, *args) for fn in (old, new)])))
-            pipeline = A.Compose([A.RandomCrop(size, size, p=1), transform], telemetry=False)
-            rows.writerow((operation, 'Compose', size, channels, dtype.__name__, *compare_compose(operation, pipeline, raw, old, new)))
+            rows.writerow((operation, 'kernel', size, 3, dtype.__name__, *compare([lambda fn=fn: fn(crop, *args) for fn in (old, new)])))
+            rows.writerow((operation, 'Compose', size, 3, dtype.__name__, *compare_compose(operation, pipeline, raw, old, new)))
 print('All comparisons bitwise identical.', flush=True)

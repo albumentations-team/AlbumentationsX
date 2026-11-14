@@ -4192,6 +4192,23 @@ class TestEqualizePilHistogramFilter:
         np.testing.assert_array_equal(vec, ref)
 
 
+@pytest.mark.parametrize("factor", [-0.5, -0.001, 0.001, 0.5])
+@pytest.mark.parametrize("shape", [(1, 1, 3), (31, 74, 3)])
+def test_adjust_hue_uint8_matches_strided_hsv_reference(factor, shape):
+    image = np.random.default_rng(137).integers(0, 256, shape, dtype=np.uint8)[:, ::-1]
+    before = image.copy()
+    image.setflags(write=False)
+    hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
+    lut = np.mod(np.arange(256, dtype=np.int16) + 180 * factor, 180).astype(np.uint8)
+    hsv[..., 0] = lut[hsv[..., 0]]
+    expected = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+
+    result = fpixel.adjust_hue_torchvision(image, factor)
+
+    np.testing.assert_array_equal(result, expected, strict=True)
+    np.testing.assert_array_equal(image, before, strict=True)
+
+
 @pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
 def test_adjust_saturation_grayscale_channel_is_identity(dtype):
     rng = np.random.default_rng(137)

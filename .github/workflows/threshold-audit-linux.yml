@@ -33,8 +33,7 @@ jobs:
           mkdir -p results
           lscpu > results/cpu.txt
           export PYTHONPATH="$PWD/ax"
-          python -u ordered.py | tee results/ordered.log
-          python -u spatter.py | tee results/spatter.log
+          python -u clip-final.py final-utils.py | tee results/clip.log
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:

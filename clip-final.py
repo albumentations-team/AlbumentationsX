@@ -12,7 +12,7 @@ cv.setNumThreads(0)
 ns=vars(utils).copy()
 s=Path(sys.argv[1]).read_text()
 t=ast.parse(s)
-t.body=[n for n in t.body if isinstance(n,ast.FunctionDef) and n.name in ('_clip_float16_opencv','clip') and not n.decorator_list]
+t.body=[n for n in t.body if isinstance(n,ast.FunctionDef) and n.name in ('_clip_float16_opencv','_clip_numpy','clip') and not n.decorator_list]
 exec(compile(t,'<patch>','exec'),ns)
 new=ns['clip']
 rng=np.random.default_rng(137)

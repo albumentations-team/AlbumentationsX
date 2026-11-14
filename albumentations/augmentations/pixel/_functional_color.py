@@ -315,7 +315,9 @@ def equalize(
         result = albucore.equalize_uint8(uint8_img, mode=mode, mask=selection)
     else:
         ycrcb = cast("ImageUInt8", cv2.cvtColor(uint8_img, cv2.COLOR_RGB2YCrCb))
-        ycrcb[..., :1] = albucore.equalize_uint8(ycrcb[..., :1], mode=mode, mask=selection)
+        lightness = cast("ImageUInt8", cv2.extractChannel(ycrcb, 0))
+        lightness = albucore.equalize_uint8(lightness[..., None], mode=mode, mask=selection)
+        cv2.insertChannel(lightness, ycrcb, 0)
         result = cast("ImageUInt8", cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2RGB))
 
     return restore_uint8_working_image(result, input_dtype)

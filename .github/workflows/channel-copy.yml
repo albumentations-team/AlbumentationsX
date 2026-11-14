@@ -1,0 +1,40 @@
+name: Channel copy final benchmark
+on:
+  push:
+    branches: [codex/channel-copy-final-benchmark]
+permissions:
+  contents: read
+jobs:
+  paired:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: albumentations-team/ci-foundation/actions/setup-python-uv@6b9045dbea58026a1e8f96b0392c411934a27199
+        with:
+          activate-environment: "true"
+          cache-dependency-glob: uv.lock
+          cache-suffix: r29
+          python-version: "3.11"
+          uv-version: "0.12.0"
+      - name: Compare main and PR
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv pip install 'albucore==0.3.8' numpy opencv-python-headless numkong stringzilla pydantic pyyaml scipy typing-extensions pytest pytest-mock hypothesis pytest-xdist
+          uv pip install torch --index https://download.pytorch.org/whl/cpu
+          mkdir -p results
+          lscpu > results/cpu.txt
+          cp channel-copy-final.py /tmp/channel-copy-final.py
+          cat candidate-histogram.py > "$(python -c 'import albucore.histogram as h; print(h.__file__)')"
+          python -m pytest -q tests/test_equalize.py tests/test_augmentations.py -k "equalize or chromatic_aberration"
+          python -m pytest -q candidate_test_histogram.py
+          PYTHONPATH="$PWD" python -u /tmp/channel-copy-final.py "$PWD" results/matrix.csv | tee results/environment.log
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: channel-copy-final-matrix
+          path: results/

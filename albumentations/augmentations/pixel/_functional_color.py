@@ -509,10 +509,11 @@ def clahe(
             return restore_uint8_working_image(result, input_dtype)
         return restore_uint8_working_image(cast("ImageUInt8", clahe_mat.apply(img)), input_dtype)
 
-    img_lab = cast(
-        "NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", cv2.cvtColor(img, cv2.COLOR_RGB2LAB)
-    )
-    img_lab[:, :, 0] = clahe_mat.apply(img_lab[:, :, 0])
+    img_lab = cv2.cvtColor(img, cv2.COLOR_RGB2LAB)
+    lightness = cv2.extractChannel(img_lab, 0)
+    clahe_mat.apply(lightness, dst=lightness)
+    cv2.insertChannel(lightness, img_lab, 0)
+    del lightness
 
     return restore_uint8_working_image(cast("ImageUInt8", cv2.cvtColor(img_lab, cv2.COLOR_LAB2RGB)), input_dtype)
 

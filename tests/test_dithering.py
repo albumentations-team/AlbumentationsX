@@ -91,6 +91,44 @@ class TestDitheringFunctional:
         assert np.sum(result == 0) > 0
         assert np.sum(result == 1) > 0
 
+    @pytest.mark.parametrize("noise_dtype", [np.float32, np.float64])
+    def test_random_binary_dither_preserves_half_threshold(self, noise_dtype):
+        half = noise_dtype(0.5)
+        values = np.array(
+            [np.nextafter(half, noise_dtype(0)), half, np.nextafter(half, noise_dtype(1)), np.nan, np.inf, -np.inf],
+            dtype=noise_dtype,
+        )
+        noise = np.resize(values, (33, 47, 3))
+        before = noise.copy()
+        noise.flags.writeable = False
+        image = np.zeros(noise.shape, dtype=np.float32)
+        expected = (np.clip(noise, 0, 1) >= 0.5).astype(np.float32)
+
+        result = random_dither(image, 2, (-0.5, 0.5), random_noise=noise)
+
+        np.testing.assert_array_equal(result, expected, strict=True)
+        np.testing.assert_array_equal(noise, before, strict=True)
+
+    def test_random_binary_uint8_dither_matches_clipped_lut(self):
+        image = np.full((13, 17, 3), 127, dtype=np.uint8)[:, ::-1]
+        noise = np.resize(np.array([-32768, -255, 0, 1, 255, 32767], dtype=np.int16), image.shape)
+        expected = (np.clip(image.astype(np.int16) + noise, 0, 255) >= 128).astype(np.uint8) * 255
+
+        result = dithering_functional.random_dither_uint8(image, 2, (-0.5, 0.5), random_noise=noise)
+
+        np.testing.assert_array_equal(result, expected, strict=True)
+
+    @pytest.mark.parametrize("channels", [1, 3])
+    def test_ordered_binary_uint8_dither_matches_bayer_comparison(self, channels):
+        image = np.random.default_rng(137).integers(0, 256, (17, 19, channels), dtype=np.uint8)[:, ::-1]
+        bayer = (generate_bayer_matrix(4) * 255).astype(np.uint8)
+        threshold = np.tile(bayer, (5, 5))[:17, :19, None]
+        expected = np.where(image > threshold, 255, 0).astype(np.uint8)
+
+        result = ordered_dither_uint8(image, 2, 4)
+
+        np.testing.assert_array_equal(result, expected, strict=True)
+
     def test_ordered_dither(self):
         """Test ordered dithering with Bayer matrix."""
         img = np.full((8, 8, 1), 0.5, dtype=np.float32)

@@ -1353,33 +1353,18 @@ class SaltAndPepper(_FullVolumeNoiseTransform):
     def apply(
         self,
         img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
-        salt_mask: np.ndarray | None = None,
-        pepper_mask: np.ndarray | None = None,
-        *,
-        noise_positions: np.ndarray | None = None,
-        num_salt: int = 0,
-        spatial_ndim: int = 2,
+        *masks: np.ndarray,
         **params: Any,
     ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
-        if noise_positions is not None:
-            return fpixel.apply_salt_and_pepper_indices(img, noise_positions, num_salt, spatial_ndim)
-        if salt_mask is None or pepper_mask is None:
-            raise ValueError("SaltAndPepper requires sampled noise positions or both masks.")
-        return fpixel.apply_salt_and_pepper(img, salt_mask, pepper_mask)
+        return fpixel.apply_salt_and_pepper(img, *masks, spatial_ndim=2, **params)
 
     def apply_to_images(
         self, images: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], **params: Any
     ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return self.apply(images, **params)
 
-    def apply_to_volume(
-        self,
-        volume: VolumeType,
-        salt_mask: np.ndarray | None = None,
-        pepper_mask: np.ndarray | None = None,
-        **params: Any,
-    ) -> VolumeType:
-        return self.apply(volume, salt_mask, pepper_mask, spatial_ndim=3, **params)
+    def apply_to_volume(self, volume: VolumeType, *masks: np.ndarray, **params: Any) -> VolumeType:
+        return fpixel.apply_salt_and_pepper(volume, *masks, spatial_ndim=3, **params)
 
 
 class FilmGrain(_FullVolumeNoiseTransform):

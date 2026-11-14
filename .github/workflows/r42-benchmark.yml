@@ -30,7 +30,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          uv pip install 'albucore==0.3.8' 'numpy==2.5.4' 'opencv-python-headless==5.0.0.93' 'numkong==7.8.7' 'stringzilla==5.3.2' pydantic pyyaml scipy typing-extensions simplejpeg pytest pytest-mock hypothesis pytest-xdist
+          uv pip install 'albucore==0.3.8' 'numpy==2.5.4' 'opencv-python-headless==5.0.0.93' 'numkong==7.8.7' 'stringzilla==5.3.2' pydantic pyyaml scipy typing-extensions simplejpeg scikit-learn pytest pytest-mock hypothesis pytest-xdist
           uv pip install 'torch==2.15.0' --index https://download.pytorch.org/whl/cpu
           mkdir -p results
           lscpu > results/cpu.txt

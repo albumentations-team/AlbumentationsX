@@ -2084,7 +2084,7 @@ def test_salt_and_pepper_replay_matches_mask_reference(dtype, amount, channels):
     for group in groups:
         target = group["targets"][0]
         spatial_ndim = 3 if target in {"volume", "volumes"} else 2
-        shape = data[target].shape[-spatial_ndim - 1:-1]
+        shape = data[target].shape[-spatial_ndim - 1 : -1]
         area = prod(shape)
         count = int(area * amount)
         params = group["params"]

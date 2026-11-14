@@ -37,7 +37,8 @@ def opencv(image, size, interpolation=cv.INTER_AREA):
 rng = np.random.default_rng(137)
 cases = [(480,640,224,224,3), (480,640,240,320,3), (1080,1920,512,910,3), (1024,1024,512,512,3), (480,640,224,224,1), (480,640,224,224,4), (512,768,224,224,3), (483,641,224,224,3)]
 output = csv.writer(sys.stdout)
-output.writerow(('case','OpenCV area','OpenCV linear','OpenCV area reused dst','tables only','baseline order model','reuse rows','group taps','group H fma','group HV fma','group V fma'))
+selected = (3, 6, 8) if sys.platform == 'darwin' else (2, 7)
+output.writerow(('case','OpenCV area','OpenCV linear','OpenCV area reused dst','tables only','variants ' + str(selected)))
 frac = []
 for ih,iw,oh,ow,c in cases:
     raw = rng.integers(0,256,(ih,iw,c),dtype=np.uint8)
@@ -46,13 +47,13 @@ for ih,iw,oh,ow,c in cases:
     tag = f'{ih}x{iw}->{oh}x{ow} C{c}'
     if ih%oh or iw%ow:
         frac.append((ih,iw,oh,ow,c))
-        counts = [np.count_nonzero(opencv(raw,size)!=resized(raw,size,mode)) for mode in range(6)]
+        counts = [np.count_nonzero(opencv(raw,size)!=resized(raw,size,mode)) for mode in selected]
         print('mismatches', tag, counts, file=sys.stderr, flush=True)
     methods = [lambda:opencv(raw,size), lambda:opencv(raw,size,cv.INTER_LINEAR),
                lambda:cv.resize(raw,size[::-1],dst=dst,interpolation=cv.INTER_AREA),
                lambda:area(None,ih,iw,0,oh,ow,c,None,-1)]
     if ih%oh or iw%ow:
-        methods += [lambda mode=mode:resized(raw,size,mode) for mode in range(6)]
+        methods += [lambda mode=mode:resized(raw,size,mode) for mode in selected]
     timers = [Timer(fn) for fn in methods]
     counts = [max(6,min(1500,int(.07/(t.timeit(5)/5)))) for t in timers]
     series = [[] for t in timers]
@@ -61,9 +62,9 @@ for ih,iw,oh,ow,c in cases:
             series[i].append(timers[i].timeit(counts[i])*1e6/counts[i])
     output.writerow((tag, *(round(median(s),1) for s in series)))
     sys.stdout.flush()
-errors = [0] * 6
+errors = [0] * len(selected)
 checks = 0
-for ih,iw,oh,ow,c in frac + [(*[int(j) for j in dims], 3) for dims in rng.integers(224, 1000, (36,4)) if dims[0]>dims[2] and dims[1]>dims[3]]:
+for ih,iw,oh,ow,c in frac + [(*[int(j) for j in dims], 3) for dims in rng.integers(224, 1000, (280,4)) if dims[0]>dims[2] and dims[1]>dims[3]]:
     for layout in ('dense','roi','reversed'):
         for seed in (0,137,731,16476):
             image = np.random.default_rng(seed).integers(0,256,(ih,iw+4,c),dtype=np.uint8)[:,2:-2]
@@ -73,7 +74,15 @@ for ih,iw,oh,ow,c in frac + [(*[int(j) for j in dims], 3) for dims in rng.intege
                 image = image[:,::-1]
             image.setflags(write=False)
             expected = opencv(image,(oh,ow))
-            for mode in range(6):
-                errors[mode] += np.count_nonzero(expected != resized(image,(oh,ow),mode))
+            for i, mode in enumerate(selected):
+                errors[i] += np.count_nonzero(expected != resized(image,(oh,ow),mode))
             checks += 1
-print('parity:',checks,'cases; mismatched channel values by mode',errors,file=sys.stderr,flush=True)
+print('parity:',checks,'cases; mismatched channel values by mode',dict(zip(selected,errors)),file=sys.stderr,flush=True)
+target = rng.integers(0,256,(480,640,3),dtype=np.uint8)
+if cv.ipp.useIPP():
+    def sample_cv():
+        return median(Timer(lambda:opencv(target,(224,224))).repeat(5,180))*1e6/180
+    before = sample_cv()
+    cv.ipp.setUseIPP(False)
+    after = sample_cv()
+    print('IPP control area on/off in us', before, after, file=sys.stderr,flush=True)

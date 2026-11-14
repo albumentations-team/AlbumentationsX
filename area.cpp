@@ -42,9 +42,11 @@ static inline float accumulate(float sum, float value, float weight) {
     return sum + value * weight;
 }
 
-template<bool grouped, bool reuse, bool fused_h, bool fused_v>
+template<bool grouped, bool reuse, bool fused_h, bool fused_v, int tail = 0, int fixed_channels = 0>
 static void run(const uint8_t* input, intptr_t stride, int ow, int oh, int channels,
                 uint8_t* output, const Table& x, const Table& y) {
+    if constexpr (fixed_channels)
+        channels = fixed_channels;
     const int width = ow * channels;
     std::vector<float> buffers(width * 2);
     float* row = buffers.data();
@@ -58,11 +60,25 @@ static void run(const uint8_t* input, intptr_t stride, int ow, int oh, int chann
                 if constexpr (grouped) {
                     for (int dx = 0; dx < ow; ++dx) {
                         const int begin = x.offsets[dx], end = x.offsets[dx+1];
-                        for (int c = 0; c < channels; ++c) {
-                            float v = src[x.taps[begin].source * channels + c] * x.taps[begin].weight;
-                            for (int i = begin + 1; i < end; ++i)
-                                v = accumulate<fused_h>(v, src[x.taps[i].source * channels + c], x.taps[i].weight);
-                            row[dx * channels + c] = v;
+                        if constexpr (fixed_channels) {
+                            const int n = end - begin;
+                            const uint8_t* p = src + x.taps[begin].source * channels;
+                            for (int c = 0; c < channels; ++c) {
+                                float v = p[c] * x.taps[begin].weight;
+                                if (n >= 2) v = accumulate<fused_h>(v, p[c + channels], x.taps[begin+1].weight);
+                                if (n >= 3) v = accumulate<fused_h>(v, p[c + 2*channels], x.taps[begin+2].weight);
+                                if (n >= 4) v = accumulate<fused_h>(v, p[c + 3*channels], x.taps[begin+3].weight);
+                                for (int i = begin+4; i < end; ++i)
+                                    v = accumulate<fused_h>(v, p[c + (i-begin)*channels], x.taps[i].weight);
+                                row[dx * channels + c] = v;
+                            }
+                        } else {
+                            for (int c = 0; c < channels; ++c) {
+                                float v = src[x.taps[begin].source * channels + c] * x.taps[begin].weight;
+                                for (int i = begin + 1; i < end; ++i)
+                                    v = accumulate<fused_h>(v, src[x.taps[i].source * channels + c], x.taps[i].weight);
+                                row[dx * channels + c] = v;
+                            }
                         }
                     }
                 } else {
@@ -84,7 +100,7 @@ static void run(const uint8_t* input, intptr_t stride, int ow, int oh, int chann
                     sum[i] = row[i] * wy;
             } else {
                 for (int i = 0; i < width; ++i)
-                    sum[i] = accumulate<fused_v>(sum[i], row[i], wy);
+                    sum[i] = tail && i >= ((width - 1) / 4) * 4 ? std::fma(row[i], wy, sum[i]) : accumulate<fused_v>(sum[i], row[i], wy);
             }
         }
         for (int i = 0; i < width; ++i)
@@ -95,12 +111,31 @@ static void run(const uint8_t* input, intptr_t stride, int ow, int oh, int chann
 extern "C" int area(const uint8_t* in, int ih, int iw, intptr_t stride, int oh, int ow, int channels,
                     uint8_t* out, int mode) {
     const Table x = make_table(iw, ow), y = make_table(ih, oh);
+    if (mode == 7 || mode == 8) {
+        for (int dx = 0; dx < ow; ++dx)
+            for (int i = x.offsets[dx]+1; i < x.offsets[dx+1]; ++i)
+                if (x.taps[i].source != x.taps[i-1].source + 1)
+                    mode = mode == 7 ? 2 : 6;
+    }
     switch (mode) {
     case 0: run<false,false,false,false>(in,stride,ow,oh,channels,out,x,y); break;
     case 1: run<false,true,false,false>(in,stride,ow,oh,channels,out,x,y); break;
     case 2: run<true,true,false,false>(in,stride,ow,oh,channels,out,x,y); break;
     case 3: run<true,true,true,false>(in,stride,ow,oh,channels,out,x,y); break;
     case 4: run<true,true,true,true>(in,stride,ow,oh,channels,out,x,y); break;
+    case 6: run<true,true,true,false,1>(in,stride,ow,oh,channels,out,x,y); break;
+    case 7:
+        if (channels == 3)
+            run<true,true,false,false,0,3>(in,stride,ow,oh,channels,out,x,y);
+        else
+            run<true,true,false,false>(in,stride,ow,oh,channels,out,x,y);
+        break;
+    case 8:
+        if (channels == 3)
+            run<true,true,true,false,1,3>(in,stride,ow,oh,channels,out,x,y);
+        else
+            run<true,true,true,false,1>(in,stride,ow,oh,channels,out,x,y);
+        break;
     case 5: run<true,true,false,true>(in,stride,ow,oh,channels,out,x,y); break;
     }
     return int(x.taps.size() + y.taps.size());

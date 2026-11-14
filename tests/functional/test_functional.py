@@ -5,12 +5,13 @@ from math import isqrt
 import cv2
 import numpy as np
 import pytest
-from albucore import MAX_VALUES_BY_DTYPE, clip, convert_dtype
+from albucore import MAX_VALUES_BY_DTYPE, clip, convert_dtype, get_opencv_max_channels
 from sklearn.decomposition import NMF
 
 import albumentations.augmentations.blur.functional as fblur
 import albumentations.augmentations.geometric.functional as fgeometric
 import albumentations.augmentations.pixel._functional_illumination as fillumination
+import albumentations.augmentations.pixel._functional_sharpness as fsharpness
 import albumentations.augmentations.pixel._functional_torchvision as ftorchvision
 import albumentations.augmentations.pixel.functional as fpixel
 from albumentations.augmentations.medical import functional as fmedical
@@ -1175,6 +1176,31 @@ def test_clahe_rgb_matches_strided_lightness_reference(shape: tuple[int, int], d
     assert not np.shares_memory(result, image)
 
 
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+def test_chromatic_aberration_matches_strided_channel_reference(dtype: type[np.generic]) -> None:
+    source = np.random.default_rng(137).integers(0, 256, (63, 75, 3), dtype=np.uint8)
+    if dtype != np.uint8:
+        source = (source.astype(np.float32) / 255).astype(dtype)
+    image = source[:, 2:-2]
+    image.setflags(write=False)
+    before = image.copy()
+    working = convert_dtype(image, np.uint8)
+    height, width = working.shape[:2]
+    camera = np.array([[width, 0, width / 2], [0, height, height / 2], [0, 0, 1]], dtype=np.float32)
+    red_coeffs = np.array([0.1, 0.06, 0, 0], dtype=np.float32)
+    blue_coeffs = np.array([-0.1, -0.06, 0, 0], dtype=np.float32)
+    red = fsharpness._distort_channel(working[..., 0], camera, red_coeffs, height, width, cv2.INTER_LINEAR)
+    blue = fsharpness._distort_channel(working[..., 2], camera, blue_coeffs, height, width, cv2.INTER_LINEAR)
+    expected = convert_dtype(np.dstack((red, working[..., 1], blue)), dtype)
+
+    result = fpixel.chromatic_aberration(image, 0.1, 0.06, -0.1, -0.06, cv2.INTER_LINEAR)
+
+    np.testing.assert_array_equal(
+        result.view(f"u{result.itemsize}"), expected.view(f"u{expected.itemsize}"), strict=True
+    )
+    np.testing.assert_array_equal(image, before, strict=True)
+
+
 @pytest.mark.parametrize("shape", [(100, 100, 3), (100, 100, 1), (100, 100, 5)])
 def test_fancy_pca_mean_preservation(shape):
     image = np.random.rand(*shape).astype(np.float32)
@@ -1327,6 +1353,23 @@ def test_image_compression_channel_consistency():
     assert not np.array_equal(image[..., :3], compressed[..., :3])
     # Alpha channel should remain constant
     np.testing.assert_array_equal(compressed[..., 3], 128)
+
+
+@pytest.mark.parametrize("channels", [5, get_opencv_max_channels(), get_opencv_max_channels() + 1])
+def test_multichannel_jpeg_matches_independent_channel_compression(channels: int) -> None:
+    source = np.random.default_rng(137).integers(0, 256, (17, 23, channels), dtype=np.uint8)
+    image = source[:, 2:-2]
+    image.setflags(write=False)
+    expected = np.dstack(
+        [
+            fpixel.image_compression(image[..., :3], 75, ".jpg"),
+            *(fpixel.image_compression(image[..., index : index + 1], 75, ".jpg") for index in range(3, channels)),
+        ]
+    )
+
+    result = fpixel.image_compression(image, 75, ".jpg")
+
+    np.testing.assert_array_equal(result, expected, strict=True)
 
 
 @pytest.mark.parametrize(

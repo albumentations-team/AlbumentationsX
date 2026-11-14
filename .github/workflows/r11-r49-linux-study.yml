@@ -1,7 +1,7 @@
-name: R14 RGBShift A-B
+name: R11 and R49 color adjustment A-B
 on:
   push:
-    branches: [codex/r14-linux-study]
+    branches: [codex/r11-r49-linux-study]
 permissions:
   contents: read
 jobs:
@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-          ref: fdf3d43e0c18f17304fa397e7197145292baf217
+          ref: 8df83e82497301aca600b6b77468db8429f5a279
           path: ax
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -23,31 +23,25 @@ jobs:
           ref: ae173f2012d4cac9fc1573b2930aab820ebea60c
           path: rgb-catalog
           persist-credentials: false
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          repository: albumentations-team/albucore
-          ref: 02dc80bbc5c59a3f308fd07b867a2b00339a2817
-          path: core
-          persist-credentials: false
       - uses: albumentations-team/ci-foundation/actions/setup-python-uv@6b9045dbea58026a1e8f96b0392c411934a27199
         with:
           activate-environment: "true"
           cache-dependency-glob: uv.lock
-          cache-suffix: r14
+          cache-suffix: r11-r49
           python-version: "3.11"
           uv-version: "0.12.0"
-      - name: Compare RGBShift routes
+      - name: Compare color adjustment routes
         shell: bash
         run: |
           set -euo pipefail
-          uv pip install 'numpy==2.4.6' 'opencv-python-headless==5.0.0.93' 'numkong==7.8.7' 'stringzilla==5.3.2' pydantic pyyaml scipy typing-extensions 'simplejpeg==1.9.0' pytest hypothesis
+          uv pip install 'albucore==0.3.9' 'numpy==2.4.6' 'opencv-python-headless==5.0.0.93' 'numkong==7.8.7' 'stringzilla==5.3.2' pydantic pyyaml scipy typing-extensions 'simplejpeg==1.9.0' pytest hypothesis
           uv pip install 'torch==2.15.0' --index https://download.pytorch.org/whl/cpu
           sed -i 's/^type Uint8Array =/Uint8Array =/' rgb-catalog/src/augbench/datasets/loaders.py
           mkdir -p results
           lscpu > results/cpu.txt
-          PYTHONPATH="$PWD/ax:$PWD/core:$PWD/rgb-catalog/src" python -u bench-r14.py "$PWD/rgb-catalog" "${RUNNER_TEMP}/r14-jpegs" results/linux.csv results/checks.txt "$PWD/final-route.py" | tee results/environment.log
+          PYTHONPATH="$PWD/ax:$PWD/rgb-catalog/src" python -u r11-r49-probe.py "$PWD/rgb-catalog" "${RUNNER_TEMP}/r11-r49-jpegs" results/linux.csv | tee results/environment.log
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
-          name: r14-linux
+          name: r11-r49-linux
           path: results/

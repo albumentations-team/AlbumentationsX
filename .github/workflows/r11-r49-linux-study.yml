@@ -34,12 +34,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          uv pip install 'albucore==0.3.9' 'numpy==2.4.6' 'opencv-python-headless==5.0.0.93' 'numkong==7.8.7' 'stringzilla==5.3.2' pydantic pyyaml scipy typing-extensions 'simplejpeg==1.9.0' pytest hypothesis
+          uv pip install 'albucore==0.3.9' 'numpy==2.4.6' 'opencv-python-headless==5.0.0.93' 'numkong==7.8.7' 'stringzilla==5.3.2' pydantic pyyaml scipy typing-extensions 'simplejpeg==1.9.0' pytest hypothesis scikit-learn pytest-mock
           uv pip install 'torch==2.15.0' --index https://download.pytorch.org/whl/cpu
           sed -i 's/^type Uint8Array =/Uint8Array =/' rgb-catalog/src/augbench/datasets/loaders.py
           mkdir -p results
           lscpu > results/cpu.txt
-          PYTHONPATH="$PWD/ax:$PWD/rgb-catalog/src" python -u r11-r49-probe.py "$PWD/rgb-catalog" "${RUNNER_TEMP}/r11-r49-jpegs" results/linux.csv | tee results/environment.log
+          PYTHONPATH="$PWD/ax:$PWD/rgb-catalog/src" python -u r11-r49-probe.py "$PWD/rgb-catalog" "${RUNNER_TEMP}/r11-r49-jpegs" results/linux.csv "$PWD/r11-r49-final.py" | tee results/environment.log
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:

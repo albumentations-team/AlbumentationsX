@@ -1,7 +1,7 @@
-name: R11 and R49 color adjustment A-B
+name: R39 and R40 plasma A-B
 on:
   push:
-    branches: [codex/r11-r49-linux-study]
+    branches: [codex/r39-r40-linux-study]
 permissions:
   contents: read
 jobs:
@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-          ref: 8df83e82497301aca600b6b77468db8429f5a279
+          ref: b0664b345eef61edf578eff41fb59d64b5766e1a
           path: ax
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -27,10 +27,10 @@ jobs:
         with:
           activate-environment: "true"
           cache-dependency-glob: uv.lock
-          cache-suffix: r11-r49
+          cache-suffix: r39-r40
           python-version: "3.11"
           uv-version: "0.12.0"
-      - name: Compare color adjustment routes
+      - name: Compare plasma generation routes
         shell: bash
         run: |
           set -euo pipefail
@@ -39,9 +39,9 @@ jobs:
           sed -i 's/^type Uint8Array =/Uint8Array =/' rgb-catalog/src/augbench/datasets/loaders.py
           mkdir -p results
           lscpu > results/cpu.txt
-          PYTHONPATH="$PWD/ax:$PWD/rgb-catalog/src" python -u r11-r49-probe.py "$PWD/rgb-catalog" "${RUNNER_TEMP}/r11-r49-jpegs" results/linux.csv "$PWD/r11-r49-final.py" | tee results/environment.log
+          PYTHONPATH="$PWD/ax:$PWD/rgb-catalog/src" python -u r39-r40-probe.py "$PWD/rgb-catalog" "${RUNNER_TEMP}/r39-r40-jpegs" results/linux.csv | tee results/environment.log
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
-          name: r11-r49-linux
+          name: r39-r40-linux
           path: results/

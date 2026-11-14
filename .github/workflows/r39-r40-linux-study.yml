@@ -39,7 +39,7 @@ jobs:
           sed -i 's/^type Uint8Array =/Uint8Array =/' rgb-catalog/src/augbench/datasets/loaders.py
           mkdir -p results
           lscpu > results/cpu.txt
-          PYTHONPATH="$PWD/ax:$PWD/rgb-catalog/src" python -u r39-r40-probe.py "$PWD/rgb-catalog" "${RUNNER_TEMP}/r39-r40-jpegs" results/linux.csv | tee results/environment.log
+          PYTHONPATH="$PWD/ax:$PWD/rgb-catalog/src" python -u r39-r40-probe.py "$PWD/rgb-catalog" "${RUNNER_TEMP}/r39-r40-jpegs" results/linux.csv "$PWD/r39-r40-final.py" | tee results/environment.log
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:

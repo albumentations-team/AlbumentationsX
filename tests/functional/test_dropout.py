@@ -32,6 +32,16 @@ def test_channel_dropout_fill_matches_index_assignment(
     assert not np.shares_memory(result, image)
 
 
+@pytest.mark.parametrize(("shape", "batched"), [((0, 7, 3), False), ((2, 0, 7, 3), True)])
+def test_channel_dropout_mean_accepts_empty_spatial_axes(shape: tuple[int, ...], batched: bool) -> None:
+    image = np.empty(shape, dtype=np.uint8)
+
+    result = fdropout.channel_dropout(image, (0,), "mean", batched=batched)
+
+    np.testing.assert_array_equal(result, image)
+    assert result.dtype == image.dtype
+
+
 @pytest.mark.parametrize(
     "shape, dtype, connectivity",
     [

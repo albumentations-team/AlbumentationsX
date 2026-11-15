@@ -832,6 +832,7 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
     ),
     ("padded", A.CenterCrop3D, {"pad_if_needed": True, "fill": 7, "fill_mask": 3}),
     ("selected-channels", A.ChannelDropout, {"channels_to_drop": (0, 2)}),
+    ("mean-fill", A.ChannelDropout, {"fill": "mean"}),
     ("fixed-order", A.ChannelShuffle, {"channel_order": (2, 0, 1)}),
     (
         "red-blue-cubic",

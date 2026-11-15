@@ -151,7 +151,7 @@ class MaskDropout(DualTransform):
     ):
         super().__init__(p=p)
         self.max_objects_range = max_objects_range
-        self.fill = fill  # type: ignore[assignment]
+        self.fill = fill
         self.fill_mask = fill_mask
 
     def sample_parameters(

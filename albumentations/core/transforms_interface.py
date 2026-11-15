@@ -383,7 +383,6 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
     Args:
         interpolation (int): Interpolation method for image transforms.
-        fill (int | float | list[int] | list[float]): Fill value for image padding.
         fill_mask (int | float | list[int] | list[float]): Fill value for mask padding.
         deterministic (bool, optional): Whether the transform is deterministic.
         save_key (str, optional): Key for saving transform parameters.
@@ -407,7 +406,6 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
     _transform_init_args_names_cache: ClassVar[tuple[str, ...] | None] = None
     call_backup = None
     interpolation: int
-    fill: tuple[float, ...] | float
     fill_mask: tuple[float, ...] | float | None
     # replay mode params
     deterministic: bool = False

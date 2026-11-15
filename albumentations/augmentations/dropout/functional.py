@@ -17,6 +17,7 @@ from albucore import (
     reduce_sum,
     warp_affine,
 )
+from albucore.stats import mean
 from numpy.typing import NDArray
 
 from albumentations.augmentations.geometric.functional import split_uniform_grid
@@ -51,7 +52,9 @@ __all__ = [
 def channel_dropout(
     img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     selected_channels: tuple[int, ...],
-    fill: tuple[float, ...] | float = 0,
+    fill: tuple[float, ...] | float | Literal["mean"] = 0,
+    *,
+    batched: bool = False,
 ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Replace selected channels in a channel-last array without modifying the input.
 
@@ -59,9 +62,12 @@ def channel_dropout(
         img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Image, image batch, or volume with an
             explicit final channel axis.
         selected_channels (tuple[int, ...]): Channel indices selected by the caller.
-        fill (tuple[float, ...] | float): Shared value or one value per selected channel.
-            Scalar positive and negative zero are equivalent; the sign of filled zeros
-            is not guaranteed. Default: 0.
+        fill (tuple[float, ...] | float | Literal["mean"]): Shared value, one value per selected
+            channel, or the spatial mean of each selected channel. For uint8, the mean is
+            rounded to the nearest integer. Scalar positive and negative zero are equivalent.
+            Default: 0.
+        batched (bool): Whether the first axis indexes separate samples for mean filling.
+            Default: False.
 
     Returns:
         NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: A copy with selected channels filled, or the
@@ -91,6 +97,15 @@ def channel_dropout(
             for index in (source_channel, channel if channel >= 0 else img.shape[-1] + channel)
         ]
         cv2.mixChannels([view], [view], from_to)
+    elif isinstance(fill, str):
+        if not img.size:
+            return img
+        samples = img if batched else img[None]
+        for sample in samples:
+            channel_means = mean(sample, axis="per_channel")[list(selected_channels)]
+            if img.dtype == np.uint8:
+                np.rint(channel_means, out=channel_means)
+            sample[..., selected_channels] = channel_means
     else:
         img[..., selected_channels] = fill
     return img

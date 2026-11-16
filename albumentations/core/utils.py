@@ -143,8 +143,7 @@ def _get_shape_from_images(imgs: np.ndarray | torch.Tensor) -> tuple[int, int]:
     """Extract height and width from a NumPy NHWC batch or CPU Tensor NCHW sequence."""
     if isinstance(imgs, torch.Tensor):
         return imgs.shape[-2], imgs.shape[-1]
-    # Regular numpy array batch in NHWC format - take first image
-    return imgs[0].shape[0], imgs[0].shape[1]
+    return imgs.shape[1], imgs.shape[2]
 
 
 def _get_shape_from_volume(vol: np.ndarray | torch.Tensor) -> tuple[int, int]:

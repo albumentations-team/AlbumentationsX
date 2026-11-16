@@ -186,6 +186,8 @@ class Pad(DualTransform):
 
     _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+    _sampling_spatial_rank: ClassVar[int | None] = None
+    _replay_reference_shape: ClassVar[tuple[Literal[2, 3], str] | None] = (2, "shape")
 
     InitSchema: ClassVar[type[BaseTransformInitSchema]] = _PadInitSchema
 
@@ -532,6 +534,9 @@ class PadIfNeeded(Pad):
         >>> padded_result_bbox_labels = padded_mask_result['bbox_labels']  # Labels remain unchanged
 
     """
+
+    _sampling_spatial_rank = 2
+    _replay_reference_shape = None
 
     class InitSchema(BaseTransformInitSchema):
         min_height: int | None = Field(ge=1)

@@ -860,7 +860,8 @@ class Resize(DualTransform):
 
     _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
-    _runtime_param_materializer = staticmethod(_materialize_fixed_resize_params)
+    _sampling_spatial_rank = None
+    _replay_reference_shape = (2, "shape")
 
     class InitSchema(BaseTransformInitSchema):
         height: int = Field(ge=1)

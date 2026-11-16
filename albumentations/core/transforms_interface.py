@@ -12,7 +12,7 @@ from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 from functools import cache
-from typing import Annotated, Any, ClassVar, Protocol, TypeVar, cast, get_args, get_type_hints
+from typing import Annotated, Any, ClassVar, Literal, Protocol, TypeVar, cast, get_args, get_type_hints
 from warnings import warn
 
 import cv2
@@ -417,6 +417,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
     _valid_applied_config_keys_cache: ClassVar[frozenset[str] | None] = None
     _applied_replay_class: ClassVar[type["BasicTransform"] | None] = None
     _sampling_spatial_rank: ClassVar[int | None] = None
+    _replay_reference_shape: ClassVar[tuple[Literal[2, 3], str] | None] = None
     _runtime_param_materializer: ClassVar[_RuntimeParamMaterializer | None] = None
     _runtime_generated_params: ClassVar[frozenset[str]] = frozenset()
     _runtime_binding_params: ClassVar[Mapping[str, None]] = {}
@@ -1075,6 +1076,15 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         sampled_params = SampledParams.from_dict(deepcopy(replay_params))
         targets = self._build_target_set(kwargs)
         self._validate_spatial_targets(targets)
+        if self._replay_reference_shape is not None:
+            rank, name = self._replay_reference_shape
+            shape = targets.reference_spatial_shape(rank)
+            if shape is not None and shape != sampled_params.params.get(name, ())[:rank]:
+                sampled_params = SampledParams(
+                    {**sampled_params.params, name: shape},
+                    sampled_params.target_params,
+                    sampled_params.target_schema,
+                )
         if (
             "bbox_type" not in sampled_params.params
             and not sampled_params.target_params
@@ -1849,7 +1859,7 @@ class DualTransform(BasicTransform):
         Targets.MASKS3D,
     )
     _target_apply_methods: ClassVar[Mapping[str, str]] = {"volume": "apply_to_images"}
-    _sampling_spatial_rank = 2
+    _sampling_spatial_rank: ClassVar[int | None] = 2
 
     _supported_bbox_types: frozenset[str] = frozenset({"hbb"})  # Default: only axis-aligned boxes
     _semantic_mask_label_mappings: dict[str, dict[int, int]]
@@ -2354,6 +2364,7 @@ class NoOp(DualTransform):
     _targets = ALL_TARGETS
     _target_apply_methods: ClassVar[Mapping[str, str]] = {"volume": "apply_to_volume"}
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})  # NoOp passes all bbox types
+    _sampling_spatial_rank: ClassVar[int | None] = None
 
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
         return keypoints
@@ -2418,7 +2429,7 @@ class Transform3D(DualTransform):
         Targets.MASKS3D,
     )
     _target_apply_methods: ClassVar[Mapping[str, str]] = {"volume": "apply_to_volume"}
-    _sampling_spatial_rank = 3
+    _sampling_spatial_rank: ClassVar[int | None] = 3
 
     def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> VolumeType:
         """Apply transform to single 3D volume. Override in subclasses; input shape (D, H, W, C)

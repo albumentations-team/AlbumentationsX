@@ -1873,8 +1873,10 @@ class Compose(BaseCompose, HubMixin):
             realized reflection across an odd number of axes and remaps `mask3d`, `masks3d`, and their aliases, not 2D
             `mask` or `masks` targets. Default: None.
         p (float): Probability of applying all transforms. Should be in range [0, 1]. Default is 1.0.
-        is_check_shapes (bool): If True, checks consistency of shapes for image/mask/masks on each call.
-            Disable only if you are sure about your data consistency. Default is True.
+        is_check_shapes (bool): If True, require matching spatial dimensions across raster targets and aliases.
+            Set to False when the pipeline supports targets at different resolutions. Individual transforms
+            can still require a shared spatial shape for their geometry. Bounding boxes and keypoints use
+            the coordinate frame of the primary image or volume. Default is True.
         strict (bool): If True, enables strict mode which:
             1. Validates that all input keys are known/expected
             2. Validates that no transforms have invalid arguments
@@ -4481,7 +4483,7 @@ class ReplayCompose(Compose):
         p (float):
             Probability of applying the compose.
         is_check_shapes (bool):
-            Whether to check shapes of different targets.
+            Whether to require matching spatial dimensions across raster targets and aliases, as in `Compose`.
         save_key (str):
             Key for storing the applied transformations.
         seed (int | None):

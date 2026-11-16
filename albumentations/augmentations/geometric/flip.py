@@ -119,6 +119,8 @@ class VerticalFlip(DualTransform):
 
     _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+    _sampling_spatial_rank = None
+    _replay_reference_shape = (2, "shape")
 
     @overload
     def apply(self, img: ArrayT, **params: Any) -> ArrayT: ...
@@ -280,6 +282,8 @@ class HorizontalFlip(DualTransform):
 
     _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+    _sampling_spatial_rank = None
+    _replay_reference_shape = (2, "shape")
 
     @overload
     def apply(self, img: ArrayT, **params: Any) -> ArrayT: ...
@@ -448,6 +452,7 @@ class Transpose(DualTransform):
 
     _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+    _sampling_spatial_rank = None
 
     @overload
     def apply(self, img: ArrayT, **params: Any) -> ArrayT: ...
@@ -577,11 +582,11 @@ class D4(DualTransform):
     Note:
         - This transform is particularly useful for augmenting data that does not have a clear orientation,
           such as top-view satellite or drone imagery, or certain types of medical images.
-        - The input image should be square-shaped for optimal results. Non-square inputs may lead to
-          unexpected behavior or distortions.
+        - Square inputs keep their shape. On rectangular inputs, `r90`, `r270`, `t`, and `hvt` swap height and width.
+        - To use `additional_targets` for images and masks at different resolutions, set
+          `Compose(is_check_shapes=False)`. Each image and mask receives the same symmetry at its own resolution.
         - When applied to bounding boxes or keypoints, their coordinates will be adjusted according
           to the selected transformation.
-        - This transform preserves the aspect ratio and size of the input.
         - `inverse()` requires `group_element` to be set explicitly; raises `ValueError` otherwise.
 
     Examples:
@@ -609,6 +614,8 @@ class D4(DualTransform):
 
     _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+    _sampling_spatial_rank = None
+    _replay_reference_shape = (2, "shape")
 
     class InitSchema(BaseTransformInitSchema):
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"] | None
@@ -844,11 +851,11 @@ class SquareSymmetry(D4):
     Note:
         - This transform is particularly useful for augmenting data that does not have a clear orientation,
           such as top-view satellite or drone imagery, or certain types of medical images.
-        - The input image should be square-shaped for optimal results. Non-square inputs may lead to
-          unexpected behavior or distortions.
+        - Square inputs keep their shape. On rectangular inputs, `r90`, `r270`, `t`, and `hvt` swap height and width.
+        - To use `additional_targets` for images and masks at different resolutions, set
+          `Compose(is_check_shapes=False)`. Each image and mask receives the same symmetry at its own resolution.
         - When applied to bounding boxes or keypoints, their coordinates will be adjusted according
           to the selected transformation.
-        - This transform preserves the aspect ratio and size of the input.
         - `inverse()` requires `group_element` to be set explicitly; raises `ValueError` otherwise.
 
     Examples:

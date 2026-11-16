@@ -1692,6 +1692,8 @@ class Morphological(DualTransform):
 
     _targets = ALL_TARGETS
     _skip_when_vector_fields_present = True
+    _sampling_spatial_rank = None
+    _replay_reference_shape = (2, "shape")
 
     class InitSchema(BaseTransformInitSchema):
         scale: Annotated[

@@ -793,6 +793,7 @@ class Resize3D(Transform3D):
 
     _targets = VOLUME_GEOMETRIC_TARGETS
     _sampling_spatial_rank = None
+    _replay_reference_shape = (3, "source_shape")
 
     class InitSchema(BaseTransformInitSchema):
         size: Annotated[tuple[int, int, int], AfterValidator(check_range_bounds(1, None))]
@@ -2306,6 +2307,7 @@ class Flip3D(Transform3D):
 
     _targets = VOLUME_GEOMETRIC_TARGETS
     _sampling_spatial_rank = None
+    _replay_reference_shape = (3, "volume_shape")
 
     class InitSchema(BaseTransformInitSchema):
         axes: tuple[AxisIndex3D, ...]
@@ -2490,6 +2492,7 @@ class CubicSymmetry(Transform3D):
 
     _targets = VOLUME_GEOMETRIC_TARGETS
     _sampling_spatial_rank = None
+    _replay_reference_shape = (3, "volume_shape")
 
     def __init__(
         self,
@@ -2594,6 +2597,7 @@ class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified 
 
     _targets = VOLUME_GEOMETRIC_TARGETS
     _sampling_spatial_rank = None
+    _replay_reference_shape = (3, "volume_shape")
 
     class InitSchema(BaseTransformInitSchema):
         axis_pairs: tuple[AxisPair3D, ...]

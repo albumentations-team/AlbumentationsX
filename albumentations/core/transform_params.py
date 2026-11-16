@@ -238,13 +238,13 @@ class TargetSet:
     def reference_spatial_shape(self, rank: Literal[3]) -> tuple[int, int, int] | None: ...
 
     def reference_spatial_shape(self, rank: Literal[2, 3]) -> tuple[int, ...] | None:
-        """Return the first nonempty spatial shape in canonical target order, or the first empty shape."""
+        """Return the canonical spatial shape, falling back to an alias when no canonical target is present."""
         fallback = None
         for view in self.ordered:
             shape = _spatial_shape_for_rank(view, rank)
             if shape is None:
                 continue
-            if _target_has_elements(view.value):
+            if view.name == view.canonical_type:
                 return shape
             if fallback is None:
                 fallback = shape

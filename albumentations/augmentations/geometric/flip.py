@@ -120,6 +120,7 @@ class VerticalFlip(DualTransform):
     _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
     _sampling_spatial_rank = None
+    _replay_reference_shape = (2, "shape")
 
     @overload
     def apply(self, img: ArrayT, **params: Any) -> ArrayT: ...
@@ -282,6 +283,7 @@ class HorizontalFlip(DualTransform):
     _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
     _sampling_spatial_rank = None
+    _replay_reference_shape = (2, "shape")
 
     @overload
     def apply(self, img: ArrayT, **params: Any) -> ArrayT: ...
@@ -613,6 +615,7 @@ class D4(DualTransform):
     _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
     _sampling_spatial_rank = None
+    _replay_reference_shape = (2, "shape")
 
     class InitSchema(BaseTransformInitSchema):
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"] | None

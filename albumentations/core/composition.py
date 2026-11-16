@@ -1875,7 +1875,8 @@ class Compose(BaseCompose, HubMixin):
         p (float): Probability of applying all transforms. Should be in range [0, 1]. Default is 1.0.
         is_check_shapes (bool): If True, require matching spatial dimensions across raster targets and aliases.
             Set to False when the pipeline supports targets at different resolutions. Individual transforms
-            can still require a shared spatial shape for their geometry. Default is True.
+            can still require a shared spatial shape for their geometry. Bounding boxes and keypoints use
+            the coordinate frame of the primary image or volume. Default is True.
         strict (bool): If True, enables strict mode which:
             1. Validates that all input keys are known/expected
             2. Validates that no transforms have invalid arguments

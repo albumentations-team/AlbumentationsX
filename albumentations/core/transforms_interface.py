@@ -1849,7 +1849,7 @@ class DualTransform(BasicTransform):
         Targets.MASKS3D,
     )
     _target_apply_methods: ClassVar[Mapping[str, str]] = {"volume": "apply_to_images"}
-    _sampling_spatial_rank = 2
+    _sampling_spatial_rank: ClassVar[int | None] = 2
 
     _supported_bbox_types: frozenset[str] = frozenset({"hbb"})  # Default: only axis-aligned boxes
     _semantic_mask_label_mappings: dict[str, dict[int, int]]
@@ -2354,6 +2354,7 @@ class NoOp(DualTransform):
     _targets = ALL_TARGETS
     _target_apply_methods: ClassVar[Mapping[str, str]] = {"volume": "apply_to_volume"}
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})  # NoOp passes all bbox types
+    _sampling_spatial_rank: ClassVar[int | None] = None
 
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
         return keypoints
@@ -2418,7 +2419,7 @@ class Transform3D(DualTransform):
         Targets.MASKS3D,
     )
     _target_apply_methods: ClassVar[Mapping[str, str]] = {"volume": "apply_to_volume"}
-    _sampling_spatial_rank = 3
+    _sampling_spatial_rank: ClassVar[int | None] = 3
 
     def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> VolumeType:
         """Apply transform to single 3D volume. Override in subclasses; input shape (D, H, W, C)

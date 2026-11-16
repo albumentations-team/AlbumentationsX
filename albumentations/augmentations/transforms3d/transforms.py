@@ -26,7 +26,7 @@ from albumentations.augmentations.transforms3d import functional as f3d
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
-from albumentations.core.transform_params import SampledParams, TargetSet
+from albumentations.core.transform_params import SampledParams, SampledParamsError, TargetSet
 from albumentations.core.transforms_interface import BaseTransformInitSchema, Transform3D
 from albumentations.core.type_definitions import (
     C4_INVERSE,
@@ -76,6 +76,13 @@ AXIS_NAMES_3D: tuple[AxisName3D, ...] = ("x", "y", "z")
 
 def _sampling_volume_shape(targets: TargetSet) -> tuple[int, int, int]:
     return targets.require_aligned_spatial_shape(NUM_DIMENSIONS)
+
+
+def _reference_volume_shape(targets: TargetSet) -> tuple[int, int, int]:
+    shape = targets.reference_spatial_shape(NUM_DIMENSIONS)
+    if shape is None:
+        raise SampledParamsError("transform sampling requires a spatial target")
+    return shape
 
 
 def _forward_matrix_from_reindex(reindex: Any) -> np.ndarray:
@@ -785,6 +792,7 @@ class Resize3D(Transform3D):
     """
 
     _targets = VOLUME_GEOMETRIC_TARGETS
+    _sampling_spatial_rank = None
 
     class InitSchema(BaseTransformInitSchema):
         size: Annotated[tuple[int, int, int], AfterValidator(check_range_bounds(1, None))]
@@ -810,7 +818,7 @@ class Resize3D(Transform3D):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        return SampledParams(params={"source_shape": _sampling_volume_shape(targets)})
+        return SampledParams(params={"source_shape": _reference_volume_shape(targets)})
 
     def apply_to_volume(self, volume: VolumeType | torch.Tensor, **params: Any) -> VolumeType:
         return cast("VolumeType", resize3d(volume, self.size, self.interpolation))
@@ -1195,6 +1203,8 @@ class Pad3D(BasePad3D):
         >>> padded_keypoint_labels = transformed["keypoint_labels"]  # Labels remain unchanged
 
     """
+
+    _sampling_spatial_rank = None
 
     class InitSchema(BasePad3D.InitSchema):
         padding: int | tuple[int, int, int] | tuple[int, int, int, int, int, int]
@@ -2295,6 +2305,7 @@ class Flip3D(Transform3D):
     """
 
     _targets = VOLUME_GEOMETRIC_TARGETS
+    _sampling_spatial_rank = None
 
     class InitSchema(BaseTransformInitSchema):
         axes: tuple[AxisIndex3D, ...]
@@ -2344,7 +2355,7 @@ class Flip3D(Transform3D):
             flip_axes = tuple(axis for axis in self.axes if sampling.py_random.random() < 0.5)
 
         sampling.applied_overrides["flip_axes"] = flip_axes
-        return SampledParams(params={"flip_axes": flip_axes, "volume_shape": _sampling_volume_shape(targets)})
+        return SampledParams(params={"flip_axes": flip_axes, "volume_shape": _reference_volume_shape(targets)})
 
     def _get_label_transform_name(self, **params: Any) -> str | None:
         """Return the Flip3D semantic-mapping event for a realized orientation-reversing reflection, allowing mask3d
@@ -2478,6 +2489,7 @@ class CubicSymmetry(Transform3D):
     """
 
     _targets = VOLUME_GEOMETRIC_TARGETS
+    _sampling_spatial_rank = None
 
     def __init__(
         self,
@@ -2506,7 +2518,7 @@ class CubicSymmetry(Transform3D):
 
         """
         # Randomly select one of 48 possible transformations
-        volume_shape = _sampling_volume_shape(targets)
+        volume_shape = _reference_volume_shape(targets)
         return SampledParams(params={"index": sampling.py_random.randint(0, 47), "volume_shape": volume_shape})
 
     def _get_label_transform_name(self, **params: Any) -> str | None:
@@ -2581,6 +2593,7 @@ class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified 
     """
 
     _targets = VOLUME_GEOMETRIC_TARGETS
+    _sampling_spatial_rank = None
 
     class InitSchema(BaseTransformInitSchema):
         axis_pairs: tuple[AxisPair3D, ...]
@@ -2633,7 +2646,7 @@ class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified 
             params={
                 "axis_pair": axis_pair,
                 "rotation_count": rotation_count,
-                "volume_shape": _sampling_volume_shape(targets),
+                "volume_shape": _reference_volume_shape(targets),
             }
         )
 

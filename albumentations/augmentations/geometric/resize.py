@@ -79,7 +79,7 @@ def _materialize_fixed_resize_params(
     if not transform.replay_mode:
         return params
 
-    shape = targets.aligned_spatial_shape(2)
+    shape = targets.reference_spatial_shape(2)
     if shape is None or shape == params.get("shape", ())[:2]:
         return params
     return {**params, "shape": shape}
@@ -861,6 +861,7 @@ class Resize(DualTransform):
     _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
     _runtime_param_materializer = staticmethod(_materialize_fixed_resize_params)
+    _sampling_spatial_rank = None
 
     class InitSchema(BaseTransformInitSchema):
         height: int = Field(ge=1)

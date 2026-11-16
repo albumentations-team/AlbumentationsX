@@ -63,6 +63,8 @@ class Lambda(NoOp):
 
     """
 
+    _sampling_spatial_rank = 2
+
     class InitSchema(BaseTransformInitSchema):
         image: Callable[..., Any] | None
         mask: Callable[..., Any] | None

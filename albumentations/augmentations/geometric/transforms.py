@@ -1692,6 +1692,7 @@ class Morphological(DualTransform):
 
     _targets = ALL_TARGETS
     _skip_when_vector_fields_present = True
+    _sampling_spatial_rank = None
 
     class InitSchema(BaseTransformInitSchema):
         scale: Annotated[

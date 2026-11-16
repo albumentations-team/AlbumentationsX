@@ -232,6 +232,25 @@ class TargetSet:
         return tuple(tuple(views) for views in grouped.values())
 
     @overload
+    def reference_spatial_shape(self, rank: Literal[2]) -> tuple[int, int] | None: ...
+
+    @overload
+    def reference_spatial_shape(self, rank: Literal[3]) -> tuple[int, int, int] | None: ...
+
+    def reference_spatial_shape(self, rank: Literal[2, 3]) -> tuple[int, ...] | None:
+        """Return the first nonempty spatial shape in canonical target order, or the first empty shape."""
+        fallback = None
+        for view in self.ordered:
+            shape = _spatial_shape_for_rank(view, rank)
+            if shape is None:
+                continue
+            if _target_has_elements(view.value):
+                return shape
+            if fallback is None:
+                fallback = shape
+        return fallback
+
+    @overload
     def aligned_spatial_shape(self, rank: Literal[2]) -> tuple[int, int] | None: ...
 
     @overload

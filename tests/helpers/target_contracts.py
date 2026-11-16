@@ -187,7 +187,12 @@ def _assert_tensor_result_containers(
     for data_name, value in source.items():
         canonical_target = transform._additional_targets.get(data_name, data_name)
         if canonical_target in TENSOR_TARGETS and isinstance(value, torch.Tensor):
-            assert isinstance(result[data_name], torch.Tensor)
+            output = result[data_name]
+            assert isinstance(output, torch.Tensor)
+            if np.shares_memory(value.numpy(), output.numpy()):
+                assert output.untyped_storage() == value.untyped_storage(), (
+                    f"{data_name} overlaps its input but PyTorch sees separate storages"
+                )
 
 
 IMAGE_TARGET_NAMES = frozenset({"image", "images", "volume", "volumes"})

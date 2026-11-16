@@ -207,25 +207,7 @@ def numpy_to_tensor_spatial(value: NDArray[np.generic], target: str) -> torch.Te
     layout = _TENSOR_SPATIAL_LAYOUTS.get(target)
     if layout is None:
         raise TypeError(f"{target} is not a spatial Tensor target")
-    result = numpy_to_tensor_layout(value, layout)
-    return _restore_tensor_storage(value, result)
-
-
-def _restore_tensor_storage(value: NDArray[np.generic], result: torch.Tensor) -> torch.Tensor:
-    """Preserve PyTorch overlap detection for views that survive a NumPy fallback."""
-    owner = value.base
-    while isinstance(owner, np.ndarray):
-        owner = owner.base
-    if not isinstance(owner, torch.Tensor) or owner.dtype != result.dtype or not value.size:
-        return result
-
-    pointer = result.data_ptr()
-    if pointer != value.__array_interface__["data"][0]:
-        return result
-    offset, remainder = divmod(pointer - owner.data_ptr(), result.element_size())
-    if remainder:
-        return result
-    return owner.as_strided(result.shape, result.stride(), owner.storage_offset() + offset)
+    return numpy_to_tensor_layout(value, layout)
 
 
 def numpy_to_tensor_annotation(value: NDArray[np.generic], target: str) -> torch.Tensor:

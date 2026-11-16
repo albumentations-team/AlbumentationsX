@@ -19,7 +19,8 @@ from pydantic import AfterValidator, field_validator, model_validator
 from albumentations.augmentations.crops._sampling import SamplingMethod, sample_3d_crop_shape
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.geometric._functional_vector_fields import (
-    transform_vector_components_3d,
+    reorient_vector_field,
+    restore_vector_field_dtype,
     warp_vector_field_from_pull_grid_3d,
 )
 from albumentations.augmentations.transforms3d import functional as f3d
@@ -85,28 +86,17 @@ def _reference_volume_shape(targets: TargetSet) -> tuple[int, int, int]:
     return shape
 
 
-def _forward_matrix_from_reindex(reindex: Any) -> np.ndarray:
-    depth, height, width = np.mgrid[:3, :3, :3]
-    coordinate_grid = np.stack((width, height, depth), axis=-1).astype(np.float32)
-    mapped = reindex(coordinate_grid)
-    center = mapped[1, 1, 1]
-    pull_jacobian = np.column_stack(
-        (
-            mapped[1, 1, 2] - center,
-            mapped[1, 2, 1] - center,
-            mapped[2, 1, 1] - center,
-        ),
-    )
-    try:
-        return np.linalg.inv(pull_jacobian).astype(np.float32, copy=False)
-    except np.linalg.LinAlgError:
-        return np.full((3, 3), np.nan, dtype=np.float32)
+_CUBE_AXIS_PROBE = np.empty((2, 2, 2), dtype=np.uint8)
+_XYZ_AXIS_BY_STRIDE = {1: 1, 2: 2, 4: 3, -1: -1, -2: -2, -4: -3}
 
 
-def _apply_reindexed_vector_field_3d(field: np.ndarray, target: str, reindex: Any) -> np.ndarray:
-    transformed = reindex(field)
-    matrix = _forward_matrix_from_reindex(reindex)
-    return transform_vector_components_3d(transformed, matrix, semantics=target)
+def _apply_reindexed_vector_field_3d(
+    field: np.ndarray,
+    reindexed_probe: np.ndarray,
+) -> np.ndarray:
+    # Unique strides identify the source XYZ axes and their signs even for singleton field axes.
+    component_order = tuple(_XYZ_AXIS_BY_STRIDE[stride] for stride in reversed(reindexed_probe.strides))
+    return reorient_vector_field(field, component_order, spatial_rank=3)
 
 
 def _reindex_vector_field_tiles_3d(
@@ -2401,11 +2391,8 @@ class Flip3D(Transform3D):
         flip_axes = params["flip_axes"]
         if not flip_axes:
             return field
-        component_matrix = np.eye(3, dtype=np.float32)
-        for spatial_axis in flip_axes:
-            component_matrix[2 - spatial_axis, 2 - spatial_axis] = -1
-        transformed = np.flip(field, axis=flip_axes)
-        return transform_vector_components_3d(transformed, component_matrix, semantics=target)
+        order = tuple(-(3 - axis) if axis in flip_axes else 3 - axis for axis in (2, 1, 0))
+        return reorient_vector_field(field, order, spatial_rank=3)
 
     def apply_to_keypoints(
         self,
@@ -2538,7 +2525,7 @@ class CubicSymmetry(Transform3D):
         index = params["index"]
         if index == 0:
             return field
-        return _apply_reindexed_vector_field_3d(field, target, lambda value: f3d.transform_cube(value, index))
+        return _apply_reindexed_vector_field_3d(field, f3d.transform_cube(_CUBE_AXIS_PROBE, index))
 
     def apply_to_keypoints(
         self,
@@ -2684,8 +2671,7 @@ class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified 
             return field
         return _apply_reindexed_vector_field_3d(
             field,
-            target,
-            lambda value: f3d.rotate90_3d(value, rotation_count, axis_pair),
+            f3d.rotate90_3d(_CUBE_AXIS_PROBE, rotation_count, axis_pair),
         )
 
     def apply_to_keypoints(
@@ -2813,12 +2799,13 @@ class GridShuffle3D(Transform3D):
     ) -> np.ndarray:
         tiles = params["tiles"]
         mapping = params["mapping"]
-        return _shuffle_vector_field_3d(
+        result = _shuffle_vector_field_3d(
             field,
             tiles,
             mapping,
             displacement=target == "displacement3d",
         )
+        return field if result is field else restore_vector_field_dtype(result, field.dtype)
 
     def apply_to_keypoints(
         self,

@@ -134,7 +134,7 @@ class VerticalFlip(DualTransform):
         return fgeometric.vflip(img)
 
     def _apply_vector_field_target(self, target: str, field: np.ndarray, **params: Any) -> np.ndarray:
-        return _transform_vector_field_symmetry(field, target, "v")
+        return _transform_vector_field_symmetry(field, "v")
 
     def apply_to_bboxes(self, bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"], **params: Any) -> np.ndarray:
         return fgeometric.bboxes_vflip(bboxes, bbox_type=bbox_type)
@@ -297,7 +297,7 @@ class HorizontalFlip(DualTransform):
         return fgeometric.hflip(img)
 
     def _apply_vector_field_target(self, target: str, field: np.ndarray, **params: Any) -> np.ndarray:
-        return _transform_vector_field_symmetry(field, target, "h")
+        return _transform_vector_field_symmetry(field, "h")
 
     def apply_to_bboxes(self, bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"], **params: Any) -> np.ndarray:
         return fgeometric.bboxes_hflip(bboxes, bbox_type=bbox_type)
@@ -466,7 +466,7 @@ class Transpose(DualTransform):
         return fgeometric.transpose(img)
 
     def _apply_vector_field_target(self, target: str, field: np.ndarray, **params: Any) -> np.ndarray:
-        return _transform_vector_field_symmetry(field, target, "t")
+        return _transform_vector_field_symmetry(field, "t")
 
     def apply_to_bboxes(self, bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"], **params: Any) -> np.ndarray:
         return fgeometric.bboxes_transpose(bboxes, bbox_type=bbox_type)
@@ -637,7 +637,7 @@ class D4(DualTransform):
         return fgeometric.d4(img, group_element)
 
     def _apply_vector_field_target(self, target: str, field: np.ndarray, **params: Any) -> np.ndarray:
-        return _transform_vector_field_symmetry(field, target, params["group_element"])
+        return _transform_vector_field_symmetry(field, params["group_element"])
 
     def apply_to_bboxes(
         self,

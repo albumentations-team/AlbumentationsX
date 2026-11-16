@@ -6,7 +6,7 @@ from numpy.typing import NDArray
 
 from albumentations.augmentations.geometric._functional_vector_fields import (
     crop_and_resize_vector_field_2d,
-    warp_vector_field_2d,
+    translate_vector_field,
 )
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.type_definitions import ALL_GEOMETRIC_TARGETS, Targets
@@ -146,8 +146,7 @@ class BaseCrop(DualTransform):
         pad_params = params.get("pad_params")
         pad_left = 0 if pad_params is None else int(pad_params["pad_left"])
         pad_top = 0 if pad_params is None else int(pad_params["pad_top"])
-        matrix = np.asarray(((1, 0, pad_left - x_min), (0, 1, pad_top - y_min)), dtype=np.float32)
-        return warp_vector_field_2d(field, matrix, (y_max - y_min, x_max - x_min), semantics=target)
+        return translate_vector_field(field, (y_max - y_min, x_max - x_min), (pad_top - y_min, pad_left - x_min))
 
     def apply_to_bboxes(
         self,
@@ -453,20 +452,6 @@ class BaseCropAndPad(BaseCrop):
                 value=self.fill,
             )
         return BaseCrop.apply(self, img, crop_coords, **params)
-
-    def _apply_vector_field_target(
-        self,
-        target: str,
-        field: np.ndarray,
-        **params: Any,
-    ) -> np.ndarray:
-        crop_coords = params["crop_coords"]
-        pad_params = params["pad_params"]
-        x_min, y_min, x_max, y_max = crop_coords
-        pad_left = 0 if pad_params is None else pad_params["pad_left"]
-        pad_top = 0 if pad_params is None else pad_params["pad_top"]
-        matrix = np.asarray(((1, 0, pad_left - x_min), (0, 1, pad_top - y_min)), dtype=np.float32)
-        return warp_vector_field_2d(field, matrix, (y_max - y_min, x_max - x_min), semantics=target)
 
     def apply_to_mask(  # type: ignore[override]  # pyrefly: ignore[bad-override]
         self,

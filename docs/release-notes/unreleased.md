@@ -35,6 +35,19 @@ Earlier changes shipped in [2.6.3](2.6.3.md), [2.6.2](2.6.2.md), [2.6.1](2.6.1.m
 - Tests: [Mixed-resolution Compose and replay](../../tests/test_sampled_params.py),
   [shared D4 symmetry](../../tests/test_flip_masks_comprehensive.py).
 
+### Exact geometry preserves vector field components
+
+- Previous behavior: Exact symmetries and whole-sample translations could turn a partially non-finite vector entirely
+  into NaN, normalize surface normals, or round displacement components through endpoint arithmetic.
+- New behavior: Exact symmetries permute components and apply sign changes in the input dtype. Whole-sample translations
+  preserve overlapping vectors as supplied. Both preserve partial non-finite vectors and normal lengths.
+- Affected users: Training pipelines that used crop, pad, flips, or quarter turns to normalize or sanitize vector fields.
+- Migration: Prepare unit normals and replace partially non-finite vectors with all-NaN vectors when loading data if
+  your model requires those conventions.
+- First affected version: unreleased
+- Contract: [Exact vector field geometry](../vector-fields.md#exact-geometry).
+- Tests: [Vector field geometry](../../tests/functional/test_vector_field_geometry.py).
+
 ## Determinism
 
 ### Replay uses the current primary annotation frame

@@ -36,7 +36,7 @@ from albumentations.core.transforms_interface import (
 from albumentations.core.type_definitions import ALL_GEOMETRIC_TARGETS, CV2_BORDER_CONSTANT, BorderModeType
 
 from . import functional as fgeometric
-from ._functional_vector_fields import warp_vector_field_2d
+from ._functional_vector_fields import translate_vector_field
 
 __all__ = [
     "Pad",
@@ -235,12 +235,10 @@ class Pad(DualTransform):
         pad_left = params["pad_left"]
         pad_right = params["pad_right"]
         height, width = field.shape[-3:-1] if field.ndim == 4 else field.shape[:2]
-        matrix = np.asarray(((1, 0, pad_left), (0, 1, pad_top)), dtype=np.float32)
-        return warp_vector_field_2d(
+        return translate_vector_field(
             field,
-            matrix,
             (height + pad_top + pad_bottom, width + pad_left + pad_right),
-            semantics=target,
+            (pad_top, pad_left),
         )
 
     def apply_to_mask(

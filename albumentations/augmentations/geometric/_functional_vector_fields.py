@@ -12,51 +12,74 @@ from numpy.typing import NDArray
 from albumentations.core.type_definitions import CV2_BORDER_CONSTANT, CV2_INTER_LINEAR
 
 
+def _finite_vectors(field: NDArray[np.generic]) -> NDArray[np.bool_]:
+    valid = np.isfinite(field[..., 0])
+    for component in range(1, field.shape[-1]):
+        valid &= np.isfinite(field[..., component])
+    return valid
+
+
+def _pack_field_and_support(field: NDArray[np.float16] | NDArray[np.float32]) -> NDArray[np.float32]:
+    valid = _finite_vectors(field)
+    packed = np.empty((*field.shape[:-1], field.shape[-1] + 1), dtype=np.float32)
+    vectors = packed[..., :-1]
+    vectors[...] = field
+    vectors[~valid] = 0
+    packed[..., -1] = valid
+    return packed
+
+
+def _normalize_sampled_field(
+    vectors: NDArray[np.float32],
+    support: NDArray[np.float32],
+    in_domain: NDArray[np.bool_],
+) -> tuple[NDArray[np.float32], NDArray[np.bool_]]:
+    supported = in_domain & (support > 0)
+    with np.errstate(over="ignore", invalid="ignore"):
+        np.divide(vectors, support[..., None], out=vectors, where=supported[..., None])
+    supported &= _finite_vectors(vectors)
+    vectors[~supported] = np.nan
+    return vectors, supported
+
+
 def resample_field_2d(
     field: NDArray[np.float16] | NDArray[np.float32],
     map_x: NDArray[np.float32],
     map_y: NDArray[np.float32],
-) -> NDArray[np.float32]:
+) -> tuple[NDArray[np.float32], NDArray[np.bool_]]:
     """Bilinearly resample a channel-last field, excluding invalid vectors and border samples."""
     output_shape = map_x.shape
-    if field.size == 0 or output_shape[0] == 0 or output_shape[1] == 0:
-        return np.full((*output_shape, field.shape[-1]), np.nan, dtype=np.float32)
+    if field.size == 0 or map_x.size == 0:
+        return np.full((*output_shape, field.shape[-1]), np.nan, dtype=np.float32), np.zeros(output_shape, dtype=bool)
 
     finite_map = np.isfinite(map_x) & np.isfinite(map_y)
     source_height, source_width = field.shape[:2]
     in_domain = (
         finite_map & (map_x >= -0.5) & (map_x < source_width - 0.5) & (map_y >= -0.5) & (map_y < source_height - 0.5)
     )
-    safe_map_x = np.where(finite_map, map_x, -1.0).astype(np.float32, copy=False)
-    safe_map_y = np.where(finite_map, map_y, -1.0).astype(np.float32, copy=False)
-    valid_vectors = np.asarray(np.isfinite(field).all(axis=-1), dtype=np.bool_)
-    source_float = field.astype(np.float32, copy=False)
-    numerator_input = np.where(valid_vectors[..., None], source_float, np.float32(0))
-    support_input = valid_vectors[..., None].astype(np.float32)
-
+    if not finite_map.all():
+        map_x = np.where(finite_map, map_x, np.float32(-1))
+        map_y = np.where(finite_map, map_y, np.float32(-1))
+    valid = _finite_vectors(field)
+    numerator_input = field.astype(np.float32, order="C", copy=True)
+    numerator_input[~valid] = 0
     numerator = remap(
         numerator_input,
-        safe_map_x,
-        safe_map_y,
+        map_x,
+        map_y,
         interpolation=CV2_INTER_LINEAR,
         border_mode=CV2_BORDER_CONSTANT,
         border_value=0,
     )
     support = remap(
-        support_input,
-        safe_map_x,
-        safe_map_y,
+        valid[..., None].astype(np.float32),
+        map_x,
+        map_y,
         interpolation=CV2_INTER_LINEAR,
         border_mode=CV2_BORDER_CONSTANT,
         border_value=0,
     )[..., 0]
-
-    result = np.full((*output_shape, field.shape[-1]), np.nan, dtype=np.float32)
-    has_support = in_domain & (support > 0)
-    np.divide(numerator, support[..., None], out=result, where=has_support[..., None])
-    result_valid = np.isfinite(result).all(axis=-1)
-    result[~result_valid] = np.nan
-    return result
+    return _normalize_sampled_field(numerator, support, in_domain)
 
 
 def pull_map_from_matrix_2d(
@@ -189,32 +212,26 @@ def resample_field_3d(
     sampling_grid: NDArray[np.float32],
 ) -> tuple[NDArray[np.float32], NDArray[np.bool_]]:
     """Trilinearly resample a channel-last field with shared finite-vector support."""
-    output_shape = sampling_grid.shape[:3]
-    source_depth, source_height, source_width = field.shape[:3]
-    if field.size == 0 or any(size == 0 for size in output_shape):
-        empty = np.full((*output_shape, field.shape[-1]), np.nan, dtype=np.float32)
-        return empty, np.zeros(output_shape, dtype=bool)
+    if field.size == 0 or sampling_grid.size == 0:
+        output_shape = sampling_grid.shape[:3]
+        return np.full((*output_shape, field.shape[-1]), np.nan, dtype=np.float32), np.zeros(output_shape, dtype=bool)
+    return _resample_packed_field_3d(_pack_field_and_support(field), np.asarray(sampling_grid, dtype=np.float32))
 
-    normalized_grid = np.asarray(sampling_grid, dtype=np.float32)
+
+def _resample_packed_field_3d(
+    packed_field: NDArray[np.float32],
+    normalized_grid: NDArray[np.float32],
+) -> tuple[NDArray[np.float32], NDArray[np.bool_]]:
+    source_depth, source_height, source_width = packed_field.shape[:3]
     source_x = (normalized_grid[..., 0] + 1) * (source_width / 2) - 0.5
     source_y = (normalized_grid[..., 1] + 1) * (source_height / 2) - 0.5
     source_z = (normalized_grid[..., 2] + 1) * (source_depth / 2) - 0.5
-    finite_map = np.isfinite(normalized_grid).all(axis=-1)
+    finite_map = _finite_vectors(normalized_grid)
     in_domain = finite_map & (source_x >= -0.5) & (source_x < source_width - 0.5)
     in_domain &= (source_y >= -0.5) & (source_y < source_height - 0.5)
     in_domain &= (source_z >= -0.5) & (source_z < source_depth - 0.5)
-    valid_vectors = np.asarray(np.isfinite(field).all(axis=-1), dtype=np.bool_)
-    source_float = field.astype(np.float32, copy=False)
-    numerator_source = np.where(valid_vectors[..., None], source_float, np.float32(0))
-    support_source = valid_vectors[..., None].astype(np.float32)
-    numerator = remap3d(numerator_source, normalized_grid, interpolation=CV2_INTER_LINEAR)
-    support = remap3d(support_source, normalized_grid, interpolation=CV2_INTER_LINEAR)[..., 0]
-    result = np.full((*output_shape, field.shape[-1]), np.nan, dtype=np.float32)
-    supported = in_domain & (support > 0)
-    np.divide(numerator, support[..., None], out=result, where=supported[..., None])
-    supported &= np.isfinite(result).all(axis=-1)
-    result[~supported] = np.nan
-    return result, supported
+    sampled = remap3d(packed_field, normalized_grid, interpolation=CV2_INTER_LINEAR)
+    return _normalize_sampled_field(sampled[..., :-1], sampled[..., -1], in_domain)
 
 
 def warp_vector_field_3d(
@@ -223,13 +240,16 @@ def warp_vector_field_3d(
     output_shape: tuple[int, int, int],
     *,
     semantics: str,
-) -> NDArray[np.float32]:
+) -> NDArray[np.float16] | NDArray[np.float32]:
     """Resample a 3D field and apply an affine differential or endpoint mapping."""
     forward_matrix = np.asarray(matrix, dtype=np.float32)
+    offset = _integer_translation(forward_matrix, spatial_rank=3)
+    if offset is not None:
+        return translate_vector_field(field, output_shape, offset)
     if forward_matrix.shape == (3, 4):
         forward_matrix = np.vstack((forward_matrix, np.asarray((0, 0, 0, 1), dtype=np.float32)))
     if forward_matrix.shape != (4, 4):
-        return np.full((*output_shape, field.shape[-1]), np.nan, dtype=np.float32)
+        return np.full((*output_shape, field.shape[-1]), np.nan, dtype=field.dtype)
     grid, source_x, source_y, source_z, source_domain = pull_map_from_matrix_3d(
         forward_matrix,
         output_shape,
@@ -237,12 +257,12 @@ def warp_vector_field_3d(
     )
     sampled, supported = resample_field_3d(field, grid)
     supported &= source_domain
-    output_depth, output_height, output_width = output_shape
-    output_z = np.arange(output_depth, dtype=np.float32)[:, None, None]
-    output_y = np.arange(output_height, dtype=np.float32)[None, :, None]
-    output_x = np.arange(output_width, dtype=np.float32)[None, None, :]
 
     if semantics == "displacement3d":
+        output_depth, output_height, output_width = output_shape
+        output_z = np.arange(output_depth, dtype=np.float32)[:, None, None]
+        output_y = np.arange(output_height, dtype=np.float32)[None, :, None]
+        output_x = np.arange(output_width, dtype=np.float32)[None, None, :]
         endpoint_x = source_x + sampled[..., 0]
         endpoint_y = source_y + sampled[..., 1]
         endpoint_z = source_z + sampled[..., 2]
@@ -272,9 +292,9 @@ def warp_vector_field_3d(
                 + forward_matrix[2, 3]
             ) / homogeneous
         result = np.stack((mapped_x - output_x, mapped_y - output_y, mapped_z - output_z), axis=-1)
-        supported &= np.isfinite(result).all(axis=-1) & (homogeneous != 0)
+        supported &= _finite_vectors(result) & (homogeneous != 0)
         result[~supported] = np.nan
-        return result.astype(np.float32, copy=False)
+        return restore_vector_field_dtype(result, field.dtype)
 
     result = transform_vector_components_3d(
         sampled,
@@ -282,7 +302,7 @@ def warp_vector_field_3d(
         semantics=semantics,
     )
     result[~supported] = np.nan
-    return result
+    return restore_vector_field_dtype(result, field.dtype)
 
 
 def crop_and_resize_vector_field_3d(
@@ -291,7 +311,7 @@ def crop_and_resize_vector_field_3d(
     output_shape: tuple[int, int, int],
     *,
     semantics: str,
-) -> NDArray[np.float32]:
+) -> NDArray[np.float16] | NDArray[np.float32]:
     """Crop a 3D field before resizing so discarded voxels cannot enter interpolation support."""
     z_min, z_max, y_min, y_max, x_min, x_max = crop_coords
     cropped = field[z_min:z_max, y_min:y_max, x_min:x_max]
@@ -521,13 +541,13 @@ def _invert_displacement_block_3d(
     valid: NDArray[np.bool_],
     source_coordinates: NDArray[np.float32],
     sampled: NDArray[np.float32],
-    normalized_grid: NDArray[np.float32],
+    packed_pull_grid: NDArray[np.float32],
     block_start: int,
     inverse_iterations: int,
     inverse_model: Mapping[str, Any] | None,
     source_shape: tuple[int, int, int],
-) -> tuple[NDArray[np.float32], NDArray[np.bool_]]:
-    output_depth, output_height, output_width = normalized_grid.shape[:3]
+) -> None:
+    output_depth, output_height, output_width = packed_pull_grid.shape[:3]
     output_z, output_y, output_x = np.mgrid[
         block_start : block_start + result.shape[0],
         :output_height,
@@ -549,7 +569,7 @@ def _invert_displacement_block_3d(
             query_z,
             (output_depth, output_height, output_width),
         )
-        sampled_map, pull_supported = resample_field_3d(normalized_grid, endpoint_grid)
+        sampled_map, pull_supported = _resample_packed_field_3d(packed_pull_grid, endpoint_grid)
         endpoint_x = (sampled_map[..., 0] + 1) * (source_shape[2] / 2) - 0.5
         endpoint_y = (sampled_map[..., 1] + 1) * (source_shape[1] / 2) - 0.5
         endpoint_z = (sampled_map[..., 2] + 1) * (source_shape[0] / 2) - 0.5
@@ -590,7 +610,6 @@ def _invert_displacement_block_3d(
     result[..., 1] = query_y - output_y
     result[..., 2] = query_z - output_z
     result[~valid] = np.nan
-    return result, valid
 
 
 def warp_vector_field_from_pull_grid_3d(
@@ -600,12 +619,17 @@ def warp_vector_field_from_pull_grid_3d(
     semantics: str,
     inverse_iterations: int = 32,
     inverse_model: Mapping[str, Any] | None = None,
-) -> NDArray[np.float32]:
+) -> NDArray[np.float16] | NDArray[np.float32]:
     """Transform a 3D field through a dense normalized pull map in bounded depth slabs."""
     normalized_grid = np.asarray(sampling_grid, dtype=np.float32)
     source_shape = field.shape[:3]
-    output_depth = normalized_grid.shape[0]
-    result = np.full((*normalized_grid.shape[:3], 3), np.nan, dtype=np.float32)
+    output_shape = normalized_grid.shape[:3]
+    if field.size == 0 or normalized_grid.size == 0:
+        return np.full((*output_shape, 3), np.nan, dtype=field.dtype)
+    result = np.empty((*output_shape, 3), dtype=np.float32)
+    packed_field = _pack_field_and_support(field)
+    packed_pull_grid = _pack_field_and_support(normalized_grid) if semantics == "displacement3d" else None
+    output_depth = output_shape[0]
 
     for block_start in range(0, output_depth, 8):
         block_end = min(output_depth, block_start + 8)
@@ -615,22 +639,22 @@ def warp_vector_field_from_pull_grid_3d(
             block_end,
             source_shape,
         )
-        sampled, supported = resample_field_3d(field, normalized_grid[block_start:block_end])
+        sampled, supported = _resample_packed_field_3d(packed_field, normalized_grid[block_start:block_end])
         block_result, valid = _transform_pull_field_block_3d(sampled, jacobian, determinant, supported, semantics)
-        if semantics == "displacement3d":
-            block_result, valid = _invert_displacement_block_3d(
+        if packed_pull_grid is not None:
+            _invert_displacement_block_3d(
                 block_result,
                 valid,
                 source_coordinates,
                 sampled,
-                normalized_grid,
+                packed_pull_grid,
                 block_start,
                 inverse_iterations,
                 inverse_model,
                 source_shape,
             )
         result[block_start:block_end] = block_result
-    return result
+    return restore_vector_field_dtype(result, field.dtype)
 
 
 def _project_points_2d(
@@ -661,56 +685,104 @@ def _project_points_2d(
     )
 
 
+def translate_vector_field(
+    field: NDArray[np.float16] | NDArray[np.float32],
+    output_shape: tuple[int, ...],
+    offset: tuple[int, ...],
+) -> NDArray[np.float16] | NDArray[np.float32]:
+    """Copy overlapping samples at whole-pixel or whole-voxel offsets and fill padding with NaN."""
+    spatial_rank = len(output_shape)
+    source_shape = field.shape[-spatial_rank - 1 : -1]
+    if source_shape == output_shape and not any(offset):
+        return field
+
+    leading_shape = field.shape[: -spatial_rank - 1]
+    bounds = tuple(
+        (max(0, -shift), min(source_size, output_size - shift))
+        for source_size, output_size, shift in zip(source_shape, output_shape, offset, strict=True)
+    )
+    if any(start >= stop for start, stop in bounds):
+        return np.full((*leading_shape, *output_shape, field.shape[-1]), np.nan, dtype=field.dtype)
+
+    leading_slices = (slice(None),) * len(leading_shape)
+    region_slices = (*leading_slices, *(slice(start, stop) for start, stop in bounds), slice(None))
+    region = field[region_slices]
+    padding = tuple(
+        (start + shift, output_size - stop - shift)
+        for (start, stop), shift, output_size in zip(bounds, offset, output_shape, strict=True)
+    )
+    if not any(before or after for before, after in padding):
+        return region
+    padded = np.pad(region, ((0, 0),) * len(leading_shape) + padding + ((0, 0),), constant_values=np.nan)
+    return cast("NDArray[np.float16] | NDArray[np.float32]", padded)
+
+
+def _integer_translation(matrix: NDArray[np.float32], *, spatial_rank: int) -> tuple[int, ...] | None:
+    if matrix.shape == (spatial_rank + 1, spatial_rank + 1):
+        if not np.array_equal(matrix[-1], (0,) * spatial_rank + (1,)):
+            return None
+        matrix = matrix[:-1]
+    if matrix.shape != (spatial_rank, spatial_rank + 1) or not np.array_equal(
+        matrix[:, :-1],
+        np.eye(spatial_rank, dtype=np.float32),
+    ):
+        return None
+    # The matrix uses XYZ order, while slices follow the array's spatial axes.
+    offset = tuple(float(value) for value in matrix[::-1, -1])
+    return tuple(int(value) for value in offset) if all(value.is_integer() for value in offset) else None
+
+
 def warp_vector_field_2d(
     field: NDArray[np.float16] | NDArray[np.float32],
     matrix: NDArray[np.float32],
     output_shape: tuple[int, int],
     *,
     semantics: str,
-) -> NDArray[np.float32]:
-    """Resample a vector field and apply the matrix's differential or endpoint mapping."""
+    crop_coords: tuple[int, int, int, int] | None = None,
+) -> NDArray[np.float16] | NDArray[np.float32]:
+    """Translate exactly or resample and transform the components in the input dtype."""
+    offset = _integer_translation(matrix, spatial_rank=2)
+    if offset is not None:
+        translated = translate_vector_field(field, output_shape, offset)
+        return translated if crop_coords is None else crop_vector_field_2d(translated, crop_coords)
     if field.ndim == 4:
-        return np.stack(
-            [warp_vector_field_2d(field[z], matrix, output_shape, semantics=semantics) for z in range(field.shape[0])],
-            axis=0,
-        )
+        transformed = np.stack([_warp_vector_field_2d(plane, matrix, output_shape, semantics) for plane in field])
+    else:
+        transformed = _warp_vector_field_2d(field, matrix, output_shape, semantics)
+    cropped = transformed if crop_coords is None else crop_vector_field_2d(transformed, crop_coords)
+    return restore_vector_field_dtype(cropped, field.dtype)
+
+
+def _warp_vector_field_2d(
+    field: NDArray[np.float16] | NDArray[np.float32],
+    matrix: NDArray[np.float32],
+    output_shape: tuple[int, int],
+    semantics: str,
+) -> NDArray[np.float32]:
     source_shape = field.shape[:2]
     map_x, map_y, source_domain = pull_map_from_matrix_2d(matrix, output_shape, source_shape)
-    sampled = resample_field_2d(field, map_x, map_y)
-    output_y = np.arange(output_shape[0], dtype=np.float32)[:, None]
-    output_x = np.arange(output_shape[1], dtype=np.float32)[None, :]
+    sampled, _ = resample_field_2d(field, map_x, map_y)
 
     if semantics in {"displacement", "displacement3d"}:
+        output_y = np.arange(output_shape[0], dtype=np.float32)[:, None]
+        output_x = np.arange(output_shape[1], dtype=np.float32)[None, :]
         endpoint_x, endpoint_y, endpoint_finite = _project_points_2d(
             matrix,
             map_x + sampled[..., 0],
             map_y + sampled[..., 1],
         )
-        result = sampled.copy()
-        result[..., 0] = endpoint_x - output_x
-        result[..., 1] = endpoint_y - output_y
-        if semantics == "displacement3d":
-            result[..., 2] = sampled[..., 2]
-        result[~(source_domain & endpoint_finite)] = np.nan
-        return result
+        np.subtract(endpoint_x, output_x, out=sampled[..., 0])
+        np.subtract(endpoint_y, output_y, out=sampled[..., 1])
+        sampled[~(source_domain & endpoint_finite)] = np.nan
+        return sampled
 
     if matrix.shape == (2, 3):
-        three_component_semantics = semantics in {"gradient3d", "vector_field3d", "normal3d"}
-        forward_jacobian = np.eye(3 if three_component_semantics else 2, dtype=np.float32)
-        forward_jacobian[:2, :2] = matrix[:2, :2]
-        transformed = (
-            transform_vector_components_3d(
-                sampled,
-                forward_jacobian,
-                semantics=semantics,
-            )
-            if three_component_semantics
-            else transform_vector_components_2d(
-                sampled,
-                matrix[:2, :2],
-                semantics=semantics,
-            )
-        )
+        if semantics in {"gradient3d", "vector_field3d", "normal3d"}:
+            forward_jacobian = np.eye(3, dtype=np.float32)
+            forward_jacobian[:2, :2] = matrix[:2, :2]
+            transformed = transform_vector_components_3d(sampled, forward_jacobian, semantics=semantics)
+        else:
+            transformed = transform_vector_components_2d(sampled, matrix[:2, :2], semantics=semantics)
         transformed[~source_domain] = np.nan
         return transformed
 
@@ -732,16 +804,15 @@ def warp_vector_field_2d(
     else:
         transformed_x = jacobian_xx * sampled[..., 0] + jacobian_xy * sampled[..., 1]
         transformed_y = jacobian_yx * sampled[..., 0] + jacobian_yy * sampled[..., 1]
-    result = sampled.copy()
-    result[..., 0] = transformed_x
-    result[..., 1] = transformed_y
+    sampled[..., 0] = transformed_x
+    sampled[..., 1] = transformed_y
     if semantics in {"normal", "normal3d"}:
-        lengths = np.linalg.norm(result, axis=-1)
+        lengths = np.linalg.norm(sampled, axis=-1)
         normal_valid = np.isfinite(lengths) & (lengths > 0)
-        np.divide(result, lengths[..., None], out=result, where=normal_valid[..., None])
+        np.divide(sampled, lengths[..., None], out=sampled, where=normal_valid[..., None])
         local_valid &= normal_valid
-    result[~local_valid] = np.nan
-    return result
+    sampled[~local_valid] = np.nan
+    return sampled
 
 
 def crop_vector_field_2d(
@@ -761,7 +832,7 @@ def crop_and_resize_vector_field_2d(
     output_shape: tuple[int, int],
     *,
     semantics: str,
-) -> NDArray[np.float32]:
+) -> NDArray[np.float16] | NDArray[np.float32]:
     """Crop a 2D field before resizing so discarded pixels cannot enter interpolation support."""
     x_min, y_min, x_max, y_max = crop_coords
     cropped = crop_vector_field_2d(field, crop_coords)
@@ -794,14 +865,6 @@ def _pull_jacobian_2d(
         np.asarray(map_y_dx, dtype=np.float32),
         np.asarray(map_y_dy, dtype=np.float32),
     )
-
-
-def _map_sample_2d(
-    pull_map: NDArray[np.float32],
-    points_x: NDArray[np.float32],
-    points_y: NDArray[np.float32],
-) -> NDArray[np.float32]:
-    return resample_field_2d(pull_map, points_x, points_y)
 
 
 def _inverse_elastic_pull_points_2d(
@@ -841,15 +904,15 @@ def _newton_inverse_pull_map_2d(
 ) -> tuple[NDArray[np.float32], NDArray[np.float32], NDArray[np.bool_], NDArray[np.bool_]]:
     converged = np.zeros(query_x.shape, dtype=bool)
     for _ in range(12):
-        estimated_source = _map_sample_2d(pull_map, query_x, query_y)
+        estimated_source, _ = resample_field_2d(pull_map, query_x, query_y)
         residual_x = target_x - estimated_source[..., 0]
         residual_y = target_y - estimated_source[..., 1]
         residual_norm = np.hypot(residual_x, residual_y)
-        converged |= np.isfinite(residual_norm) & (residual_norm <= np.float32(1e-3))
+        converged |= valid & (residual_norm <= np.float32(1e-3))
         active = valid & ~converged & np.isfinite(residual_norm)
         if not np.any(active):
             break
-        jacobian = _map_sample_2d(jacobian_map, query_x, query_y)
+        jacobian, _ = resample_field_2d(jacobian_map, query_x, query_y)
         a, b, c, d = (jacobian[..., index] for index in range(4))
         determinant = a * d - b * c
         stable = np.isfinite(determinant) & (np.abs(determinant) > np.float32(1e-8))
@@ -891,45 +954,33 @@ def _push_displacements_through_pull_map_2d(
     sampled: NDArray[np.float32],
     map_x: NDArray[np.float32],
     map_y: NDArray[np.float32],
-    source_x: NDArray[np.float32],
-    source_y: NDArray[np.float32],
-    semantics: str,
+    supported: NDArray[np.bool_],
     inverse_model: NDArray[np.float32] | None = None,
-) -> tuple[NDArray[np.float32], NDArray[np.bool_]]:
+) -> NDArray[np.float32]:
     """Invert a smooth pull map at finite-displacement endpoints with bounded Newton steps."""
     dsource_x = sampled[..., 0]
     dsource_y = sampled[..., 1]
     map_dx_dx, map_dx_dy, map_dy_dx, map_dy_dy = _pull_jacobian_2d(map_x, map_y)
     determinant = map_dx_dx * map_dy_dy - map_dx_dy * map_dy_dx
-    valid = np.isfinite(determinant) & (np.abs(determinant) > np.float32(1e-8))
-    valid &= np.isfinite(sampled).all(axis=-1)
-    target_x = source_x + dsource_x
-    target_y = source_y + dsource_y
+    supported &= np.isfinite(determinant) & (np.abs(determinant) > np.float32(1e-8))
+    target_x = map_x + dsource_x
+    target_y = map_y + dsource_y
     with np.errstate(invalid="ignore", divide="ignore", over="ignore"):
         output_dx = (map_dy_dy * dsource_x - map_dx_dy * dsource_y) / determinant
         output_dy = (-map_dy_dx * dsource_x + map_dx_dx * dsource_y) / determinant
-    query_x = np.asarray(
-        np.broadcast_to(np.arange(map_x.shape[1], dtype=np.float32)[None, :], map_x.shape) + output_dx,
-        dtype=np.float32,
-    )
-    query_y = np.asarray(
-        np.broadcast_to(np.arange(map_x.shape[0], dtype=np.float32)[:, None], map_x.shape) + output_dy,
-        dtype=np.float32,
-    )
+    output_x = np.arange(map_x.shape[1], dtype=np.float32)[None, :]
+    output_y = np.arange(map_x.shape[0], dtype=np.float32)[:, None]
     pull_map = np.stack((map_x, map_y), axis=-1)
     jacobian_map = np.stack((map_dx_dx, map_dx_dy, map_dy_dx, map_dy_dy), axis=-1)
     query_x, query_y, valid, converged = _newton_inverse_pull_map_2d(
         target_x,
         target_y,
-        query_x,
-        query_y,
-        valid,
+        np.asarray(output_x + output_dx, dtype=np.float32),
+        np.asarray(output_y + output_dy, dtype=np.float32),
+        supported,
         pull_map,
         jacobian_map,
     )
-    output_y = np.arange(map_x.shape[0], dtype=np.float32)[:, None]
-    output_x = np.arange(map_x.shape[1], dtype=np.float32)[None, :]
-    output = np.full((*map_x.shape, sampled.shape[-1]), np.nan, dtype=np.float32)
     query_x, query_y, valid = _resolve_elastic_pull_endpoints_2d(
         target_x,
         target_y,
@@ -940,13 +991,10 @@ def _push_displacements_through_pull_map_2d(
         map_x.shape,
         inverse_model,
     )
-    valid &= np.isfinite(source_x) & np.isfinite(source_y)
-    output[..., 0] = query_x - output_x
-    output[..., 1] = query_y - output_y
-    if semantics == "displacement3d":
-        output[..., 2] = sampled[..., 2]
-    output[~valid] = np.nan
-    return output, valid
+    np.subtract(query_x, output_x, out=sampled[..., 0])
+    np.subtract(query_y, output_y, out=sampled[..., 1])
+    sampled[~valid] = np.nan
+    return sampled
 
 
 def warp_vector_field_from_pull_map_2d(
@@ -956,10 +1004,10 @@ def warp_vector_field_from_pull_map_2d(
     *,
     semantics: str,
     inverse_model: NDArray[np.float32] | None = None,
-) -> NDArray[np.float32]:
+) -> NDArray[np.float16] | NDArray[np.float32]:
     """Resample fields through a pixel-coordinate pull map and apply its local differential."""
     if field.ndim == 4:
-        return np.stack(
+        transformed = np.stack(
             [
                 warp_vector_field_from_pull_map_2d(
                     field[z],
@@ -972,56 +1020,48 @@ def warp_vector_field_from_pull_map_2d(
             ],
             axis=0,
         )
+        return cast("NDArray[np.float16] | NDArray[np.float32]", transformed)
 
     map_x = np.asarray(map_x, dtype=np.float32)
     map_y = np.asarray(map_y, dtype=np.float32)
-    sampled = resample_field_2d(field, map_x, map_y)
+    sampled, supported = resample_field_2d(field, map_x, map_y)
+    if semantics in {"displacement", "displacement3d"}:
+        result = _push_displacements_through_pull_map_2d(sampled, map_x, map_y, supported, inverse_model)
+        return restore_vector_field_dtype(result, field.dtype)
+
     map_dx_dx, map_dx_dy, map_dy_dx, map_dy_dy = _pull_jacobian_2d(map_x, map_y)
     determinant = map_dx_dx * map_dy_dy - map_dx_dy * map_dy_dx
-    valid = np.isfinite(determinant) & (np.abs(determinant) > np.float32(1e-8))
-    valid &= np.isfinite(sampled).all(axis=-1)
+    supported &= np.isfinite(determinant) & (np.abs(determinant) > np.float32(1e-8))
 
-    if semantics in {"displacement", "displacement3d"}:
-        result, endpoint_valid = _push_displacements_through_pull_map_2d(
-            sampled,
-            map_x,
-            map_y,
-            map_x,
-            map_y,
-            semantics,
-            inverse_model,
-        )
-        result[~valid | ~endpoint_valid] = np.nan
-        return result
-
-    result = sampled.copy()
-    source_float = sampled.astype(np.float32, copy=False)
+    source_x, source_y = sampled[..., 0], sampled[..., 1]
     if semantics in {"gradient", "gradient3d", "normal", "normal3d"}:
-        result[..., 0] = map_dx_dx * source_float[..., 0] + map_dy_dx * source_float[..., 1]
-        result[..., 1] = map_dx_dy * source_float[..., 0] + map_dy_dy * source_float[..., 1]
+        transformed_x = map_dx_dx * source_x + map_dy_dx * source_y
+        transformed_y = map_dx_dy * source_x + map_dy_dy * source_y
     else:
-        result[..., 0] = (map_dy_dy * source_float[..., 0] - map_dx_dy * source_float[..., 1]) / determinant
-        result[..., 1] = (-map_dy_dx * source_float[..., 0] + map_dx_dx * source_float[..., 1]) / determinant
+        transformed_x = (map_dy_dy * source_x - map_dx_dy * source_y) / determinant
+        transformed_y = (-map_dy_dx * source_x + map_dx_dx * source_y) / determinant
+    sampled[..., 0] = transformed_x
+    sampled[..., 1] = transformed_y
 
     if semantics in {"normal", "normal3d"}:
-        lengths = np.linalg.norm(result, axis=-1)
+        lengths = np.linalg.norm(sampled, axis=-1)
         normal_valid = np.isfinite(lengths) & (lengths > 0)
-        np.divide(result, lengths[..., None], out=result, where=normal_valid[..., None])
-        valid &= normal_valid
-    valid &= np.isfinite(result).all(axis=-1)
-    result[~valid] = np.nan
-    return result
+        np.divide(sampled, lengths[..., None], out=sampled, where=normal_valid[..., None])
+        supported &= normal_valid
+    sampled[~supported] = np.nan
+    return restore_vector_field_dtype(sampled, field.dtype)
 
 
 def restore_vector_field_dtype(
-    field: NDArray[np.float32],
+    field: NDArray[np.generic],
     dtype: np.dtype[np.float16] | np.dtype[np.float32],
 ) -> NDArray[np.float16] | NDArray[np.float32]:
     """Round a computed field back to its input dtype, marking overflowed vectors invalid."""
     with np.errstate(over="ignore", invalid="ignore"):
         restored = field.astype(dtype, copy=False)
-    restored_valid = np.isfinite(restored).all(axis=-1)
-    restored[~restored_valid] = np.nan
+    invalid = ~_finite_vectors(restored)
+    if invalid.any():
+        restored[invalid] = np.nan
     return cast("NDArray[np.float16] | NDArray[np.float32]", restored)
 
 
@@ -1046,7 +1086,7 @@ def transform_vector_components_2d(
     if component_matrix is None:
         return np.full(field.shape, np.nan, dtype=np.float32)
 
-    valid_vectors = np.asarray(np.isfinite(field).all(axis=-1), dtype=np.bool_)
+    valid_vectors = _finite_vectors(field)
     source_float = field.astype(np.float32, copy=False)
     safe_field = np.where(valid_vectors[..., None], source_float, np.float32(0))
     result = np.einsum("ij,...j->...i", component_matrix, safe_field, optimize=True)
@@ -1056,7 +1096,7 @@ def transform_vector_components_2d(
         np.divide(result, lengths[..., None], out=result, where=normal_valid[..., None])
         valid_vectors &= normal_valid
     else:
-        valid_vectors &= np.isfinite(result).all(axis=-1)
+        valid_vectors &= _finite_vectors(result)
     result[~valid_vectors] = np.nan
     return result
 
@@ -1100,7 +1140,7 @@ def transform_vector_components_3d(
     else:
         return np.full(field.shape, np.nan, dtype=np.float32)
 
-    valid_vectors = np.asarray(np.isfinite(field).all(axis=-1), dtype=np.bool_)
+    valid_vectors = _finite_vectors(field)
     source_float = field.astype(np.float32, copy=False)
     safe_field = np.where(valid_vectors[..., None], source_float, np.float32(0))
     result = np.einsum("ij,...j->...i", component_matrix, safe_field, optimize=True)
@@ -1110,111 +1150,52 @@ def transform_vector_components_3d(
         np.divide(result, lengths[..., None], out=result, where=normal_valid[..., None])
         valid_vectors &= normal_valid
     else:
-        valid_vectors &= np.isfinite(result).all(axis=-1)
+        valid_vectors &= _finite_vectors(result)
     result[~valid_vectors] = np.nan
     return result
 
 
-_D4_COMPONENT_MATRICES = {
-    "e": np.eye(2, dtype=np.float32),
-    "r90": np.asarray(((0, 1), (-1, 0)), dtype=np.float32),
-    "r180": np.asarray(((-1, 0), (0, -1)), dtype=np.float32),
-    "r270": np.asarray(((0, -1), (1, 0)), dtype=np.float32),
-    "v": np.asarray(((1, 0), (0, -1)), dtype=np.float32),
-    "hvt": np.asarray(((0, -1), (-1, 0)), dtype=np.float32),
-    "h": np.asarray(((-1, 0), (0, 1)), dtype=np.float32),
-    "t": np.asarray(((0, 1), (1, 0)), dtype=np.float32),
+_D4_COMPONENT_ORDER = {
+    "r90": (2, -1, 3),
+    "r180": (-1, -2, 3),
+    "r270": (-2, 1, 3),
+    "v": (1, -2, 3),
+    "h": (-1, 2, 3),
+    "t": (2, 1, 3),
+    "hvt": (-2, -1, 3),
 }
 
 
-def transform_vector_field_symmetry(field: NDArray[np.generic], target: str, group_element: str) -> NDArray[np.float32]:
-    """Apply one exact D4 spatial permutation and its corresponding vector-basis map."""
+def reorient_vector_field(
+    field: NDArray[np.float16] | NDArray[np.float32],
+    component_order: tuple[int, ...],
+    *,
+    spatial_rank: int,
+) -> NDArray[np.float16] | NDArray[np.float32]:
+    """Apply one signed XYZ permutation to the spatial axes and components."""
+    spatial_start = field.ndim - spatial_rank - 1
+    spatial_order = component_order[:spatial_rank][::-1]
+    spatial_axes = tuple(field.ndim - 1 - abs(component) for component in spatial_order)
+    reindexed = field.transpose((*range(spatial_start), *spatial_axes, field.ndim - 1))
+    flip_axes = tuple(axis for axis, component in enumerate(spatial_order, start=spatial_start) if component < 0)
+    if flip_axes:
+        reindexed = np.flip(reindexed, axis=flip_axes)
+
+    result = np.empty_like(reindexed)
+    for output_index, component in enumerate(component_order):
+        source = reindexed[..., abs(component) - 1]
+        if component < 0:
+            np.negative(source, out=result[..., output_index])
+        else:
+            result[..., output_index] = source
+    return result
+
+
+def transform_vector_field_symmetry(
+    field: NDArray[np.float16] | NDArray[np.float32],
+    group_element: str,
+) -> NDArray[np.float16] | NDArray[np.float32]:
+    """Reindex field samples and rotate or reflect the component basis."""
     if group_element == "e":
-        return field.astype(np.float32, copy=False)
-    if field.ndim == 4:
-        component_matrix = np.eye(3, dtype=np.float32)
-        component_matrix[:2, :2] = _D4_COMPONENT_MATRICES[group_element]
-        transformed = _d4_reindex_3d(field, group_element)
-        return transform_vector_components_3d(
-            cast("NDArray[np.float16] | NDArray[np.float32]", transformed),
-            component_matrix,
-            semantics=target,
-        )
-
-    transformed = _d4_reindex_2d(field, group_element)
-    return transform_vector_components_2d(
-        cast("NDArray[np.float16] | NDArray[np.float32]", transformed),
-        _D4_COMPONENT_MATRICES[group_element],
-        semantics=target,
-    )
-
-
-def _d4_reindex_2d(field: NDArray[np.generic], group_element: str) -> NDArray[np.generic]:
-    if group_element in {"r90", "r180", "r270"}:
-        return np.rot90(field, k={"r90": 1, "r180": 2, "r270": 3}[group_element], axes=(0, 1))
-    if group_element == "v":
-        return np.flip(field, axis=0)
-    if group_element == "h":
-        return np.flip(field, axis=1)
-    if group_element == "t":
-        return np.transpose(field, (1, 0, 2))
-    return np.transpose(np.rot90(field, k=2, axes=(0, 1)), (1, 0, 2))
-
-
-def _d4_reindex_3d(field: NDArray[np.generic], group_element: str) -> NDArray[np.generic]:
-    spatial_axes = (1, 2)
-    if group_element in {"r90", "r180", "r270"}:
-        return np.rot90(field, k={"r90": 1, "r180": 2, "r270": 3}[group_element], axes=spatial_axes)
-    if group_element == "v":
-        return np.flip(field, axis=1)
-    if group_element == "h":
-        return np.flip(field, axis=2)
-    if group_element == "t":
-        return np.transpose(field, (0, 2, 1, 3))
-    return np.transpose(np.rot90(field, k=2, axes=spatial_axes), (0, 2, 1, 3))
-
-
-def permute_vector_field_components_2d(
-    field: NDArray[np.float16] | NDArray[np.float32],
-    *,
-    spatial_axes: tuple[int, int] | None = None,
-    quarter_turns: int = 0,
-    component_matrix: NDArray[np.float32],
-    semantics: str,
-) -> NDArray[np.float32]:
-    """Exactly reindex a 2D field and reorient its components for an orthogonal symmetry."""
-    transformed: NDArray[np.generic] = field
-    if spatial_axes is not None:
-        transformed = np.flip(field, axis=spatial_axes).copy()
-    if quarter_turns % 4:
-        transformed = np.rot90(transformed, k=quarter_turns % 4, axes=(0, 1))
-    return transform_vector_components_2d(
-        cast("NDArray[np.float16] | NDArray[np.float32]", transformed),
-        component_matrix,
-        semantics=semantics,
-    )
-
-
-def permute_vector_field_components_3d(
-    field: NDArray[np.float16] | NDArray[np.float32],
-    *,
-    spatial_axes: tuple[int, ...] | None = None,
-    plane_axes: tuple[int, int] | None = None,
-    quarter_turns: int = 0,
-    spatial_permutation: tuple[int, int, int] | None = None,
-    component_matrix: NDArray[np.float32],
-    semantics: str,
-) -> NDArray[np.float32]:
-    """Exactly reindex a 3D field and reorient its components for an orthogonal symmetry."""
-    transformed: NDArray[np.generic] = field
-    if spatial_permutation is not None:
-        transformed = np.transpose(field, (*spatial_permutation, 3))
-    if spatial_axes:
-        transformed = np.flip(transformed, axis=spatial_axes).copy()
-    if plane_axes is not None and quarter_turns % 4:
-        transformed = np.rot90(transformed, k=quarter_turns % 4, axes=plane_axes)
-    return transform_vector_components_3d(
-        cast("NDArray[np.float16] | NDArray[np.float32]", transformed),
-        component_matrix,
-        semantics=semantics,
-    )
+        return field
+    return reorient_vector_field(field, _D4_COMPONENT_ORDER[group_element][: field.shape[-1]], spatial_rank=2)

@@ -51,7 +51,11 @@ from albumentations.core.type_definitions import (
 
 from . import functional as fgeometric
 from ._functional_grid import GridElasticGeometry, compose_perspective_output_scale, prepare_grid_elastic_geometry
-from ._functional_vector_fields import _project_points_2d, warp_vector_field_from_pull_map_2d
+from ._functional_vector_fields import (
+    _project_points_2d,
+    restore_vector_field_dtype,
+    warp_vector_field_from_pull_map_2d,
+)
 
 __all__ = [
     "Affine",
@@ -1555,7 +1559,8 @@ class RandomGridShuffle(DualTransform):
     ) -> np.ndarray:
         tiles = params["tiles"]
         mapping = params["mapping"]
-        return _shuffle_vector_field_2d(field, target, tiles, mapping)
+        result = _shuffle_vector_field_2d(field, target, tiles, mapping)
+        return field if result is field else restore_vector_field_dtype(result, field.dtype)
 
     def apply_to_bboxes(
         self,

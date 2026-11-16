@@ -365,6 +365,7 @@ class PixelDropout(DualTransform):
 
     _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+    _sampling_spatial_rank = None
 
     def __init__(
         self,

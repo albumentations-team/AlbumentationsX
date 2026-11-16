@@ -232,6 +232,166 @@ def test_aligned_spatial_shape_rejects_unaligned_targets_before_application() ->
         transform(image=image, image2=image2)
 
 
+@pytest.mark.parametrize(
+    ("transform_cls", "kwargs", "image_key", "mask_key"),
+    [
+        (A.RandomRotate90, {}, "image", "mask"),
+        (A.Pad, {"padding": (1, 2)}, "image", "mask"),
+        (A.Morphological, {"scale": (3, 3)}, "image", "mask"),
+        (A.HorizontalFlip, {}, "image", "mask"),
+        (A.VerticalFlip, {}, "image", "mask"),
+        (A.Transpose, {}, "image", "mask"),
+        (A.TimeReverse, {}, "image", "mask"),
+        (A.Resize, {"height": 8, "width": 7}, "image", "mask"),
+        (A.NoOp, {}, "image", "mask"),
+        (A.Pad3D, {"padding": (1, 2, 3)}, "volume", "mask3d"),
+        (A.Flip3D, {}, "volume", "mask3d"),
+        (A.CubicSymmetry, {}, "volume", "mask3d"),
+        (A.RandomRotate90_3D, {}, "volume", "mask3d"),
+        (A.Resize3D, {"size": (3, 8, 7)}, "volume", "mask3d"),
+    ],
+)
+def test_mixed_resolution_targets_use_the_same_geometry_in_compose_and_replay(
+    transform_cls,
+    kwargs,
+    image_key,
+    mask_key,
+) -> None:
+    rng = np.random.default_rng(137)
+    is_2d = image_key == "image"
+    shape = (5, 7) if is_2d else (3, 5, 7)
+    points = np.array([[2, 3] if is_2d else [2, 3, 1]], dtype=np.float32)
+    keypoint_params = A.KeypointParams(coord_format="xy" if is_2d else "xyz", remove_invisible=False)
+    targets = {f"extra_{key}": key for key in (image_key, mask_key)}
+    data = {}
+    expected = {}
+    for factor, prefix in ((1, ""), (2, "extra_")):
+        mask = rng.integers(0, 4, size=tuple(factor * length for length in shape), dtype=np.uint8)
+        image = mask[..., None].astype(np.float32) / 3 if factor == 2 else mask[..., None]
+        pair = {image_key: image, mask_key: mask}
+        if not prefix:
+            pair["keypoints"] = points
+        reference = A.Compose([transform_cls(p=1, **kwargs)], seed=137, strict=True, keypoint_params=keypoint_params)
+        result = reference(**pair)
+        for key, array in pair.items():
+            data[prefix + key] = array
+            expected[prefix + key] = result[key]
+
+    options = dict(
+        additional_targets=targets,
+        is_check_shapes=False,
+        seed=137,
+        strict=True,
+        keypoint_params=keypoint_params,
+    )
+    augmented = A.Compose([transform_cls(p=1, **kwargs)], **options)(**data)
+    recorded = A.ReplayCompose([transform_cls(p=1, **kwargs)], **options)(**data)
+    replayed = A.ReplayCompose.replay(recorded["replay"], **data)
+
+    for key, array in expected.items():
+        np.testing.assert_array_equal(augmented[key], array, strict=True)
+        np.testing.assert_array_equal(recorded[key], array, strict=True)
+        np.testing.assert_array_equal(replayed[key], array, strict=True)
+
+
+def test_pixel_dropout_replays_mixed_resolution_groups() -> None:
+    data = {
+        "image": np.ones((5, 7, 1), dtype=np.uint8),
+        "image2": np.ones((8, 11, 1), dtype=np.float32),
+        "mask": np.full((5, 7), 3, dtype=np.uint8),
+        "mask2": np.full((8, 11), 3, dtype=np.uint8),
+    }
+    options = dict(
+        additional_targets={"image2": "image", "mask2": "mask"}, is_check_shapes=False, seed=137, strict=True
+    )
+    transform = A.PixelDropout(dropout_prob=0.5, mask_drop_value=0, p=1)
+    recorded = A.ReplayCompose([transform], **options)(**data)
+    replayed = A.ReplayCompose.replay(recorded["replay"], **data)
+    augmented = A.Compose([A.PixelDropout(dropout_prob=0.5, mask_drop_value=0, p=1)], **options)(**data)
+
+    for key, original in data.items():
+        assert recorded[key].shape == original.shape
+        assert recorded[key].dtype == original.dtype
+        assert np.unique(recorded[key]).tolist() == [0, int(original.max())]
+        np.testing.assert_array_equal(replayed[key], recorded[key], strict=True)
+        np.testing.assert_array_equal(augmented[key], recorded[key], strict=True)
+
+
+def test_pad_if_needed_still_requires_aligned_targets_when_replayed() -> None:
+    transform = A.ReplayCompose(
+        [A.PadIfNeeded(min_height=8, min_width=8)],
+        additional_targets={"image2": "image"},
+        is_check_shapes=False,
+    )
+    image = np.zeros((5, 7, 1), dtype=np.uint8)
+    recorded = transform(image=image, image2=image)["replay"]
+
+    with pytest.raises(SampledParamsError, match="requires aligned spatial targets"):
+        A.ReplayCompose.replay(recorded, image=image, image2=image[:3])
+
+
+@pytest.mark.parametrize(
+    ("transform_cls", "kwargs", "target", "shape", "replay_shape", "point"),
+    [
+        (A.D4, {"group_element": "h"}, "image", (5, 7), (9, 11), [2, 3]),
+        (A.Flip3D, {"flip_axes": (2,)}, "volume", (3, 5, 7), (4, 9, 11), [2, 3, 1]),
+        (A.Resize3D, {"size": (4, 8, 12)}, "volume", (3, 5, 7), (4, 9, 11), [2, 3, 1]),
+    ],
+)
+def test_replay_refreshes_the_primary_keypoint_frame(transform_cls, kwargs, target, shape, replay_shape, point) -> None:
+    keypoint_params = A.KeypointParams(coord_format="xy" if target == "image" else "xyz", remove_invisible=False)
+    options = dict(
+        keypoint_params=keypoint_params,
+        additional_targets={"extra": target},
+        is_check_shapes=False,
+    )
+    pipeline = A.ReplayCompose([transform_cls(**kwargs)], **options)
+    extra_shape = tuple(2 * length for length in shape)
+    data = {
+        target: np.zeros((*shape, 1), dtype=np.uint8),
+        "extra": np.zeros((*extra_shape, 1), dtype=np.uint8),
+        "keypoints": np.array([point], dtype=np.float32),
+    }
+    recorded = pipeline(**data)
+    data[target] = np.zeros((*replay_shape, 1), dtype=np.uint8)
+
+    replayed = A.ReplayCompose.replay(recorded["replay"], **data)
+    fresh = A.Compose([transform_cls(**kwargs)], **options)(**data)
+
+    assert not np.array_equal(recorded["keypoints"], fresh["keypoints"])
+    np.testing.assert_array_equal(replayed["keypoints"], fresh["keypoints"], strict=True)
+
+
+def test_resize_replay_uses_empty_primary_image_batch_dimensions() -> None:
+    aug = A.ReplayCompose(
+        [A.Resize(10, 14)],
+        additional_targets={"extra_images": "images"},
+        keypoint_params=A.KeypointParams(coord_format="xy", remove_invisible=False),
+        is_check_shapes=False,
+    )
+    data = {
+        "images": np.empty((0, 5, 7, 1), dtype=np.uint8),
+        "extra_images": np.zeros((1, 10, 14, 1), dtype=np.uint8),
+        "keypoints": np.array([[2, 3]], dtype=np.float32),
+    }
+    recorded = aug(**data)
+    replayed = A.ReplayCompose.replay(recorded["replay"], **data)
+
+    np.testing.assert_array_equal(replayed["keypoints"], np.array([[4.5, 6.5]], dtype=np.float32), strict=True)
+
+
+def test_flip3d_uses_canonical_volume_batch_before_single_volume_alias() -> None:
+    flip = A.Flip3D(flip_axes=(2,))
+    flip.add_targets({"extra_volume": "volume"})
+    result = flip(
+        volumes=np.zeros((1, 3, 5, 7, 1), dtype=np.uint8),
+        extra_volume=np.zeros((6, 10, 14, 1), dtype=np.uint8),
+        keypoints=np.array([[2, 3, 1, 0, 0]], dtype=np.float32),
+    )
+
+    np.testing.assert_array_equal(result["keypoints"], np.array([[4, 3, 1, 0, 0]], dtype=np.float32), strict=True)
+
+
 def test_image_only_sampling_allows_unaligned_aliases() -> None:
     image = np.zeros((4, 5, 3), dtype=np.uint8)
     image2 = np.zeros((3, 5, 3), dtype=np.uint8)

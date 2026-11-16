@@ -8,7 +8,7 @@ interface and implements specific 3D augmentation logic.
 """
 
 import math
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from typing import Annotated, Any, ClassVar, Final, Literal, Self, cast
 
 import numpy as np
@@ -92,14 +92,11 @@ _XYZ_AXIS_BY_STRIDE = {1: 1, 2: 2, 4: 3, -1: -1, -2: -2, -4: -3}
 
 def _apply_reindexed_vector_field_3d(
     field: np.ndarray,
-    reindex: Callable[[np.ndarray], np.ndarray],
+    reindexed_probe: np.ndarray,
 ) -> np.ndarray:
     # Unique strides identify the source XYZ axes and their signs even for singleton field axes.
-    spatial_order = tuple(_XYZ_AXIS_BY_STRIDE[stride] for stride in reindex(_CUBE_AXIS_PROBE).strides)
-    permutation = tuple(3 - abs(component) for component in spatial_order)
-    flip_axes = tuple(axis for axis, component in enumerate(spatial_order) if component < 0)
-    reindexed = np.flip(field.transpose((*permutation, 3)), axis=flip_axes)
-    return reorient_vector_field(reindexed, spatial_order[::-1])
+    component_order = tuple(_XYZ_AXIS_BY_STRIDE[stride] for stride in reversed(reindexed_probe.strides))
+    return reorient_vector_field(field, component_order, spatial_rank=3)
 
 
 def _reindex_vector_field_tiles_3d(
@@ -2395,7 +2392,7 @@ class Flip3D(Transform3D):
         if not flip_axes:
             return field
         order = tuple(-(3 - axis) if axis in flip_axes else 3 - axis for axis in (2, 1, 0))
-        return reorient_vector_field(np.flip(field, axis=flip_axes), order)
+        return reorient_vector_field(field, order, spatial_rank=3)
 
     def apply_to_keypoints(
         self,
@@ -2528,7 +2525,7 @@ class CubicSymmetry(Transform3D):
         index = params["index"]
         if index == 0:
             return field
-        return _apply_reindexed_vector_field_3d(field, lambda value: f3d.transform_cube(value, index))
+        return _apply_reindexed_vector_field_3d(field, f3d.transform_cube(_CUBE_AXIS_PROBE, index))
 
     def apply_to_keypoints(
         self,
@@ -2674,7 +2671,7 @@ class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified 
             return field
         return _apply_reindexed_vector_field_3d(
             field,
-            lambda value: f3d.rotate90_3d(value, rotation_count, axis_pair),
+            f3d.rotate90_3d(_CUBE_AXIS_PROBE, rotation_count, axis_pair),
         )
 
     def apply_to_keypoints(

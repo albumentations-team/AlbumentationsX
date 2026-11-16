@@ -33,22 +33,24 @@ def test_bilinear_resampling_renormalizes_finite_vector_neighbours(dtype: type[n
     map_x = np.array([[0.5, -0.25, -0.75]], dtype=np.float32)
     map_y = np.full_like(map_x, 0.5)
 
-    result = resample_field_2d(field, map_x, map_y)
+    result, supported = resample_field_2d(field, map_x, map_y)
 
-    np.testing.assert_array_equal(np.isnan(result), [[[False, False], [False, False], [True, True]]])
+    np.testing.assert_array_equal(supported, [[True, True, False]])
+    assert np.isnan(result[0, 2]).all()
     np.testing.assert_array_equal(result[0, :2], np.array([[10.0, -4.0], [10.0, -4.0]], dtype=np.float32))
 
 
 def test_bilinear_resampling_marks_empty_support_and_partial_vectors_as_invalid() -> None:
     field = np.full((2, 2, 2), np.nan, dtype=np.float32)
     field[0, 0] = (3.0, np.nan)
-    result = resample_field_2d(
+    result, supported = resample_field_2d(
         field,
         np.array([[0.0, 4.0]], dtype=np.float32),
         np.array([[0.0, 4.0]], dtype=np.float32),
     )
 
     assert np.isnan(result).all()
+    assert not supported.any()
 
 
 @pytest.mark.parametrize(

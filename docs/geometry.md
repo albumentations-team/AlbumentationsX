@@ -60,6 +60,18 @@ intermediate resize dimensions and all four padding amounts. Both map annotation
 that recorded output geometry. Spatially materialized parameters may require the recorded shape. See
 [replay contracts](design/applied-config-replay-contracts.md) and the [resize replay tests](../tests/contracts/test_geometry_contract.py).
 
+### Affine on rasters of different sizes
+
+Use `Compose(is_check_shapes=False)` to apply one [Affine](https://albumentations.ai/explore/transform/Affine/) to
+images, masks, and volumes of different sizes in the same call. Affine samples the rotation, scale, shear, and
+translation once, then builds one warp per `(H, W)`. For example, a horizontal `translate_percent` of `0.25` shifts a
+128-pixel-wide image by 32 pixels and a 256-pixel-wide image by 64. A `translate_px` of 32 shifts both by 32 pixels.
+
+With `fit_output=True`, each size gets its own output bounds. Volume depth stays the same, and all slices of a volume
+use the same warp. Each batch remains a regular array with one shape. Bounding boxes, keypoints, and vector fields
+still require a common spatial frame. For mixed sizes, `ReplayCompose` checks that each recorded target has its
+original height and width.
+
 ## Bounds, filtering, and annotation rows
 
 `Compose` checks input kinds, ranks, annotation rows, finite coordinates, label counts, and spatial alignment before

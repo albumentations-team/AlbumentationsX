@@ -1,10 +1,13 @@
+import json
+
 import cv2
 import numpy as np
 import pytest
+import torch
 
 import albumentations as A
 from albumentations.augmentations.geometric import _functional_images
-from albumentations.core.transform_params import SampledParams
+from albumentations.core.transform_params import SampledParams, SampledParamsError
 from tests.helpers import obb_corners_equivalent
 
 
@@ -344,6 +347,118 @@ def test_resize_uses_nonempty_target_shape(transform, output_shape):
 
     assert result["images"].shape == images.shape
     assert result["mask"].shape == output_shape
+
+
+@pytest.mark.parametrize("fit_output", [False, True])
+@pytest.mark.parametrize("tensor", [False, True], ids=["numpy", "tensor"])
+def test_affine_mixed_raster_sizes_match_individual_calls(fit_output, tensor):
+    specs = {
+        "image": ((), (11, 17)),
+        "images": ((3,), (15, 21)),
+        "mask": ((), (15, 21)),
+        "masks": ((2,), (9, 12)),
+        "volume": ((4,), (12, 19)),
+        "mask3d": ((3,), (11, 17)),
+        "volumes": ((2, 5), (8, 16)),
+        "masks3d": ((3, 2), (10, 14)),
+        "image_aux": ((), (13, 15)),
+    }
+    rng = np.random.default_rng(137)
+    data = {}
+    for name, (leading, shape) in specs.items():
+        channels = 1 if name.startswith("mask") else 3
+        array = rng.integers(0, 138, size=(*leading, *shape, channels), dtype=np.uint8)
+        channel_axis = 1 if name in {"images", "masks", "volumes", "masks3d"} else 0
+        data[name] = torch.from_numpy(np.moveaxis(array, -1, channel_axis).copy()) if tensor else array
+
+    kwargs = {
+        "rotate": (9, 29),
+        "scale": (0.9, 1.2),
+        "shear": {"x": (5, 13), "y": (-12, -3)},
+        "translate_percent": {"x": (0.15, 0.25), "y": (-0.2, -0.1)},
+        "fit_output": fit_output,
+        "p": 1,
+    }
+    aliases = {"image_aux": "image"}
+    pipeline = A.Compose(
+        [A.Affine(**kwargs)], additional_targets=aliases, is_check_shapes=False, save_applied_params=True, seed=137
+    )
+    result = pipeline(**data)
+    reconstructed = A.Compose.from_applied_transforms(
+        json.loads(json.dumps(result["applied_transforms"], allow_nan=False)),
+        additional_targets=aliases,
+        is_check_shapes=False,
+    )(**data)
+
+    for name, array in data.items():
+        canonical = aliases.get(name, name)
+        standalone = A.Compose([A.Affine(**kwargs)], seed=137)(**{canonical: array})[canonical]
+        for actual in (result[name], reconstructed[name]):
+            if tensor:
+                torch.testing.assert_close(actual, standalone, rtol=0, atol=0)
+            else:
+                np.testing.assert_array_equal(actual, standalone)
+
+
+@pytest.mark.parametrize(
+    ("translation", "mask_offset"),
+    [
+        ({"translate_percent": {"x": (0.25, 0.25), "y": (0, 0)}}, 3),
+        ({"translate_px": {"x": (5, 5), "y": (0, 0)}}, 5),
+    ],
+    ids=["percent", "pixels"],
+)
+def test_affine_mixed_raster_translation_and_replay(translation, mask_offset):
+    image = np.zeros((10, 20), dtype=np.uint8)
+    mask = np.zeros((7, 12), dtype=np.uint8)
+    image[2, 2] = mask[2, 2] = 137
+    masks = np.empty((0,), dtype=np.uint8)
+    pipeline = A.ReplayCompose([A.Affine(**translation, p=1)], is_check_shapes=False)
+
+    result = pipeline(image=image, mask=mask, masks=masks)
+    replayed = A.ReplayCompose.replay(result["replay"], image=image, mask=mask, masks=masks)
+
+    for name, source, offset in (("image", image, 5), ("mask", mask, mask_offset)):
+        expected = np.roll(source, offset, axis=1)
+        np.testing.assert_array_equal(result[name], expected)
+        np.testing.assert_array_equal(replayed[name], expected)
+    np.testing.assert_array_equal(result["masks"], masks)
+    np.testing.assert_array_equal(replayed["masks"], masks)
+
+    with pytest.raises(SampledParamsError, match="requirements do not match target 'mask'"):
+        A.ReplayCompose.replay(result["replay"], image=image, mask=mask[:, :-1], masks=masks)
+
+
+def test_affine_shared_replay_preserves_the_annotation_frame():
+    image = np.zeros((10, 20), dtype=np.uint8)
+    pipeline = A.ReplayCompose(
+        [A.Affine(translate_px={"x": (3, 3), "y": (0, 0)}, p=1)],
+        bbox_params=A.BboxParams(coord_format="pascal_voc"),
+        is_check_shapes=False,
+    )
+    replay = pipeline(image=image)["replay"]
+
+    result = A.ReplayCompose.replay(replay, image=image, bboxes=[(1, 2, 5, 7)])
+    np.testing.assert_allclose(result["bboxes"], [(4, 2, 8, 7)])
+
+    with pytest.raises(SampledParamsError, match="requires aligned spatial targets"):
+        A.ReplayCompose.replay(replay, image=image, mask=image[:, :-1])
+
+
+@pytest.mark.parametrize(
+    ("annotation", "value", "options"),
+    [
+        ("bboxes", [(1, 1, 4, 4)], {"bbox_params": A.BboxParams(coord_format="pascal_voc")}),
+        ("keypoints", [(1, 1)], {"keypoint_params": A.KeypointParams(coord_format="xy")}),
+        ("gradient", np.zeros((8, 12, 2), dtype=np.float32), {}),
+    ],
+    ids=["bboxes", "keypoints", "gradient"],
+)
+def test_affine_keeps_alignment_requirement_for_non_raster_targets(annotation, value, options):
+    pipeline = A.Compose([A.Affine(p=1)], is_check_shapes=False, **options)
+    data = {"image": np.zeros((8, 12), dtype=np.uint8), "mask": np.zeros((7, 9), dtype=np.uint8), annotation: value}
+    with pytest.raises(SampledParamsError, match="requires aligned spatial targets"):
+        pipeline(**data)
 
 
 @pytest.mark.parametrize("legacy_replay", [False, True], ids=["sampled", "legacy-replay"])

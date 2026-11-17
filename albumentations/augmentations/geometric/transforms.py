@@ -32,7 +32,14 @@ from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
 )
-from albumentations.core.transform_params import SampledParams, SampledParamsError, TargetSet
+from albumentations.core.transform_params import (
+    SampledParams,
+    SampledParamsError,
+    TargetParams,
+    TargetSet,
+    TargetView,
+    requirements_for_views,
+)
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     BasicTransform,
@@ -44,6 +51,7 @@ from albumentations.core.type_definitions import (
     CV2_BORDER_CONSTANT,
     CV2_INTER_LINEAR,
     CV2_INTER_NEAREST,
+    VECTOR_FIELD_TARGET_NAMES,
     BorderModeType,
     InterpolationType,
     StackedMasks4D,
@@ -69,6 +77,17 @@ __all__ = [
 NUM_PADS_XY = 2
 NUM_PADS_ALL_SIDES = 4
 RangeValueT = TypeVar("RangeValueT", int, float)
+_AFFINE_ALIGNED_TARGETS = VECTOR_FIELD_TARGET_NAMES | {"bboxes", "keypoints"}
+
+
+def _validate_shared_affine_replay(
+    params: Mapping[str, Any],
+    targets: TargetSet,
+    transform: BasicTransform,
+) -> Mapping[str, Any]:
+    if transform.replay_mode and "matrix" in params:
+        targets.aligned_spatial_shape(2)
+    return params
 
 
 def _materialize_perspective_params(
@@ -598,6 +617,12 @@ class Affine(DualTransform):
     of the input image to generate output pixel values. The parameters `interpolation` and
     `mask_interpolation` deals with the method of interpolation used for this.
 
+    With `Compose(is_check_shapes=False)`, raster targets may have different heights and widths.
+    They share the sampled rotation, scale, shear, and translation. Each target uses its own
+    center and size for `translate_percent` and `fit_output`; `translate_px` uses the same pixel
+    offset for every target. Volumes are transformed slice by slice without changing their depth.
+    When passing bounding boxes, keypoints, or vector fields, use a common height and width.
+
     Args:
         scale (tuple of number or dict): Scaling factor, where `1.0` denotes "no change".
                 * If a tuple `(a, b)`, then a value will be uniformly sampled per image from `[a, b]`
@@ -733,6 +758,8 @@ class Affine(DualTransform):
 
     _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+    _sampling_spatial_rank = None
+    _runtime_param_materializer = staticmethod(_validate_shared_affine_replay)
 
     InitSchema: ClassVar[type[BaseTransformInitSchema]] = _AffineInitSchema
 
@@ -838,6 +865,8 @@ class Affine(DualTransform):
         output_shape: tuple[int, int],
         **params: Any,
     ) -> StackedMasks4D:
+        if masks.shape == (0,):
+            return masks
         height, width = output_shape
         result = np.empty((len(masks), height, width, masks.shape[3]), dtype=masks.dtype)
         for i, mask in enumerate(masks):
@@ -934,10 +963,9 @@ class Affine(DualTransform):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        image_shape = targets.require_aligned_spatial_shape(2)
-
-        translate = self._get_translate_params(image_shape, sampling)
-        shear = self._get_shear_params(sampling)
+        translate = self._sample_translation(sampling)
+        shear_x = sampling.py_random.uniform(*self.shear["x"])
+        shear_y = sampling.py_random.uniform(*self.shear["y"])
         scale = self._get_scale(
             self.scale,
             self.keep_ratio,
@@ -946,72 +974,96 @@ class Affine(DualTransform):
         )
         rotate = sampling.py_random.uniform(*self.rotate)
 
-        sampling.applied_overrides.update({"rotate": rotate, "scale": scale, "shear": shear})
+        sampling.applied_overrides.update({"rotate": rotate, "scale": scale, "shear": {"x": shear_x, "y": shear_y}})
         if self.translate_percent is not None:
             sampling.applied_overrides["translate_percent"] = translate
         elif self.translate_px is not None:
             sampling.applied_overrides["translate_px"] = translate
 
-        image_shift = fgeometric.center(image_shape)
-        bbox_shift = fgeometric.center_bbox(image_shape)
-
-        matrix = fgeometric.create_affine_transformation_matrix(
-            translate,
-            shear,
-            scale,
-            rotate,
-            image_shift,
-        )
-        bbox_matrix = fgeometric.create_affine_transformation_matrix(
-            translate,
-            shear,
-            scale,
-            rotate,
-            bbox_shift,
-        )
-
-        if self.fit_output:
-            matrix, output_shape = fgeometric.compute_affine_warp_output_shape(
-                matrix,
-                image_shape,
+        warp_shear = {"x": -shear_x, "y": -shear_y}
+        if len(targets.ordered) <= 1 or any(view.canonical_type in _AFFINE_ALIGNED_TARGETS for view in targets.ordered):
+            shape = targets.require_aligned_spatial_shape(2)
+            warp = self._warp_params(
+                shape, translate, warp_shear, scale, rotate, include_bbox=self.deterministic or "bbox_type" in params
             )
-            bbox_matrix, _ = fgeometric.compute_affine_warp_output_shape(
-                bbox_matrix,
-                image_shape,
-            )
-        else:
-            output_shape = image_shape
+            return SampledParams(params={"rotate": rotate, "scale": scale, **warp})
 
+        return self._sample_raster_warps(targets, translate, warp_shear, scale, rotate)
+
+    def _sample_raster_warps(
+        self,
+        targets: TargetSet,
+        translate: Mapping[str, float],
+        shear: dict[str, float],
+        scale: dict[str, float],
+        rotate: float,
+    ) -> SampledParams:
+        groups: dict[tuple[int, int], list[TargetView]] = {}
+        without_spatial_shape = []
+        for view in targets.ordered:
+            shape = view.descriptor.spatial_shape
+            if shape is None or len(shape) < 2:
+                without_spatial_shape.append(view)
+            else:
+                groups.setdefault((shape[-2], shape[-1]), []).append(view)
+
+        shared = {"rotate": rotate, "scale": scale}
+        first_shape = next(iter(groups)) if groups else targets.require_aligned_spatial_shape(2)
+        if len(groups) <= 1:
+            warp = self._warp_params(first_shape, translate, shear, scale, rotate, include_bbox=self.deterministic)
+            return SampledParams(params={**shared, **warp})
+
+        groups[first_shape].extend(without_spatial_shape)
         return SampledParams(
-            params={
-                "rotate": rotate,
-                "scale": scale,
-                "matrix": matrix,
-                "bbox_matrix": bbox_matrix,
-                "output_shape": output_shape,
-            }
+            params=shared,
+            target_params=tuple(
+                TargetParams(
+                    targets=tuple(view.name for view in views),
+                    params=self._warp_params(shape, translate, shear, scale, rotate),
+                    requirements=requirements_for_views(tuple(views), spatial_shape_suffix=True),
+                )
+                for shape, views in groups.items()
+            ),
         )
 
-    def _get_translate_params(self, image_shape: tuple[int, int], sampling: SamplingContext) -> dict[str, int]:
-        height, width = image_shape[:2]
+    def _sample_translation(self, sampling: SamplingContext) -> Mapping[str, float]:
         if self.translate_px is not None:
             return {
                 "x": sampling.py_random.randint(self.translate_px["x"][0], self.translate_px["x"][1]),
                 "y": sampling.py_random.randint(self.translate_px["y"][0], self.translate_px["y"][1]),
             }
         if self.translate_percent is not None:
-            translate = {key: sampling.py_random.uniform(*value) for key, value in self.translate_percent.items()}
-            return cast(
-                "dict[str, int]",
-                {"x": int(translate["x"] * width), "y": int(translate["y"] * height)},
-            )
-        return cast("dict[str, int]", {"x": 0, "y": 0})
+            return {key: sampling.py_random.uniform(*value) for key, value in self.translate_percent.items()}
+        return {"x": 0, "y": 0}
 
-    def _get_shear_params(self, sampling: SamplingContext) -> dict[str, float]:
-        return {
-            "x": -sampling.py_random.uniform(*self.shear["x"]),
-            "y": -sampling.py_random.uniform(*self.shear["y"]),
-        }
+    def _warp_params(
+        self,
+        shape: tuple[int, int],
+        translate: Mapping[str, float],
+        shear: dict[str, float],
+        scale: dict[str, float],
+        rotate: float,
+        *,
+        include_bbox: bool = False,
+    ) -> dict[str, Any]:
+        if self.translate_percent is not None:
+            height, width = shape
+            translate = {"x": int(translate["x"] * width), "y": int(translate["y"] * height)}
+        matrix = fgeometric.create_affine_transformation_matrix(
+            translate, shear, scale, rotate, fgeometric.center(shape)
+        )
+        output_shape = shape
+        if self.fit_output:
+            matrix, output_shape = fgeometric.compute_affine_warp_output_shape(matrix, shape)
+        warp: dict[str, Any] = {"matrix": matrix, "output_shape": output_shape}
+        if include_bbox:
+            bbox_matrix = fgeometric.create_affine_transformation_matrix(
+                translate, shear, scale, rotate, fgeometric.center_bbox(shape)
+            )
+            if self.fit_output:
+                bbox_matrix, _ = fgeometric.compute_affine_warp_output_shape(bbox_matrix, shape)
+            warp["bbox_matrix"] = bbox_matrix
+        return warp
 
 
 class ShiftScaleRotate(Affine):

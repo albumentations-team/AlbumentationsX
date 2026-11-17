@@ -12,6 +12,21 @@ none
 
 ## Geometry
 
+### Affine supports raster targets with different sizes
+
+- Previous behavior: Affine required a common height and width even with `is_check_shapes=False`. Its applied
+  configuration also stored percentage translations in pixels and saved shear with the opposite sign.
+- New behavior: With shape checks disabled, Affine shares the sampled parameters across raster targets and computes
+  the warp for each height and width. Bounding boxes, keypoints, and vector fields still require a common size.
+  New applied configurations preserve percentage translations and the sampled shear in constructor units.
+- Affected users: Pipelines that augment rasters of different sizes in one call or reconstruct Affine from applied
+  configurations with percentage translation or shear.
+- Migration: Set `is_check_shapes=False` for mixed raster sizes. Recapture applied configurations that used percentage
+  translation or shear if you need to reproduce the original transform.
+- First affected version: unreleased
+- Contract: [Affine on rasters of different sizes](../geometry.md#affine-on-rasters-of-different-sizes).
+- Tests: [Geometry contracts](../../tests/contracts/test_geometry_contract.py).
+
 ### CPU tensor fallback exposes overlapping storage to PyTorch
 
 - Previous behavior: A NumPy fallback could return a CPU tensor that shared memory with its input while PyTorch

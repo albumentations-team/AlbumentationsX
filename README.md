@@ -141,7 +141,7 @@ pip install "torch>=2.13.0" --index-url https://download.pytorch.org/whl/cpu
 For CUDA or macOS (MPS), use the matching command from the [PyTorch installation selector](https://pytorch.org/get-started/locally/).
 AlbumentationsX does not choose or install a PyTorch accelerator build.
 
-If you already have OpenCV installed (any variant), install AlbumentationsX:
+If you already have OpenCV 5.1 or newer (5.1.0.95 or newer for PyPI wheels), install AlbumentationsX:
 
 ```bash
 pip install -U albumentationsx
@@ -149,17 +149,17 @@ pip install -U albumentationsx
 
 ### Installation with OpenCV
 
-If you don't have OpenCV installed yet, choose the appropriate variant:
+To install or upgrade OpenCV, choose the extra that matches the variant you use:
 
 ```bash
 # For servers/Docker (no GUI support, lighter package)
 pip install -U "albumentationsx[headless]"
 
 # For local development with GUI support (cv2.imshow, etc.)
-pip install opencv-python && pip install -U albumentationsx
+pip install -U "albumentationsx[gui]"
 
 # For OpenCV with extra algorithms (contrib modules)
-pip install opencv-contrib-python && pip install -U albumentationsx
+pip install -U "albumentationsx[contrib]"
 
 # For contrib + headless
 pip install -U "albumentationsx[contrib-headless]"

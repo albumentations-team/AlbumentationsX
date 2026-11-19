@@ -1,3 +1,5 @@
+import re as _re
+
 from albumentations._version import __author__ as __author__
 from albumentations._version import __maintainer__ as __maintainer__
 from albumentations._version import __version__ as __version__
@@ -6,7 +8,7 @@ from albumentations._version import __version__ as __version__
 # metadata, so docs and dependency-only consumers do not select a CPU, CUDA, or MPS build.
 # The public import graph requires both.
 try:
-    import cv2  # noqa: F401
+    import cv2
 except ModuleNotFoundError as e:
     if e.name != "cv2":
         raise
@@ -23,6 +25,18 @@ except ModuleNotFoundError as e:
         "  pip install albumentationsx[contrib]      # Installs opencv-contrib-python"
     )
     raise ImportError(msg) from e
+else:
+    # OpenCV's PyPI wheels expose the packaging build number separately from the native version.
+    _opencv_wheel_version = getattr(getattr(cv2, "version", None), "opencv_version", "")
+    _opencv_wheel_release = _re.match(r"\d+(?:\.\d+){3}", _opencv_wheel_version)
+    if (cv2.getVersionMajor(), cv2.getVersionMinor()) < (5, 1) or (
+        _opencv_wheel_release and tuple(map(int, _opencv_wheel_release[0].split("."))) < (5, 1, 0, 95)
+    ):
+        msg = (
+            "AlbumentationsX requires OpenCV 5.1 or later (PyPI wheel 5.1.0.95 or later). "
+            f"Found OpenCV {_opencv_wheel_version or cv2.__version__}."
+        )
+        raise ImportError(msg)
 
 try:
     import torch  # noqa: F401

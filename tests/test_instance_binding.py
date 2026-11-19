@@ -1044,8 +1044,8 @@ class TestChannelMask:
 
     @pytest.mark.parametrize("check_each_transform", [True, False])
     @pytest.mark.parametrize("mask_target", ["mask", "masks"])
-    @pytest.mark.parametrize("first_kept", [1, 2])
-    def test_transform_prefilter_keeps_bound_rows_aligned(
+    @pytest.mark.parametrize("first_kept", [1, 3])
+    def test_transform_and_processor_keep_bound_rows_aligned(
         self,
         check_each_transform: bool,
         mask_target: str,
@@ -1057,11 +1057,21 @@ class TestChannelMask:
         image, instances = self._filtering_data()
         instances[0]["keypoints"] = [[2, 2]]
         instances[1]["keypoints"] = [[50, 48]]
+        instances.insert(
+            1,
+            {
+                "mask": _make_mask(128, 128, (8, 12, 8, 12)),
+                "bbox": [8, 8, 12, 12],
+                "bbox_labels": {"class_id": 22},
+                "keypoints": [[10, 10]],
+            },
+        )
         transform = A.Compose(
             [A.Sequential([A.Lambda(bboxes=drop_bbox_prefix, p=1), A.HorizontalFlip(p=1)], p=1)],
             bbox_params=A.BboxParams(
                 coord_format="pascal_voc",
                 label_fields=["class_id"],
+                min_area=32,
                 check_each_transform=check_each_transform,
             ),
             keypoint_params=A.KeypointParams(coord_format="xy"),
@@ -1071,7 +1081,7 @@ class TestChannelMask:
 
         result = transform(image=image, instances=instances)
 
-        if first_kept == 2:
+        if first_kept == len(instances):
             assert result["instances"] == []
             return
 
@@ -1080,7 +1090,7 @@ class TestChannelMask:
         assert instance["bbox_labels"]["class_id"] == 33
         np.testing.assert_array_equal(instance["bbox"], [48, 40, 88, 80])
         np.testing.assert_array_equal(instance["keypoints"], [[77, 48]])
-        np.testing.assert_array_equal(instance["mask"], instances[1]["mask"][:, ::-1])
+        np.testing.assert_array_equal(instance["mask"], instances[2]["mask"][:, ::-1])
 
 
 class TestMixingTransformsInstanceBinding:

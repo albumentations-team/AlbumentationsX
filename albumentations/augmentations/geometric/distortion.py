@@ -656,7 +656,8 @@ class OpticalDistortion(BaseDistortion):
         - The distortion coefficient (k) is randomly sampled from the distort_range range.
         - Bounding boxes and keypoints are transformed along with the image to maintain consistency.
         - With a full-resolution fisheye map, constant border, and a sampled coefficient in [-0.3, 0.3],
-          keypoints and box outlines are transformed geometrically. Fully invisible annotations are dropped.
+          keypoints and box outlines are transformed geometrically. Fully invisible boxes are dropped.
+          KeypointParams.remove_invisible controls whether points outside the frame are kept.
           The keypoint remapping method selects how points are handled for other settings.
 
     Examples:

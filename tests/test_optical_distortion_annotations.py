@@ -36,6 +36,33 @@ def test_fisheye_maps_fractional_keypoints_and_replays(distortion: float) -> Non
     np.testing.assert_array_equal(replayed["image"], result["image"])
 
 
+@pytest.mark.parametrize("remove_invisible", [True, False])
+@pytest.mark.parametrize("check_each_transform", [True, False])
+def test_fisheye_keypoint_visibility_follows_processor_policy(
+    remove_invisible: bool,
+    check_each_transform: bool,
+) -> None:
+    image = np.zeros((96, 128), dtype=np.uint8)
+    center = np.array([64.0, 48.0])
+    expected = np.array([[-0.25, 48.0], [64.0, 48.0], [127.75, 48.0]])
+    offsets = expected - center
+    source = center + offsets * (1 - 0.3 * np.sum(offsets**2, axis=1) / np.sum(center**2))[:, None]
+    pipeline = A.Compose(
+        [A.OpticalDistortion(mode="fisheye", distort_range=(-0.3, -0.3), p=1)],
+        keypoint_params=A.KeypointParams(
+            coord_format="xy",
+            label_fields=["labels"],
+            remove_invisible=remove_invisible,
+            check_each_transform=check_each_transform,
+        ),
+    )
+
+    result = pipeline(image=image, keypoints=source, labels=["left", "center", "right"])
+    expected_count = 2 if remove_invisible else 3
+    np.testing.assert_allclose(result["keypoints"], expected[:expected_count], atol=1e-5, rtol=0)
+    assert result["labels"] == ["left", "center", "right"][:expected_count]
+
+
 @pytest.mark.parametrize(("bbox_type", "angle"), [("hbb", ()), ("obb", (23.0,))])
 def test_fisheye_fits_box_edges_between_the_corners(bbox_type: str, angle: tuple[float, ...]) -> None:
     image = np.zeros((96, 128), dtype=np.uint8)

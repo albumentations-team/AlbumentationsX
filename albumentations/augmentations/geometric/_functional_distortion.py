@@ -747,15 +747,13 @@ def remap_fisheye_keypoints(
     image_shape: tuple[int, int],
     distortion: float,
 ) -> np.ndarray:
-    """Invert the full-resolution radial map at visible keypoint coordinates."""
+    """Invert the full-resolution radial map at keypoint coordinates."""
     if not len(keypoints) or distortion == 0:
         return keypoints
 
-    height, width = image_shape
     coords = _invert_fisheye_coordinates(keypoints[:, :2], image_shape, distortion)
-    visible = ((coords >= 0) & (coords < (width, height))).all(axis=1)
-    result = keypoints[visible]
-    result[:, :2] = coords[visible]
+    result = keypoints.copy()
+    result[:, :2] = coords
     return result
 
 

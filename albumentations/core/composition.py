@@ -740,7 +740,6 @@ class BaseCompose(InvocationRngOwner, Serializable):
         track_applied: bool = False,
         tracking_data: dict[str, Any] | None = None,
         finalize_annotations: bool = True,
-        resync_instances: bool = False,
         replay_child: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Execute a configured edge through normal dispatch, then perform annotation, trace, and
@@ -764,8 +763,6 @@ class BaseCompose(InvocationRngOwner, Serializable):
                 self._track_transform_params(transform, data if tracking_data is None else tracking_data)
             if finalize_annotations:
                 data = self._finalize_annotations_after(data, transform, compiled_child, invocation)
-            if resync_instances and compiled_child.may_change_bboxes:
-                self._resync_instance_ids(data)
             return data
 
         with trace.node_scope(trace.child_path(index)):
@@ -776,8 +773,6 @@ class BaseCompose(InvocationRngOwner, Serializable):
                 self._track_transform_params(transform, data if tracking_data is None else tracking_data)
             if finalize_annotations:
                 data = self._finalize_annotations_after(data, transform, compiled_child, invocation)
-            if resync_instances and compiled_child.may_change_bboxes:
-                self._resync_instance_ids(data)
             if isinstance(transform, BasicTransform):
                 applied = bool(transform.params)
                 trace.emit_leaf(
@@ -1372,13 +1367,21 @@ class BaseCompose(InvocationRngOwner, Serializable):
         receives the transform so it can schedule target-aware filtering.
         """
         policy = self
-        if invocation is not None and invocation.frame_state is not None:
-            policy = invocation.frame_state.policy
+        frame_binding = invocation is not None and invocation.frame_state is not None
+        instance_binding_policy = None if invocation is None else invocation.instance_binding_policy
+        if invocation is not None:
+            if invocation.frame_state is not None:
+                policy = invocation.frame_state.policy
+            elif instance_binding_policy is not None:
+                policy = instance_binding_policy
         if type(policy).check_data_post_transform is BaseCompose.check_data_post_transform:
             data = policy.check_data_post_transform(data, transform, compiled_child, invocation)
         else:
             data = policy.check_data_post_transform(data)
-        if policy is not self and compiled_child.may_change_bboxes:
+        if frame_binding:
+            if compiled_child.may_change_bboxes and (policy is not self or instance_binding_policy is self):
+                policy._resync_instance_ids(data)  # noqa: SLF001 - root binding policy
+        elif instance_binding_policy is not None and compiled_child.parent_finalizes_bboxes:
             policy._resync_instance_ids(data)  # noqa: SLF001 - root binding policy
         return data
 
@@ -1419,7 +1422,7 @@ class BaseCompose(InvocationRngOwner, Serializable):
 
         keep_mask = self._run_bbox_filter(proc, data, shape)
 
-        if keep_mask is None or pre_bbox_ids is None or n_pre == 0:
+        if keep_mask is None or pre_bbox_ids is None or n_pre == 0 or keep_mask.all():
             return
 
         self._mirror_keep_mask(data, binding, keep_mask, pre_bbox_ids, n_pre)
@@ -1434,6 +1437,22 @@ class BaseCompose(InvocationRngOwner, Serializable):
         """Drop bound mask rows or channels and keypoints absent from `pre_bbox_ids` so data remains positionally
         aligned before the bbox processor's filter runs.
         """
+        self._align_bound_masks(data, binding, pre_bbox_ids, n_pre)
+        if "keypoints" in binding:
+            kps_pre = data.get("keypoints")
+            if isinstance(kps_pre, np.ndarray) and kps_pre.shape[0] > 0:
+                kp_keep_pre = np.isin(kps_pre[:, -1].astype(np.int64, copy=False), pre_bbox_ids)
+                if not kp_keep_pre.all():
+                    data["keypoints"] = kps_pre[kp_keep_pre]
+
+    def _align_bound_masks(
+        self,
+        data: dict[str, Any],
+        binding: frozenset[str],
+        pre_bbox_ids: np.ndarray,
+        n_pre: int,
+    ) -> None:
+        """Index a mask stack or packed mask by the IDs retained by the transform."""
         if "masks" in binding:
             masks_pre = data.get("masks")
             if masks_pre is not None and isinstance(masks_pre, (np.ndarray, torch.Tensor)) and len(masks_pre) > n_pre:
@@ -1446,12 +1465,6 @@ class BaseCompose(InvocationRngOwner, Serializable):
                 channel_count = mask_pre.shape[instance_axis]
                 valid = pre_bbox_ids[(pre_bbox_ids >= 0) & (pre_bbox_ids < channel_count)]
                 data["mask"] = self._index_axis(mask_pre, valid, instance_axis)
-        if "keypoints" in binding:
-            kps_pre = data.get("keypoints")
-            if isinstance(kps_pre, np.ndarray) and kps_pre.shape[0] > 0:
-                kp_keep_pre = np.isin(kps_pre[:, -1].astype(np.int64, copy=False), pre_bbox_ids)
-                if not kp_keep_pre.all():
-                    data["keypoints"] = kps_pre[kp_keep_pre]
 
     def _run_bbox_filter(
         self,
@@ -2329,6 +2342,8 @@ class Compose(BaseCompose, HubMixin):
         context.has_tensor_inputs = tensor_boundary_state.has_tensor_inputs
         context.vector_fields_validated = True
         context.trace_session = trace
+        if self._instance_binding and "bboxes" in self._instance_binding:
+            context.instance_binding_policy = self
         with context:
             return self._execute_with_preprocessing(
                 data,
@@ -2630,7 +2645,6 @@ class Compose(BaseCompose, HubMixin):
                 data,
                 invocation,
                 track_applied=track_applied,
-                resync_instances=bool(self.main_compose and self._instance_binding),
             )
         return data
 
@@ -3379,24 +3393,10 @@ class Compose(BaseCompose, HubMixin):
         raise ValueError(msg)
 
     def _resync_instance_ids(self, data: dict[str, Any]) -> None:
-        """Rebase the per-row instance id namespace to `arange(N)` and assert the structural
-        invariant before the next transform sees the data.
+        """Align bound rows and rebase instance IDs before the next transform.
 
-        Phase 4 of the instance-binding rewrite: positional alignment is now upheld
-        upstream — `Mosaic` shares one keep-mask across bboxes/masks/keypoints in
-        `sample_parameters`, `CopyAndPaste` emits dense-id output, and
-        `check_data_post_transform` mirrors any bbox-processor drop onto masks (positional)
-        and keypoints (by surviving id). All this method has to do is:
-
-        1. Assert that the bound `masks` row count or packed `mask` instance-axis count
-           equals `len(bboxes)`.
-        2. Translate `_kp_instance_id` from old bbox ids to the new positional ids.
-        3. Stamp `_bbox_instance_id = arange(N)` so the next transform sees a dense namespace.
-
-        The snapshot machinery (`_snapshot_pre_processor_bbox_ids`,
-        `_mask_positions_for_surviving_ids`) the 2.2.2 hotfix added is intentionally
-        deleted: it encoded a recovery branch for the dual-mask-layout case that no longer
-        exists after phases 2/2b/3b.
+        With deferred bbox filtering, realign rows dropped by the transform itself.
+        Otherwise the bbox processor has already mirrored those drops and its own keep mask.
         """
         binding = self._instance_binding
         if binding is None or "bboxes" not in binding:
@@ -3404,6 +3404,13 @@ class Compose(BaseCompose, HubMixin):
         bboxes_arr = data.get("bboxes")
         if not isinstance(bboxes_arr, np.ndarray):
             return
+
+        n = bboxes_arr.shape[0]
+        old_ids = bboxes_arr[:, -1].astype(np.int64)
+        deferred_filter = not self._configured_processors["bboxes"].params.check_each_transform
+        if deferred_filter:
+            self._align_bound_masks(data, binding, old_ids, n)
+
         invocation = get_current_invocation()
         frame_state = None if invocation is None else invocation.frame_state
         if frame_state is not None and "bboxes" in frame_state.frame_columns:
@@ -3411,34 +3418,41 @@ class Compose(BaseCompose, HubMixin):
             frame_state.instance_frames = owners
             if "masks" in data:
                 frame_state.rows["masks"] = RowIds(owners, np.arange(len(owners)))
-        if bboxes_arr.shape[0] == 0:
-            return
+        if n:
+            self._raise_if_bound_mask_alignment_is_invalid(data, binding, n)
 
-        n = bboxes_arr.shape[0]
-        old_ids = bboxes_arr[:, -1].astype(np.int64, copy=True)
-
-        self._raise_if_bound_mask_alignment_is_invalid(data, binding, n)
-
-        if "keypoints" in binding:
-            kp_arr = data.get("keypoints")
-            if isinstance(kp_arr, np.ndarray) and kp_arr.shape[0] > 0:
-                kp_ids_col = kp_arr[:, -1].astype(np.int64, copy=False)
-                # Defense in depth: orphan kp ids (no matching bbox) should already be filtered
-                # by `_bbox_filter_with_mirror`/`_prefilter_realign`. If we still see one here,
-                # the upstream chain is broken and silently passing it through corrupts the new
-                # positional namespace, so fail fast.
-                bbox_id_set = set(old_ids.tolist())
-                orphans = [int(k) for k in kp_ids_col.tolist() if int(k) not in bbox_id_set]
-                if orphans:
-                    self._raise_for_orphan_keypoints(orphans)
-                if not np.array_equal(old_ids, np.arange(n, dtype=np.int64)):
-                    old_to_new = {int(old): new for new, old in enumerate(old_ids.tolist())}
-                    kp_arr[:, -1] = np.array(
-                        [old_to_new[int(k)] for k in kp_ids_col],
-                        dtype=kp_arr.dtype,
-                    )
+        if "keypoints" in binding and (n or deferred_filter):
+            self._rebase_bound_keypoint_ids(data, old_ids, deferred_filter=deferred_filter)
 
         bboxes_arr[:, -1] = np.arange(n, dtype=bboxes_arr.dtype)
+
+    def _rebase_bound_keypoint_ids(
+        self,
+        data: dict[str, Any],
+        old_bbox_ids: np.ndarray,
+        *,
+        deferred_filter: bool,
+    ) -> None:
+        """Translate each bound keypoint to the new position of its bbox."""
+        keypoints = data.get("keypoints")
+        if not isinstance(keypoints, np.ndarray) or not len(keypoints):
+            return
+        keypoint_ids = keypoints[:, -1].astype(np.int64, copy=False).tolist()
+        bbox_ids = old_bbox_ids.tolist()
+        bbox_id_set = set(bbox_ids)
+        keep = [keypoint_id in bbox_id_set for keypoint_id in keypoint_ids]
+        if not all(keep):
+            if deferred_filter:
+                keypoints = keypoints[keep]
+                data["keypoints"] = keypoints
+                keypoint_ids = keypoints[:, -1].astype(np.int64).tolist()
+            else:
+                self._raise_for_orphan_keypoints(
+                    [keypoint_id for keypoint_id in keypoint_ids if keypoint_id not in bbox_id_set]
+                )
+        if not np.array_equal(old_bbox_ids, np.arange(len(old_bbox_ids), dtype=np.int64)):
+            positions = {bbox_id: index for index, bbox_id in enumerate(bbox_ids)}
+            keypoints[:, -1] = [positions[keypoint_id] for keypoint_id in keypoint_ids]
 
     def _raise_if_bound_mask_alignment_is_invalid(
         self,

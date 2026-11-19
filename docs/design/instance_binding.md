@@ -137,7 +137,11 @@ helper does two stages:
 
 ##### Layer 3 — `_resync_instance_ids`
 
-Once Layers 1 and 2 are in place, the resync's only job is to:
+Nested containers use the root `Compose` instance binding policy. With
+`BboxParams(check_each_transform=False)`, resync applies the same ID-based realignment
+for rows removed by the transform. The bbox processor still filters at the final boundary.
+
+Once bound rows are aligned, resync:
 
 1. Assert `len(masks) == len(bboxes)` (raises `RuntimeError` when strict, `UserWarning`
    otherwise).

@@ -26,6 +26,7 @@ from albumentations.core.random_utils import (
 
 if TYPE_CHECKING:
     from albumentations.core.binding import FrameBinding
+    from albumentations.core.composition import Compose
     from albumentations.core.utils import DataProcessor
 
 
@@ -519,6 +520,7 @@ class InvocationContext:
     has_tensor_inputs: bool | None = None
     vector_fields_validated: bool = False
     frame_state: FrameBinding | None = None
+    instance_binding_policy: Compose | None = None
     _py_random: random.Random | None = None
     _random_generator: np.random.Generator | None = None
     _reserved_random_streams: _ReservedRandomStreams | None = None

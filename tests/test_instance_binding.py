@@ -115,6 +115,50 @@ class TestInstanceBindingInit:
 
 
 class TestUnpackRepack:
+    @pytest.mark.parametrize("check_each_transform", [True, False])
+    @pytest.mark.parametrize("mask_target", [None, "mask", "masks"])
+    def test_input_box_filter_keeps_bound_instance(self, check_each_transform: bool, mask_target: str | None) -> None:
+        binding = ["bboxes", "keypoints"]
+        if mask_target is not None:
+            binding.append(mask_target)
+        with pytest.warns(UserWarning, match="Got processor"):
+            pipeline = A.Compose(
+                [],
+                bbox_params=A.BboxParams(
+                    "pascal_voc",
+                    filter_invalid_bboxes=True,
+                    check_each_transform=check_each_transform,
+                ),
+                keypoint_params=A.KeypointParams("xy", label_fields=["name"]),
+                instance_binding=binding,
+                telemetry=False,
+            )
+
+        surviving_mask = _make_mask(region=(20, 40, 20, 40))
+        instances = [
+            {
+                "bbox": [8, 8, 4, 4],
+                "keypoints": [[6, 6]],
+                "keypoint_labels": {"name": ["discarded"]},
+                "mask": _make_mask(region=(4, 8, 4, 8)),
+            },
+            {
+                "bbox": [20, 20, 40, 40],
+                "keypoints": [[30, 30]],
+                "keypoint_labels": {"name": ["kept"]},
+                "mask": surviving_mask,
+            },
+        ]
+
+        result = pipeline(image=_make_image(), instances=instances)["instances"]
+
+        assert len(result) == 1
+        np.testing.assert_array_equal(result[0]["bbox"], [20, 20, 40, 40])
+        np.testing.assert_array_equal(result[0]["keypoints"], [[30, 30]])
+        assert list(result[0]["keypoint_labels"]["name"]) == ["kept"]
+        if mask_target is not None:
+            np.testing.assert_array_equal(result[0]["mask"], surviving_mask)
+
     def test_basic_roundtrip(self) -> None:
         transform = A.Compose(
             [A.NoOp(p=1)],

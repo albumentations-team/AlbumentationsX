@@ -2985,8 +2985,25 @@ class Compose(BaseCompose, HubMixin):
                 processor.ensure_data_valid(data)
             else:
                 processor.label_data = labels
+        binding = self._instance_binding
+        bbox_processor = processors.get("bboxes") if binding and "bboxes" in binding else None
+        bboxes_before = (
+            data.get("bboxes")
+            if isinstance(bbox_processor, BboxProcessor) and bbox_processor.params.filter_invalid_bboxes
+            else None
+        )
         for processor in active:
             processor.preprocess(data)
+        if (
+            bboxes_before is not None
+            and binding is not None
+            and len(data["bboxes"]) < len(bboxes_before)
+            and isinstance(bbox_processor, BboxProcessor)
+        ):
+            bboxes = data["bboxes"]
+            if bbox_processor.params.check_each_transform:
+                self._align_bound_masks(data, binding, bboxes, len(bboxes))
+            self._resync_instance_ids(data)
 
     def _ensure_contiguous(self, data: dict[str, Any]) -> None:
         for key, value in data.items():

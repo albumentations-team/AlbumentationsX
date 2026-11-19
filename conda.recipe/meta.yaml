@@ -32,7 +32,7 @@ requirements:
     - pyyaml>=6.0.3
     - pydantic>=2.12.4
     - typing-extensions>=4.9.0
-    - opencv-python-headless>=5.0.0.93
+    - opencv-python-headless>=5.1.0.95
     - albucore==0.3.10
     - numkong>=7.8.7
     - stringzilla>=5.3.2

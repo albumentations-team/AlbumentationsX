@@ -6,7 +6,7 @@ from albumentations._version import __version__ as __version__
 # metadata, so docs and dependency-only consumers do not select a CPU, CUDA, or MPS build.
 # The public import graph requires both.
 try:
-    import cv2  # noqa: F401
+    import cv2
 except ModuleNotFoundError as e:
     if e.name != "cv2":
         raise
@@ -23,6 +23,10 @@ except ModuleNotFoundError as e:
         "  pip install albumentationsx[contrib]      # Installs opencv-contrib-python"
     )
     raise ImportError(msg) from e
+
+if tuple(map(int, cv2.__version__.split(".")[:2])) < (5, 1):
+    msg = f"AlbumentationsX requires OpenCV 5.1 or later. Found OpenCV {cv2.__version__}."
+    raise ImportError(msg)
 
 try:
     import torch  # noqa: F401

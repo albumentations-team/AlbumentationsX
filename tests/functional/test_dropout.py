@@ -924,3 +924,17 @@ def test_volume_grayscale_holes_preserve_singleton_width(dtype, channels):
     assert result.shape == source.shape
     assert result.dtype == source.dtype
     np.testing.assert_array_equal(result, expected)
+
+
+@pytest.mark.parametrize("dtype", [np.bool_, np.uint8])
+def test_sample_points_retains_seeded_component_and_pixel_order(dtype):
+    mask = np.array(
+        [[1, 1, 0, 0, 1], [1, 0, 0, 1, 1], [0, 0, 0, 0, 0], [1, 0, 0, 0, 0]],
+        dtype=dtype,
+    )
+    result = fdropout.sample_points_from_components(mask, 3, np.random.default_rng(137))
+    assert result is not None
+    points, sizes = result
+    expected_points = [[1, 0], [0, 1], [0, 0], [4, 0], [4, 1], [3, 1], [0, 3], [0, 3], [0, 3]]
+    np.testing.assert_array_equal(points, expected_points)
+    np.testing.assert_array_equal(sizes, np.asarray([np.sqrt(3)] * 6 + [1] * 3, dtype=np.float32))

@@ -27,6 +27,18 @@ none
 - Contract: [Affine on rasters of different sizes](../geometry.md#affine-on-rasters-of-different-sizes).
 - Tests: [Geometry contracts](../../tests/contracts/test_geometry_contract.py).
 
+### Dropout inpainting honors every nonzero mask value
+
+- Previous behavior: Converting a numeric mask to `uint8` could turn a nonzero value such as `256` into zero,
+  leaving that pixel unchanged.
+- New behavior: Dropout inpainting treats every nonzero mask value as foreground.
+- Affected users: Direct callers of `fill_masked_holes` with a numeric dropout mask and an inpainting fill.
+- Migration: Pass the same mask to use the corrected behavior. Cast the mask to `uint8` before calling the function
+  to reproduce the old pixel selection.
+- First affected version: unreleased
+- Contract: [Interpolation, borders, and fill](../geometry.md#interpolation-borders-and-fill).
+- Tests: [Dropout inpainting tests](../../tests/functional/test_dropout.py).
+
 ## Determinism
 
 none

@@ -942,11 +942,14 @@ def test_sample_points_retains_seeded_component_and_pixel_order(dtype):
 
 
 @pytest.mark.parametrize("shape", [(7, 11, 3), (7, 1, 1), (7, 1)])
-@pytest.mark.parametrize("mask_dtype", [np.bool_, np.int64])
-def test_inpaint_dropout_mask_preserves_dtype_and_spatial_axes(shape, mask_dtype):
+@pytest.mark.parametrize(
+    ("mask_dtype", "foreground_value"),
+    [(np.bool_, True), (np.uint8, 137), (np.int64, 256)],
+)
+def test_inpaint_dropout_mask_preserves_dtype_and_spatial_axes(shape, mask_dtype, foreground_value):
     image = np.random.default_rng(137).integers(0, 256, shape, dtype=np.uint8)
     mask = np.zeros(shape[:2], dtype=mask_dtype)
-    mask[3, 0] = 137
+    mask[3, 0] = foreground_value
     reference_mask = (mask != 0).astype(np.uint8) * 255
     if image.ndim == 3 and image.shape[-1] == 3:
         expected = cv2.inpaint(image, reference_mask, 3, cv2.INPAINT_TELEA)

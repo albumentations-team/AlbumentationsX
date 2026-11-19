@@ -131,6 +131,9 @@ Padding and affine paths that explicitly support reflected annotations can creat
 paths follow the family's coordinate or mask policy, so a raster border mode alone gives no guarantee of copied
 annotations. [Pad and reflection tests](../tests/test_bbox.py) · [Fill tests](../tests/test_crop.py)
 
+With `inpaint_telea` or `inpaint_ns`, the dropout function `fill_masked_holes` inpaints every nonzero pixel in the
+two-dimensional dropout mask.
+
 ## Rules and tests by family
 
 The [transform case registry](../tests/helpers/transform_cases.py) is the source of constructor modes. The audit starts

@@ -200,10 +200,11 @@ def apply_inpainting_to_mask(
 ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Inpaint an arbitrary two-dimensional dropout mask."""
     img, input_dtype = to_uint8_working_image(img)
-    mask = dropout_mask.astype(np.uint8) * 255
+    mask = dropout_mask if dropout_mask.dtype in (np.bool_, np.uint8) else dropout_mask.astype(np.uint8)
     inpaint_method = cv2.INPAINT_TELEA if method == "inpaint_telea" else cv2.INPAINT_NS
     if get_num_channels(img) == 1:
-        result = cv2.inpaint(cv2.cvtColor(img.squeeze(), cv2.COLOR_GRAY2BGR), mask, 3, inpaint_method)
+        gray = img[..., 0] if img.ndim == 3 else img
+        result = cv2.inpaint(cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR), mask, 3, inpaint_method)
         result = cast("ImageUInt8", cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)[..., None])
         return restore_uint8_working_image(result, input_dtype)
     result = cast("ImageUInt8", cv2.inpaint(img, mask, 3, inpaint_method))
@@ -961,26 +962,20 @@ def label(mask: np.ndarray, return_num: bool = False, connectivity: int = 2) -> 
         assigned the same integer value. If return_num is True, it also returns the number of labels.
 
     """
-    labeled = np.zeros_like(mask, dtype=np.int32)
+    values = np.unique(mask[mask != 0])
+    if not values.size:
+        labeled = np.zeros_like(mask, dtype=np.int32)
+        return (labeled, 0) if return_num else labeled
 
-    unique_values = np.unique(mask[mask != 0])
-
-    # Label each unique value separately
-    next_label = 1
-    for value in unique_values:
-        binary_mask = (mask == value).astype(np.uint8)
-
-        cv2_connectivity = 4 if connectivity == 1 else 8
-
-        # Use OpenCV's connectedComponents
-        num_labels, labels = cv2.connectedComponents(binary_mask, connectivity=cv2_connectivity)
-
-        # Assign new labels
-        for i in range(1, num_labels):
-            labeled[labels == i] = next_label
-            next_label += 1
-
-    num_labels = next_label - 1
+    cv2_connectivity = 4 if connectivity == 1 else 8
+    num_labels, labels = cv2.connectedComponents(mask == values[0], connectivity=cv2_connectivity)
+    labeled = labels.reshape(mask.shape)
+    num_labels -= 1
+    for value in values[1:]:
+        foreground = mask == value
+        component_count, components = cv2.connectedComponents(foreground, connectivity=cv2_connectivity)
+        np.add(components.reshape(mask.shape), num_labels, out=labeled, where=foreground)
+        num_labels += component_count - 1
 
     return (labeled, num_labels) if return_num else labeled
 
@@ -1052,42 +1047,33 @@ def sample_points_from_components(
         tuple[np.ndarray, np.ndarray] | None: Tuple of (x_coordinates, y_coordinates) or None if no valid components
 
     """
-    num_labels, labels = cv2.connectedComponents(mask.astype(np.uint8))
-
-    if num_labels == 1:  # Only background
+    binary_mask = mask if mask.dtype == np.bool_ else mask.astype(np.uint8, copy=False)
+    num_labels, labels = cv2.connectedComponents(binary_mask)
+    if num_labels <= 1:
         return None
 
-    y_coords, x_coords = np.nonzero(labels)
-    component_labels = labels[y_coords, x_coords]
-    foreground_mask = component_labels > 0
-
-    if not np.any(foreground_mask):
-        return None
-
-    y_coords = y_coords[foreground_mask]
-    x_coords = x_coords[foreground_mask]
-    component_labels = component_labels[foreground_mask]
-
+    flat_labels = labels.ravel()
+    points = np.flatnonzero(flat_labels)
+    component_labels = flat_labels[points]
     order = np.argsort(component_labels, kind="stable")
-    y_coords = y_coords[order]
-    x_coords = x_coords[order]
-    component_labels = component_labels[order]
+    points = points[order]
+    sorted_labels = component_labels[order]
+    starts = np.flatnonzero(np.r_[True, sorted_labels[1:] != sorted_labels[:-1]])
+    counts = np.diff(starts, append=sorted_labels.size)
 
-    _, starts, counts = np.unique(component_labels, return_index=True, return_counts=True)
-
-    num_components = len(starts)
-    centers = np.empty((num_components * num_points, 2), dtype=np.int32)
-    obj_sizes = np.empty(num_components * num_points, dtype=np.float32)
+    sampled_points = np.empty(len(starts) * num_points, dtype=np.intp)
+    obj_sizes = np.empty(sampled_points.size, dtype=np.float32)
 
     offset = 0
     for start, count in zip(starts, counts, strict=True):
         sampled_indices = start + random_generator.integers(0, count, size=num_points)
         next_offset = offset + num_points
-        centers[offset:next_offset, 0] = x_coords[sampled_indices]
-        centers[offset:next_offset, 1] = y_coords[sampled_indices]
+        sampled_points[offset:next_offset] = points[sampled_indices]
         obj_sizes[offset:next_offset] = np.sqrt(count)
         offset = next_offset
 
+    centers = np.empty((sampled_points.size, 2), dtype=np.int32)
+    np.divmod(sampled_points, labels.shape[1], out=(centers[:, 1], centers[:, 0]))
     return centers, obj_sizes
 
 

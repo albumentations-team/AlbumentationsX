@@ -43,6 +43,7 @@ from pydantic import (
 
 import albumentations.augmentations.pixel.functional as fpixel
 from albumentations.augmentations.utils import check_range
+from albumentations.core.bbox_utils import BboxProcessor
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import (
     check_range_bounds,
@@ -67,7 +68,12 @@ from albumentations.core.type_definitions import (
 )
 
 from . import functional as fgeometric
-from ._functional_distortion import _tps_transform_grid, remap_fisheye_bboxes, remap_fisheye_keypoints
+from ._functional_distortion import (
+    _tps_transform_grid,
+    fisheye_inverse_is_monotone,
+    remap_fisheye_bboxes,
+    remap_fisheye_keypoints,
+)
 
 __all__ = [
     "ElasticTransform",
@@ -656,7 +662,8 @@ class OpticalDistortion(BaseDistortion):
         - The distortion coefficient (k) is randomly sampled from the distort_range range.
         - Bounding boxes and keypoints are transformed along with the image to maintain consistency.
         - With a full-resolution fisheye map, constant border, and a sampled coefficient in [-0.3, 0.3],
-          keypoints and box outlines are transformed geometrically. Fully invisible boxes are dropped.
+          keypoints and box outlines are transformed geometrically if the radius mapping is monotone in the frame.
+          Boxes must retain a visible contour and meet BboxParams.min_visibility.
           KeypointParams.remove_invisible controls whether points outside the frame are kept.
           The keypoint remapping method selects how points are handled for other settings.
 
@@ -728,6 +735,7 @@ class OpticalDistortion(BaseDistortion):
             and self.border_mode == CV2_BORDER_CONSTANT
             and scaled_shape == image_shape
             and -0.3 <= distortion <= 0.3
+            and fisheye_inverse_is_monotone(image_shape, distortion)
             else None
         )
 
@@ -777,7 +785,9 @@ class OpticalDistortion(BaseDistortion):
         **params: Any,
     ) -> np.ndarray:
         if analytic_distortion is not None:
-            return remap_fisheye_bboxes(bboxes, shape[:2], analytic_distortion, bbox_type)
+            processor = self.get_processor("bboxes")
+            min_visibility = processor.params.min_visibility if isinstance(processor, BboxProcessor) else 0.0
+            return remap_fisheye_bboxes(bboxes, shape[:2], analytic_distortion, bbox_type, min_visibility)
         return super().apply_to_bboxes(bboxes, map_x, map_y, shape, bbox_type, **params)
 
     def _apply_to_optical_keypoints(

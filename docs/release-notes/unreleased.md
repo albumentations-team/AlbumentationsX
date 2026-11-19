@@ -32,9 +32,9 @@ none
 - Previous behavior: OpticalDistortion rasterized boxes to masks and could return original coordinates for a box
   whose entire support left the frame. Keypoints used a raster mask or an inverse pixel grid.
 - New behavior: For a full-resolution fisheye map with constant border and a coefficient in `[-0.3, 0.3]`,
-  OpticalDistortion inverts the radial map at keypoints and along sampled box edges. It refits boxes to their
-  visible contours and removes boxes with no visible contour. `KeypointParams.remove_invisible` controls whether
-  out-of-frame keypoints and their labels are kept.
+  OpticalDistortion uses the inverse radial map for keypoints and sampled box edges when the map is monotone in
+  the frame. It fits boxes to the visible contour and applies `BboxParams.min_visibility` to the retained area
+  fraction. `KeypointParams.remove_invisible` controls whether out-of-frame keypoints and their labels are kept.
 - Affected users: Pipelines that pass keypoints, HBBs or OBBs to `OpticalDistortion(mode="fisheye")` in this range.
 - Migration: Update cached annotations or expected boxes and keypoints using the new transform. Pin the previous
   version when reproducing an augmentation run that relied on raster-rounded coordinates or retained boxes.

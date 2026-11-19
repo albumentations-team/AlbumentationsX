@@ -181,8 +181,11 @@ The same registry includes 2D dual cases whose annotation semantics follow a dif
 ## OpticalDistortion annotation geometry
 
 With a full-resolution `mode="fisheye"` map, constant border, and a sampled `distort_range` coefficient
-between −0.3 and 0.3, `OpticalDistortion` inverts the radial map at keypoints and at points sampled along box edges.
+between −0.3 and 0.3, `OpticalDistortion` inverts the radial map at keypoints and sampled box edges if the radius
+mapping is monotone throughout the frame.
 It clips box contours to the source and output frames, then fits a horizontal or oriented rectangle to the visible
-contour. Boxes with no visible contour are removed along with their labels. `KeypointParams.remove_invisible` controls
+contour. `BboxParams.min_visibility` compares the clipped contour area with its area before output clipping, using a
+linear extension of the radial inverse beyond the frame when necessary. Boxes with no visible contour are removed
+along with their labels. `KeypointParams.remove_invisible` controls
 whether out-of-frame keypoints and their labels are kept. Masks and images use the raster map.
 For other configurations, `keypoint_remapping_method` selects the existing point remapping algorithm.

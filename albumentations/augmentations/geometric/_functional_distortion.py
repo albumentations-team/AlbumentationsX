@@ -718,23 +718,35 @@ def get_fisheye_distortion_maps(
     return map_x, map_y
 
 
+def fisheye_inverse_is_monotone(image_shape: tuple[int, int], distortion: float) -> bool:
+    """Check that the radial map is increasing through the farthest frame corner."""
+    height, width = image_shape
+    return -3 * distortion * ((width + 1) ** 2 + (height + 1) ** 2) < width**2 + height**2
+
+
 def _invert_fisheye_coordinates(
     points: np.ndarray,
     image_shape: tuple[int, int],
     distortion: float,
+    *,
+    edge_coordinates: bool = False,
 ) -> np.ndarray:
     height, width = image_shape
-    center = np.array((width / 2, height / 2), dtype=np.float64)
+    origin_shift = 0.5 if edge_coordinates else 0.0
+    center = np.array((width / 2 + origin_shift, height / 2 + origin_shift), dtype=np.float64)
     offsets = points - center
-    radius = np.hypot(offsets[..., 0], offsets[..., 1]) / hypot(*center)
+    diagonal = hypot(width, height)
+    radius = np.hypot(offsets[..., 0], offsets[..., 1]) / (diagonal / 2)
     # Solve t + distortion * t**3 = radius on the branch that contains the image center.
     root = sqrt(3 * abs(distortion))
     if distortion > 0:
         output_radius = 2 / root * np.sinh(np.arcsinh(1.5 * root * radius) / 3)
     else:
-        boundary = 1 + distortion
+        frame_radius = hypot(width + 1, height + 1) / diagonal
+        boundary = frame_radius * (1 + distortion * frame_radius**2)
         bounded_radius = np.minimum(radius, boundary)
-        output_radius = 2 / root * np.sin(np.arcsin(1.5 * root * bounded_radius) / 3)
+        argument = np.minimum(1.5 * root * bounded_radius, 1)
+        output_radius = 2 / root * np.sin(np.arcsin(argument) / 3)
         # This continuation lies beyond the output corners. It lets us clip crossing box edges.
         output_radius += np.maximum(radius - boundary, 0) / (1 + 3 * distortion)
 
@@ -788,7 +800,7 @@ def _sample_polygon_edges(polygon: np.ndarray) -> np.ndarray:
     return (polygon[:, None, :] + edges[:, None, :] * steps[:, None]).reshape(-1, 2)
 
 
-def _visible_fisheye_polygon(
+def _fisheye_box_outline(
     corners: np.ndarray,
     image_shape: tuple[int, int],
     distortion: float,
@@ -796,8 +808,25 @@ def _visible_fisheye_polygon(
     source = _clip_polygon_to_frame(corners, image_shape)
     if len(source) < 3:
         return source
-    outline = _invert_fisheye_coordinates(_sample_polygon_edges(source), image_shape, distortion)
-    return _clip_polygon_to_frame(outline, image_shape)
+    return _invert_fisheye_coordinates(_sample_polygon_edges(source), image_shape, distortion, edge_coordinates=True)
+
+
+def _visible_fisheye_outline(
+    outline: np.ndarray,
+    image_shape: tuple[int, int],
+    min_visibility: float,
+) -> np.ndarray:
+    visible = _clip_polygon_to_frame(outline, image_shape)
+    if len(visible) < 3:
+        return visible[:0]
+    visible_area = cv2.contourArea(visible.astype(np.float32))
+    if visible_area <= 0:
+        return visible[:0]
+    if min_visibility > 0 and visible is not outline:
+        full_area = cv2.contourArea(outline.astype(np.float32))
+        if visible_area < min_visibility * full_area:
+            return visible[:0]
+    return visible
 
 
 def _fit_fisheye_boxes(
@@ -822,6 +851,7 @@ def remap_fisheye_bboxes(
     image_shape: tuple[int, int],
     distortion: float,
     bbox_type: Literal["hbb", "obb"],
+    min_visibility: float = 0.0,
 ) -> np.ndarray:
     """Fit boxes to their visible, transformed outlines without rasterizing them."""
     if not len(bboxes) or distortion == 0:
@@ -832,10 +862,11 @@ def remap_fisheye_bboxes(
     visible_indices = []
     outlines = []
     for index, polygon in enumerate(corners):
-        outline = _visible_fisheye_polygon(polygon, image_shape, distortion)
-        if len(outline) >= 3 and cv2.contourArea(outline.astype(np.float32)) > 0:
+        outline = _fisheye_box_outline(polygon, image_shape, distortion)
+        visible = _visible_fisheye_outline(outline, image_shape, min_visibility)
+        if len(visible):
             visible_indices.append(index)
-            outlines.append(outline)
+            outlines.append(visible)
 
     if not outlines:
         return bboxes[:0]

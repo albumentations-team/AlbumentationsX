@@ -1157,7 +1157,7 @@ def filter_bboxes_with_mask(
         (denormalized_box_areas >= epsilon)
         & (clipped_box_areas >= epsilon)
         & (clipped_box_areas >= min_area - epsilon)
-        & (clipped_box_areas / (denormalized_box_areas + epsilon) >= min_visibility)
+        & (clipped_box_areas >= min_visibility * denormalized_box_areas)
         & (clipped_widths >= min_width - epsilon)
         & (clipped_heights >= min_height - epsilon)
         & valid_ratios
@@ -1204,7 +1204,7 @@ def _filter_hbb_with_mask(
         (original_areas >= epsilon)
         & (clipped_areas >= epsilon)
         & (clipped_areas >= min_area - epsilon)
-        & (clipped_areas / (original_areas + epsilon) >= min_visibility)
+        & (clipped_areas >= min_visibility * original_areas)
         & (clipped_widths >= min_width - epsilon)
         & (clipped_heights >= min_height - epsilon)
     )

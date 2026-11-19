@@ -1,3 +1,4 @@
+import cv2
 import numpy as np
 import pytest
 from albucore import MAX_VALUES_BY_DTYPE
@@ -938,3 +939,26 @@ def test_sample_points_retains_seeded_component_and_pixel_order(dtype):
     expected_points = [[1, 0], [0, 1], [0, 0], [4, 0], [4, 1], [3, 1], [0, 3], [0, 3], [0, 3]]
     np.testing.assert_array_equal(points, expected_points)
     np.testing.assert_array_equal(sizes, np.asarray([np.sqrt(3)] * 6 + [1] * 3, dtype=np.float32))
+
+
+@pytest.mark.parametrize("shape", [(7, 11, 3), (7, 1, 1), (7, 1)])
+@pytest.mark.parametrize("mask_dtype", [np.bool_, np.int64])
+def test_inpaint_dropout_mask_preserves_dtype_and_spatial_axes(shape, mask_dtype):
+    image = np.random.default_rng(137).integers(0, 256, shape, dtype=np.uint8)
+    mask = np.zeros(shape[:2], dtype=mask_dtype)
+    mask[3, 0] = 137
+    reference_mask = (mask != 0).astype(np.uint8) * 255
+    if image.ndim == 3 and image.shape[-1] == 3:
+        expected = cv2.inpaint(image, reference_mask, 3, cv2.INPAINT_TELEA)
+    else:
+        gray = image.reshape(shape[:2])
+        color = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+        expected = cv2.cvtColor(
+            cv2.inpaint(color, reference_mask, 3, cv2.INPAINT_TELEA),
+            cv2.COLOR_BGR2GRAY,
+        )[..., None]
+
+    result = fdropout.apply_inpainting_to_mask(image, mask, "inpaint_telea")
+
+    assert result.dtype == image.dtype
+    np.testing.assert_array_equal(result, expected)

@@ -200,12 +200,14 @@ def apply_inpainting_to_mask(
 ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     """Inpaint an arbitrary two-dimensional dropout mask."""
     img, input_dtype = to_uint8_working_image(img)
+    mask = dropout_mask if dropout_mask.dtype in (np.bool_, np.uint8) else dropout_mask.astype(np.uint8)
     inpaint_method = cv2.INPAINT_TELEA if method == "inpaint_telea" else cv2.INPAINT_NS
     if get_num_channels(img) == 1:
-        result = cv2.inpaint(cv2.cvtColor(img.squeeze(), cv2.COLOR_GRAY2BGR), dropout_mask, 3, inpaint_method)
+        gray = img[..., 0] if img.ndim == 3 else img
+        result = cv2.inpaint(cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR), mask, 3, inpaint_method)
         result = cast("ImageUInt8", cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)[..., None])
         return restore_uint8_working_image(result, input_dtype)
-    result = cast("ImageUInt8", cv2.inpaint(img, dropout_mask, 3, inpaint_method))
+    result = cast("ImageUInt8", cv2.inpaint(img, mask, 3, inpaint_method))
     return restore_uint8_working_image(result, input_dtype)
 
 

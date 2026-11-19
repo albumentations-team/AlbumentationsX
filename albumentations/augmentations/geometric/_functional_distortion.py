@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import cast
+from math import hypot, sqrt
+from typing import Literal, cast
 
 from albucore import pairwise_distances_squared
+
+from albumentations.core.bbox_utils import denormalize_bboxes, normalize_bboxes, obb_to_polygons, polygons_to_obb
 
 from ._functional_shared import (
     cv2,
@@ -713,6 +716,134 @@ def get_fisheye_distortion_maps(
     map_y = y * distortion_scale + center_y
 
     return map_x, map_y
+
+
+def _invert_fisheye_coordinates(
+    points: np.ndarray,
+    image_shape: tuple[int, int],
+    distortion: float,
+) -> np.ndarray:
+    height, width = image_shape
+    center = np.array((width / 2, height / 2), dtype=np.float64)
+    offsets = points - center
+    radius = np.hypot(offsets[..., 0], offsets[..., 1]) / hypot(*center)
+    # Solve t + distortion * t**3 = radius on the branch that contains the image center.
+    root = sqrt(3 * abs(distortion))
+    if distortion > 0:
+        output_radius = 2 / root * np.sinh(np.arcsinh(1.5 * root * radius) / 3)
+    else:
+        boundary = 1 + distortion
+        bounded_radius = np.minimum(radius, boundary)
+        output_radius = 2 / root * np.sin(np.arcsin(1.5 * root * bounded_radius) / 3)
+        # This continuation lies beyond the output corners. It lets us clip crossing box edges.
+        output_radius += np.maximum(radius - boundary, 0) / (1 + 3 * distortion)
+
+    scale = np.divide(output_radius, radius, out=np.ones_like(radius), where=radius > 0)
+    return center + offsets * scale[..., None]
+
+
+def remap_fisheye_keypoints(
+    keypoints: np.ndarray,
+    image_shape: tuple[int, int],
+    distortion: float,
+) -> np.ndarray:
+    """Invert the full-resolution radial map at visible keypoint coordinates."""
+    if not len(keypoints) or distortion == 0:
+        return keypoints
+
+    height, width = image_shape
+    coords = _invert_fisheye_coordinates(keypoints[:, :2], image_shape, distortion)
+    visible = ((coords >= 0) & (coords < (width, height))).all(axis=1)
+    result = keypoints[visible]
+    result[:, :2] = coords[visible]
+    return result
+
+
+def _clip_polygon_to_frame(polygon: np.ndarray, image_shape: tuple[int, int]) -> np.ndarray:
+    height, width = image_shape
+    for axis, limit, lower in ((0, 0, True), (0, width, False), (1, 0, True), (1, height, False)):
+        coords = polygon[:, axis]
+        inside = coords >= limit if lower else coords <= limit
+        if inside.all():
+            continue
+        if not inside.any():
+            return polygon[:0]
+
+        crossing = inside != np.roll(inside, 1)
+        crossings = np.flatnonzero(crossing)
+        previous = polygon[crossings - 1]
+        delta = polygon[crossings] - previous
+        intersections = previous + delta * ((limit - previous[:, axis]) / delta[:, axis])[:, None]
+        intersections[:, axis] = limit
+        # Insert crossings before the current vertex and keep all inside vertices in order.
+        counts = np.cumsum(inside.astype(np.intp) + crossing)
+        clipped = np.empty((counts[-1], 2), dtype=polygon.dtype)
+        clipped[counts[inside] - 1] = polygon[inside]
+        clipped[counts[crossings] - 1 - inside[crossings]] = intersections
+        polygon = clipped
+    return polygon
+
+
+def _sample_polygon_edges(polygon: np.ndarray) -> np.ndarray:
+    steps = np.arange(16, dtype=np.float64) / 16
+    edges = np.roll(polygon, -1, axis=0) - polygon
+    return (polygon[:, None, :] + edges[:, None, :] * steps[:, None]).reshape(-1, 2)
+
+
+def _visible_fisheye_polygon(
+    corners: np.ndarray,
+    image_shape: tuple[int, int],
+    distortion: float,
+) -> np.ndarray:
+    source = _clip_polygon_to_frame(corners, image_shape)
+    if len(source) < 3:
+        return source
+    outline = _invert_fisheye_coordinates(_sample_polygon_edges(source), image_shape, distortion)
+    return _clip_polygon_to_frame(outline, image_shape)
+
+
+def _fit_fisheye_boxes(
+    outlines: list[np.ndarray],
+    bbox_type: Literal["hbb", "obb"],
+) -> np.ndarray:
+    if bbox_type == "hbb":
+        return np.array([(*outline.min(axis=0), *outline.max(axis=0)) for outline in outlines])
+
+    # Repeated vertices let the shared fitter handle contours with different numbers of points.
+    length = max(map(len, outlines))
+    polygons = np.empty((len(outlines), length, 2), dtype=np.float32)
+    for index, outline in enumerate(outlines):
+        vertices = len(outline)
+        polygons[index, :vertices] = outline
+        polygons[index, vertices:] = outline[-1]
+    return polygons_to_obb(polygons)
+
+
+def remap_fisheye_bboxes(
+    bboxes: np.ndarray,
+    image_shape: tuple[int, int],
+    distortion: float,
+    bbox_type: Literal["hbb", "obb"],
+) -> np.ndarray:
+    """Fit boxes to their visible, transformed outlines without rasterizing them."""
+    if not len(bboxes) or distortion == 0:
+        return bboxes
+
+    pixels = denormalize_bboxes(bboxes, image_shape)
+    corners = pixels[:, np.array([[0, 1], [2, 1], [2, 3], [0, 3]])] if bbox_type == "hbb" else obb_to_polygons(pixels)
+    visible_indices = []
+    outlines = []
+    for index, polygon in enumerate(corners):
+        outline = _visible_fisheye_polygon(polygon, image_shape, distortion)
+        if len(outline) >= 3 and cv2.contourArea(outline.astype(np.float32)) > 0:
+            visible_indices.append(index)
+            outlines.append(outline)
+
+    if not outlines:
+        return bboxes[:0]
+    fitted = _fit_fisheye_boxes(outlines, bbox_type)
+    coordinates = normalize_bboxes(fitted, image_shape)
+    return np.column_stack((coordinates, bboxes[visible_indices, fitted.shape[1] :]))
 
 
 def generate_control_points(num_control_points: int) -> np.ndarray:

@@ -28,7 +28,7 @@ target types.
 """
 
 from collections.abc import Mapping
-from typing import Annotated, Any, Literal, Self
+from typing import Annotated, Any, ClassVar, Literal, Self
 
 import numpy as np
 from albucore import remap
@@ -67,7 +67,7 @@ from albumentations.core.type_definitions import (
 )
 
 from . import functional as fgeometric
-from ._functional_distortion import _tps_transform_grid
+from ._functional_distortion import _tps_transform_grid, remap_fisheye_bboxes, remap_fisheye_keypoints
 
 __all__ = [
     "ElasticTransform",
@@ -652,10 +652,12 @@ class OpticalDistortion(BaseDistortion):
     Supported bboxes:
         hbb, obb
     Note:
-        - The distortion is applied using OpenCV's initUndistortRectifyMap and remap functions.
+        - Camera mode builds its raster map with OpenCV. Fisheye mode builds a radial map.
         - The distortion coefficient (k) is randomly sampled from the distort_range range.
         - Bounding boxes and keypoints are transformed along with the image to maintain consistency.
-        - Fisheye model directly applies radial distortion
+        - With a full-resolution fisheye map, constant border, and a sampled coefficient in [-0.3, 0.3],
+          keypoints and box outlines are transformed geometrically. Fully invisible annotations are dropped.
+          The keypoint remapping method selects how points are handled for other settings.
 
     Examples:
         >>> import albumentations as A
@@ -669,6 +671,12 @@ class OpticalDistortion(BaseDistortion):
         >>> transformed_keypoints = transformed['keypoints']
 
     """
+
+    _target_apply_methods: ClassVar[Mapping[str, str]] = {
+        "volume": "apply_to_images",
+        "bboxes": "_apply_to_optical_bboxes",
+        "keypoints": "_apply_to_optical_keypoints",
+    }
 
     class InitSchema(BaseDistortion.InitSchema):
         distort_range: tuple[float, float]
@@ -711,32 +719,78 @@ class OpticalDistortion(BaseDistortion):
         image_shape = targets.require_aligned_spatial_shape(2)
         _, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
 
-        k = sampling.py_random.uniform(*self.distort_range)
+        distortion = sampling.py_random.uniform(*self.distort_range)
+        sampling.applied_overrides["distort_range"] = distortion
+        analytic_distortion = (
+            distortion
+            if self.mode == "fisheye"
+            and self.border_mode == CV2_BORDER_CONSTANT
+            and scaled_shape == image_shape
+            and -0.3 <= distortion <= 0.3
+            else None
+        )
 
-        sampling.applied_overrides["distort_range"] = k
-
-        if k == 0:
+        if distortion == 0:
             height, width = image_shape
             map_y, map_x = np.meshgrid(
                 np.arange(height, dtype=np.float32),
                 np.arange(width, dtype=np.float32),
                 indexing="ij",
             )
-            return SampledParams(params={"map_x": map_x, "map_y": map_y})
+            return SampledParams(
+                params={
+                    "map_x": map_x,
+                    "map_y": map_y,
+                    "analytic_distortion": analytic_distortion,
+                }
+            )
 
         if self.mode == "camera":
             map_x, map_y = fgeometric.get_camera_matrix_distortion_maps(
                 scaled_shape,
-                k,
+                distortion,
             )
         else:
             map_x, map_y = fgeometric.get_fisheye_distortion_maps(
                 scaled_shape,
-                k,
+                distortion,
             )
         map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
-        return SampledParams(params={"map_x": map_x, "map_y": map_y})
+        return SampledParams(
+            params={
+                "map_x": map_x,
+                "map_y": map_y,
+                "analytic_distortion": analytic_distortion,
+            }
+        )
+
+    def _apply_to_optical_bboxes(
+        self,
+        bboxes: np.ndarray,
+        map_x: np.ndarray,
+        map_y: np.ndarray,
+        shape: tuple[int, int],
+        bbox_type: Literal["hbb", "obb"],
+        analytic_distortion: float | None,
+        **params: Any,
+    ) -> np.ndarray:
+        if analytic_distortion is not None:
+            return remap_fisheye_bboxes(bboxes, shape[:2], analytic_distortion, bbox_type)
+        return super().apply_to_bboxes(bboxes, map_x, map_y, shape, bbox_type, **params)
+
+    def _apply_to_optical_keypoints(
+        self,
+        keypoints: np.ndarray,
+        map_x: np.ndarray,
+        map_y: np.ndarray,
+        shape: tuple[int, int],
+        analytic_distortion: float | None,
+        **params: Any,
+    ) -> np.ndarray:
+        if analytic_distortion is not None:
+            return remap_fisheye_keypoints(keypoints, shape[:2], analytic_distortion)
+        return super().apply_to_keypoints(keypoints, map_x, map_y, shape, **params)
 
 
 class GridDistortion(BaseDistortion):

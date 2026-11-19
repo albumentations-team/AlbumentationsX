@@ -176,3 +176,12 @@ The same registry includes 2D dual cases whose annotation semantics follow a dif
   alignment. Extended profiles check empty HBB, OBB, and keypoint inputs with their label fields. Keep exact
   same-environment replay checks where the case declares them. [Stability modes](maintaining/correctness-contracts.md) ·
   [Target profile assertions](../tests/helpers/target_profiles.py)
+
+
+## OpticalDistortion annotation geometry
+
+With a full-resolution `mode="fisheye"` map, constant border, and a sampled `distort_range` coefficient
+between −0.3 and 0.3, `OpticalDistortion` inverts the radial map at keypoints and at points sampled along box edges.
+It clips box contours to the source and output frames, then fits a horizontal or oriented rectangle to the visible
+contour. Fully invisible annotations are removed along with their labels. Masks and images use the raster map.
+For other configurations, `keypoint_remapping_method` selects the existing point remapping algorithm.

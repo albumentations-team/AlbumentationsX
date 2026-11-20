@@ -51,6 +51,17 @@ and [2.6.0](2.6.0.md).
 - Contract: [OpticalDistortion annotation geometry](../geometry.md#opticaldistortion-annotation-geometry).
 - Tests: [OpticalDistortion annotation tests](../../tests/test_optical_distortion_annotations.py).
 
+### GridElasticDeform handles cells without an invertible homography
+
+- Previous behavior: Collapsed cells could produce image and annotation results from a non-invertible warp.
+- New behavior: Cells with collinear destination corners stay at their source rectangles. Source rectangles without
+  area contribute no warp. Images and annotations use the same recovered grid.
+- Affected users: Pipelines and saved replays in which a fine grid or a large displacement collapses a cell.
+- Migration: Regenerate expected outputs for samples with collapsed cells.
+- First affected version: unreleased
+- Contract: [Grid elastic deformation](../geometry.md).
+- Tests: [Geometry contracts](../../tests/contracts/test_geometry_contract.py).
+
 ### Dropout inpainting honors every nonzero mask value
 
 - Previous behavior: Converting a numeric mask to `uint8` could turn a nonzero value such as `256` into zero,

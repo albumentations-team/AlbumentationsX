@@ -519,6 +519,30 @@ def test_grid_elastic_shares_cell_matrices_across_targets(mocker, legacy_replay)
     assert fit_matrix.call_count == 4
 
 
+def test_grid_elastic_recovers_cells_without_a_homography():
+    image = np.arange(1, 65, dtype=np.uint8).reshape(8, 8)
+    mask = np.zeros_like(image)
+    mask[2:6, 2:6] = 3
+    data = {"image": image, "mask": mask, "keypoints": [(4, 4)]}
+    pipeline = A.ReplayCompose(
+        [A.GridElasticDeform((2, 2), 2, interpolation=cv2.INTER_NEAREST)],
+        keypoint_params=A.KeypointParams(coord_format="xy"),
+    )
+    mesh = np.array(
+        [
+            [0, 0, 8, 8, 0, 0, 8, 0, 4, 0, 0, 8],
+            [3, 1, 3, 4, 0, 0, 3, 0, 3, 3, 0, 3],
+        ],
+        dtype=np.float32,
+    )
+
+    result = _replay_with_params(pipeline, data, {"generated_mesh": mesh, "shape": (8, 8, 1)})
+
+    np.testing.assert_array_equal(result["image"], image)
+    np.testing.assert_array_equal(result["mask"], mask)
+    np.testing.assert_array_equal(result["keypoints"], [[4, 4]])
+
+
 def test_grid_elastic_warps_bbox_masks_on_wide_images():
     image = np.zeros((16, 640, 3), dtype=np.uint8)
     mask = np.zeros(image.shape[:2], dtype=np.uint8)

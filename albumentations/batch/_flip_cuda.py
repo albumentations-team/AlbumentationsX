@@ -1,14 +1,12 @@
 """Optional Triton kernel for in-place flips of contiguous BCHW CUDA rasters."""
 
 from importlib import import_module
-from subprocess import SubprocessError
 from typing import Any
 
 import torch
 
 triton: Any = import_module("triton")
 tl: Any = import_module("triton.language")
-_triton_error: type[Exception] = import_module("triton.errors").TritonError
 _BLOCK_SIZE = 512
 _MAX_GRID_X = 2**31 - 1
 
@@ -71,7 +69,7 @@ def try_flip(values: torch.Tensor, selected: torch.Tensor, dim: int) -> bool:
             if kernel is None:
                 return False
             launch = kernel[grid]
-        except (AttributeError, ImportError, OSError, RuntimeError, SubprocessError, _triton_error):
+        except Exception:  # noqa: BLE001 -- Triton and its driver use no common preparation exception.
             return False
         # A launch error must propagate. Retrying after a write could undo the flip.
         launch(*args)

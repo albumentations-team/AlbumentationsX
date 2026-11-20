@@ -616,14 +616,39 @@ def test_cuda_flip_without_triton(monkeypatch: pytest.MonkeyPatch) -> None:
         flipping._cuda_flip_backend.cache_clear()
 
 
-def test_cuda_flip_falls_back_before_launch(triton_flip_backend: ModuleType) -> None:
-    values = torch.arange(60, device="cuda", dtype=torch.float32).reshape(4, 1, 3, 5)
-    plan = FlipPlan("vertical", torch.ones(4, device=values.device, dtype=torch.bool))
-    expected = _reverse(values, "vertical")
+@pytest.mark.usefixtures("triton_flip_backend")
+def test_cuda_flip_invalid_triton_arch(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TRITON_OVERRIDE_ARCH", "invalid")
+    values = torch.arange(24, dtype=torch.float32, device="cuda").reshape(2, 1, 3, 4)
+    plan = FlipPlan("horizontal", torch.tensor([True, False], device=values.device))
+    expected = values.clone()
+    expected[0].copy_(_reverse(values[0], "horizontal"))
+    assert apply_flip_(values, plan) is values
+    assert torch.equal(values, expected)
+
+
+@pytest.mark.parametrize(
+    ("stage", "error"),
+    [
+        ("warmup", RuntimeError("Compiler unavailable")),
+        ("warmup", ValueError("Invalid architecture")),
+        ("launcher", AssertionError("CUDA driver library unavailable")),
+    ],
+    ids=["compiler", "architecture", "driver"],
+)
+def test_cuda_flip_falls_back_before_launch(triton_flip_backend: ModuleType, stage: str, error: Exception) -> None:
+    values = torch.arange(24, dtype=torch.float32, device="cuda").reshape(2, 1, 3, 4)
+    plan = FlipPlan("vertical", torch.tensor([False, True], device=values.device))
+    expected = values.clone()
+    expected[1].copy_(_reverse(values[1], "vertical"))
     with (
-        patch.object(triton_flip_backend._swap_pairs, "warmup", side_effect=RuntimeError("Compiler unavailable")),
+        patch.object(triton_flip_backend._swap_pairs, "warmup") as prepare,
         patch.object(flipping, "_flip_cuda_indexed", wraps=flipping._flip_cuda_indexed) as hybrid,
     ):
+        if stage == "warmup":
+            prepare.side_effect = error
+        else:
+            prepare.return_value.__getitem__.side_effect = error
         assert apply_flip_(values, plan) is values
     hybrid.assert_called_once()
     assert torch.equal(values, expected)

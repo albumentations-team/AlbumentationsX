@@ -545,11 +545,11 @@ def image_compression(
     """
     num_channels = 1 if img.ndim == 2 else get_num_channels(img)
     if num_channels == 4:
-        rgb = _compress_image_channels(img[..., :NUM_RGB_CHANNELS], quality, image_type, NUM_RGB_CHANNELS)
-        result = np.empty_like(img, order="C")
-        result[..., :NUM_RGB_CHANNELS] = rgb
-        result[..., 3] = img[..., 3]
-        return result
+        # Pack RGB before dtype conversion so the codec path reads contiguous pixels, including for float16.
+        rgb = np.empty((*img.shape[:2], NUM_RGB_CHANNELS), dtype=img.dtype)
+        cv2.mixChannels([img], [rgb], [0, 0, 1, 1, 2, 2])
+        decoded = _compress_image_channels(rgb, quality, image_type, NUM_RGB_CHANNELS)
+        return cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", cv2.merge((decoded, img[..., 3])))
     return _compress_image_channels(img, quality, image_type, num_channels)
 
 

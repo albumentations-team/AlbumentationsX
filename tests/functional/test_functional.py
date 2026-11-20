@@ -1350,7 +1350,7 @@ def _opencv_compression(image, quality, image_type, read_mode):
 
 def _check_rgba_compression(image, quality, image_type):
     original = image.copy()
-    expected_rgb = fpixel.image_compression(original[..., :3], quality, image_type)
+    expected_rgb = fpixel.image_compression(image[..., :3], quality, image_type)
     result = fpixel.image_compression(image, quality, image_type)
 
     assert result.shape == original.shape
@@ -1403,6 +1403,16 @@ def test_image_compression_rgba_float_precision(image_type, quality, dtype):
     image[:, ::2, 3] = 0.5
     image[:, 1::2, 3] = 0.5009765625
     _check_rgba_compression(image, quality, image_type)
+
+
+@pytest.mark.parametrize("image_type", [".jpg", ".webp"])
+@pytest.mark.parametrize("dtype", [np.float16, np.float32])
+def test_image_compression_rgba_strided_float(image_type, dtype):
+    # Packing RGB can change the dtype conversion backend on large read-only inputs.
+    levels = np.random.default_rng(137).integers(0, 255, (384, 1024, 4), dtype=np.uint8)
+    image = ((levels.astype(np.float32) + 0.5) / 255).astype(dtype)[:, ::-2]
+    image.setflags(write=False)
+    _check_rgba_compression(image, 75, image_type)
 
 
 @pytest.mark.parametrize("image_type", [".jpg", ".webp"])

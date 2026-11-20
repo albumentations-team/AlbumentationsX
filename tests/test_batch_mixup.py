@@ -325,3 +325,17 @@ def test_mixup_numeric_transport_float64() -> None:
     result = apply_mixup(values, plan, flip_donor=True)
     assert result.dtype == torch.float64
     assert result.tolist() == [[[8_388_608.0, 8_388_608.0]]]
+
+
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float32, torch.float64])
+@pytest.mark.parametrize("recipient_weight", [1.0, 0.0, 0.5])
+def test_mixup_donor_flip_large_opposite_endpoints(dtype: torch.dtype, recipient_weight: float) -> None:
+    values = torch.tensor([[[2e38, -2e38]]], dtype=torch.float32).to(dtype)
+    plan = sample_mixup(batch_size=1, alpha=1.0, device=values.device, generator=torch.Generator().manual_seed(137))
+    if recipient_weight == 1:
+        assert plan.lambdas.item() == 1
+        expected = values
+    else:
+        plan = MixUpPlan(plan.permutation, torch.tensor([recipient_weight]))
+        expected = values[..., [1, 0]] if recipient_weight == 0 else torch.zeros_like(values)
+    assert torch.equal(apply_mixup(values, plan, flip_donor=True), expected)

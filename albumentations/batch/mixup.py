@@ -97,7 +97,8 @@ def apply_mixup(values: torch.Tensor, plan: MixUpPlan, *, flip_donor: bool = Fal
     result = torch.empty_like(values)
     if not len(values):
         return result
-    weight = (1 - plan.lambdas.detach().float()).view((len(values),) + (1,) * (values.ndim - 1))
+    recipient_weight = plan.lambdas.detach().float().reshape((len(values),) + (1,) * (values.ndim - 1))
+    weight = 1 - recipient_weight
     # Limit the FP32 block to 64 MiB, or one sample if it exceeds that size.
     sample_bytes = math.prod(values.shape[1:]) * torch.float32.itemsize
     # A flip needs a second donor buffer while the reversed block is materialized.
@@ -109,7 +110,12 @@ def apply_mixup(values: torch.Tensor, plan: MixUpPlan, *, flip_donor: bool = Fal
         if flip_donor:
             paired = paired.flip((-1,))
         destination = result[start:stop]
-        if values.dtype is torch.float32:
+        if flip_donor and values.dtype in (torch.bfloat16, torch.float32, torch.float64):
+            # Subtracting finite opposite-sign endpoints in lerp can overflow FP32.
+            paired.mul_(weight[start:stop])
+            paired.addcmul_(values[start:stop].float(), recipient_weight[start:stop])
+            destination.copy_(paired)
+        elif values.dtype is torch.float32:
             torch.lerp(values[start:stop], paired, weight[start:stop], out=destination)
         else:
             mixed = values[start:stop].float()

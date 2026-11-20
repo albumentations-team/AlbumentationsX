@@ -11,6 +11,46 @@ def rule_ids(sources: dict[str, str]) -> list[str]:
     return [diagnostic.rule for diagnostic in run_sources(sources)]
 
 
+@pytest.mark.parametrize(
+    ("source", "symbol", "replacement"),
+    [
+        ("import torch\nresult = torch.from_numpy(array)", "torch.from_numpy", "numpy_to_tensor_storage"),
+        (
+            "def convert():\n    import torch as pt\n    return pt.from_numpy(array)",
+            "torch.from_numpy",
+            "numpy_to_tensor_storage",
+        ),
+        ("from torch import from_numpy as wrap\nresult = wrap(array)", "torch.from_numpy", "numpy_to_tensor_storage"),
+        ("result = tensor.detach().numpy(force=True)", ".numpy", "tensor_to_numpy_storage"),
+        ("convert = tensor.numpy", ".numpy", "tensor_to_numpy_storage"),
+    ],
+)
+def test_tensor_bridge_rejects_direct_pytorch_conversions(source: str, symbol: str, replacement: str) -> None:
+    diagnostics = run_sources({"albumentations/core/example.py": source})
+
+    (diagnostic,) = diagnostics
+    assert diagnostic.rule == "AXG028"
+    assert diagnostic.symbol == symbol
+    assert f"albucore.tensor_bridge.{replacement}" in diagnostic.message
+
+
+def test_tensor_bridge_allows_shared_bridge_and_non_package_sources() -> None:
+    assert "AXG028" not in rule_ids(
+        {
+            "albumentations/core/example.py": """
+import torch
+from albucore.tensor_bridge import numpy_to_tensor_storage, tensor_to_numpy_storage
+tensor = numpy_to_tensor_storage(array)
+result = tensor_to_numpy_storage(tensor)
+index = torch.as_tensor([0])
+example = "tensor.numpy()"
+""",
+            "tests/test_example.py": "result = torch.from_numpy(array).numpy()",
+            "benchmark/bench_example.py": "result = torch.from_numpy(array).numpy()",
+        }
+    )
+
+
 def test_init_schema_defaults_are_checked_without_base_model_false_positives() -> None:
     assert rule_ids(
         {

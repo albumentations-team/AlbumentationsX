@@ -110,7 +110,6 @@ _BASE_CASE_SPECS: list[list[Any]] = [
     [A.Blur, {"blur_range": (3, 5)}],
     [A.MotionBlur, {"blur_range": (3, 5)}],
     [A.MedianBlur, {"blur_range": (3, 5)}],
-    [A.ModeFilter, {"kernel_range": (3, 5)}],
     [A.GaussianBlur, {"blur_range": (3, 5)}],
     [
         A.GaussNoise,
@@ -583,7 +582,7 @@ _BASE_CASE_SPECS: list[list[Any]] = [
     [
         A.PadIfNeeded3D,
         {
-            "min_zyx": (300, 200, 400),
+            "min_zyx": (7, 101, 131),
             "pad_divisor_zyx": (10, 10, 10),
             "position": "center",
             "fill": 10,
@@ -833,6 +832,7 @@ _PARAMETER_MODE_SPECS: list[tuple[str, type[A.BasicTransform], dict[str, Any]]] 
     ),
     ("padded", A.CenterCrop3D, {"pad_if_needed": True, "fill": 7, "fill_mask": 3}),
     ("selected-channels", A.ChannelDropout, {"channels_to_drop": (0, 2)}),
+    ("mean-fill", A.ChannelDropout, {"fill": "mean"}),
     ("fixed-order", A.ChannelShuffle, {"channel_order": (2, 0, 1)}),
     (
         "red-blue-cubic",

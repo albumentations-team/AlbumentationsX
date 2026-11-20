@@ -15,6 +15,7 @@ import numpy as np
 import torch
 
 import albumentations as A
+from albumentations.core.tensor import tensor_to_numpy_spatial
 from albumentations.core.utils import get_volume_shape, get_volumes_shape
 from tests.helpers.contract_data import (
     TARGET_VOLUME_SHAPE,
@@ -32,6 +33,8 @@ from tests.helpers.contract_data import (
     make_target_noncontiguous_image_mask_data,
     make_target_obb_data,
     make_target_readonly_image_mask_data,
+    make_target_vector_fields3d_data,
+    make_target_vector_fields_2d_data,
     make_target_volume_data,
     make_target_volumes_masks3d_data,
 )
@@ -137,6 +140,56 @@ def _assert_volume_mask3d(
     assert spatial_shape == mask3d.shape[-3:]
     assert volume.dtype == source["volume"].dtype
     assert mask3d.dtype == source["mask3d"].dtype
+
+
+def _assert_vector_field_values(
+    source: dict[str, Any],
+    result: dict[str, Any],
+    targets: tuple[tuple[str, int], ...],
+    spatial_shape: tuple[int, ...],
+) -> None:
+    for target, channels in targets:
+        value = result[target]
+        field = tensor_to_numpy_spatial(value, target) if isinstance(value, torch.Tensor) else np.asarray(value)
+        assert field.shape == (*spatial_shape, channels)
+        source_dtype = (
+            source[target].numpy().dtype if isinstance(source[target], torch.Tensor) else source[target].dtype
+        )
+        assert field.dtype == source_dtype
+        invalid = ~np.isfinite(field).all(axis=-1)
+        assert np.isnan(field[invalid]).all()
+        if target in {"normal", "normal3d"}:
+            lengths = np.linalg.norm(field.astype(np.float32), axis=-1)
+            np.testing.assert_allclose(lengths[np.isfinite(lengths)], 1.0, rtol=2e-3, atol=2e-3)
+
+
+def _assert_vector_fields_2d(
+    case: TransformContractCase,
+    source: dict[str, Any],
+    result: dict[str, Any],
+) -> None:
+    del case
+    image_shape = _image_spatial_shape(result["image"])
+    _assert_vector_field_values(
+        source,
+        result,
+        (("gradient", 2), ("displacement", 2), ("vector_field", 2), ("normal", 3)),
+        image_shape,
+    )
+
+
+def _assert_vector_fields3d(
+    case: TransformContractCase,
+    source: dict[str, Any],
+    result: dict[str, Any],
+) -> None:
+    del case
+    _assert_vector_field_values(
+        source,
+        result,
+        (("gradient3d", 3), ("displacement3d", 3), ("vector_field3d", 3), ("normal3d", 3)),
+        get_volume_shape(result["volume"]),
+    )
 
 
 def _assert_images(case: TransformContractCase, source: dict[str, Any], result: dict[str, Any]) -> None:
@@ -299,6 +352,21 @@ TARGET_CONTRACT_PROFILES = (
         required_targets=frozenset({"volume", "mask3d"}),
         data_factory=make_target_volume_data,
         assert_result=_assert_volume_mask3d,
+        channel_count=3,
+    ),
+    TargetProfile(
+        profile_id="image-vector-fields",
+        required_targets=frozenset({"image", "gradient", "displacement", "vector_field", "normal"}),
+        data_factory=make_target_vector_fields_2d_data,
+        assert_result=_assert_vector_fields_2d,
+        channel_count=3,
+    ),
+    TargetProfile(
+        profile_id="volume-vector-fields3d",
+        required_targets=frozenset({"volume", "gradient3d", "displacement3d", "vector_field3d", "normal3d"}),
+        data_factory=make_target_vector_fields3d_data,
+        assert_result=_assert_vector_fields3d,
+        cost=ProfileCost.EXTENDED,
         channel_count=3,
     ),
     TargetProfile(

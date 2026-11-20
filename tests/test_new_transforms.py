@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 from albucore import clip
 from pydantic import ValidationError
+from pytest_mock import MockerFixture
 
 import albumentations as A
 import albumentations.augmentations.pixel.functional as fpixel
@@ -102,13 +103,54 @@ class TestVignetting:
 
 
 class TestChannelSwap:
-    def test_rgb_to_bgr_swap(self):
-        img = _make_image(seed=1)
-        aug = A.ChannelSwap(channel_order=(2, 1, 0), p=1.0)
-        result = aug(image=img)["image"]
-        np.testing.assert_array_equal(result[:, :, 0], img[:, :, 2])
-        np.testing.assert_array_equal(result[:, :, 1], img[:, :, 1])
-        np.testing.assert_array_equal(result[:, :, 2], img[:, :, 0])
+    @pytest.mark.parametrize("route", ["compose", "functional"])
+    @pytest.mark.parametrize("column_slice", [slice(None), slice(1, -1), slice(None, None, -2)])
+    @pytest.mark.parametrize(
+        ("dtype", "bits_dtype"), [(np.uint8, np.uint8), (np.float16, np.uint16), (np.float32, np.uint32)]
+    )
+    def test_rgb_to_bgr_swap(
+        self,
+        route: str,
+        column_slice: slice,
+        dtype: type[np.uint8 | np.float16 | np.float32],
+        bits_dtype: type[np.uint8 | np.uint16 | np.uint32],
+        mocker: MockerFixture,
+    ) -> None:
+        rng = np.random.default_rng(137)
+        bits = rng.integers(0, np.iinfo(bits_dtype).max, (27, 31, 3), dtype=bits_dtype, endpoint=True)
+        img = bits.view(dtype)
+        if dtype != np.uint8:
+            img[0, :3] = (0.0, -0.0, np.nan)
+        img = img[:, column_slice, :]
+        img.setflags(write=False)
+        expected = np.empty(img.shape, dtype=img.dtype)
+        cv2.mixChannels([np.ascontiguousarray(img)], [expected], [2, 0, 1, 1, 0, 2])
+        convert = mocker.spy(cv2, "cvtColor")
+
+        if route == "compose":
+            aug = A.Compose([A.ChannelSwap(p=1.0)], telemetry=False)
+            result = aug(image=img)["image"]
+        else:
+            result = fpixel.channel_shuffle(img, [2, 1, 0])
+
+        convert.assert_called_once()
+        assert convert.call_args.args[1] == cv2.COLOR_RGB2BGR
+        assert result.dtype == img.dtype
+        np.testing.assert_array_equal(result.view(bits_dtype), expected.view(bits_dtype), strict=True)
+        assert result.flags.c_contiguous
+        assert not np.shares_memory(result, img)
+
+    @pytest.mark.parametrize("shape", [(27, 31, 3), (4, 27, 31, 3)])
+    @pytest.mark.parametrize("column_slice", [slice(1, -1), slice(None, None, -2)])
+    def test_identity_order_copies_readonly_rgb_view(self, shape: tuple[int, ...], column_slice: slice) -> None:
+        image = _make_image(shape=shape)[..., column_slice, :]
+        image.flags.writeable = False
+
+        result = fpixel.channel_shuffle(image, [0, 1, 2])
+
+        np.testing.assert_array_equal(result, image, strict=True)
+        assert result.flags.c_contiguous and result.flags.writeable
+        assert not np.shares_memory(result, image)
 
     def test_double_application_is_identity(self):
         img = _make_image(seed=2)
@@ -161,22 +203,79 @@ class TestChannelSwap:
         result = aug(image=img)["image"]
         assert result.dtype == dtype
 
-    def test_batch_images_same_permutation(self):
-        images = np.stack([_make_image(seed=i) for i in range(3)])
-        aug = A.ChannelSwap(channel_order=(2, 1, 0), p=1.0)
-        result = aug(images=images)["images"]
-        assert result.shape == images.shape
-        for i in range(3):
-            np.testing.assert_array_equal(result[i, :, :, 0], images[i, :, :, 2])
-            np.testing.assert_array_equal(result[i, :, :, 2], images[i, :, :, 0])
+    @pytest.mark.parametrize("route", ["compose", "functional"])
+    @pytest.mark.parametrize("column_slice", [slice(None), slice(None, None, -2)])
+    @pytest.mark.parametrize(
+        ("dtype", "bits_dtype"), [(np.uint8, np.uint8), (np.float16, np.uint16), (np.float32, np.uint32)]
+    )
+    def test_batch_images_same_permutation(
+        self,
+        route: str,
+        dtype: type[np.uint8 | np.float16 | np.float32],
+        bits_dtype: type[np.uint8 | np.uint16 | np.uint32],
+        column_slice: slice,
+        mocker: MockerFixture,
+    ) -> None:
+        rng = np.random.default_rng(137)
+        bits = rng.integers(0, np.iinfo(bits_dtype).max, (4, 27, 31, 3), dtype=bits_dtype, endpoint=True)
+        images = bits.view(dtype)
+        if dtype != np.uint8:
+            images[:, 0, :3] = (0.0, -0.0, np.nan)
+        images = images[:, :, column_slice, :]
+        images.setflags(write=False)
+        expected = images.copy()[..., [2, 1, 0]]
+        convert = mocker.spy(cv2, "cvtColor")
 
-    def test_volume_channel_permutation(self):
+        if route == "compose":
+            aug = A.Compose([A.ChannelSwap(p=1.0)], telemetry=False)
+            result = aug(images=images)["images"]
+        else:
+            result = fpixel.channel_shuffle(images, [2, 1, 0])
+
+        convert.assert_called_once()
+        assert convert.call_args.args[0].shape == (images.shape[0] * images.shape[1], *images.shape[2:])
+        assert convert.call_args.args[1] == cv2.COLOR_RGB2BGR
+        assert result.dtype == images.dtype
+        np.testing.assert_array_equal(result.view(bits_dtype), expected.view(bits_dtype), strict=True)
+        assert result.flags.c_contiguous
+        assert not np.shares_memory(result, images)
+
+    @pytest.mark.parametrize(
+        ("shape", "order"),
+        [
+            ((4, 7, 11, 1), [0]),
+            ((4, 7, 11, 3), [0, 2, 1]),
+            ((4, 7, 11, 5), [4, 3, 2, 1, 0]),
+            ((0, 7, 11, 3), [2, 1, 0]),
+        ],
+    )
+    def test_functional_batch_general_permutation(self, shape: tuple[int, ...], order: list[int]) -> None:
+        images = _make_image(shape=shape)
+
+        result = fpixel.channel_shuffle(images, order)
+
+        np.testing.assert_array_equal(result, images[..., order], strict=True)
+        assert not np.shares_memory(result, images)
+
+    def test_volume_channel_permutation_accepts_range(self, mocker: MockerFixture) -> None:
+        volume = _make_image(shape=(4, 7, 11, 3))
+        convert = mocker.spy(cv2, "cvtColor")
+
+        result = fpixel.volume_channel_shuffle(volume, range(2, -1, -1))
+
+        convert.assert_called_once()
+        np.testing.assert_array_equal(result, volume[..., ::-1], strict=True)
+
+    def test_volume_channel_permutation(self, mocker: MockerFixture) -> None:
         volume = _make_image(shape=(4, 50, 50, 3), seed=8)
         aug = A.ChannelSwap(channel_order=(2, 1, 0), p=1.0)
+        convert = mocker.spy(cv2, "cvtColor")
+
         result = aug(volume=volume)["volume"]
-        assert result.shape == volume.shape
-        np.testing.assert_array_equal(result[:, :, :, 0], volume[:, :, :, 2])
-        np.testing.assert_array_equal(result[:, :, :, 2], volume[:, :, :, 0])
+
+        convert.assert_called_once()
+        assert convert.call_args.args[0].shape == (200, 50, 3)
+        np.testing.assert_array_equal(result, volume[..., ::-1], strict=True)
 
     def test_volume_channel_mismatch_unchanged(self):
         volume = _make_image(shape=(4, 50, 50, 1), seed=9)
@@ -809,6 +908,22 @@ class TestColorize:
                 np.broadcast_to(np.array(white) / 255.0, (img.shape[0], 3)),
                 atol=1e-6,
             )
+
+    def test_uint8_batch_of_flipped_grayscale_views_matches_pillow(self) -> None:
+        from PIL import Image, ImageOps
+
+        rng = np.random.default_rng(137)
+        images = rng.integers(0, 256, size=(2, 132, 141, 1), dtype=np.uint8)[:, 1:-1, 2:-2][:, :, ::-1]
+        images.flags.writeable = False
+        black, white = (19, 37, 83), (231, 193, 141)
+        transform = A.Compose([A.Colorize(black_range=_fixed(black), white_range=_fixed(white), p=1.0)])
+
+        result = transform(images=images)["images"]
+
+        expected = np.stack(
+            [np.asarray(ImageOps.colorize(Image.fromarray(image[..., 0]), black, white)) for image in images]
+        )
+        np.testing.assert_array_equal(result, expected, strict=True)
 
     def test_two_color_ramp_is_monotonic(self):
         img = _gradient_grayscale()

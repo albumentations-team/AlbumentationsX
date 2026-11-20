@@ -32,17 +32,26 @@ from albumentations.core.pydantic import (
     check_range_bounds,
     nondecreasing,
 )
-from albumentations.core.transform_params import SampledParams, SampledParamsError, TargetSet
+from albumentations.core.transform_params import (
+    SampledParams,
+    SampledParamsError,
+    TargetParams,
+    TargetSet,
+    TargetView,
+    requirements_for_views,
+)
 from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     BasicTransform,
     DualTransform,
 )
 from albumentations.core.type_definitions import (
+    ALL_GEOMETRIC_TARGETS,
     ALL_TARGETS,
     CV2_BORDER_CONSTANT,
     CV2_INTER_LINEAR,
     CV2_INTER_NEAREST,
+    VECTOR_FIELD_TARGET_NAMES,
     BorderModeType,
     InterpolationType,
     StackedMasks4D,
@@ -50,6 +59,11 @@ from albumentations.core.type_definitions import (
 
 from . import functional as fgeometric
 from ._functional_grid import GridElasticGeometry, compose_perspective_output_scale, prepare_grid_elastic_geometry
+from ._functional_vector_fields import (
+    _project_points_2d,
+    restore_vector_field_dtype,
+    warp_vector_field_from_pull_map_2d,
+)
 
 __all__ = [
     "Affine",
@@ -63,6 +77,17 @@ __all__ = [
 NUM_PADS_XY = 2
 NUM_PADS_ALL_SIDES = 4
 RangeValueT = TypeVar("RangeValueT", int, float)
+_AFFINE_ALIGNED_TARGETS = VECTOR_FIELD_TARGET_NAMES | {"bboxes", "keypoints"}
+
+
+def _validate_shared_affine_replay(
+    params: Mapping[str, Any],
+    targets: TargetSet,
+    transform: BasicTransform,
+) -> Mapping[str, Any]:
+    if transform.replay_mode and "matrix" in params:
+        targets.aligned_spatial_shape(2)
+    return params
 
 
 def _materialize_perspective_params(
@@ -83,6 +108,146 @@ def _materialize_perspective_params(
     else:
         output_shape = warp_shape
     return {**params, "shape": shape, "output_matrix": matrix, "output_shape": output_shape}
+
+
+def _mark_pull_map_seams(
+    map_x: np.ndarray,
+    map_y: np.ndarray,
+    owner: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    seam = owner < 0
+    horizontal_seams = owner[:, 1:] != owner[:, :-1]
+    vertical_seams = owner[1:, :] != owner[:-1, :]
+    seam[:, 1:] |= horizontal_seams
+    seam[:, :-1] |= horizontal_seams
+    seam[1:, :] |= vertical_seams
+    seam[:-1, :] |= vertical_seams
+    map_x[seam] = np.nan
+    map_y[seam] = np.nan
+    return map_x, map_y
+
+
+def _grid_shuffle_seams(map_x: np.ndarray, map_y: np.ndarray) -> np.ndarray:
+    seam = np.zeros(map_x.shape, dtype=bool)
+    horizontal = (np.abs(map_x[:, 1:] - map_x[:, :-1] - 1) > 1e-4) | (np.abs(map_y[:, 1:] - map_y[:, :-1]) > 1e-4)
+    vertical = (np.abs(map_x[1:, :] - map_x[:-1, :]) > 1e-4) | (np.abs(map_y[1:, :] - map_y[:-1, :] - 1) > 1e-4)
+    seam[:, 1:] |= horizontal
+    seam[:, :-1] |= horizontal
+    seam[1:, :] |= vertical
+    seam[:-1, :] |= vertical
+    return seam
+
+
+def _reindex_vector_field_tiles_2d(
+    field: np.ndarray,
+    tiles: np.ndarray,
+    destination_sources: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    height, width = field.shape[:2]
+    result = np.empty(field.shape, dtype=np.float32)
+    map_y, map_x = np.mgrid[:height, :width].astype(np.float32)
+    for destination_index, source_index_value in enumerate(destination_sources):
+        source_y0, source_x0, source_y1, source_x1 = (int(value) for value in tiles[int(source_index_value)])
+        dest_y0, dest_x0, dest_y1, dest_x1 = (int(value) for value in tiles[destination_index])
+        destination_slice = (slice(dest_y0, dest_y1), slice(dest_x0, dest_x1))
+        source_slice = (slice(source_y0, source_y1), slice(source_x0, source_x1))
+        result[destination_slice] = field[source_slice].astype(np.float32, copy=False)
+        map_x[destination_slice] += np.float32(source_x0 - dest_x0)
+        map_y[destination_slice] += np.float32(source_y0 - dest_y0)
+    return result, map_x, map_y
+
+
+def _map_tile_endpoints_2d(
+    endpoint_x: np.ndarray,
+    endpoint_y: np.ndarray,
+    valid: np.ndarray,
+    tiles: np.ndarray,
+    mapping: list[int],
+    shape: tuple[int, int],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    height, width = shape
+    mapped_x = np.full(endpoint_x.shape, np.nan, dtype=np.float32)
+    mapped_y = np.full_like(mapped_x, np.nan)
+    assigned = np.zeros(endpoint_x.shape, dtype=bool)
+    ambiguous = np.zeros(endpoint_x.shape, dtype=bool)
+    for source_index, tile in enumerate(tiles):
+        source_y0, source_x0, source_y1, source_x1 = (int(value) for value in tile)
+        matches = valid & (endpoint_x >= source_x0 - 0.5) & (endpoint_x < source_x1 - 0.5)
+        matches &= (endpoint_y >= source_y0 - 0.5) & (endpoint_y < source_y1 - 0.5)
+        if not matches.any():
+            continue
+        dest_y0, dest_x0, _, _ = (int(value) for value in tiles[mapping[source_index]])
+        mapped_x[matches] = np.float32(dest_x0) + endpoint_x[matches] - np.float32(source_x0)
+        mapped_y[matches] = np.float32(dest_y0) + endpoint_y[matches] - np.float32(source_y0)
+        assigned |= matches
+        for edge, length, endpoint, source_start, source_end in (
+            (source_x0, width, endpoint_x, source_x0, source_x1),
+            (source_y0, height, endpoint_y, source_y0, source_y1),
+        ):
+            if edge > 0:
+                ambiguous |= matches & (np.abs(endpoint - (source_start - 0.5)) <= 1e-4)
+            if source_end < length:
+                ambiguous |= matches & (np.abs(endpoint - (source_end - 0.5)) <= 1e-4)
+    return mapped_x, mapped_y, valid & assigned & ~ambiguous
+
+
+def _shuffle_displacement_tiles_2d(
+    result: np.ndarray,
+    tiles: np.ndarray,
+    mapping: list[int],
+    destination_sources: np.ndarray,
+) -> np.ndarray:
+    height, width = result.shape[:2]
+    output_y, output_x = np.mgrid[:height, :width].astype(np.float32)
+    for destination_index, source_index_value in enumerate(destination_sources):
+        source_y0, source_x0, _, _ = (int(value) for value in tiles[int(source_index_value)])
+        dest_y0, dest_x0, dest_y1, dest_x1 = (int(value) for value in tiles[destination_index])
+        destination_slice = (slice(dest_y0, dest_y1), slice(dest_x0, dest_x1))
+        local_y, local_x = np.mgrid[: dest_y1 - dest_y0, : dest_x1 - dest_x0].astype(np.float32)
+        source_x = local_x + np.float32(source_x0)
+        source_y = local_y + np.float32(source_y0)
+        tile_field = result[destination_slice]
+        endpoint_x = source_x + tile_field[..., 0]
+        endpoint_y = source_y + tile_field[..., 1]
+        finite_endpoint = np.isfinite(tile_field).all(axis=-1)
+        finite_endpoint &= (endpoint_x >= -0.5) & (endpoint_x < width - 0.5)
+        finite_endpoint &= (endpoint_y >= -0.5) & (endpoint_y < height - 0.5)
+        mapped_x, mapped_y, valid = _map_tile_endpoints_2d(
+            endpoint_x,
+            endpoint_y,
+            finite_endpoint,
+            tiles,
+            mapping,
+            (height, width),
+        )
+        tile_field[..., 0] = mapped_x - output_x[destination_slice]
+        tile_field[..., 1] = mapped_y - output_y[destination_slice]
+        tile_field[~valid] = np.nan
+    return result
+
+
+def _shuffle_vector_field_2d(
+    field: np.ndarray,
+    target: str,
+    tiles: np.ndarray,
+    mapping: list[int],
+) -> np.ndarray:
+    if field.ndim == 4:
+        return np.stack(
+            [_shuffle_vector_field_2d(field[depth], target, tiles, mapping) for depth in range(field.shape[0])],
+            axis=0,
+        )
+    if mapping == list(range(len(mapping))):
+        return field
+
+    destination_sources = np.empty(len(mapping), dtype=np.intp)
+    for source_index, destination_index in enumerate(mapping):
+        destination_sources[destination_index] = source_index
+    result, map_x, map_y = _reindex_vector_field_tiles_2d(field, tiles, destination_sources)
+    if target in {"displacement", "displacement3d"}:
+        return _shuffle_displacement_tiles_2d(result, tiles, mapping, destination_sources)
+    result[_grid_shuffle_seams(map_x, map_y)] = np.nan
+    return result
 
 
 class Perspective(DualTransform):
@@ -114,7 +279,8 @@ class Perspective(DualTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -177,7 +343,7 @@ class Perspective(DualTransform):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
     _runtime_generated_params = frozenset({"output_matrix", "output_shape"})
     _runtime_param_materializer = staticmethod(_materialize_perspective_params)
@@ -451,6 +617,12 @@ class Affine(DualTransform):
     of the input image to generate output pixel values. The parameters `interpolation` and
     `mask_interpolation` deals with the method of interpolation used for this.
 
+    With `Compose(is_check_shapes=False)`, raster targets may have different heights and widths.
+    They share the sampled rotation, scale, shear, and translation. Each target uses its own
+    center and size for `translate_percent` and `fit_output`; `translate_px` uses the same pixel
+    offset for every target. Volumes are transformed slice by slice without changing their depth.
+    When passing bounding boxes, keypoints, or vector fields, use a common height and width.
+
     Args:
         scale (tuple of number or dict): Scaling factor, where `1.0` denotes "no change".
                 * If a tuple `(a, b)`, then a value will be uniformly sampled per image from `[a, b]`
@@ -500,7 +672,8 @@ class Affine(DualTransform):
         p (float): probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -583,8 +756,10 @@ class Affine(DualTransform):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+    _sampling_spatial_rank = None
+    _runtime_param_materializer = staticmethod(_validate_shared_affine_replay)
 
     InitSchema: ClassVar[type[BaseTransformInitSchema]] = _AffineInitSchema
 
@@ -690,6 +865,8 @@ class Affine(DualTransform):
         output_shape: tuple[int, int],
         **params: Any,
     ) -> StackedMasks4D:
+        if masks.shape == (0,):
+            return masks
         height, width = output_shape
         result = np.empty((len(masks), height, width, masks.shape[3]), dtype=masks.dtype)
         for i, mask in enumerate(masks):
@@ -786,10 +963,9 @@ class Affine(DualTransform):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        image_shape = targets.require_aligned_spatial_shape(2)
-
-        translate = self._get_translate_params(image_shape, sampling)
-        shear = self._get_shear_params(sampling)
+        translate = self._sample_translation(sampling)
+        shear_x = sampling.py_random.uniform(*self.shear["x"])
+        shear_y = sampling.py_random.uniform(*self.shear["y"])
         scale = self._get_scale(
             self.scale,
             self.keep_ratio,
@@ -798,72 +974,96 @@ class Affine(DualTransform):
         )
         rotate = sampling.py_random.uniform(*self.rotate)
 
-        sampling.applied_overrides.update({"rotate": rotate, "scale": scale, "shear": shear})
+        sampling.applied_overrides.update({"rotate": rotate, "scale": scale, "shear": {"x": shear_x, "y": shear_y}})
         if self.translate_percent is not None:
             sampling.applied_overrides["translate_percent"] = translate
         elif self.translate_px is not None:
             sampling.applied_overrides["translate_px"] = translate
 
-        image_shift = fgeometric.center(image_shape)
-        bbox_shift = fgeometric.center_bbox(image_shape)
-
-        matrix = fgeometric.create_affine_transformation_matrix(
-            translate,
-            shear,
-            scale,
-            rotate,
-            image_shift,
-        )
-        bbox_matrix = fgeometric.create_affine_transformation_matrix(
-            translate,
-            shear,
-            scale,
-            rotate,
-            bbox_shift,
-        )
-
-        if self.fit_output:
-            matrix, output_shape = fgeometric.compute_affine_warp_output_shape(
-                matrix,
-                image_shape,
+        warp_shear = {"x": -shear_x, "y": -shear_y}
+        if len(targets.ordered) <= 1 or any(view.canonical_type in _AFFINE_ALIGNED_TARGETS for view in targets.ordered):
+            shape = targets.require_aligned_spatial_shape(2)
+            warp = self._warp_params(
+                shape, translate, warp_shear, scale, rotate, include_bbox=self.deterministic or "bbox_type" in params
             )
-            bbox_matrix, _ = fgeometric.compute_affine_warp_output_shape(
-                bbox_matrix,
-                image_shape,
-            )
-        else:
-            output_shape = image_shape
+            return SampledParams(params={"rotate": rotate, "scale": scale, **warp})
 
+        return self._sample_raster_warps(targets, translate, warp_shear, scale, rotate)
+
+    def _sample_raster_warps(
+        self,
+        targets: TargetSet,
+        translate: Mapping[str, float],
+        shear: dict[str, float],
+        scale: dict[str, float],
+        rotate: float,
+    ) -> SampledParams:
+        groups: dict[tuple[int, int], list[TargetView]] = {}
+        without_spatial_shape = []
+        for view in targets.ordered:
+            shape = view.descriptor.spatial_shape
+            if shape is None or len(shape) < 2:
+                without_spatial_shape.append(view)
+            else:
+                groups.setdefault((shape[-2], shape[-1]), []).append(view)
+
+        shared = {"rotate": rotate, "scale": scale}
+        first_shape = next(iter(groups)) if groups else targets.require_aligned_spatial_shape(2)
+        if len(groups) <= 1:
+            warp = self._warp_params(first_shape, translate, shear, scale, rotate, include_bbox=self.deterministic)
+            return SampledParams(params={**shared, **warp})
+
+        groups[first_shape].extend(without_spatial_shape)
         return SampledParams(
-            params={
-                "rotate": rotate,
-                "scale": scale,
-                "matrix": matrix,
-                "bbox_matrix": bbox_matrix,
-                "output_shape": output_shape,
-            }
+            params=shared,
+            target_params=tuple(
+                TargetParams(
+                    targets=tuple(view.name for view in views),
+                    params=self._warp_params(shape, translate, shear, scale, rotate),
+                    requirements=requirements_for_views(tuple(views), spatial_shape_suffix=True),
+                )
+                for shape, views in groups.items()
+            ),
         )
 
-    def _get_translate_params(self, image_shape: tuple[int, int], sampling: SamplingContext) -> dict[str, int]:
-        height, width = image_shape[:2]
+    def _sample_translation(self, sampling: SamplingContext) -> Mapping[str, float]:
         if self.translate_px is not None:
             return {
                 "x": sampling.py_random.randint(self.translate_px["x"][0], self.translate_px["x"][1]),
                 "y": sampling.py_random.randint(self.translate_px["y"][0], self.translate_px["y"][1]),
             }
         if self.translate_percent is not None:
-            translate = {key: sampling.py_random.uniform(*value) for key, value in self.translate_percent.items()}
-            return cast(
-                "dict[str, int]",
-                {"x": int(translate["x"] * width), "y": int(translate["y"] * height)},
-            )
-        return cast("dict[str, int]", {"x": 0, "y": 0})
+            return {key: sampling.py_random.uniform(*value) for key, value in self.translate_percent.items()}
+        return {"x": 0, "y": 0}
 
-    def _get_shear_params(self, sampling: SamplingContext) -> dict[str, float]:
-        return {
-            "x": -sampling.py_random.uniform(*self.shear["x"]),
-            "y": -sampling.py_random.uniform(*self.shear["y"]),
-        }
+    def _warp_params(
+        self,
+        shape: tuple[int, int],
+        translate: Mapping[str, float],
+        shear: dict[str, float],
+        scale: dict[str, float],
+        rotate: float,
+        *,
+        include_bbox: bool = False,
+    ) -> dict[str, Any]:
+        if self.translate_percent is not None:
+            height, width = shape
+            translate = {"x": int(translate["x"] * width), "y": int(translate["y"] * height)}
+        matrix = fgeometric.create_affine_transformation_matrix(
+            translate, shear, scale, rotate, fgeometric.center(shape)
+        )
+        output_shape = shape
+        if self.fit_output:
+            matrix, output_shape = fgeometric.compute_affine_warp_output_shape(matrix, shape)
+        warp: dict[str, Any] = {"matrix": matrix, "output_shape": output_shape}
+        if include_bbox:
+            bbox_matrix = fgeometric.create_affine_transformation_matrix(
+                translate, shear, scale, rotate, fgeometric.center_bbox(shape)
+            )
+            if self.fit_output:
+                bbox_matrix, _ = fgeometric.compute_affine_warp_output_shape(bbox_matrix, shape)
+            warp["bbox_matrix"] = bbox_matrix
+        return warp
 
 
 class ShiftScaleRotate(Affine):
@@ -896,7 +1096,8 @@ class ShiftScaleRotate(Affine):
         p (float): probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -951,7 +1152,7 @@ class ShiftScaleRotate(Affine):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _applied_replay_class = Affine
 
     class InitSchema(BaseTransformInitSchema):
@@ -1080,7 +1281,8 @@ class GridElasticDeform(DualTransform):
         p (float): Probability of applying the transform. Default: 1.0.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -1140,7 +1342,7 @@ class GridElasticDeform(DualTransform):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _runtime_param_materializer = staticmethod(_materialize_grid_elastic_params)
 
     _supported_channel_counts: frozenset[int] = frozenset({1, 3})
@@ -1258,6 +1460,31 @@ class GridElasticDeform(DualTransform):
             shape[:2],
         )
 
+    def _apply_vector_field_target(self, target: str, field: np.ndarray, **params: Any) -> np.ndarray:
+        generated_mesh = params["generated_mesh"]
+        height, width = field.shape[-3:-1] if field.ndim == 4 else field.shape[:2]
+        output_y, output_x = np.mgrid[:height, :width].astype(np.float32)
+        map_x = np.full((height, width), np.nan, dtype=np.float32)
+        map_y = np.full_like(map_x, np.nan)
+        owner = np.full((height, width), -1, dtype=np.int32)
+        geometry = prepare_grid_elastic_geometry(generated_mesh)
+        for cell_index, (matrix, contour) in enumerate(
+            zip(geometry.matrices, geometry.destination_contours, strict=True),
+        ):
+            try:
+                inverse = np.asarray(np.linalg.inv(np.asarray(matrix, dtype=np.float32)), dtype=np.float32)
+            except np.linalg.LinAlgError:
+                continue
+            source_x, source_y, finite = _project_points_2d(inverse, output_x, output_y)
+            cell_mask = np.zeros((height, width), dtype=np.uint8)
+            cv2.fillConvexPoly(cell_mask, contour.astype(np.int32, copy=False), 1)
+            active = (cell_mask != 0) & finite
+            map_x[active] = source_x[active]
+            map_y[active] = source_y[active]
+            owner[active] = cell_index
+        map_x, map_y = _mark_pull_map_seams(map_x, map_y, owner)
+        return warp_vector_field_from_pull_map_2d(field, map_x, map_y, semantics=target)
+
 
 class RandomGridShuffle(DualTransform):
     """Split image into a grid and randomly permute cells; same shuffle for all targets.
@@ -1271,7 +1498,8 @@ class RandomGridShuffle(DualTransform):
             Default: 0.5
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -1356,7 +1584,7 @@ class RandomGridShuffle(DualTransform):
     class InitSchema(BaseTransformInitSchema):
         grid: Annotated[tuple[int, int], AfterValidator(check_range_bounds(1, None))]
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
 
     def __init__(
         self,
@@ -1374,6 +1602,17 @@ class RandomGridShuffle(DualTransform):
         **params: Any,
     ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fgeometric.swap_tiles_on_image(img, tiles, mapping)
+
+    def _apply_vector_field_target(
+        self,
+        target: str,
+        field: np.ndarray,
+        **params: Any,
+    ) -> np.ndarray:
+        tiles = params["tiles"]
+        mapping = params["mapping"]
+        result = _shuffle_vector_field_2d(field, target, tiles, mapping)
+        return field if result is field else restore_vector_field_dtype(result, field.dtype)
 
     def apply_to_bboxes(
         self,
@@ -1509,6 +1748,9 @@ class Morphological(DualTransform):
     """
 
     _targets = ALL_TARGETS
+    _skip_when_vector_fields_present = True
+    _sampling_spatial_rank = None
+    _replay_reference_shape = (2, "shape")
 
     class InitSchema(BaseTransformInitSchema):
         scale: Annotated[

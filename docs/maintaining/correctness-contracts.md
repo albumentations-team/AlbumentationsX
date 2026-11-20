@@ -78,6 +78,16 @@ The augmented output must match a manual annotation of the transformed volume:
 `semantic_mask_label_mappings` and `KeypointParams.label_mapping` are independent configuration surfaces. A transform
 event activates each mapping only when the caller configured it for that target type.
 
+## CUDA input normalization
+
+`InputNormalizer` applies fixed statistics and computes per-sample normalization in FP32 and casts to the requested dtype.
+On supported CUDA inputs, Triton writes the reduced-precision result directly while preserving shape and memory
+format. Both z-score modes standardize independently per sample and channel. `per_sample_nonzero` excludes zeros
+from its statistics and preserves zero padding. Fused reductions use tiled FP32 statistics and are checked with
+numerical tolerances. Unsupported inputs and recognized Triton compilation failures use the PyTorch implementation.
+The [batch normalization tests](../../tests/test_batch_normalization.py) check parity, constant planes, layout,
+and fallback behavior.
+
 ## Stability Modes
 
 Golden regression cases declare one stability mode:

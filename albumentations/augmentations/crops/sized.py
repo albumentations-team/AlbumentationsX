@@ -11,7 +11,7 @@ from albumentations.core.transform_params import SampledParams, TargetSet
 
 from ._sampling import SamplingMethod, relax_2d_crop_ranges, sample_2d_crop_shape
 from ._transforms_shared import (
-    ALL_TARGETS,
+    ALL_GEOMETRIC_TARGETS,
     CV2_INTER_LINEAR,
     CV2_INTER_NEAREST,
     AfterValidator,
@@ -391,7 +391,8 @@ class RandomSizedCrop(_BaseRandomSizedCrop):
         p (float): Probability of applying the transform. Default: 1.0
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -464,7 +465,7 @@ class RandomSizedCrop(_BaseRandomSizedCrop):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):
@@ -560,7 +561,8 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
         p (float): Probability of applying the transform. Default: 1.0
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -642,7 +644,7 @@ class RandomResizedCrop(_BaseRandomSizedCrop):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):

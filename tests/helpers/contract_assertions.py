@@ -13,7 +13,12 @@ def _array_difference(actual: Any, expected: np.ndarray, path: str) -> str | Non
         return f"{path} changed type from ndarray to {type(actual).__name__}"
     if actual.dtype != expected.dtype or actual.shape != expected.shape:
         return f"{path} changed array metadata from {expected.dtype}/{expected.shape} to {actual.dtype}/{actual.shape}"
-    if not np.array_equal(actual, expected):
+    arrays_equal = (
+        np.array_equal(actual, expected, equal_nan=True)
+        if actual.dtype.kind == "f"
+        else np.array_equal(actual, expected)
+    )
+    if not arrays_equal:
         return f"{path} array contents changed"
     return None
 
@@ -23,7 +28,12 @@ def _tensor_difference(actual: Any, expected: torch.Tensor, path: str) -> str | 
         return f"{path} changed type from Tensor to {type(actual).__name__}"
     if actual.dtype != expected.dtype or actual.shape != expected.shape:
         return f"{path} changed Tensor metadata from {expected.dtype}/{expected.shape} to {actual.dtype}/{actual.shape}"
-    if not torch.equal(actual, expected):
+    tensors_equal = (
+        torch.allclose(actual, expected, rtol=0, atol=0, equal_nan=True)
+        if actual.dtype.is_floating_point
+        else torch.equal(actual, expected)
+    )
+    if not tensors_equal:
         return f"{path} Tensor contents changed"
     return None
 

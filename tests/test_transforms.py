@@ -2571,6 +2571,33 @@ def test_additive_noise_uniform_channel_ranges(spatial_mode: str, per_channel: b
     np.testing.assert_allclose(result, expected)
 
 
+@pytest.mark.parametrize("shape", [(23, 17), (23, 17, 1), (224, 224, 3), (23, 17, 5), (3, 23, 17, 3)])
+@pytest.mark.parametrize(("mean_range", "std_range"), [((0.0, 0.0), (0.44, 0.44)), ((-0.7, 0.2), (0.13, 0.4))])
+def test_sample_gaussian_preserves_seeded_values(
+    shape: tuple[int, ...], mean_range: tuple[float, float], std_range: tuple[float, float]
+) -> None:
+    reference_rng = np.random.default_rng(137)
+    mean = mean_range[0] if mean_range[0] == mean_range[1] else reference_rng.uniform(*mean_range)
+    std = std_range[0] if std_range[0] == std_range[1] else reference_rng.uniform(*std_range)
+    channels = shape[-1] if len(shape) >= 3 else 1
+    expected = np.empty(shape, dtype=np.float32)
+    destination = expected.reshape(-1, *shape[-2:]) if len(shape) == 4 else expected
+    cv2.setRNGSeed(137)
+    cv2.randn(destination, mean * np.ones(channels, dtype=np.float32), std * np.ones(channels, dtype=np.float32))
+    expected_next = np.empty(16, dtype=np.float32)
+    cv2.randn(expected_next, 0.0, 1.0)
+
+    cv2.setRNGSeed(137)
+    rng = np.random.default_rng(137)
+    actual = fnoise.sample_gaussian(shape, {"mean_range": mean_range, "std_range": std_range}, rng)
+    actual_next = np.empty_like(expected_next)
+    cv2.randn(actual_next, 0.0, 1.0)
+
+    np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32), strict=True)
+    np.testing.assert_array_equal(actual_next.view(np.uint32), expected_next.view(np.uint32), strict=True)
+    assert rng.random() == reference_rng.random()
+
+
 def test_sample_uniform_resolved_channel_ranges_preserves_seeded_values() -> None:
     size = (6, 8, 3)
     ranges = [(-0.2, -0.1), (0.0, 0.1), (0.2, 0.3)]
@@ -2824,9 +2851,12 @@ def test_additive_noise_rejects_patch_options_for_other_modes() -> None:
         A.AdditiveNoise(spatial_mode="shared", patch_count_range=(2, 2))
 
 
-def test_add_noise_materializes_broadcast_uint8_noise(monkeypatch):
-    image = np.full((4, 6, 3), 128, dtype=np.uint8)
-    noise = np.ones((4, 6, 1), dtype=np.float32)
+@pytest.mark.parametrize(("side", "materialized"), [(63, True), (64, False)])
+def test_add_noise_prepares_shared_float32_plane_for_albucore(
+    side: int, materialized: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    image = np.full((side, side, 3), 128, dtype=np.uint8)
+    noise = np.ones((side, side, 1), dtype=np.float32)
     captured_noise: list[np.ndarray] = []
 
     def capture_add(image: np.ndarray, noise: np.ndarray) -> np.ndarray:
@@ -2838,7 +2868,32 @@ def test_add_noise_materializes_broadcast_uint8_noise(monkeypatch):
 
     assert len(captured_noise) == 1
     assert captured_noise[0].shape == image.shape
-    assert captured_noise[0].flags.c_contiguous
+    assert captured_noise[0].flags.c_contiguous == materialized
+    assert np.shares_memory(captured_noise[0], noise) != materialized
+
+
+@pytest.mark.parametrize(
+    "transform",
+    [
+        A.GaussNoise(per_channel=False, p=1),
+        A.AdditiveNoise(noise_type="uniform", spatial_mode="shared", noise_params={"ranges": [(-0.4, 0.4)]}, p=1),
+    ],
+)
+def test_compose_shared_uint8_noise_matches_dense_field(
+    transform: A.BasicTransform, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    image = np.random.default_rng(137).integers(0, 256, (96, 112, 3), dtype=np.uint8)
+    pipeline = A.Compose([A.RandomCrop(80, 80, p=1), transform], telemetry=False)
+    add_noise = fnoise.add_noise
+    actual = pipeline(image=image, invocation_seed=137)["image"]
+
+    def dense_add(image: np.ndarray, noise: np.ndarray) -> np.ndarray:
+        return add_noise(image, np.ascontiguousarray(noise))
+
+    monkeypatch.setattr(fpixel, "add_noise", dense_add)
+    expected = pipeline(image=image, invocation_seed=137)["image"]
+
+    np.testing.assert_array_equal(actual, expected, strict=True)
 
 
 @pytest.mark.parametrize(

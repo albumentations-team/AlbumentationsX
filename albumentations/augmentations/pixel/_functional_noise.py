@@ -9,6 +9,7 @@ from numpy.typing import NDArray
 from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
     MONO_CHANNEL_DIMENSIONS,
+    NUM_RGB_CHANNELS,
     add,
     add_weighted,
     clip,
@@ -47,7 +48,15 @@ def add_noise(
                 noise = np.tile(noise, (n_tiles,) + (1,) * noise.ndim).reshape(img.shape)
 
         if img.dtype == np.uint8 and not noise.flags.c_contiguous:
-            noise = np.ascontiguousarray(noise)
+            shared_rgb_field = (
+                noise.ndim == 3
+                and img.size >= 4_096 * NUM_RGB_CHANNELS
+                and noise.shape[-1] == NUM_RGB_CHANNELS
+                and noise.dtype == np.float32
+                and noise.strides[-1] == 0
+            )
+            if not shared_rgb_field:
+                noise = np.ascontiguousarray(noise)
 
         result = add(img, noise)
     return result if img.dtype == np.uint8 else clip(result, img.dtype)
@@ -441,19 +450,11 @@ def sample_gaussian(
         if params["std_range"][0] == params["std_range"][1]
         else random_generator.uniform(*params["std_range"])
     )
-    num_channels = size[-1] if len(size) > MONO_CHANNEL_DIMENSIONS else 1
-    mean_vector = mean * np.ones(shape=(num_channels,), dtype=np.float32)
-    std_dev_vector = std * np.ones(shape=(num_channels,), dtype=np.float32)
-    gaussian_sampled_arr = np.empty(shape=size, dtype=np.float32)
-    if len(size) == 4:
-        cv2.randn(
-            dst=gaussian_sampled_arr.reshape(-1, size[-2], num_channels),
-            mean=mean_vector,
-            stddev=std_dev_vector,
-        )
-    else:
-        cv2.randn(dst=gaussian_sampled_arr, mean=mean_vector, stddev=std_dev_vector)
-    return gaussian_sampled_arr.astype(np.float32)
+    samples = np.empty(size, dtype=np.float32)
+    if samples.size:
+        # Every channel uses the same parameters, rounded to float32 as in the channel-vector form.
+        cv2.randn(samples.reshape(-1), np.asarray(mean, dtype=np.float32), np.asarray(std, dtype=np.float32))
+    return samples
 
 
 def sample_laplace(
@@ -717,26 +718,34 @@ SPARSE_SALT_AND_PEPPER_THRESHOLD = 0.16
 
 def apply_salt_and_pepper(
     img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
-    salt_mask: np.ndarray,
-    pepper_mask: np.ndarray,
+    salt_mask: np.ndarray | None = None,
+    pepper_mask: np.ndarray | None = None,
+    *,
+    noise_positions: np.ndarray | None = None,
+    num_salt: int = 0,
+    spatial_ndim: int = 2,
+    **params: Any,
 ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
-    """Apply salt and pepper noise using pre-computed masks. Replaces pixels with
-    min or max value; amount controlled by masks.
-
-    This function applies salt and pepper noise to an image using pre-computed masks.
-    Salt pixels are set to maximum value, pepper pixels are set to 0.
+    """Set salt pixels to the dtype maximum and pepper pixels to zero.
 
     Args:
-        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image of any dtype and dimensions:
-            - 3D: (H, W, C) - RGB/multi-channel
-            - 4D: (D, H, W, C) - volume with depth
-        salt_mask (np.ndarray): Boolean mask indicating salt pixels (H, W)
-        pepper_mask (np.ndarray): Boolean mask indicating pepper pixels (H, W)
+        img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Channel-last image, batch, or volume.
+        salt_mask (np.ndarray | None): Boolean salt mask over the spatial dimensions.
+        pepper_mask (np.ndarray | None): Boolean pepper mask over the spatial dimensions.
+        noise_positions (np.ndarray | None): Flat spatial indices, with salt positions first.
+        num_salt (int): Number of salt positions at the start of the index array.
+        spatial_ndim (int): Number of spatial dimensions indexed per sample.
+        **params (Any): Additional transform metadata.
 
     Returns:
         NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: The image with salt and pepper noise applied.
 
     """
+    if noise_positions is not None:
+        return _apply_salt_and_pepper_indices(img, noise_positions, num_salt, spatial_ndim)
+    if salt_mask is None or pepper_mask is None:
+        raise ValueError("SaltAndPepper requires sampled noise positions or both masks.")
+
     max_value = MAX_VALUES_BY_DTYPE[img.dtype]
     if img.shape[-1] > 1:
         noisy_fraction = (np.count_nonzero(salt_mask) + np.count_nonzero(pepper_mask)) / salt_mask.size
@@ -749,6 +758,21 @@ def apply_salt_and_pepper(
     salt_mask = salt_mask[..., None]
     pepper_mask = pepper_mask[..., None]
     return np.where(salt_mask, max_value, np.where(pepper_mask, 0, img))
+
+
+def _apply_salt_and_pepper_indices(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+    noise_positions: np.ndarray,
+    num_salt: int,
+    spatial_ndim: int,
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
+    """Write sampled spatial positions in a fresh channel-last image, batch, or volume."""
+    result = img.copy(order="C")
+    spatial_start = img.ndim - spatial_ndim - 1
+    pixels = result.reshape(*img.shape[:spatial_start], math.prod(img.shape[spatial_start:-1]), img.shape[-1])
+    pixels[..., noise_positions[:num_salt], :] = MAX_VALUES_BY_DTYPE[img.dtype]
+    pixels[..., noise_positions[num_salt:], :] = 0
+    return result
 
 
 DIAMOND_KERNEL = np.array(

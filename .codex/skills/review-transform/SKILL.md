@@ -18,6 +18,9 @@ Then review the behavior the hook cannot prove.
   [Instance and Frame Binding](../../../docs/design/instance_binding.md); do not infer frame ownership from collection
   lengths alone.
 - Check the mathematical operation, coordinate boundaries, dtype range, and annotation semantics.
+- For geometric targets, use [Vector fields](../../../docs/vector-fields.md) to review `gradient`, `displacement`,
+  `vector_field`, and `normal` independently in 2D and 3D. Verify component transformations, NaN support, CPU Tensor
+  layouts, and float16/float32 behavior; these do not inherit raster interpolation or image dtype rules.
 - Verify that constructor fields, validators, and defaults express a coherent public policy.
 - Reject proposed training-time errors under
   [initialization-only validation](../../../docs/contributing/coding_guidelines.md#initialization-only-validation).

@@ -8,6 +8,7 @@ tutorials, and usage guides. This index links to the library documents maintaine
 - [Installation and a first pipeline](../README.md#quick-start)
 - [Transform list and supported targets](../README.md#list-of-augmentations)
 - [2D geometry contract](geometry.md)
+- [Vector fields](vector-fields.md)
 - [Pipeline validation and errors](validation.md)
 - [Python API source and docstrings](../albumentations/)
 - [Community MCP integration](integrations/mcp.md)

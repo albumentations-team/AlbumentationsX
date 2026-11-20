@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import sys
 from array import array
 from typing import TYPE_CHECKING, cast
 from unittest.mock import patch
@@ -17,6 +18,28 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from albumentations.batch.normalization import ComputePrecision, InputNormalizationMode
+
+
+@pytest.fixture(scope="module")
+def triton_cuda() -> None:
+    if (
+        sys.platform != "linux"
+        or not torch.cuda.is_available()
+        or torch.version.cuda is None
+        or torch.cuda.get_device_capability() < (8, 0)
+    ):
+        pytest.skip("Requires Linux and a CUDA GPU with compute capability 8.0 or higher.")
+    pytest.importorskip("triton")
+
+
+def _normalize_with_cuda_peak(normalizer: InputNormalizer, values: torch.Tensor) -> tuple[torch.Tensor, int]:
+    normalizer(values)
+    torch.cuda.synchronize()
+    before = torch.cuda.memory_allocated()
+    torch.cuda.reset_peak_memory_stats()
+    result = normalizer(values)
+    torch.cuda.synchronize()
+    return result, torch.cuda.max_memory_allocated() - before
 
 
 @pytest.mark.parametrize("dtype", [torch.uint8, torch.float16])
@@ -71,6 +94,195 @@ def test_fixed_mode_broadcasts_channel_statistics_over_a_batch() -> None:
     )
     assert result.dtype == torch.bfloat16
     torch.testing.assert_close(result, expected)
+
+
+@pytest.mark.usefixtures("triton_cuda")
+@pytest.mark.parametrize(
+    ("input_dtype", "precision", "output_dtype"),
+    [
+        (torch.float16, "fp16", torch.float16),
+        (torch.float16, "bf16", torch.bfloat16),
+        (torch.uint8, "fp16", torch.float16),
+        (torch.uint8, "bf16", torch.bfloat16),
+        (torch.float32, "bf16", torch.bfloat16),
+    ],
+)
+@pytest.mark.parametrize(
+    ("shape", "memory_format", "input_scale", "scalar"),
+    [
+        ((3, 67, 65), torch.contiguous_format, 1.0, False),
+        ((2, 5, 67, 65), torch.channels_last, 3.14159265, False),
+        ((2, 7, 3, 67, 65), torch.contiguous_format, 255.0, False),
+        ((2, 7, 3, 67, 65), torch.channels_last_3d, 1.0, False),
+        ((2, 3, 67, 65), torch.contiguous_format, 1.0, True),
+    ],
+)
+def test_fixed_cuda_matches_fp32_without_a_workspace(
+    shape: tuple[int, ...],
+    memory_format: torch.memory_format,
+    input_scale: float,
+    scalar: bool,
+    precision: ComputePrecision,
+    output_dtype: torch.dtype,
+    input_dtype: torch.dtype,
+) -> None:
+    channel_dim = 0 if len(shape) == 3 else 1
+    channels = 1 if scalar else shape[channel_dim]
+    mean = torch.linspace(-0.481, 0.352, channels)
+    std = torch.linspace(0.227, 1.137, channels)
+    normalizer = InputNormalizer(
+        "fixed",
+        output_precision=precision,
+        mean=mean,
+        standard_deviation=std,
+        input_scale=input_scale,
+    ).cuda()
+    if input_dtype == torch.uint8:
+        values = torch.arange(math.prod(shape), device="cuda", dtype=torch.int32).remainder_(256).reshape(shape)
+    else:
+        values = torch.linspace(-137, 137, math.prod(shape), device="cuda", dtype=torch.float32).reshape(shape)
+    values = values.to(dtype=input_dtype, memory_format=memory_format)
+    original = values.clone()
+    broadcast = [1] * len(shape)
+    broadcast[channel_dim] = channels
+    expected = original.to(dtype=torch.float32, copy=True)
+    if input_scale != 1.0:
+        expected.div_(input_scale)
+    expected.sub_(mean.cuda().view(broadcast)).div_(std.cuda().view(broadcast))
+    expected = expected.to(output_dtype)
+    actual, peak = _normalize_with_cuda_peak(normalizer, values)
+
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0, check_stride=True)
+    torch.testing.assert_close(values, original, rtol=0, atol=0)
+    assert actual.data_ptr() != values.data_ptr()
+    assert peak <= actual.nbytes + 4096
+
+
+@pytest.mark.usefixtures("triton_cuda")
+@pytest.mark.parametrize("mode", ["per_sample", "per_sample_nonzero"])
+@pytest.mark.parametrize(
+    ("input_dtype", "precision", "output_dtype"),
+    [
+        (torch.float16, "bf16", torch.bfloat16),
+        (torch.uint8, "fp16", torch.float16),
+        (torch.uint8, "bf16", torch.bfloat16),
+    ],
+)
+@pytest.mark.parametrize(
+    ("shape", "memory_format", "input_scale"),
+    [
+        ((2, 2, 67, 65), torch.contiguous_format, 1.0),
+        ((2, 2, 3, 67, 65), torch.contiguous_format, 255.0),
+        ((2, 2, 3, 67, 65), torch.channels_last_3d, 1.0),
+    ],
+)
+def test_zscore_cuda_writes_the_requested_dtype_without_a_workspace(
+    mode: InputNormalizationMode,
+    shape: tuple[int, ...],
+    memory_format: torch.memory_format,
+    input_scale: float,
+    input_dtype: torch.dtype,
+    precision: ComputePrecision,
+    output_dtype: torch.dtype,
+) -> None:
+    values = torch.zeros(shape, device="cuda", dtype=input_dtype)
+    values[0, 0].flatten()[::137] = 17.0
+    values[0, 0].flatten()[::274] = 18.0 if input_dtype == torch.uint8 else 17.015625
+    values[0, 1].fill_(137.0)
+    values[1, 1].flatten()[137] = 237.0 if input_dtype == torch.uint8 else -137.0
+    values = values.contiguous(memory_format=memory_format)
+    original = values.clone()
+    normalizer = InputNormalizer(mode, output_precision=precision, input_scale=input_scale).cuda()
+    rows = values.reshape(shape[0] * shape[1], -1)
+    expected_rows = []
+    for row in rows:
+        keep = row != 0 if mode == "per_sample_nonzero" else torch.ones_like(row, dtype=torch.bool)
+        output = torch.zeros_like(row, dtype=torch.float64)
+        selected = row[keep].double() / input_scale
+        if selected.numel():
+            variance, mean = torch.var_mean(selected, correction=0)
+            output[keep] = (selected - mean) * variance.clamp_min(torch.finfo(torch.float32).eps).rsqrt()
+        expected_rows.append(output)
+    expected = torch.stack(expected_rows).reshape(shape).to(output_dtype)
+    actual, peak = _normalize_with_cuda_peak(normalizer, values)
+
+    torch.testing.assert_close(actual, expected, rtol=torch.finfo(output_dtype).eps, atol=5e-5)
+    torch.testing.assert_close(values, original, rtol=0, atol=0)
+    assert actual.stride() == values.stride()
+    assert actual.data_ptr() != values.data_ptr()
+    assert peak <= actual.nbytes + 4096
+    if mode == "per_sample_nonzero":
+        assert torch.count_nonzero(actual[values == 0]) == 0
+
+
+@pytest.mark.usefixtures("triton_cuda")
+@pytest.mark.parametrize("mode", ["per_sample", "per_sample_nonzero"])
+def test_zscore_cuda_keeps_scaled_constant_planes_at_zero(mode: InputNormalizationMode) -> None:
+    values = torch.full((1, 1, 4, 6), 34368, device="cuda", dtype=torch.float16)
+    if mode == "per_sample_nonzero":
+        values = torch.nn.functional.pad(values, (3, 0))
+    normalizer = InputNormalizer(mode, output_precision="bf16", input_scale=3.14159265).cuda()
+
+    torch.testing.assert_close(normalizer(values), torch.zeros_like(values, dtype=torch.bfloat16), rtol=0, atol=0)
+
+
+@pytest.mark.usefixtures("triton_cuda")
+@pytest.mark.parametrize("mode", ["per_sample", "per_sample_nonzero"])
+def test_zscore_cuda_scales_variance_below_the_epsilon_floor(mode: InputNormalizationMode) -> None:
+    values = torch.tensor([1, 2], device="cuda", dtype=torch.uint8).repeat(8).reshape(1, 1, 4, 4)
+    normalizer = InputNormalizer(mode, output_precision="bf16", input_scale=4096).cuda()
+    expected = ((values.float() - 1.5) / (4096 * math.sqrt(torch.finfo(torch.float32).eps))).bfloat16()
+
+    torch.testing.assert_close(normalizer(values), expected, rtol=0, atol=0)
+
+
+@pytest.mark.usefixtures("triton_cuda")
+def test_zscore_cuda_short_planes_skip_the_tile_workspace() -> None:
+    values = torch.ones((137, 3, 1, 1), device="cuda", dtype=torch.float16)
+    normalizer = InputNormalizer("per_sample", output_precision="bf16").cuda()
+    cuda = pytest.importorskip("albumentations.batch._normalization_cuda")
+
+    with patch.object(cuda, "normalize_zscore") as normalize:
+        result = normalizer(values)
+    normalize.assert_not_called()
+    torch.testing.assert_close(result, torch.zeros_like(values, dtype=torch.bfloat16), rtol=0, atol=0)
+
+
+@pytest.mark.usefixtures("triton_cuda")
+@pytest.mark.parametrize("mode", ["fixed", "per_sample", "per_sample_nonzero"])
+def test_normalization_cuda_falls_back_on_compilation_failure(mode: InputNormalizationMode) -> None:
+    values = torch.ones((1, 1, 4, 4), device="cuda", dtype=torch.float16)
+    normalizer = InputNormalizer(
+        mode,
+        output_precision="bf16",
+        mean=1.0 if mode == "fixed" else None,
+        standard_deviation=1.0 if mode == "fixed" else None,
+    ).cuda()
+    cuda = pytest.importorskip("albumentations.batch._normalization_cuda")
+    operation = "normalize_fixed" if mode == "fixed" else "normalize_zscore"
+    error = cuda.COMPILATION_ERRORS[0](None, None, "Unable to compile")
+
+    with patch.object(cuda, operation, side_effect=error) as normalize:
+        result = normalizer(values)
+    normalize.assert_called_once()
+    torch.testing.assert_close(result, torch.zeros_like(values, dtype=torch.bfloat16), rtol=0, atol=0)
+
+
+@pytest.mark.usefixtures("triton_cuda")
+def test_zscore_cuda_handles_extreme_input_scale() -> None:
+    normalizer = InputNormalizer("per_sample", output_precision="bf16", input_scale=1e-36).cuda()
+    values = torch.tensor([1, 2], device="cuda", dtype=torch.float16).repeat(1024).reshape(1, 1, 32, 64)
+    torch.testing.assert_close(normalizer(values), torch.zeros_like(values, dtype=torch.bfloat16), rtol=0, atol=0)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="Requires CUDA.")
+@pytest.mark.parametrize("input_dtype", [torch.float16, torch.uint8])
+def test_fixed_cuda_falls_back_for_vmap_and_strided_inputs(input_dtype: torch.dtype) -> None:
+    normalizer = InputNormalizer("fixed", output_precision="fp16", mean=0.137, standard_deviation=0.371).cuda()
+    values = torch.arange(2 * 3 * 5 * 7, device="cuda").reshape(2, 3, 5, 7).to(input_dtype)
+    expected = ((values.float() - 0.137) / cast("torch.Tensor", normalizer.standard_deviation)).half()
+    torch.testing.assert_close(normalizer(values.transpose(-1, -2)), expected.transpose(-1, -2), rtol=0, atol=0)
+    torch.testing.assert_close(torch.vmap(normalizer)(values), expected, rtol=0, atol=0)
 
 
 @pytest.mark.parametrize(

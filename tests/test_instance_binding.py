@@ -115,6 +115,50 @@ class TestInstanceBindingInit:
 
 
 class TestUnpackRepack:
+    @pytest.mark.parametrize("check_each_transform", [True, False])
+    @pytest.mark.parametrize("mask_target", [None, "mask", "masks"])
+    def test_input_box_filter_keeps_bound_instance(self, check_each_transform: bool, mask_target: str | None) -> None:
+        binding = ["bboxes", "keypoints"]
+        if mask_target is not None:
+            binding.append(mask_target)
+        with pytest.warns(UserWarning, match="Got processor"):
+            pipeline = A.Compose(
+                [],
+                bbox_params=A.BboxParams(
+                    "pascal_voc",
+                    filter_invalid_bboxes=True,
+                    check_each_transform=check_each_transform,
+                ),
+                keypoint_params=A.KeypointParams("xy", label_fields=["name"]),
+                instance_binding=binding,
+                telemetry=False,
+            )
+
+        surviving_mask = _make_mask(region=(20, 40, 20, 40))
+        instances = [
+            {
+                "bbox": [8, 8, 4, 4],
+                "keypoints": [[6, 6]],
+                "keypoint_labels": {"name": ["discarded"]},
+                "mask": _make_mask(region=(4, 8, 4, 8)),
+            },
+            {
+                "bbox": [20, 20, 40, 40],
+                "keypoints": [[30, 30]],
+                "keypoint_labels": {"name": ["kept"]},
+                "mask": surviving_mask,
+            },
+        ]
+
+        result = pipeline(image=_make_image(), instances=instances)["instances"]
+
+        assert len(result) == 1
+        np.testing.assert_array_equal(result[0]["bbox"], [20, 20, 40, 40])
+        np.testing.assert_array_equal(result[0]["keypoints"], [[30, 30]])
+        assert list(result[0]["keypoint_labels"]["name"]) == ["kept"]
+        if mask_target is not None:
+            np.testing.assert_array_equal(result[0]["mask"], surviving_mask)
+
     def test_basic_roundtrip(self) -> None:
         transform = A.Compose(
             [A.NoOp(p=1)],
@@ -1042,26 +1086,55 @@ class TestChannelMask:
         assert instance["mask"].sum() == 4800
         assert instance["mask"].max() == 3
 
-    def test_transform_prefilter_keeps_mask_channels_aligned(self) -> None:
-        def drop_first_bbox(bboxes: np.ndarray, **params: Any) -> np.ndarray:
-            return bboxes[1:]
+    @pytest.mark.parametrize("check_each_transform", [True, False])
+    @pytest.mark.parametrize("mask_target", ["mask", "masks"])
+    @pytest.mark.parametrize("first_kept", [1, 3])
+    def test_transform_and_processor_keep_bound_rows_aligned(
+        self,
+        check_each_transform: bool,
+        mask_target: str,
+        first_kept: int,
+    ) -> None:
+        def drop_bbox_prefix(bboxes: np.ndarray, **params: Any) -> np.ndarray:
+            return bboxes[first_kept:]
 
         image, instances = self._filtering_data()
+        instances[0]["keypoints"] = [[2, 2]]
+        instances[1]["keypoints"] = [[50, 48]]
+        instances.insert(
+            1,
+            {
+                "mask": _make_mask(128, 128, (8, 12, 8, 12)),
+                "bbox": [8, 8, 12, 12],
+                "bbox_labels": {"class_id": 22},
+                "keypoints": [[10, 10]],
+            },
+        )
         transform = A.Compose(
-            [A.Lambda(bboxes=drop_first_bbox, p=1)],
-            bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["class_id"]),
-            instance_binding=["mask", "bboxes"],
+            [A.Sequential([A.Lambda(bboxes=drop_bbox_prefix, p=1), A.HorizontalFlip(p=1)], p=1)],
+            bbox_params=A.BboxParams(
+                coord_format="pascal_voc",
+                label_fields=["class_id"],
+                min_area=32,
+                check_each_transform=check_each_transform,
+            ),
+            keypoint_params=A.KeypointParams(coord_format="xy"),
+            instance_binding=[mask_target, "bboxes", "keypoints"],
             telemetry=False,
         )
 
         result = transform(image=image, instances=instances)
 
+        if first_kept == len(instances):
+            assert result["instances"] == []
+            return
+
         assert len(result["instances"]) == 1
         instance = result["instances"][0]
         assert instance["bbox_labels"]["class_id"] == 33
-        np.testing.assert_array_equal(instance["bbox"], [40, 40, 80, 80])
-        assert instance["mask"].sum() == 4800
-        assert instance["mask"].max() == 3
+        np.testing.assert_array_equal(instance["bbox"], [48, 40, 88, 80])
+        np.testing.assert_array_equal(instance["keypoints"], [[77, 48]])
+        np.testing.assert_array_equal(instance["mask"], instances[2]["mask"][:, ::-1])
 
 
 class TestMixingTransformsInstanceBinding:

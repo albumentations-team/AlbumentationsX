@@ -1,8 +1,10 @@
 """Functional implementations of dithering algorithms for color depth reduction."""
 
 import functools
+from collections.abc import Callable
 from typing import Any, cast
 
+import cv2
 import numpy as np
 from albucore import apply_uint8_lut, convert_dtype
 from numpy.typing import NDArray
@@ -13,6 +15,10 @@ from albumentations.augmentations.pixel._functional_shared import (
 )
 from albumentations.augmentations.pixel.functional import to_gray_average, to_gray_weighted_average
 from albumentations.core.type_definitions import ImageFloat32, ImageUInt8
+
+_OPENCV_MAX_ROW_ELEMENTS = 2**31 - 1
+# The OpenCV wheel supports a scalar RHS although its compare stub omits it.
+_cv2_compare_scalar = cast("Callable[[np.ndarray, int, int], ImageUInt8]", cv2.compare)
 
 # Error diffusion kernels
 FLOYD_STEINBERG_KERNEL = {
@@ -322,6 +328,15 @@ def random_dither_uint8(
     else:
         noise_uint8 = random_noise
 
+    if (
+        n_colors == 2
+        and noise_uint8.dtype == np.int16
+        and noise_uint8.shape == img.shape
+        and 0 < img.size <= _OPENCV_MAX_ROW_ELEMENTS
+    ):
+        noisy_int16 = np.add(img, noise_uint8, dtype=np.int16).reshape(1, -1)
+        return _cv2_compare_scalar(noisy_int16, 127, cv2.CMP_GT).reshape(img.shape)
+
     # Add noise and clip to valid range
     noisy = np.clip(img.astype(np.int16) + noise_uint8, 0, 255).astype(np.uint8)
 
@@ -366,11 +381,17 @@ def random_dither(
     else:
         noisy = random_noise.copy()
     np.add(noisy, img, out=noisy)
-    np.clip(noisy, 0, 1, out=noisy)
-
-    # Quantize using vectorized numpy operations
     if n_colors == 2:
+        # Clipping does not affect the binary decision. OpenCV uses >, so use
+        # the predecessor of 0.5 to preserve >=, including exact ties.
+        if 4_096 <= noisy.size <= _OPENCV_MAX_ROW_ELEMENTS and noisy.dtype in (np.float32, np.float64):
+            threshold = np.nextafter(noisy.dtype.type(0.5), noisy.dtype.type(-np.inf))
+            flat = noisy.reshape(1, -1)
+            cv2.threshold(flat, float(threshold), 1, cv2.THRESH_BINARY, dst=flat)
+            return flat.reshape(noisy.shape).astype(np.float32, copy=False)
         return (noisy >= 0.5).astype(np.float32)
+
+    np.clip(noisy, 0, 1, out=noisy)
 
     # Vectorized quantization for float32
     np.multiply(noisy, n_colors - 1, out=noisy)
@@ -380,9 +401,49 @@ def random_dither(
 
 
 def _floyd_steinberg_binary_uint8(img: ImageUInt8) -> ImageUInt8:
-    """Apply binary Floyd-Steinberg dithering to a single-channel uint8 image without
-    dtype-wrapper dispatch overhead in the default grayscale path.
-    """
+    """Apply binary Floyd-Steinberg to a single-channel uint8 image."""
+    height, width = img.shape[:2]
+    diagonal_count = 2 * height + width - 2
+    if not height or not width or height * width < 12 * diagonal_count:
+        return _floyd_steinberg_binary_uint8_scalar(img)
+
+    row_stride = width + 2
+    padded = np.zeros((height + 1, row_stride), dtype=np.float32)
+    channel = padded[:-1, 1:-1]
+    np.multiply(img[:, :, 0], np.float32(1.0 / 255.0), out=channel)
+    work = padded.ravel()
+    errors = np.empty(min(height, (width + 1) // 2), dtype=np.float32)
+    levels = np.empty_like(errors)
+
+    # For a fixed diagonal d = 2 * row + col, advancing one row moves
+    # two columns left. In the padded buffer the flattened stride is width.
+    for diagonal in range(diagonal_count):
+        first_row = max(0, (diagonal - width + 2) // 2)
+        last_row = min(height - 1, diagonal // 2)
+        count = last_row - first_row + 1
+        start = diagonal + 1 + first_row * width
+        stop = start + count * width
+        values = work[start:stop:width]
+        error = errors[:count]
+        level = levels[:count]
+        np.greater_equal(values, 0.5, out=level)
+        np.subtract(values, level, out=error)
+        values[:] = level
+
+        # Down-left and right reach the same next diagonal. Apply down-left
+        # first to preserve the scalar FP32 accumulation order at each pixel.
+        work[start + row_stride - 1 : stop + row_stride - 1 : width] += error * (3.0 / 16.0)
+        work[start + 1 : stop + 1 : width] += error * (7.0 / 16.0)
+        work[start + row_stride : stop + row_stride : width] += error * (5.0 / 16.0)
+        work[start + row_stride + 1 : stop + row_stride + 1 : width] += error * (1.0 / 16.0)
+
+    result = np.empty_like(img)
+    np.multiply(channel, 255, out=result[:, :, 0], casting="unsafe")
+    return result
+
+
+def _floyd_steinberg_binary_uint8_scalar(img: ImageUInt8) -> ImageUInt8:
+    """Apply binary error diffusion when diagonals are too short to vectorize."""
     channel = img[:, :, 0].astype(np.float32) * (1.0 / 255.0)
     height, width = channel.shape
 
@@ -444,7 +505,7 @@ def ordered_dither_uint8(
     tiled = np.tile(bayer, (tiles_height, tiles_width))[:height, :width]
 
     if n_colors == 2:
-        return ((img > tiled[:, :, np.newaxis]) * 255).astype(np.uint8)
+        return np.multiply(img > tiled[:, :, np.newaxis], 255, dtype=np.uint8)
     # Multi-level: Create LUT once outside channel loop
     levels = np.linspace(0, 255, n_colors).astype(np.uint8)
 

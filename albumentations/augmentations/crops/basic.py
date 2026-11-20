@@ -5,11 +5,16 @@ from typing import Annotated, Any, Literal, Self, cast
 
 from numpy.typing import NDArray
 
+from albumentations.augmentations.geometric._functional_vector_fields import (
+    crop_vector_field_2d,
+    translate_vector_field,
+    warp_vector_field_2d,
+)
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet
 
 from ._transforms_shared import (
-    ALL_TARGETS,
+    ALL_GEOMETRIC_TARGETS,
     CV2_BORDER_CONSTANT,
     CV2_INTER_LINEAR,
     CV2_INTER_NEAREST,
@@ -50,7 +55,8 @@ class RandomCrop(BaseCropAndPad):
         p (float): Probability of applying the transform. Default: 1.0.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -222,7 +228,8 @@ class CenterCrop(BaseCropAndPad):
         p (float): Probability of applying the transform. Default: 1.0.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -390,7 +397,8 @@ class Crop(BaseCropAndPad):
         p (float): Probability of applying the transform. Default: 1.0.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -669,7 +677,8 @@ class CropAndPad(DualTransform):
             Probability of applying the transform. Default: 1.0.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -778,7 +787,7 @@ class CropAndPad(DualTransform):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(BaseTransformInitSchema):
@@ -870,6 +879,31 @@ class CropAndPad(DualTransform):
         if self.keep_size:
             return fgeometric.clip_if_interpolation_can_overshoot(result, self.interpolation)
         return result
+
+    def _apply_vector_field_target(
+        self,
+        target: str,
+        field: np.ndarray,
+        **params: Any,
+    ) -> np.ndarray:
+        crop_params = params["crop_params"]
+        pad_params = params["pad_params"]
+        result_shape = params["result_shape"]
+        shape = params["shape"]
+        field = field if crop_params is None else crop_vector_field_2d(field, crop_params)
+        pad_top, _, pad_left, _ = (0, 0, 0, 0) if pad_params is None else pad_params
+        if not self.keep_size:
+            return translate_vector_field(field, result_shape, (pad_top, pad_left))
+        scale_x = shape[1] / result_shape[1]
+        scale_y = shape[0] / result_shape[0]
+        matrix = np.asarray(
+            (
+                (scale_x, 0, scale_x * (pad_left + 0.5) - 0.5),
+                (0, scale_y, scale_y * (pad_top + 0.5) - 0.5),
+            ),
+            dtype=np.float32,
+        )
+        return warp_vector_field_2d(field, matrix, shape[:2], semantics=target)
 
     def apply_to_mask(
         self,

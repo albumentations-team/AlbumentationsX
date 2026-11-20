@@ -36,6 +36,32 @@ and [2.6.0](2.6.0.md).
 - Contract: [Affine on rasters of different sizes](../geometry.md#affine-on-rasters-of-different-sizes).
 - Tests: [Geometry contracts](../../tests/contracts/test_geometry_contract.py).
 
+### OpticalDistortion maps fisheye annotations in continuous coordinates
+
+- Previous behavior: OpticalDistortion rasterized boxes to masks and could return original coordinates for a box
+  whose entire support left the frame. Keypoints used a raster mask or an inverse pixel grid.
+- New behavior: For a full-resolution fisheye map with constant border and a coefficient in `[-0.3, 0.3]`,
+  OpticalDistortion uses the inverse radial map for keypoints and sampled box edges when the map is monotone in
+  the frame. It fits boxes to the visible contour and applies `BboxParams.min_visibility` to the retained area
+  fraction. `KeypointParams.remove_invisible` controls whether out-of-frame keypoints and their labels are kept.
+- Affected users: Pipelines that pass keypoints, HBBs or OBBs to `OpticalDistortion(mode="fisheye")` in this range.
+- Migration: Update cached annotations or expected boxes and keypoints using the new transform. Pin the previous
+  version when reproducing an augmentation run that relied on raster-rounded coordinates or retained boxes.
+- First affected version: unreleased
+- Contract: [OpticalDistortion annotation geometry](../geometry.md#opticaldistortion-annotation-geometry).
+- Tests: [OpticalDistortion annotation tests](../../tests/test_optical_distortion_annotations.py).
+
+### GridElasticDeform handles cells without an invertible homography
+
+- Previous behavior: Collapsed cells could produce image and annotation results from a non-invertible warp.
+- New behavior: Cells with collinear destination corners stay at their source rectangles. Source rectangles without
+  area contribute no warp. Images and annotations use the same recovered grid.
+- Affected users: Pipelines and saved replays in which a fine grid or a large displacement collapses a cell.
+- Migration: Regenerate expected outputs for samples with collapsed cells.
+- First affected version: unreleased
+- Contract: [Grid elastic deformation](../geometry.md).
+- Tests: [Geometry contracts](../../tests/contracts/test_geometry_contract.py).
+
 ### Dropout inpainting honors every nonzero mask value
 
 - Previous behavior: Converting a numeric mask to `uint8` could turn a nonzero value such as `256` into zero,

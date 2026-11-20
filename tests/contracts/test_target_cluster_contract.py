@@ -7,6 +7,7 @@ from tests.helpers.target_contracts import (
     CORE_TARGET_CONTRACT_PAIRS,
     EXTENDED_TARGET_CONTRACT_PAIRS,
     IMAGE_TARGET_NAMES,
+    NON_PRIMARY_VOLUME_FIELD_CONTRACT_PAIRS,
     TENSOR_IMAGE_ONLY_TARGET_CONTRACT_PAIRS,
     TENSOR_TARGET_CONTRACT_PAIRS,
     VOLUME_ONLY_TARGET_CONTRACT_PAIRS,
@@ -22,11 +23,56 @@ from tests.helpers.transform_cases import (
     PRIMARY_TRANSFORM_CONTRACT_CASES,
 )
 
+_VECTOR_FIELD_PROFILE_IDS = frozenset({"image-vector-fields", "volume-vector-fields3d"})
+_VECTOR_FIELD_CONTRACT_PAIRS = tuple(
+    pair
+    for pair in (
+        *CORE_TARGET_CONTRACT_PAIRS,
+        *EXTENDED_TARGET_CONTRACT_PAIRS,
+        *NON_PRIMARY_VOLUME_FIELD_CONTRACT_PAIRS,
+    )
+    if pair.profile.profile_id in _VECTOR_FIELD_PROFILE_IDS
+)
+
 
 @pytest.mark.parametrize("pair", CORE_TARGET_CONTRACT_PAIRS, ids=lambda pair: pair.pair_id)
 def test_core_target_cluster_contract(pair: TargetContractPair) -> None:
     for seed in pair.case.seeds:
         run_target_cluster_contract(pair.case, pair.profile, seed)
+
+
+@pytest.mark.parametrize("pair", _VECTOR_FIELD_CONTRACT_PAIRS, ids=lambda pair: pair.pair_id)
+@pytest.mark.parametrize(
+    ("field_dtype", "sparse_nan"),
+    (
+        (np.dtype(np.float16), False),
+        (np.dtype(np.float32), True),
+        (np.dtype(np.float16), True),
+    ),
+    ids=("float16", "sparse-nan-float32", "sparse-nan-float16"),
+)
+def test_vector_field_dtype_and_nan_parity(
+    pair: TargetContractPair,
+    field_dtype: np.dtype,
+    sparse_nan: bool,
+) -> None:
+    run_tensor_target_cluster_contract(
+        pair.case,
+        pair.profile,
+        seed=137,
+        vector_field_dtype=field_dtype,
+        sparse_vector_field_nan=sparse_nan,
+    )
+
+
+@pytest.mark.parametrize("pair", NON_PRIMARY_VOLUME_FIELD_CONTRACT_PAIRS, ids=lambda pair: pair.pair_id)
+def test_non_primary_3d_field_modes_numpy(pair: TargetContractPair) -> None:
+    run_target_cluster_contract(pair.case, pair.profile, seed=137)
+
+
+@pytest.mark.parametrize("pair", NON_PRIMARY_VOLUME_FIELD_CONTRACT_PAIRS, ids=lambda pair: pair.pair_id)
+def test_non_primary_3d_field_modes_tensor(pair: TargetContractPair) -> None:
+    run_tensor_target_cluster_contract(pair.case, pair.profile, seed=137)
 
 
 @pytest.mark.parametrize(

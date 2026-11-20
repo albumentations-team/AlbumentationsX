@@ -949,6 +949,54 @@ def rule_cv2(index: SourceIndex) -> list[Diagnostic]:
     return result
 
 
+def rule_tensor_bridge(index: SourceIndex) -> list[Diagnostic]:
+    result: list[Diagnostic] = []
+    for unit in index.units:
+        if not unit.key.startswith("albumentations/"):
+            continue
+        nodes = list(ast.walk(unit.tree))
+        torch_names = {"torch"} | {
+            alias.asname
+            for node in nodes
+            if isinstance(node, ast.Import)
+            for alias in node.names
+            if alias.name == "torch" and alias.asname is not None
+        }
+        for node in nodes:
+            if _is_torch_from_numpy(node, torch_names):
+                result.append(
+                    _unit_d(
+                        "AXG028",
+                        unit,
+                        node,
+                        "Use albucore.tensor_bridge.numpy_to_tensor_storage or numpy_to_tensor_layout.",
+                        "torch.from_numpy",
+                    )
+                )
+            elif isinstance(node, ast.Attribute) and node.attr == "numpy" and isinstance(node.ctx, ast.Load):
+                result.append(
+                    _unit_d(
+                        "AXG028",
+                        unit,
+                        node,
+                        "Use albucore.tensor_bridge.tensor_to_numpy_storage or tensor_to_numpy_channel_last.",
+                        ".numpy",
+                    )
+                )
+    return result
+
+
+def _is_torch_from_numpy(node: ast.AST, torch_names: set[str]) -> bool:
+    if isinstance(node, ast.ImportFrom):
+        return node.level == 0 and node.module == "torch" and any(alias.name == "from_numpy" for alias in node.names)
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr == "from_numpy"
+        and isinstance(node.value, ast.Name)
+        and node.value.id in torch_names
+    )
+
+
 def rule_bbox_defaults(index: SourceIndex) -> list[Diagnostic]:
     result: list[Diagnostic] = []
     for info in index.classes.values():
@@ -1497,6 +1545,7 @@ def run_all(index: SourceIndex) -> list[Diagnostic]:
         rule_sampled_dispatch_override,
         rule_serialization_override,
         rule_cv2,
+        rule_tensor_bridge,
         rule_bbox_defaults,
         rule_integrity,
         rule_scalar_numpy_math,

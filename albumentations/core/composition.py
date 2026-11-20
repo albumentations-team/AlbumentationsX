@@ -21,6 +21,7 @@ from typing import Any, Protocol, Union, cast
 import cv2
 import numpy as np
 import torch
+from albucore.tensor_bridge import tensor_to_numpy_storage
 from numpy.typing import NDArray
 from pydantic import PydanticSchemaGenerationError, PydanticUserError, TypeAdapter, ValidationError
 
@@ -56,14 +57,19 @@ from .tensor import (
     TENSOR_TARGETS,
     numpy_to_tensor_annotation,
     numpy_to_tensor_spatial,
-    tensor_to_numpy_annotation,
     tensor_to_numpy_spatial,
     validate_tensor_input,
     validate_tensor_metadata_input,
+    validate_vector_field_input,
 )
 from .tracing import TraceOptions, TraceResult, _ExecutionTrace
 from .transforms_interface import BasicTransform, DualTransform
-from .type_definitions import StackedMasks4D, Targets
+from .type_definitions import (
+    VECTOR_FIELD_TARGET_INFO_BY_NAME,
+    VECTOR_FIELD_TARGET_NAMES,
+    StackedMasks4D,
+    Targets,
+)
 from .utils import DataProcessor, format_args, get_shape
 
 __all__ = [
@@ -89,6 +95,7 @@ _TRACE_STATUS_APPLIED = "applied"
 _TRACE_STATUS_SKIPPED_PROBABILITY = "skipped_probability"
 _TRACE_STATUS_SKIPPED_REPLAY = "skipped_replay"
 _TRACE_STATUS_SKIPPED_SELECTION = "skipped_selection"
+_TRACE_STATUS_SKIPPED_UNSUPPORTED_TARGET = "skipped_unsupported_target"
 
 _REPLAY_PARAM_ANNOTATIONS_CACHE: dict[type, dict[str, Any]] = {}
 
@@ -262,6 +269,7 @@ AVAILABLE_KEYS = (
     "volumes",
     "mask3d",
     "masks3d",
+    *sorted(VECTOR_FIELD_TARGET_NAMES),
     "user_data",
 )
 
@@ -285,8 +293,15 @@ _SPATIAL_AXES = {
     "mask3d": ("D", "H", "W"),
     "volumes": ("N", "D", "H", "W"),
     "masks3d": ("N", "D", "H", "W"),
+    **{
+        target: (("H", "W") if spatial_rank == 2 else ("D", "H", "W"))
+        for target, (spatial_rank, _) in VECTOR_FIELD_TARGET_INFO_BY_NAME.items()
+    },
 }
-_OPTIONAL_CHANNEL_RANKS = {target: len(axes) for target, axes in _SPATIAL_AXES.items()}
+_VECTOR_FIELD_TARGETS = VECTOR_FIELD_TARGET_NAMES
+_OPTIONAL_CHANNEL_RANKS = {
+    target: len(axes) for target, axes in _SPATIAL_AXES.items() if target not in _VECTOR_FIELD_TARGETS
+}
 _VOLUMETRIC_TARGETS = frozenset(target for target, axes in _SPATIAL_AXES.items() if "D" in axes)
 _CANONICAL_TARGETS = frozenset((*AVAILABLE_KEYS, *_SPATIAL_AXES))
 
@@ -725,7 +740,6 @@ class BaseCompose(InvocationRngOwner, Serializable):
         track_applied: bool = False,
         tracking_data: dict[str, Any] | None = None,
         finalize_annotations: bool = True,
-        resync_instances: bool = False,
         replay_child: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Execute a configured edge through normal dispatch, then perform annotation, trace, and
@@ -749,8 +763,6 @@ class BaseCompose(InvocationRngOwner, Serializable):
                 self._track_transform_params(transform, data if tracking_data is None else tracking_data)
             if finalize_annotations:
                 data = self._finalize_annotations_after(data, transform, compiled_child, invocation)
-            if resync_instances and compiled_child.may_change_bboxes:
-                self._resync_instance_ids(data)
             return data
 
         with trace.node_scope(trace.child_path(index)):
@@ -761,13 +773,11 @@ class BaseCompose(InvocationRngOwner, Serializable):
                 self._track_transform_params(transform, data if tracking_data is None else tracking_data)
             if finalize_annotations:
                 data = self._finalize_annotations_after(data, transform, compiled_child, invocation)
-            if resync_instances and compiled_child.may_change_bboxes:
-                self._resync_instance_ids(data)
             if isinstance(transform, BasicTransform):
                 applied = bool(transform.params)
                 trace.emit_leaf(
                     class_fullname=transform.get_applied_replay_class().get_class_fullname(),
-                    status=_TRACE_STATUS_APPLIED if applied else self._leaf_skip_status(transform),
+                    status=_TRACE_STATUS_APPLIED if applied else self._leaf_skip_status(transform, invocation),
                     params=transform.applied_config if applied else None,
                     data=data if applied else None,
                     elapsed_ns=None if start_ns is None else perf_counter_ns() - start_ns,
@@ -884,6 +894,20 @@ class BaseCompose(InvocationRngOwner, Serializable):
             invocation_seed=invocation_seed,
             prime_py_random=prime_py_random,
         )
+
+    def _validate_vector_fields_for_invocation(
+        self,
+        data: Mapping[str, Any],
+        invocation: InvocationContext,
+    ) -> None:
+        """Validate fields once at a standalone selector's root before it dispatches a child directly."""
+        if invocation.vector_fields_validated:
+            return
+        for name, value in data.items():
+            canonical = self._additional_targets.get(name, name)
+            if value is not None and canonical in VECTOR_FIELD_TARGET_INFO_BY_NAME:
+                validate_vector_field_input(value, name, canonical)
+        invocation.vector_fields_validated = True
 
     def set_mask_interpolation(self, mask_interpolation: int | None) -> None:
         """Set interpolation mode for mask resizing operations. Propagates recursively to all
@@ -1099,6 +1123,7 @@ class BaseCompose(InvocationRngOwner, Serializable):
         """Set _available_keys from additional_targets and child transforms and targets_as_params.
         Updates processor data_fields; warns if processor has no transform.
         """
+        self._available_keys.update(VECTOR_FIELD_TARGET_NAMES)
         self._available_keys.update(self._additional_targets.keys())
         for t in self.transforms:
             self._available_keys.update(t.available_keys)
@@ -1180,17 +1205,14 @@ class BaseCompose(InvocationRngOwner, Serializable):
         """
         return self._transform_may_change_target(transform, Targets.BBOXES)
 
-    def _resync_instance_ids(self, data: dict[str, Any]) -> None:
-        """Provide a root instance-binding resynchronization hook while ordinary containers avoid
-        binding scans after nodes that cannot alter bboxes.
-        """
-        del data
-
     @staticmethod
-    def _leaf_skip_status(transform: BasicTransform) -> str:
+    def _leaf_skip_status(transform: BasicTransform, invocation: InvocationContext | None = None) -> str:
         """Choose trace skip status from leaf policy, distinguishing replay suppression from probability
         non-selection for consumers reconstructing the graph run.
         """
+        state = None if invocation is None else invocation.get_transform_state(transform)
+        if state is not None and state.skip_reason == "unsupported_vector_field":
+            return _TRACE_STATUS_SKIPPED_UNSUPPORTED_TARGET
         return _TRACE_STATUS_SKIPPED_REPLAY if transform.replay_mode else _TRACE_STATUS_SKIPPED_PROBABILITY
 
     @staticmethod
@@ -1271,13 +1293,8 @@ class BaseCompose(InvocationRngOwner, Serializable):
         """Check and filter data after transformation. Runs each check_each_transform
         processor (e.g. bbox filter) on matching data keys. Returns filtered data dict.
 
-        When `instance_binding` is active and the bbox processor drops rows, this method
-        mirrors that survival decision onto `masks` rows or `mask` channels (positionally)
-        and `keypoints` (by surviving `_bbox_instance_id` value) so bound targets remain
-        aligned at every transform boundary. Without this mirror-drop the resync would have
-        to reconstruct the survival decision from snapshot state — phase 3b of the rewrite
-        collapses that machinery into a single keep-mask plumbed straight from
-        `BboxProcessor`.
+        With instance binding, use the bbox processor's keep mask to align bound masks.
+        The subsequent ID resync aligns grouped keypoints before the next transform.
 
         Args:
             data (dict[str, Any]): Dictionary containing transformed data
@@ -1338,15 +1355,23 @@ class BaseCompose(InvocationRngOwner, Serializable):
         A custom Compose policy owns its full post-node boundary.  The base policy
         receives the transform so it can schedule target-aware filtering.
         """
-        policy = self
-        if invocation is not None and invocation.frame_state is not None:
-            policy = invocation.frame_state.policy
+        root_policy = None if invocation is None else invocation.annotation_policy
+        policy = self if root_policy is None else root_policy
         if type(policy).check_data_post_transform is BaseCompose.check_data_post_transform:
-            data = policy.check_data_post_transform(data, transform, compiled_child, invocation)
+            if policy.check_each_transform:
+                data = policy.check_data_post_transform(data, transform, compiled_child, invocation)
         else:
             data = policy.check_data_post_transform(data)
-        if policy is not self and compiled_child.may_change_bboxes:
-            policy._resync_instance_ids(data)  # noqa: SLF001 - root binding policy
+        if root_policy is not None and (
+            compiled_child.parent_finalizes_bboxes
+            or (
+                policy is not self
+                and compiled_child.may_change_bboxes
+                and invocation is not None
+                and invocation.frame_state is not None
+            )
+        ):
+            root_policy._resync_instance_ids(data)  # noqa: SLF001 - root binding policy
         return data
 
     def _bbox_filter_with_mirror(
@@ -1355,70 +1380,54 @@ class BaseCompose(InvocationRngOwner, Serializable):
         data: dict[str, Any],
         shape: tuple[int, ...],
         binding: frozenset[str],
-    ) -> None:
-        """Run the bbox filter, mirror its keep-mask onto masks (positional) and keypoints (by
-        surviving id), and realign transform-filtered inputs first.
-
-        Two stages ensure the bbox-row count drives both transform-level filtering and the
-        bbox-processor visibility pass:
-
-        1. Pre-filter realignment. Some transforms (CoarseDropout, Crop with `min_area`,
-           etc.) drop bbox rows inside their own `apply_to_bboxes` without touching the
-           bound masks. The surviving bboxes carry their original `_bbox_instance_id` in
-           the last column. That id selects a row in `masks` or a channel in `mask`, so we
-           fancy-index the bound masks down to the surviving id set and drop keypoints whose
-           `_kp_instance_id` is no longer present. This establishes the positional layout
-           required by the rest of this method.
-        2. BboxProcessor filter + post-filter mirror. Standard `filter_with_keep_mask` on
-           bboxes; mirror the resulting `keep_mask` positionally onto mask rows or channels
-           and by surviving id onto keypoints.
-        """
-        bboxes_pre = data.get("bboxes")
-        if isinstance(bboxes_pre, np.ndarray):
-            pre_bbox_ids: np.ndarray | None = bboxes_pre[:, -1].astype(np.int64, copy=True)
-            n_pre = bboxes_pre.shape[0]
-        else:
-            pre_bbox_ids = None
-            n_pre = 0
-
-        if pre_bbox_ids is not None:
-            self._prefilter_realign(data, binding, pre_bbox_ids, n_pre)
-
+    ) -> bool:
+        """Filter bboxes and select bound masks, reporting an instance count change."""
+        bboxes_before = data.get("bboxes")
+        has_masks = "masks" in data or "mask" in data
+        if (
+            not has_masks
+            and not self._additional_targets
+            and isinstance(bboxes_before, np.ndarray)
+            and bboxes_before.ndim == 2
+            and not len(bboxes_before)
+            and bboxes_before.dtype == np.float32
+            and bboxes_before.shape[1] >= proc._coordinate_count  # noqa: SLF001 - processor's empty shape contract
+        ):
+            return False
         keep_mask = self._run_bbox_filter(proc, data, shape)
+        if not isinstance(bboxes_before, np.ndarray) or keep_mask is None:
+            return False
+        bboxes = data["bboxes"]
+        count = len(bboxes_before)
+        if has_masks and self._align_bound_masks(data, binding, bboxes, count, keep_mask):
+            return True
+        return len(bboxes) != count
 
-        if keep_mask is None or pre_bbox_ids is None or n_pre == 0:
-            return
-
-        self._mirror_keep_mask(data, binding, keep_mask, pre_bbox_ids, n_pre)
-
-    def _prefilter_realign(
+    def _align_bound_masks(
         self,
         data: dict[str, Any],
         binding: frozenset[str],
-        pre_bbox_ids: np.ndarray,
-        n_pre: int,
-    ) -> None:
-        """Drop bound mask rows or channels and keypoints absent from `pre_bbox_ids` so data remains positionally
-        aligned before the bbox processor's filter runs.
-        """
-        if "masks" in binding:
-            masks_pre = data.get("masks")
-            if masks_pre is not None and isinstance(masks_pre, (np.ndarray, torch.Tensor)) and len(masks_pre) > n_pre:
-                valid = pre_bbox_ids[(pre_bbox_ids >= 0) & (pre_bbox_ids < len(masks_pre))]
-                data["masks"] = self._index_axis(masks_pre, valid, 0)
-        elif "mask" in binding:
-            mask_pre = data.get("mask")
-            instance_axis = self._mask_instance_axis(data, mask_pre)
-            if mask_pre is not None and instance_axis is not None and mask_pre.shape[instance_axis] > n_pre:
-                channel_count = mask_pre.shape[instance_axis]
-                valid = pre_bbox_ids[(pre_bbox_ids >= 0) & (pre_bbox_ids < channel_count)]
-                data["mask"] = self._index_axis(mask_pre, valid, instance_axis)
-        if "keypoints" in binding:
-            kps_pre = data.get("keypoints")
-            if isinstance(kps_pre, np.ndarray) and kps_pre.shape[0] > 0:
-                kp_keep_pre = np.isin(kps_pre[:, -1].astype(np.int64, copy=False), pre_bbox_ids)
-                if not kp_keep_pre.all():
-                    data["keypoints"] = kps_pre[kp_keep_pre]
+        bboxes: np.ndarray,
+        boxes_before_filter: int,
+        keep_mask: np.ndarray | None = None,
+    ) -> bool:
+        """Select masks once after transform and processor filtering, if any rows were removed."""
+        bound_mask = self._bound_mask_with_instance_axis(data, binding)
+        if bound_mask is None:
+            return False
+        masks, axis = bound_mask
+        mask_count = masks.shape[axis]
+        if mask_count > boxes_before_filter:
+            # A transform dropped boxes before the processor. Their IDs still index the original masks.
+            indices = bboxes[:, -1].astype(np.intp)
+            indices = indices[(indices >= 0) & (indices < mask_count)]
+        elif mask_count == boxes_before_filter and len(bboxes) < boxes_before_filter and keep_mask is not None:
+            indices = keep_mask
+        else:
+            return False
+        key = "masks" if "masks" in binding else "mask"
+        data[key] = self._index_axis(masks, indices, axis)
+        return True
 
     def _run_bbox_filter(
         self,
@@ -1448,73 +1457,33 @@ class BaseCompose(InvocationRngOwner, Serializable):
                     keep_mask = current_keep_mask
         return keep_mask
 
-    def _mirror_keep_mask(
-        self,
-        data: dict[str, Any],
-        binding: frozenset[str],
-        keep_mask: np.ndarray,
-        pre_bbox_ids: np.ndarray,
-        n_pre: int,
-    ) -> None:
-        """Mirror the bbox processor's positional keep mask onto bound mask rows or channels and keypoints by
-        surviving instance id so all targets stay aligned.
-        """
-        if "masks" in binding:
-            masks = data.get("masks")
-            if masks is not None and isinstance(masks, (np.ndarray, torch.Tensor)) and len(masks) == n_pre:
-                data["masks"] = self._index_axis(masks, keep_mask, 0)
-        elif "mask" in binding:
-            mask = data.get("mask")
-            instance_axis = self._mask_instance_axis(data, mask)
-            if mask is not None and instance_axis is not None and mask.shape[instance_axis] == n_pre:
-                data["mask"] = self._index_axis(mask, keep_mask, instance_axis)
-        if "keypoints" in binding:
-            kps = data.get("keypoints")
-            if isinstance(kps, np.ndarray) and kps.shape[0] > 0:
-                surviving_bbox_ids = pre_bbox_ids[keep_mask]
-                kp_keep = np.isin(kps[:, -1].astype(np.int64, copy=False), surviving_bbox_ids)
-                if not kp_keep.all():
-                    data["keypoints"] = kps[kp_keep]
-
     def _drop_instances_with_empty_bound_masks(
         self,
         data: dict[str, Any],
         binding: frozenset[str],
-    ) -> None:
+    ) -> bool:
         """Remove bbox-bound instances whose transformed masks contain no non-zero pixels, including their bboxes,
         labels, and keypoints.
         """
         bboxes = data.get("bboxes")
         if not isinstance(bboxes, np.ndarray) or bboxes.shape[0] == 0:
-            return
+            return False
 
         keep_mask = self._nonempty_bound_mask_rows(data, binding, bboxes.shape[0])
-        if keep_mask is None:
-            return
-        if keep_mask.all():
-            return
+        if keep_mask is None or keep_mask.all():
+            return False
 
         instance_axis = 0 if "masks" in binding else self._mask_instance_axis(data, data.get("mask"))
         if instance_axis is None:
-            return
+            return False
 
-        bbox_instance_ids = bboxes[:, -1].astype(np.int64, copy=False)
-        surviving_instance_ids = bbox_instance_ids[keep_mask]
         data["bboxes"] = bboxes[keep_mask]
         if "masks" in binding:
             data["masks"] = self._index_axis(data["masks"], keep_mask, instance_axis)
         else:
             data["mask"] = self._index_axis(data["mask"], keep_mask, instance_axis)
 
-        if "keypoints" in binding:
-            keypoints = data.get("keypoints")
-            if isinstance(keypoints, np.ndarray) and keypoints.shape[0] > 0:
-                keypoint_keep_mask = np.isin(
-                    keypoints[:, -1].astype(np.int64, copy=False),
-                    surviving_instance_ids,
-                )
-                if not keypoint_keep_mask.all():
-                    data["keypoints"] = keypoints[keypoint_keep_mask]
+        return True
 
     def _nonempty_bound_mask_rows(
         self,
@@ -1539,7 +1508,7 @@ class BaseCompose(InvocationRngOwner, Serializable):
             return None
 
         mask, instance_axis = mask_with_axis
-        mask_array = mask.numpy()
+        mask_array = tensor_to_numpy_storage(mask)
         reduction_axes = tuple(axis for axis in range(mask_array.ndim) if axis != instance_axis % mask_array.ndim)
         return np.any(mask_array, axis=reduction_axes)
 
@@ -1547,19 +1516,22 @@ class BaseCompose(InvocationRngOwner, Serializable):
         self,
         data: dict[str, Any],
         binding: frozenset[str],
-        instance_count: int,
+        instance_count: int | None = None,
     ) -> tuple[Any, int] | None:
         """Locate the bound mask container and identify its instance axis across NumPy layouts and terminal CPU
         tensors produced by `ToTensorV2` for aligned filtering.
         """
         if "masks" in binding:
             masks = data.get("masks")
-            if masks is not None and isinstance(masks, (np.ndarray, torch.Tensor)) and len(masks) == instance_count:
+            if (
+                masks is not None
+                and isinstance(masks, (np.ndarray, torch.Tensor))
+                and (instance_count is None or len(masks) == instance_count)
+            ):
                 return masks, 0
-        elif "mask" in binding:
-            mask = data.get("mask")
+        elif "mask" in binding and (mask := data.get("mask")) is not None:
             instance_axis = self._mask_instance_axis(data, mask)
-            if mask is not None and instance_axis is not None and mask.shape[instance_axis] == instance_count:
+            if instance_axis is not None and (instance_count is None or mask.shape[instance_axis] == instance_count):
                 return mask, instance_axis
         return None
 
@@ -1840,8 +1812,10 @@ class Compose(BaseCompose, HubMixin):
             realized reflection across an odd number of axes and remaps `mask3d`, `masks3d`, and their aliases, not 2D
             `mask` or `masks` targets. Default: None.
         p (float): Probability of applying all transforms. Should be in range [0, 1]. Default is 1.0.
-        is_check_shapes (bool): If True, checks consistency of shapes for image/mask/masks on each call.
-            Disable only if you are sure about your data consistency. Default is True.
+        is_check_shapes (bool): If True, require matching spatial dimensions across raster targets and aliases.
+            Set to False when the pipeline supports targets at different resolutions. Individual transforms
+            can still require a shared spatial shape for their geometry. Bounding boxes and keypoints use
+            the coordinate frame of the primary image or volume. Default is True.
         strict (bool): If True, enables strict mode which:
             1. Validates that all input keys are known/expected
             2. Validates that no transforms have invalid arguments
@@ -2281,6 +2255,7 @@ class Compose(BaseCompose, HubMixin):
                 prime_py_random=may_skip,
             )
             context.has_tensor_inputs = False
+            context.vector_fields_validated = True
             if not self._should_apply_in_context(context, force_apply=force_apply):
                 return data
             return self._apply_unactivated_compiled_transforms(data, context)
@@ -2291,7 +2266,10 @@ class Compose(BaseCompose, HubMixin):
             prime_py_random=may_skip and not preprocess_before_draw,
         )
         context.has_tensor_inputs = tensor_boundary_state.has_tensor_inputs
+        context.vector_fields_validated = True
         context.trace_session = trace
+        if self._instance_binding and "bboxes" in self._instance_binding:
+            context.compose_state(self).annotation_policy = self
         with context:
             return self._execute_with_preprocessing(
                 data,
@@ -2593,7 +2571,6 @@ class Compose(BaseCompose, HubMixin):
                 data,
                 invocation,
                 track_applied=track_applied,
-                resync_instances=bool(self.main_compose and self._instance_binding),
             )
         return data
 
@@ -2668,7 +2645,7 @@ class Compose(BaseCompose, HubMixin):
         for transform in transforms:
             if isinstance(transform, BaseCompose):
                 yield from Compose._iter_declared_tensor_metadata_inputs(transform.transforms, data)
-            elif isinstance(transform, BasicTransform):
+            elif isinstance(transform, BasicTransform) and not transform.should_skip_for_vector_fields(data):
                 yield from transform.iter_tensor_metadata_inputs(data)
 
     @staticmethod
@@ -2749,21 +2726,23 @@ class Compose(BaseCompose, HubMixin):
         self._preprocess_processors(data)
 
     def _prepare_collection_binding(self, data: dict[str, Any]) -> None:
-        invocation = get_current_invocation()
-        state = FrameBinding(frames=[], sources=np.arange(len(data["images"])), policy=self)
+        invocation = cast("InvocationContext", get_current_invocation())
+        state = FrameBinding(frames=[], sources=np.arange(len(data["images"])))
         for name, value in data.items():
             canonical = self._additional_targets.get(name, name)
             if canonical == "masks":
                 state.rows[name] = RowIds(np.arange(len(value)))
             elif canonical == "images":
                 state.routes[name] = canonical
-        cast("InvocationContext", invocation).frame_state = state
+        invocation.frame_state = state
+        invocation.compose_state(self).annotation_policy = self
 
     def _flatten_frame_annotations(self, data: dict[str, Any]) -> None:
         frames = data.pop("frame_annotations", [])
-        invocation = get_current_invocation()
-        state = FrameBinding(frames=frames, sources=np.arange(len(data["images"])), policy=self)
-        cast("InvocationContext", invocation).frame_state = state
+        invocation = cast("InvocationContext", get_current_invocation())
+        state = FrameBinding(frames=frames, sources=np.arange(len(data["images"])))
+        invocation.frame_state = state
+        invocation.compose_state(self).annotation_policy = self
         if self._instance_binding:
             counts = np.array([len(frame.get("instances", [])) for frame in frames], dtype=np.intp)
             data["instances"] = [instance for frame in frames for instance in frame.get("instances", [])]
@@ -2783,9 +2762,7 @@ class Compose(BaseCompose, HubMixin):
         for name, canonical in self._additional_targets.items():
             if canonical == "images":
                 state.routes[name] = canonical
-        cast("InvocationContext", invocation).has_tensor_inputs = any(
-            isinstance(value, torch.Tensor) for value in data.values()
-        )
+        invocation.has_tensor_inputs = any(isinstance(value, torch.Tensor) for value in data.values())
 
     @staticmethod
     def _attach_frame_ids(values: np.ndarray, owners: np.ndarray) -> np.ndarray:
@@ -2807,7 +2784,7 @@ class Compose(BaseCompose, HubMixin):
                 arrays = [
                     processor.prepare_coordinates(
                         f"frame_annotations[{index}].{name}",
-                        tensor_to_numpy_annotation(value, canonical) if isinstance(value, torch.Tensor) else value,
+                        tensor_to_numpy_storage(value) if isinstance(value, torch.Tensor) else value,
                     ).astype(np.float32, copy=False)
                     for index, value in entries
                 ]
@@ -2880,10 +2857,10 @@ class Compose(BaseCompose, HubMixin):
         """Convert accepted Tensor bbox and keypoint matrices once for existing NumPy-only
         processors, keeping all public annotations Tensor at Compose entry and exit.
         """
-        for data_name, canonical_name in tensor_boundary_state.annotation_targets:
+        for data_name, _ in tensor_boundary_state.annotation_targets:
             value = data.get(data_name)
             if isinstance(value, torch.Tensor):
-                data[data_name] = tensor_to_numpy_annotation(value, canonical_name)
+                data[data_name] = tensor_to_numpy_storage(value)
 
     def _validate_spatial_inputs(
         self,
@@ -2898,24 +2875,59 @@ class Compose(BaseCompose, HubMixin):
         for name, value in data.items():
             canonical = routes.get(name, self._additional_targets.get(name, name))
             optional_rank = _OPTIONAL_CHANNEL_RANKS.get(canonical)
-            if optional_rank is None:
+            if optional_rank is not None:
+                if value is None and not self.strict and canonical in MASK_KEYS:
+                    continue
+                if isinstance(value, np.ndarray):
+                    needs_channel_axis |= value.ndim == optional_rank
+                    shape = self._numpy_spatial_shape(name, canonical, value, optional_rank)
+                elif isinstance(value, torch.Tensor):
+                    shape = tuple(value.shape[-3:]) if self.is_check_shapes and value.numel() else ()
+                else:
+                    raise TypeError(f"{name} must be a NumPy array or torch.Tensor, got {type(value).__name__}")
+                if shape:
+                    shapes.append((name, shape[-2:]))
+                    if canonical in _VOLUMETRIC_TARGETS:
+                        volume_shapes.append((name, shape[-3:]))
                 continue
-            if value is None and not self.strict and canonical in MASK_KEYS:
-                continue
-            if isinstance(value, np.ndarray):
-                needs_channel_axis |= value.ndim == optional_rank
-                shape = self._numpy_spatial_shape(name, canonical, value, optional_rank)
-            elif isinstance(value, torch.Tensor):
-                shape = tuple(value.shape[-3:]) if self.is_check_shapes and value.numel() else ()
-            else:
-                raise TypeError(f"{name} must be a NumPy array or torch.Tensor, got {type(value).__name__}")
-            if shape:
-                shapes.append((name, shape[-2:]))
-                if canonical in _VOLUMETRIC_TARGETS:
-                    volume_shapes.append((name, shape[-3:]))
+            vector_field_info = VECTOR_FIELD_TARGET_INFO_BY_NAME.get(canonical)
+            if vector_field_info is not None:
+                if value is None and not self.strict:
+                    continue
+                spatial_rank, _ = vector_field_info
+                self._append_vector_field_shapes(name, canonical, value, spatial_rank, shapes, volume_shapes)
 
         self._check_shape_consistency(shapes, volume_shapes)
         return needs_channel_axis
+
+    def _append_vector_field_shapes(
+        self,
+        name: str,
+        canonical: str,
+        value: Any,
+        spatial_rank: int,
+        shapes: list[tuple[str, tuple[int, ...]]],
+        volume_shapes: list[tuple[str, tuple[int, ...]]],
+    ) -> None:
+        shape = self._vector_field_spatial_shape(name, canonical, value, spatial_rank)
+        if not shape:
+            return
+        shapes.append((name, shape[-2:]))
+        if spatial_rank == 3:
+            volume_shapes.append((name, shape))
+
+    def _vector_field_spatial_shape(
+        self,
+        name: str,
+        canonical: str,
+        value: Any,
+        spatial_rank: int,
+    ) -> tuple[int, ...]:
+        validate_vector_field_input(value, name, canonical)
+        if not self.is_check_shapes or (value.size if isinstance(value, np.ndarray) else value.numel()) == 0:
+            return ()
+        spatial_axes = value.shape[:spatial_rank] if isinstance(value, np.ndarray) else value.shape[-spatial_rank:]
+        return tuple(spatial_axes)
 
     def _numpy_spatial_shape(
         self,
@@ -2973,8 +2985,25 @@ class Compose(BaseCompose, HubMixin):
                 processor.ensure_data_valid(data)
             else:
                 processor.label_data = labels
+        binding = self._instance_binding
+        bbox_processor = processors.get("bboxes") if binding and "bboxes" in binding else None
+        bboxes_before = (
+            data.get("bboxes")
+            if isinstance(bbox_processor, BboxProcessor) and bbox_processor.params.filter_invalid_bboxes
+            else None
+        )
         for processor in active:
             processor.preprocess(data)
+        if (
+            bboxes_before is not None
+            and binding is not None
+            and len(data["bboxes"]) < len(bboxes_before)
+            and isinstance(bbox_processor, BboxProcessor)
+        ):
+            bboxes = data["bboxes"]
+            if bbox_processor.params.check_each_transform:
+                self._align_bound_masks(data, binding, bboxes, len(bboxes))
+            self._resync_instance_ids(data)
 
     def _ensure_contiguous(self, data: dict[str, Any]) -> None:
         for key, value in data.items():
@@ -3073,23 +3102,20 @@ class Compose(BaseCompose, HubMixin):
         if binding is None or "bboxes" not in binding:
             return
 
-        bbox_processor = self.processors.get("bboxes")
-        if not isinstance(bbox_processor, BboxProcessor):
+        configured_processor = self._configured_processors.get("bboxes")
+        if not isinstance(configured_processor, BboxProcessor):
             return
 
-        configured_processor = self._configured_processors.get("bboxes")
         invocation = get_current_invocation()
-        filter_already_applied = (
-            configured_processor is not None
-            and invocation is not None
-            and invocation.was_processor_filtered(configured_processor)
-        )
-        if not filter_already_applied:
-            self._bbox_filter_with_mirror(bbox_processor, data, get_shape(data), binding)
-            if configured_processor is not None and invocation is not None:
+        rows_changed = False
+        if invocation is None or not invocation.was_processor_filtered(configured_processor):
+            session = None if invocation is None else invocation.get_processor_session(configured_processor)
+            bbox_processor = configured_processor if session is None else session
+            rows_changed = self._bbox_filter_with_mirror(bbox_processor, data, get_shape(data), binding)
+            if invocation is not None:
                 invocation.mark_processor_filtered(configured_processor)
-        self._drop_instances_with_empty_bound_masks(data, binding)
-        self._resync_instance_ids(data)
+        if self._drop_instances_with_empty_bound_masks(data, binding) or rows_changed:
+            self._resync_instance_ids(data)
 
     def _remove_grayscale_channels(
         self,
@@ -3307,24 +3333,10 @@ class Compose(BaseCompose, HubMixin):
         raise ValueError(msg)
 
     def _resync_instance_ids(self, data: dict[str, Any]) -> None:
-        """Rebase the per-row instance id namespace to `arange(N)` and assert the structural
-        invariant before the next transform sees the data.
+        """Align bound rows and rebase instance IDs before the next transform.
 
-        Phase 4 of the instance-binding rewrite: positional alignment is now upheld
-        upstream — `Mosaic` shares one keep-mask across bboxes/masks/keypoints in
-        `sample_parameters`, `CopyAndPaste` emits dense-id output, and
-        `check_data_post_transform` mirrors any bbox-processor drop onto masks (positional)
-        and keypoints (by surviving id). All this method has to do is:
-
-        1. Assert that the bound `masks` row count or packed `mask` instance-axis count
-           equals `len(bboxes)`.
-        2. Translate `_kp_instance_id` from old bbox ids to the new positional ids.
-        3. Stamp `_bbox_instance_id = arange(N)` so the next transform sees a dense namespace.
-
-        The snapshot machinery (`_snapshot_pre_processor_bbox_ids`,
-        `_mask_positions_for_surviving_ids`) the 2.2.2 hotfix added is intentionally
-        deleted: it encoded a recovery branch for the dual-mask-layout case that no longer
-        exists after phases 2/2b/3b.
+        With deferred bbox filtering, align masks to boxes kept by the transform.
+        Use the surviving box IDs to align keypoints and rebase both targets.
         """
         binding = self._instance_binding
         if binding is None or "bboxes" not in binding:
@@ -3332,41 +3344,65 @@ class Compose(BaseCompose, HubMixin):
         bboxes_arr = data.get("bboxes")
         if not isinstance(bboxes_arr, np.ndarray):
             return
+
+        n = len(bboxes_arr)
+        if not n and self._frame_binding is None and self._clear_keypoints_for_empty_binding(data, binding):
+            return
         invocation = get_current_invocation()
         frame_state = None if invocation is None else invocation.frame_state
+        if not self._configured_processors["bboxes"].params.check_each_transform:
+            self._align_bound_masks(data, binding, bboxes_arr, n)
         if frame_state is not None and "bboxes" in frame_state.frame_columns:
             owners = bboxes_arr[:, frame_state.frame_columns["bboxes"]].astype(np.intp)
             frame_state.instance_frames = owners
             if "masks" in data:
                 frame_state.rows["masks"] = RowIds(owners, np.arange(len(owners)))
-        if bboxes_arr.shape[0] == 0:
+        if n:
+            self._raise_if_bound_mask_alignment_is_invalid(data, binding, n)
+
+        bbox_ids = bboxes_arr[:, -1].tolist()
+        positions = range(n)
+        rebase = bbox_ids != list(positions)
+        if "keypoints" in binding:
+            self._rebase_bound_keypoint_ids(data, bbox_ids, rebase=rebase)
+        if rebase:
+            bboxes_arr[:, -1] = positions
+
+    @staticmethod
+    def _clear_keypoints_for_empty_binding(data: dict[str, Any], binding: frozenset[str]) -> bool:
+        """Handle an empty box set without resolving mask layout when no mask rows remain."""
+        mask = data.get("masks" if "masks" in binding else "mask")
+        if mask is not None and (not isinstance(mask, np.ndarray) or mask.size):
+            return False
+        if "keypoints" in binding:
+            keypoints = data.get("keypoints")
+            if isinstance(keypoints, np.ndarray) and len(keypoints):
+                data["keypoints"] = keypoints[:0]
+        return True
+
+    @staticmethod
+    def _rebase_bound_keypoint_ids(data: dict[str, Any], bbox_ids: list[int], *, rebase: bool) -> None:
+        """Keep keypoints with surviving boxes and translate their IDs to the new positions."""
+        keypoints = data.get("keypoints")
+        if not isinstance(keypoints, np.ndarray) or not len(keypoints):
             return
 
-        n = bboxes_arr.shape[0]
-        old_ids = bboxes_arr[:, -1].astype(np.int64, copy=True)
-
-        self._raise_if_bound_mask_alignment_is_invalid(data, binding, n)
-
-        if "keypoints" in binding:
-            kp_arr = data.get("keypoints")
-            if isinstance(kp_arr, np.ndarray) and kp_arr.shape[0] > 0:
-                kp_ids_col = kp_arr[:, -1].astype(np.int64, copy=False)
-                # Defense in depth: orphan kp ids (no matching bbox) should already be filtered
-                # by `_bbox_filter_with_mirror`/`_prefilter_realign`. If we still see one here,
-                # the upstream chain is broken and silently passing it through corrupts the new
-                # positional namespace, so fail fast.
-                bbox_id_set = set(old_ids.tolist())
-                orphans = [int(k) for k in kp_ids_col.tolist() if int(k) not in bbox_id_set]
-                if orphans:
-                    self._raise_for_orphan_keypoints(orphans)
-                if not np.array_equal(old_ids, np.arange(n, dtype=np.int64)):
-                    old_to_new = {int(old): new for new, old in enumerate(old_ids.tolist())}
-                    kp_arr[:, -1] = np.array(
-                        [old_to_new[int(k)] for k in kp_ids_col],
-                        dtype=kp_arr.dtype,
-                    )
-
-        bboxes_arr[:, -1] = np.arange(n, dtype=bboxes_arr.dtype)
+        keypoint_ids = keypoints[:, -1].tolist()
+        n = len(bbox_ids)
+        if not rebase and all(0 <= keypoint_id < n for keypoint_id in keypoint_ids):
+            return
+        if rebase:
+            positions = {bbox_id: index for index, bbox_id in enumerate(bbox_ids)}
+            ids = [positions.get(keypoint_id, -1) for keypoint_id in keypoint_ids]
+        else:
+            ids = [keypoint_id if 0 <= keypoint_id < n else -1 for keypoint_id in keypoint_ids]
+        keep = [keypoint_id >= 0 for keypoint_id in ids]
+        if not all(keep):
+            keypoints = keypoints[keep]
+            data["keypoints"] = keypoints
+            ids = [keypoint_id for keypoint_id in ids if keypoint_id >= 0]
+        if rebase:
+            keypoints[:, -1] = ids
 
     def _raise_if_bound_mask_alignment_is_invalid(
         self,
@@ -3411,17 +3447,6 @@ class Compose(BaseCompose, HubMixin):
                 "`apply_to_mask` instead of filtering them independently."
             )
         msg = f"Instance-binding invariant violated: {mismatch}. {guidance}"
-        raise RuntimeError(msg)
-
-    def _raise_for_orphan_keypoints(self, orphans: list[int]) -> None:
-        sample = orphans[:5]
-        more = "" if len(orphans) <= 5 else f" (+{len(orphans) - 5} more)"
-        msg = (
-            f"Instance-binding invariant violated: keypoints reference "
-            f"{len(orphans)} bbox id(s) that no longer exist: {sample}{more}. "
-            "The last transform must drop keypoints whose parent bbox was filtered out, "
-            "or `_bbox_filter_with_mirror` must mirror the bbox keep-mask onto keypoints."
-        )
         raise RuntimeError(msg)
 
     def _unpack_instances(self, data: dict[str, Any]) -> None:
@@ -3893,7 +3918,9 @@ class OneOf(BaseCompose):
         if invocation is None:
             invocation = self._new_invocation_context()
             with invocation:
+                self._validate_vector_fields_for_invocation(data, invocation)
                 return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
+        self._validate_vector_fields_for_invocation(data, invocation)
         return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
 
     def apply_in_invocation(
@@ -4030,7 +4057,9 @@ class SomeOf(BaseCompose):
         if invocation is None:
             invocation = self._new_invocation_context()
             with invocation:
+                self._validate_vector_fields_for_invocation(data, invocation)
                 return self.apply_in_invocation(invocation, *arg, force_apply=force_apply, **data)
+        self._validate_vector_fields_for_invocation(data, invocation)
         return self.apply_in_invocation(invocation, *arg, force_apply=force_apply, **data)
 
     def apply_in_invocation(
@@ -4198,7 +4227,9 @@ class OneOrOther(BaseCompose):
         if invocation is None:
             invocation = self._new_invocation_context()
             with invocation:
+                self._validate_vector_fields_for_invocation(data, invocation)
                 return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
+        self._validate_vector_fields_for_invocation(data, invocation)
         return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
 
     def apply_in_invocation(
@@ -4298,7 +4329,9 @@ class SelectiveChannelTransform(BaseCompose):
         if invocation is None:
             invocation = self._new_invocation_context()
             with invocation:
+                self._validate_vector_fields_for_invocation(data, invocation)
                 return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
+        self._validate_vector_fields_for_invocation(data, invocation)
         return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
 
     def apply_in_invocation(
@@ -4403,7 +4436,7 @@ class ReplayCompose(Compose):
         p (float):
             Probability of applying the compose.
         is_check_shapes (bool):
-            Whether to check shapes of different targets.
+            Whether to require matching spatial dimensions across raster targets and aliases, as in `Compose`.
         save_key (str):
             Key for storing the applied transformations.
         seed (int | None):
@@ -4874,7 +4907,9 @@ class Sequential(BaseCompose):
         if invocation is None:
             invocation = self._new_invocation_context()
             with invocation:
+                self._validate_vector_fields_for_invocation(data, invocation)
                 return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
+        self._validate_vector_fields_for_invocation(data, invocation)
         return self.apply_in_invocation(invocation, *args, force_apply=force_apply, **data)
 
     def apply_in_invocation(

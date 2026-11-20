@@ -25,15 +25,29 @@ class GridElasticGeometry:
 
 
 def prepare_grid_elastic_geometry(generated_mesh: np.ndarray | GridElasticGeometry) -> GridElasticGeometry:
-    """Resolve the homography and raster contour for each cell of a sampled mesh."""
+    """Fit each nonempty cell, leaving cells with collinear destination corners in place."""
     if isinstance(generated_mesh, GridElasticGeometry):
         return generated_mesh
 
     mesh = np.asarray(generated_mesh, dtype=np.float32).reshape(len(generated_mesh), 12)
+    nonempty = (mesh[:, 0] < mesh[:, 2]) & (mesh[:, 1] < mesh[:, 3])
+    if not nonempty.all():
+        mesh = mesh[nonempty]
     source_rectangles = mesh[:, :4]
     destination_quads = mesh[:, 4:].reshape(-1, 4, 2)
     x_min, y_min, x_max, y_max = source_rectangles.T
     source_quads = np.stack((x_min, y_min, x_max, y_min, x_max, y_max, x_min, y_max), axis=1).reshape(-1, 4, 2)
+
+    # An invertible homography cannot map three corners of a rectangle onto a line.
+    corners = destination_quads.astype(np.float64)
+    next_corner = (1, 2, 3, 0)
+    edges = corners[:, next_corner] - corners
+    next_edges = edges[:, next_corner]
+    turns = edges[..., 0] * next_edges[..., 1] - edges[..., 1] * next_edges[..., 0]
+    degenerate = (turns == 0).any(axis=1)
+    if degenerate.any():
+        destination_quads = np.where(degenerate[:, None, None], source_quads, destination_quads)
+
     matrices = tuple(
         cv2.getPerspectiveTransform(source, destination)
         for source, destination in zip(source_quads, destination_quads, strict=True)

@@ -1,5 +1,5 @@
 import json
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import pytest
@@ -80,6 +80,7 @@ def test_channel_dropout_fraction_and_protected_channels(
         ({"dropout_ratio": 1.1}, "less than or equal to 1"),
         ({"dropout_ratio": float("nan")}, "less than or equal to 1"),
         ({"dropout_ratio": float("inf")}, "less than or equal to 1"),
+        ({"fill": "median"}, "mean"),
     ],
 )
 def test_channel_dropout_rejects_invalid_configuration(kwargs: dict[str, Any], message: str) -> None:
@@ -131,12 +132,15 @@ def test_channel_dropout_shares_selection_across_equal_channel_targets(
         np.testing.assert_array_equal(source, 1)
 
 
-def test_channel_dropout_rescales_count_for_different_channel_targets_and_replays() -> None:
+@pytest.mark.parametrize("fill", [0, "mean"])
+def test_channel_dropout_rescales_count_for_different_channel_targets_and_replays(
+    fill: float | Literal["mean"],
+) -> None:
     data = {
-        "image": np.ones((4, 7, 3), dtype=np.float32),
-        "volume": np.ones((2, 4, 7, 10), dtype=np.float32),
+        "image": np.linspace(0, 1, 4 * 7 * 3, dtype=np.float32).reshape(4, 7, 3),
+        "volume": np.linspace(0, 1, 2 * 4 * 7 * 10, dtype=np.float32).reshape(2, 4, 7, 10),
     }
-    dropout = A.ChannelDropout(dropout_ratio=0.5, p=1)
+    dropout = A.ChannelDropout(dropout_ratio=0.5, fill=fill, p=1)
     transform = A.ReplayCompose([dropout])
     transform.set_random_seed(137)
 
@@ -147,10 +151,52 @@ def test_channel_dropout_rescales_count_for_different_channel_targets_and_replay
     assert len(sampled.params_for("image")["selected_channels"]) == 2
     assert len(sampled.params_for("volume")["selected_channels"]) == 5
     for name, source in data.items():
+        selected = sampled.params_for(name)["selected_channels"]
         expected = source.copy()
-        expected[..., sampled.params_for(name)["selected_channels"]] = 0
+        if fill == "mean":
+            expected[..., selected] = source[..., selected].mean(axis=tuple(range(source.ndim - 1)), dtype=np.float64)
+        else:
+            expected[..., selected] = fill
         np.testing.assert_array_equal(result[name], expected)
         np.testing.assert_array_equal(replayed[name], expected)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+@pytest.mark.parametrize(
+    ("target", "shape", "spatial_axes"),
+    [
+        ("image", (2, 4, 3), (0, 1)),
+        ("images", (2, 2, 4, 3), (1, 2)),
+        ("volume", (3, 2, 4, 3), (0, 1, 2)),
+        ("volumes", (2, 3, 2, 4, 3), (1, 2, 3)),
+    ],
+)
+def test_channel_dropout_mean_is_per_sample_and_channel(
+    dtype: type[np.generic],
+    target: str,
+    shape: tuple[int, ...],
+    spatial_axes: tuple[int, ...],
+) -> None:
+    source = np.arange(np.prod(shape), dtype=dtype).reshape(shape)
+    if dtype != np.uint8:
+        source = source / dtype(256)
+    source = source[..., ::-1, :]
+    source.setflags(write=False)
+    original = source.copy()
+    selected = (0, 1)
+    transform = A.Compose(
+        [A.ChannelDropout(channels_to_drop=selected, dropout_ratio=1, fill="mean", p=1)],
+        strict=True,
+    )
+
+    result = transform(**{target: source})[target]
+
+    means = original[..., selected].mean(axis=spatial_axes, dtype=np.float64, keepdims=True)
+    expected = original.copy()
+    expected[..., selected] = np.rint(means) if dtype == np.uint8 else means
+    np.testing.assert_array_equal(result, expected)
+    np.testing.assert_array_equal(source, original)
+    assert result.dtype == source.dtype
 
 
 @pytest.mark.parametrize("dropout_ratio", [0, 0.5, 1])

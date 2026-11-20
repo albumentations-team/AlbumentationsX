@@ -1,7 +1,7 @@
 """Drop a fraction of eligible image channels."""
 
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 import numpy as np
 from numpy.typing import NDArray
@@ -15,6 +15,7 @@ from albumentations.core.transform_params import (
     requirements_for_views,
 )
 from albumentations.core.transforms_interface import BaseTransformInitSchema, ImageOnlyTransform
+from albumentations.core.type_definitions import VolumeType
 
 from .functional import channel_dropout
 
@@ -32,9 +33,11 @@ class ChannelDropout(ImageOnlyTransform):
         dropout_ratio (float): Fraction of eligible channels to replace, in [0, 1]. The count
             is rounded to the nearest integer using decimal half-up rounding, then capped at the
             total number of input channels minus one. Default: 0.5.
-        fill (float): Value assigned to the selected channels. Use a value in the input
-            dtype's image range, such as 0 for missing signal. Positive and negative zero
-            are equivalent; the sign of filled zeros is not guaranteed. Default: 0.
+        fill (float | Literal["mean"]): A constant in the input dtype's image range, or
+            "mean" to replace each selected channel with its own spatial mean. Means are
+            computed separately for each image or volume, over all pixels or voxels in
+            that channel. For uint8, the mean is rounded to the nearest integer. Positive
+            and negative zero are equivalent. Default: 0.
         p (float): Probability of applying the transform, in [0, 1]. Default: 0.5.
 
     Targets:
@@ -72,6 +75,12 @@ class ChannelDropout(ImageOnlyTransform):
         >>> assert np.count_nonzero(np.all(result == 0, axis=(0, 1))) == 2
         >>> np.testing.assert_array_equal(result[..., (1, 3, 5, 7, 8, 9)], 1)
 
+        Replace the first channel with its average intensity:
+
+        >>> image = np.array([[[20, 100], [40, 200]]], dtype=np.uint8)
+        >>> transform = A.ChannelDropout(channels_to_drop=(0,), dropout_ratio=1, fill="mean", p=1.0)
+        >>> np.testing.assert_array_equal(transform(image=image)["image"], [[[30, 100], [30, 200]]])
+
     See Also:
         - PixelDropout: Replace individual pixels instead of entire channels.
         - CoarseDropout: Replace rectangular spatial regions.
@@ -87,7 +96,7 @@ class ChannelDropout(ImageOnlyTransform):
             | None
         )
         dropout_ratio: float = Field(ge=0, le=1)
-        fill: float
+        fill: float | Literal["mean"]
 
         @field_validator("channels_to_drop")
         @classmethod
@@ -100,7 +109,7 @@ class ChannelDropout(ImageOnlyTransform):
         self,
         channels_to_drop: tuple[int, ...] | None = None,
         dropout_ratio: float = 0.5,
-        fill: float = 0,
+        fill: float | Literal["mean"] = 0,
         p: float = 0.5,
     ):
         super().__init__(p=p)
@@ -122,7 +131,10 @@ class ChannelDropout(ImageOnlyTransform):
         selected_channels: tuple[int, ...],
         **params: Any,
     ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
-        return channel_dropout(images, selected_channels, self.fill)
+        return channel_dropout(images, selected_channels, self.fill, batched=True)
+
+    def apply_to_volume(self, volume: VolumeType, selected_channels: tuple[int, ...], **params: Any) -> VolumeType:
+        return channel_dropout(volume, selected_channels, self.fill)
 
     def sample_parameters(
         self,

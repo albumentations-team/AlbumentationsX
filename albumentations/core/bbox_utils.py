@@ -419,6 +419,8 @@ class BboxProcessor(DataProcessor[BboxParams]):
                 the same length as the input `data`.
 
         """
+        if not len(data):
+            return _empty_filter_result(data, self.params.bbox_type), np.zeros(0, dtype=bool)
         shape_2d = shape[:2] if len(shape) == 3 else shape
         return filter_bboxes_with_mask(
             data,
@@ -1157,7 +1159,7 @@ def filter_bboxes_with_mask(
         (denormalized_box_areas >= epsilon)
         & (clipped_box_areas >= epsilon)
         & (clipped_box_areas >= min_area - epsilon)
-        & (clipped_box_areas / (denormalized_box_areas + epsilon) >= min_visibility)
+        & (clipped_box_areas >= min_visibility * denormalized_box_areas)
         & (clipped_widths >= min_width - epsilon)
         & (clipped_heights >= min_height - epsilon)
         & valid_ratios
@@ -1204,7 +1206,7 @@ def _filter_hbb_with_mask(
         (original_areas >= epsilon)
         & (clipped_areas >= epsilon)
         & (clipped_areas >= min_area - epsilon)
-        & (clipped_areas / (original_areas + epsilon) >= min_visibility)
+        & (clipped_areas >= min_visibility * original_areas)
         & (clipped_widths >= min_width - epsilon)
         & (clipped_heights >= min_height - epsilon)
     )

@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 import torch
 
+import albumentations as A
 from albumentations.core.tensor import numpy_to_tensor_annotation, numpy_to_tensor_spatial
 
 SPATIAL_CASES = [
@@ -130,3 +131,34 @@ def test_numpy_to_tensor_spatial_empty_readonly(target: str, shape: tuple[int, .
     assert not caught
     assert result.dtype == torch.float32
     assert result.shape == value.transpose(axes).shape
+
+
+@pytest.mark.parametrize("replay", [False, True])
+def test_d4_transpose_keeps_cpu_tensor_overlap_visible(replay: bool) -> None:
+    image = torch.arange(160, dtype=torch.float16).reshape(2, 5, 4, 4)[1]
+    before = image.clone()
+    transform = A.D4(group_element="t")
+    if replay:
+        record = A.ReplayCompose([transform])(image=before.clone())["replay"]
+        result = A.ReplayCompose.replay(record, image=image)["image"]
+    else:
+        result = A.Compose([transform])(image=image)["image"]
+
+    torch.testing.assert_close(result, before.transpose(-2, -1), rtol=0, atol=0)
+    torch.testing.assert_close(image, before, rtol=0, atol=0)
+    with pytest.raises(RuntimeError, match="single memory location"):
+        image.copy_(result)
+    torch.testing.assert_close(image, before, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("storage", ["readonly_view", "negative"])
+def test_tensor_backed_array_with_unsupported_storage_still_copies(storage: str) -> None:
+    image = torch.arange(3 * 4 * 5, dtype=torch.float32).reshape(3, 4, 5)
+    before = image.clone()
+    value = _storage_view(image.permute(1, 2, 0).numpy(), storage)
+
+    result = numpy_to_tensor_spatial(value, "image")
+
+    np.testing.assert_array_equal(result.numpy(), value.transpose(2, 0, 1))
+    result.fill_(137)
+    torch.testing.assert_close(image, before, rtol=0, atol=0)

@@ -127,6 +127,7 @@ class OverlayElements(DualTransform):
     """
 
     _targets = (Targets.IMAGE, Targets.MASK)
+    _skip_when_vector_fields_present = True
 
     class InitSchema(BaseTransformInitSchema):
         metadata_key: str

@@ -398,6 +398,22 @@ def test_random_gamma_tensor_fallback_output_is_writable(
 
 
 @pytest.mark.parametrize(
+    ("target", "shape"),
+    [("image", (3, 9, 14)), ("images", (2, 3, 9, 14)), ("volume", (3, 2, 9, 14))],
+)
+def test_channel_swap_identity_preserves_cpu_tensor(target: str, shape: tuple[int, ...]) -> None:
+    values = torch.linspace(0, 1, steps=int(np.prod(shape)), dtype=torch.float32).reshape(shape)
+    image = values[..., ::2]
+    transform = A.Compose([A.ChannelSwap(channel_order=(0, 1, 2), p=1.0)], strict=True, telemetry=False)
+
+    result = transform(**{target: image})[target]
+
+    assert isinstance(result, torch.Tensor)
+    torch.testing.assert_close(result, image, rtol=0, atol=0)
+    assert result.untyped_storage().data_ptr() != image.untyped_storage().data_ptr()
+
+
+@pytest.mark.parametrize(
     "transform",
     [
         A.Compose([], strict=True),

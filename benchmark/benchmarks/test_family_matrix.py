@@ -140,7 +140,6 @@ PIXEL_TRANSFORMS: Mapping[str, PixelSpec] = {
         )
         for name, kernel_size in MEDIAN_BLUR_CASES
     },
-    "mode_filter": PixelSpec(lambda: albumentations.ModeFilter(kernel_range=(3, 3), p=1.0)),
     "motion_blur": PixelSpec(lambda: albumentations.MotionBlur(blur_range=(5, 5), p=1.0), dtypes=("uint8",)),
     "zoom_blur": PixelSpec(
         lambda: albumentations.ZoomBlur(max_factor_range=(1.1, 1.1), step_factor_range=(0.03, 0.03), p=1.0),

@@ -24,7 +24,7 @@ from albumentations.core.transforms_interface import (
     DualTransform,
 )
 from albumentations.core.type_definitions import (
-    ALL_TARGETS,
+    ALL_GEOMETRIC_TARGETS,
     C4_INVERSE,
     CV2_BORDER_CONSTANT,
     CV2_INTER_LINEAR,
@@ -36,6 +36,7 @@ from albumentations.core.type_definitions import (
 )
 
 from . import functional as fgeometric
+from ._functional_vector_fields import transform_vector_field_symmetry
 
 __all__ = ["RandomRotate90", "Rotate", "SafeRotate"]
 
@@ -102,7 +103,8 @@ class RandomRotate90(DualTransform):
             Mutually exclusive with `group_element`. Default: None (random choice).
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -153,8 +155,10 @@ class RandomRotate90(DualTransform):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+    _sampling_spatial_rank = None
+    _replay_reference_shape = (2, "shape")
 
     class InitSchema(BaseTransformInitSchema):
         group_element: Literal["e", "r90", "r180", "r270"] | None
@@ -191,6 +195,9 @@ class RandomRotate90(DualTransform):
         **params: Any,
     ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fgeometric.rot90(img, group_element)
+
+    def _apply_vector_field_target(self, target: str, field: np.ndarray, **params: Any) -> np.ndarray:
+        return transform_vector_field_symmetry(field, params["group_element"])
 
     def sample_parameters(
         self,
@@ -318,7 +325,8 @@ class Rotate(DualTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -380,7 +388,7 @@ class Rotate(DualTransform):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
 
     class InitSchema(RotateInitSchema):
@@ -629,7 +637,8 @@ class SafeRotate(Affine):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -694,7 +703,7 @@ class SafeRotate(Affine):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
 
     class InitSchema(RotateInitSchema):
         rotate_method: Literal["largest_box", "ellipse"]

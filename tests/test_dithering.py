@@ -2,8 +2,10 @@
 
 import numpy as np
 import pytest
+from pytest_mock import MockerFixture
 
 import albumentations as A
+from albumentations.augmentations.pixel import dithering_functional
 from albumentations.augmentations.pixel.dithering_functional import (
     apply_dithering,
     error_diffusion_dither,
@@ -88,6 +90,44 @@ class TestDitheringFunctional:
         # With noise, we should get a mix of 0s and 1s
         assert np.sum(result == 0) > 0
         assert np.sum(result == 1) > 0
+
+    @pytest.mark.parametrize("noise_dtype", [np.float32, np.float64])
+    def test_random_binary_dither_preserves_half_threshold(self, noise_dtype):
+        half = noise_dtype(0.5)
+        values = np.array(
+            [np.nextafter(half, noise_dtype(0)), half, np.nextafter(half, noise_dtype(1)), np.nan, np.inf, -np.inf],
+            dtype=noise_dtype,
+        )
+        noise = np.resize(values, (33, 47, 3))
+        before = noise.copy()
+        noise.flags.writeable = False
+        image = np.zeros(noise.shape, dtype=np.float32)
+        expected = (np.clip(noise, 0, 1) >= 0.5).astype(np.float32)
+
+        result = random_dither(image, 2, (-0.5, 0.5), random_noise=noise)
+
+        np.testing.assert_array_equal(result, expected, strict=True)
+        np.testing.assert_array_equal(noise, before, strict=True)
+
+    def test_random_binary_uint8_dither_matches_clipped_lut(self):
+        image = np.full((13, 17, 3), 127, dtype=np.uint8)[:, ::-1]
+        noise = np.resize(np.array([-32768, -255, 0, 1, 255, 32767], dtype=np.int16), image.shape)
+        expected = (np.clip(image.astype(np.int16) + noise, 0, 255) >= 128).astype(np.uint8) * 255
+
+        result = dithering_functional.random_dither_uint8(image, 2, (-0.5, 0.5), random_noise=noise)
+
+        np.testing.assert_array_equal(result, expected, strict=True)
+
+    @pytest.mark.parametrize("channels", [1, 3])
+    def test_ordered_binary_uint8_dither_matches_bayer_comparison(self, channels):
+        image = np.random.default_rng(137).integers(0, 256, (17, 19, channels), dtype=np.uint8)[:, ::-1]
+        bayer = (generate_bayer_matrix(4) * 255).astype(np.uint8)
+        threshold = np.tile(bayer, (5, 5))[:17, :19, None]
+        expected = np.where(image > threshold, 255, 0).astype(np.uint8)
+
+        result = ordered_dither_uint8(image, 2, 4)
+
+        np.testing.assert_array_equal(result, expected, strict=True)
 
     def test_ordered_dither(self):
         """Test ordered dithering with Bayer matrix."""
@@ -178,6 +218,24 @@ class TestDitheringFunctional:
 
         self._assert_uint8_binary_floyd_steinberg_matches_reference(img)
 
+    @pytest.mark.parametrize("steps", [(1, 1), (2, -2)])
+    def test_uint8_binary_floyd_steinberg_diagonals_match_scalar(
+        self,
+        steps: tuple[int, int],
+        mocker: MockerFixture,
+    ) -> None:
+        rng = np.random.default_rng(137)
+        img = rng.integers(0, 256, (173, 137, 3), dtype=np.uint8)[:: steps[0], :: steps[1], 1:2]
+        img.setflags(write=False)
+
+        expected = dithering_functional._floyd_steinberg_binary_uint8_scalar(img)
+        scalar = mocker.spy(dithering_functional, "_floyd_steinberg_binary_uint8_scalar")
+        result = apply_dithering(img, method="error_diffusion", n_colors=2)
+
+        scalar.assert_not_called()
+        np.testing.assert_array_equal(result, expected)
+        assert result.dtype == img.dtype
+
     def test_apply_dithering_grayscale_mode(self):
         """Test dithering with grayscale conversion."""
         rng = np.random.default_rng(137)
@@ -217,6 +275,23 @@ class TestDitheringFunctional:
 
 class TestDitheringTransform:
     """Test Dithering transform class."""
+
+    def test_rgb_binary_floyd_steinberg_compose_matches_scalar(self, mocker: MockerFixture) -> None:
+        image = np.random.default_rng(137).integers(0, 256, (137, 173, 3), dtype=np.uint8)
+        transform = A.Compose(
+            [A.Resize(64, 64, p=1), A.Dithering(method="error_diffusion", p=1)],
+            telemetry=False,
+        )
+        scalar = mocker.spy(dithering_functional, "_floyd_steinberg_binary_uint8_scalar")
+        result = transform(image=image)["image"]
+        scalar.assert_not_called()
+        mocker.patch.object(
+            dithering_functional,
+            "_floyd_steinberg_binary_uint8",
+            scalar,
+        )
+
+        np.testing.assert_array_equal(result, transform(image=image)["image"])
 
     @pytest.mark.parametrize(
         "method",

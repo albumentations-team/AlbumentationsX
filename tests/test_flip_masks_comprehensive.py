@@ -155,3 +155,34 @@ class TestD4MasksSpecific:
             assert result.shape == (80, 120, 3), (
                 f"D4 with '{group_element}' should preserve dimensions but got {result.shape}"
             )
+
+
+@pytest.mark.parametrize(("image_key", "mask_key"), [("image", "mask"), ("images", "masks")])
+def test_d4_shares_sampled_symmetry_across_resolutions(image_key, mask_key):
+    rng = np.random.default_rng(137)
+    data = {}
+    additional_targets = {}
+    expected = {}
+    reference = A.Compose([A.D4()], strict=True)
+
+    for index, (shape, dtype) in enumerate(
+        zip([(3, 5), (6, 10), (9, 15)], [np.uint8, np.float16, np.float32], strict=True)
+    ):
+        spatial_shape = (2, *shape) if image_key == "images" else shape
+        image = rng.integers(0, 2, size=(*spatial_shape, 3), dtype=np.uint8).astype(dtype)
+        mask = rng.integers(0, 4, size=spatial_shape, dtype=np.uint8)
+        pair = {image_key: image, mask_key: mask}
+        transformed_pair = reference(invocation_seed=137, **pair)
+        for key, array in pair.items():
+            name = f"{key}_{index}" if index else key
+            if index:
+                additional_targets[name] = key
+            data[name] = array
+            expected[name] = transformed_pair[key]
+
+    transform = A.Compose([A.D4()], additional_targets=additional_targets, is_check_shapes=False, strict=True)
+    result = transform(invocation_seed=137, **data)
+
+    assert not np.array_equal(expected[image_key], data[image_key])
+    for key, array in expected.items():
+        np.testing.assert_array_equal(result[key], array, strict=True)

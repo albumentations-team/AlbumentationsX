@@ -8,7 +8,7 @@ and provide a centralized location for commonly used values.
 """
 
 from enum import Enum
-from typing import Literal, NewType, NotRequired, TypeAlias, TypeVar
+from typing import Final, Literal, NewType, NotRequired, TypeAlias, TypeVar
 
 import cv2
 import numpy as np
@@ -115,6 +115,14 @@ class Targets(Enum):
         VOLUMES (str): Collection of 3D volumes.
         MASK3D (str): 3D mask target.
         MASKS3D (str): Collection of 3D masks.
+        GRADIENT (str): 2D scalar-field derivative target with two components.
+        GRADIENT3D (str): 3D scalar-field derivative target with three components.
+        DISPLACEMENT (str): 2D finite-displacement target with two components.
+        DISPLACEMENT3D (str): 3D finite-displacement target with three components.
+        VECTOR_FIELD (str): 2D local-vector target with two components.
+        VECTOR_FIELD3D (str): 3D local-vector target with three components.
+        NORMAL (str): Surface-normal target on a 2D grid with three components.
+        NORMAL3D (str): Surface-normal target on a 3D grid with three components.
         USER_DATA (str): Arbitrary user-defined data target.
 
     """
@@ -129,7 +137,42 @@ class Targets(Enum):
     VOLUMES = "Volumes"
     MASK3D = "Mask3D"
     MASKS3D = "Masks3D"
+    GRADIENT = "Gradient"
+    GRADIENT3D = "Gradient3D"
+    DISPLACEMENT = "Displacement"
+    DISPLACEMENT3D = "Displacement3D"
+    VECTOR_FIELD = "VectorField"
+    VECTOR_FIELD3D = "VectorField3D"
+    NORMAL = "Normal"
+    NORMAL3D = "Normal3D"
     USER_DATA = "user_data"
+
+
+VECTOR_FIELD_TARGET_INFO: Final[dict[Targets, tuple[int, int]]] = {
+    Targets.GRADIENT: (2, 2),
+    Targets.GRADIENT3D: (3, 3),
+    Targets.DISPLACEMENT: (2, 2),
+    Targets.DISPLACEMENT3D: (3, 3),
+    Targets.VECTOR_FIELD: (2, 2),
+    Targets.VECTOR_FIELD3D: (3, 3),
+    Targets.NORMAL: (2, 3),
+    Targets.NORMAL3D: (3, 3),
+}
+
+VECTOR_FIELD_TARGETS: Final = tuple(VECTOR_FIELD_TARGET_INFO)
+VECTOR_FIELD_2D_TARGETS: Final = tuple(
+    target for target, (spatial_rank, _) in VECTOR_FIELD_TARGET_INFO.items() if spatial_rank == 2
+)
+VECTOR_FIELD_TARGET_INFO_BY_NAME: Final = {
+    target.name.lower(): shape for target, shape in VECTOR_FIELD_TARGET_INFO.items()
+}
+VECTOR_FIELD_TARGET_NAMES: Final = frozenset(VECTOR_FIELD_TARGET_INFO_BY_NAME)
+VECTOR_FIELD_2D_TARGET_NAMES: Final = frozenset(
+    name for name, (spatial_rank, _) in VECTOR_FIELD_TARGET_INFO_BY_NAME.items() if spatial_rank == 2
+)
+VECTOR_FIELD_3D_TARGET_NAMES: Final = frozenset(
+    name for name, (spatial_rank, _) in VECTOR_FIELD_TARGET_INFO_BY_NAME.items() if spatial_rank == 3
+)
 
 
 ALL_TARGETS = (
@@ -143,6 +186,20 @@ ALL_TARGETS = (
     Targets.VOLUMES,
     Targets.MASK3D,
     Targets.MASKS3D,
+)
+
+ALL_GEOMETRIC_TARGETS = (*ALL_TARGETS, *VECTOR_FIELD_TARGETS)
+
+VOLUME_GEOMETRIC_TARGETS = (
+    Targets.VOLUME,
+    Targets.VOLUMES,
+    Targets.MASK3D,
+    Targets.MASKS3D,
+    Targets.KEYPOINTS,
+    Targets.GRADIENT3D,
+    Targets.DISPLACEMENT3D,
+    Targets.VECTOR_FIELD3D,
+    Targets.NORMAL3D,
 )
 
 

@@ -71,7 +71,8 @@ After every bbox-affecting transform has been finalized, the following hold simu
    `data["bboxes"][:, -1]`. No orphan keypoints.
 4. Going into the next transform, `data["bboxes"][:, -1] == arange(N)`.
 
-Violating (1) or (3) raises `RuntimeError` immediately from `_resync_instance_ids`.
+Compose removes keypoints whose box did not survive. A mask count that cannot be
+aligned to the surviving boxes raises `RuntimeError`.
 
 #### How the invariant is enforced (one chokepoint, three layers)
 
@@ -89,13 +90,12 @@ flowchart TB
   OUT --> CHK[check_data_post_transform]
   subgraph CHK_DETAIL [check_data_post_transform]
     direction TB
-    PRE[Realign transform-filtered targets]
     BPF[BboxProcessor.filter_with_keep_mask]
-    MIRROR[Mirror keep_mask: masks positional, keypoints by surviving id]
-    PRE --> BPF --> MIRROR
+    MIRROR[Select masks by keep mask or surviving bbox IDs]
+    BPF --> MIRROR
   end
   CHK --> RES[_resync_instance_ids]
-  RES --> ASSERT[assert len(masks) == len(bboxes); rebase ids = arange(N)]
+  RES --> ASSERT[Drop orphan keypoints and rebase surviving IDs]
   ASSERT --> NEXT[next transform]
 ```
 
@@ -120,32 +120,24 @@ bound target aligned when a transform removes bbox rows.
 `BboxProcessor.filter_with_keep_mask` returns `(filtered_bboxes, keep_mask: np.ndarray[bool])`.
 `BboxProcessor.filter` and module-level `filter_bboxes` delegate to this primitive.
 
-`Compose.check_data_post_transform` delegates to `_bbox_filter_with_mirror` whenever the
-`BboxProcessor` is in `self.check_each_transform` and `instance_binding` is active. That
-helper does two stages:
-
-1. **Pre-filter realignment.** Some transforms (CoarseDropout, Crop with `min_area`, etc.)
-   drop bbox rows inside their own `apply_to_bboxes` without touching the mask stack. At this
-   point `len(masks) > len(bboxes)` and the surviving bboxes still carry their original
-   `_bbox_instance_id` in the last column. That id is the row index into the still-id-indexed
-   mask stack, so we fancy-index masks down to the surviving id set and drop keypoints whose
-   `_kp_instance_id` is no longer present. This establishes the positional layout used by the
-   rest of the method.
-2. **BboxProcessor filter + post-filter mirror.** Standard `filter_with_keep_mask` on bboxes;
-   mirror the resulting `keep_mask` positionally onto masks and by surviving id onto
-   keypoints.
+`Compose.check_data_post_transform` delegates to `_bbox_filter_with_mirror` when bound boxes
+are due for filtering. It filters boxes first and selects masks at most once. If the
+pre-filter boxes and masks were aligned, the processor's keep mask selects the mask rows.
+If the transform removed boxes and left their masks, the surviving box IDs select the
+original mask rows directly. If all instances survive, the mask array stays in place.
 
 ##### Layer 3 — `_resync_instance_ids`
 
-Once Layers 1 and 2 are in place, the resync's only job is to:
+Nested containers use the root `Compose` instance binding policy. With
+`BboxParams(check_each_transform=False)`, resync aligns masks by the IDs retained by the
+transform. The bbox processor still filters at the final boundary.
 
-1. Assert `len(masks) == len(bboxes)` (raises `RuntimeError` when strict, `UserWarning`
-   otherwise).
-2. Translate `_kp_instance_id` from old bbox ids to the new positional ids.
-3. Stamp `_bbox_instance_id = arange(N)` so the next transform sees a dense namespace.
+Once bound rows are aligned, resync:
 
-The resync does not encode recovery branches for alternative mask layouts; the positional
-layout is established before it runs.
+1. Check that the mask count equals the nonempty bbox count.
+2. Drop keypoints whose bbox was removed and translate the remaining `_kp_instance_id`
+   values to the new row positions.
+3. Rebase bbox IDs to `arange(N)` when their positions changed.
 
 ### Consequence: a single repack path
 

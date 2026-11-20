@@ -36,9 +36,16 @@ from albumentations.core.transforms_interface import (
     BaseTransformInitSchema,
     DualTransform,
 )
-from albumentations.core.type_definitions import ALL_TARGETS, D4_INVERSE, ArrayT, StackedMasks4D, d4_group_elements
+from albumentations.core.type_definitions import (
+    ALL_GEOMETRIC_TARGETS,
+    D4_INVERSE,
+    ArrayT,
+    StackedMasks4D,
+    d4_group_elements,
+)
 
 from . import functional as fgeometric
+from ._functional_vector_fields import transform_vector_field_symmetry as _transform_vector_field_symmetry
 
 __all__ = [
     "D4",
@@ -57,7 +64,8 @@ class VerticalFlip(DualTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -109,8 +117,10 @@ class VerticalFlip(DualTransform):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+    _sampling_spatial_rank = None
+    _replay_reference_shape = (2, "shape")
 
     @overload
     def apply(self, img: ArrayT, **params: Any) -> ArrayT: ...
@@ -122,6 +132,9 @@ class VerticalFlip(DualTransform):
         if isinstance(img, torch.Tensor):
             return fgeometric.flip_tensor(img, dims=(-2,))
         return fgeometric.vflip(img)
+
+    def _apply_vector_field_target(self, target: str, field: np.ndarray, **params: Any) -> np.ndarray:
+        return _transform_vector_field_symmetry(field, "v")
 
     def apply_to_bboxes(self, bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"], **params: Any) -> np.ndarray:
         return fgeometric.bboxes_vflip(bboxes, bbox_type=bbox_type)
@@ -219,7 +232,8 @@ class HorizontalFlip(DualTransform):
         p (float): probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -266,8 +280,10 @@ class HorizontalFlip(DualTransform):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+    _sampling_spatial_rank = None
+    _replay_reference_shape = (2, "shape")
 
     @overload
     def apply(self, img: ArrayT, **params: Any) -> ArrayT: ...
@@ -279,6 +295,9 @@ class HorizontalFlip(DualTransform):
         if isinstance(img, torch.Tensor):
             return fgeometric.flip_tensor(img, dims=(-1,))
         return fgeometric.hflip(img)
+
+    def _apply_vector_field_target(self, target: str, field: np.ndarray, **params: Any) -> np.ndarray:
+        return _transform_vector_field_symmetry(field, "h")
 
     def apply_to_bboxes(self, bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"], **params: Any) -> np.ndarray:
         return fgeometric.bboxes_hflip(bboxes, bbox_type=bbox_type)
@@ -379,7 +398,8 @@ class Transpose(DualTransform):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -430,8 +450,9 @@ class Transpose(DualTransform):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+    _sampling_spatial_rank = None
 
     @overload
     def apply(self, img: ArrayT, **params: Any) -> ArrayT: ...
@@ -443,6 +464,9 @@ class Transpose(DualTransform):
         if isinstance(img, torch.Tensor):
             return fgeometric.transpose_tensor(img)
         return fgeometric.transpose(img)
+
+    def _apply_vector_field_target(self, target: str, field: np.ndarray, **params: Any) -> np.ndarray:
+        return _transform_vector_field_symmetry(field, "t")
 
     def apply_to_bboxes(self, bboxes: np.ndarray, bbox_type: Literal["hbb", "obb"], **params: Any) -> np.ndarray:
         return fgeometric.bboxes_transpose(bboxes, bbox_type=bbox_type)
@@ -546,7 +570,8 @@ class D4(DualTransform):
             Default: None (random choice).
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -557,11 +582,11 @@ class D4(DualTransform):
     Note:
         - This transform is particularly useful for augmenting data that does not have a clear orientation,
           such as top-view satellite or drone imagery, or certain types of medical images.
-        - The input image should be square-shaped for optimal results. Non-square inputs may lead to
-          unexpected behavior or distortions.
+        - Square inputs keep their shape. On rectangular inputs, `r90`, `r270`, `t`, and `hvt` swap height and width.
+        - To use `additional_targets` for images and masks at different resolutions, set
+          `Compose(is_check_shapes=False)`. Each image and mask receives the same symmetry at its own resolution.
         - When applied to bounding boxes or keypoints, their coordinates will be adjusted according
           to the selected transformation.
-        - This transform preserves the aspect ratio and size of the input.
         - `inverse()` requires `group_element` to be set explicitly; raises `ValueError` otherwise.
 
     Examples:
@@ -587,8 +612,10 @@ class D4(DualTransform):
 
     """
 
-    _targets = ALL_TARGETS
+    _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+    _sampling_spatial_rank = None
+    _replay_reference_shape = (2, "shape")
 
     class InitSchema(BaseTransformInitSchema):
         group_element: Literal["e", "r90", "r180", "r270", "v", "hvt", "h", "t"] | None
@@ -608,6 +635,9 @@ class D4(DualTransform):
         **params: Any,
     ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
         return fgeometric.d4(img, group_element)
+
+    def _apply_vector_field_target(self, target: str, field: np.ndarray, **params: Any) -> np.ndarray:
+        return _transform_vector_field_symmetry(field, params["group_element"])
 
     def apply_to_bboxes(
         self,
@@ -809,7 +839,8 @@ class SquareSymmetry(D4):
             Default: None (random choice).
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d
+        image, images, mask, masks, bboxes, keypoints, volume, volumes, mask3d, masks3d, gradient, gradient3d,
+        displacement, displacement3d, vector_field, vector_field3d, normal, normal3d
 
     Image types:
         uint8, float16, float32
@@ -820,11 +851,11 @@ class SquareSymmetry(D4):
     Note:
         - This transform is particularly useful for augmenting data that does not have a clear orientation,
           such as top-view satellite or drone imagery, or certain types of medical images.
-        - The input image should be square-shaped for optimal results. Non-square inputs may lead to
-          unexpected behavior or distortions.
+        - Square inputs keep their shape. On rectangular inputs, `r90`, `r270`, `t`, and `hvt` swap height and width.
+        - To use `additional_targets` for images and masks at different resolutions, set
+          `Compose(is_check_shapes=False)`. Each image and mask receives the same symmetry at its own resolution.
         - When applied to bounding boxes or keypoints, their coordinates will be adjusted according
           to the selected transformation.
-        - This transform preserves the aspect ratio and size of the input.
         - `inverse()` requires `group_element` to be set explicitly; raises `ValueError` otherwise.
 
     Examples:

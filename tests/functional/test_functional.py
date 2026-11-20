@@ -5,12 +5,13 @@ from math import isqrt
 import cv2
 import numpy as np
 import pytest
-from albucore import MAX_VALUES_BY_DTYPE, clip, convert_dtype
+from albucore import MAX_VALUES_BY_DTYPE, clip, convert_dtype, get_opencv_max_channels
 from sklearn.decomposition import NMF
 
 import albumentations.augmentations.blur.functional as fblur
 import albumentations.augmentations.geometric.functional as fgeometric
 import albumentations.augmentations.pixel._functional_illumination as fillumination
+import albumentations.augmentations.pixel._functional_sharpness as fsharpness
 import albumentations.augmentations.pixel._functional_torchvision as ftorchvision
 import albumentations.augmentations.pixel.functional as fpixel
 from albumentations.augmentations.medical import functional as fmedical
@@ -1152,6 +1153,54 @@ def test_clahe(shape, dtype, clip_limit, tile_grid_size):
     assert np.any(result != img)  # Ensure the image has changed
 
 
+@pytest.mark.parametrize("shape", [(224, 224), (65, 97)])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+def test_clahe_rgb_matches_strided_lightness_reference(shape: tuple[int, int], dtype: type[np.generic]) -> None:
+    height, width = shape
+    source = np.random.default_rng(137).integers(0, 256, (height, width + 4, 3), dtype=np.uint8)
+    image = (source if dtype == np.uint8 else (source.astype(np.float32) / 255).astype(dtype))[:, 2:-2]
+    image.setflags(write=False)
+    before = image.copy()
+    clip_limit, grid = 2.3, (8, 8)
+    lab = cv2.cvtColor(convert_dtype(image, np.uint8), cv2.COLOR_RGB2LAB)
+    lab[..., 0] = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=grid).apply(lab[..., 0])
+    expected = convert_dtype(cv2.cvtColor(lab, cv2.COLOR_LAB2RGB), dtype)
+
+    result = fpixel.clahe(image, clip_limit, grid)
+
+    np.testing.assert_array_equal(
+        result.view(f"u{result.itemsize}"), expected.view(f"u{expected.itemsize}"), strict=True
+    )
+    np.testing.assert_array_equal(image, before, strict=True)
+    assert result.dtype == image.dtype
+    assert not np.shares_memory(result, image)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+def test_chromatic_aberration_matches_strided_channel_reference(dtype: type[np.generic]) -> None:
+    source = np.random.default_rng(137).integers(0, 256, (63, 75, 3), dtype=np.uint8)
+    if dtype != np.uint8:
+        source = (source.astype(np.float32) / 255).astype(dtype)
+    image = source[:, 2:-2]
+    image.setflags(write=False)
+    before = image.copy()
+    working = convert_dtype(image, np.uint8)
+    height, width = working.shape[:2]
+    camera = np.array([[width, 0, width / 2], [0, height, height / 2], [0, 0, 1]], dtype=np.float32)
+    red_coeffs = np.array([0.1, 0.06, 0, 0], dtype=np.float32)
+    blue_coeffs = np.array([-0.1, -0.06, 0, 0], dtype=np.float32)
+    red = fsharpness._distort_channel(working[..., 0], camera, red_coeffs, height, width, cv2.INTER_LINEAR)
+    blue = fsharpness._distort_channel(working[..., 2], camera, blue_coeffs, height, width, cv2.INTER_LINEAR)
+    expected = convert_dtype(np.dstack((red, working[..., 1], blue)), dtype)
+
+    result = fpixel.chromatic_aberration(image, 0.1, 0.06, -0.1, -0.06, cv2.INTER_LINEAR)
+
+    np.testing.assert_array_equal(
+        result.view(f"u{result.itemsize}"), expected.view(f"u{expected.itemsize}"), strict=True
+    )
+    np.testing.assert_array_equal(image, before, strict=True)
+
+
 @pytest.mark.parametrize("shape", [(100, 100, 3), (100, 100, 1), (100, 100, 5)])
 def test_fancy_pca_mean_preservation(shape):
     image = np.random.rand(*shape).astype(np.float32)
@@ -1304,6 +1353,23 @@ def test_image_compression_channel_consistency():
     assert not np.array_equal(image[..., :3], compressed[..., :3])
     # Alpha channel should remain constant
     np.testing.assert_array_equal(compressed[..., 3], 128)
+
+
+@pytest.mark.parametrize("channels", [5, get_opencv_max_channels(), get_opencv_max_channels() + 1])
+def test_multichannel_jpeg_matches_independent_channel_compression(channels: int) -> None:
+    source = np.random.default_rng(137).integers(0, 256, (17, 23, channels), dtype=np.uint8)
+    image = source[:, 2:-2]
+    image.setflags(write=False)
+    expected = np.dstack(
+        [
+            fpixel.image_compression(image[..., :3], 75, ".jpg"),
+            *(fpixel.image_compression(image[..., index : index + 1], 75, ".jpg") for index in range(3, channels)),
+        ]
+    )
+
+    result = fpixel.image_compression(image, 75, ".jpg")
+
+    np.testing.assert_array_equal(result, expected, strict=True)
 
 
 @pytest.mark.parametrize(
@@ -1840,6 +1906,33 @@ def test_plasma_pattern_basic_properties(shape, roughness):
     assert np.all(pattern >= 0)
     assert np.all(pattern <= 1)
     assert not np.allclose(pattern, pattern.mean())
+
+
+@pytest.mark.parametrize("shape", [(3, 3), (11, 17), (224, 224), (225, 331)])
+@pytest.mark.parametrize("roughness", [0.5, 3.0])
+def test_plasma_pattern_matches_original_diamond_square(shape, roughness):
+    reference_rng = np.random.default_rng(137)
+    actual_rng = np.random.default_rng(137)
+    reference = reference_rng.uniform(-1, 1, (3, 3)).astype(np.float32)
+    step_count = (max(shape) - 2).bit_length() - 1
+    for step in range(step_count):
+        side = 2 * reference.shape[0] - 1
+        noise_scale = np.float32(roughness**step)
+        noise = reference_rng.uniform(-noise_scale, noise_scale, (side, side)).astype(np.float32)
+        expanded = np.zeros_like(noise)
+        expanded[::2, ::2] = reference + noise[::2, ::2]
+        for kernel in (fpixel.DIAMOND_KERNEL, fpixel.SQUARE_KERNEL):
+            interpolation = cv2.filter2D(expanded, -1, kernel, borderType=cv2.BORDER_CONSTANT)
+            expanded += (interpolation + noise) * (interpolation > 0)
+        reference = cv2.normalize(expanded, None, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F)
+    expected = cv2.normalize(reference[: shape[0], : shape[1]], None, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F).clip(
+        0, 1
+    )
+
+    result = fpixel.generate_plasma_pattern(shape, roughness, actual_rng)
+
+    np.testing.assert_array_equal(result.view(np.uint32), expected.view(np.uint32), strict=True)
+    assert actual_rng.bit_generator.state == reference_rng.bit_generator.state
 
 
 @pytest.mark.parametrize(
@@ -4124,6 +4217,23 @@ class TestEqualizePilHistogramFilter:
         vec = histogram[histogram > 0]
 
         np.testing.assert_array_equal(vec, ref)
+
+
+@pytest.mark.parametrize("factor", [-0.5, -0.001, 0.001, 0.5])
+@pytest.mark.parametrize("shape", [(1, 1, 3), (31, 74, 3)])
+def test_adjust_hue_uint8_matches_strided_hsv_reference(factor, shape):
+    image = np.random.default_rng(137).integers(0, 256, shape, dtype=np.uint8)[:, ::-1]
+    before = image.copy()
+    image.setflags(write=False)
+    hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
+    lut = np.mod(np.arange(256, dtype=np.int16) + 180 * factor, 180).astype(np.uint8)
+    hsv[..., 0] = lut[hsv[..., 0]]
+    expected = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+
+    result = fpixel.adjust_hue_torchvision(image, factor)
+
+    np.testing.assert_array_equal(result, expected, strict=True)
+    np.testing.assert_array_equal(image, before, strict=True)
 
 
 @pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])

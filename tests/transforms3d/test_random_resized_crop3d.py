@@ -10,6 +10,7 @@ import torch
 
 import albumentations as A
 from albumentations.augmentations.crops._sampling import sample_3d_crop_shape
+from albumentations.core.transform_params import SampledParams
 
 
 @pytest.mark.parametrize("sampling_method", ("standard", "uniform_scale"))
@@ -39,6 +40,25 @@ def test_random_resized_crop3d_resizes_all_geometric_targets(
     assert result["mask3d"].shape == (32, 64, 64)
     assert result["volume"].dtype == np.float32
     assert result["mask3d"].dtype == np.uint16
+
+
+def test_random_resized_crop3d_resamples_only_values_inside_the_selected_crop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    volume = np.zeros((4, 4, 4, 1), dtype=np.float32)
+    field = np.full((4, 4, 4, 3), 100.0, dtype=np.float32)
+    field[1:3, 1:3, 1:3] = 1.0
+    transform = A.RandomResizedCrop3D(size=(4, 4, 4), p=1.0)
+    monkeypatch.setattr(
+        transform,
+        "sample_parameters",
+        lambda *_args, **_kwargs: SampledParams(params={"crop_coords": (1, 3, 1, 3, 1, 3)}),
+    )
+
+    result = A.Compose([transform], strict=True)(volume=volume, vector_field3d=field)
+
+    assert result["vector_field3d"].shape == (4, 4, 4, 3)
+    np.testing.assert_allclose(result["vector_field3d"], np.full((4, 4, 4, 3), 2.0, dtype=np.float32))
 
 
 @pytest.mark.parametrize("sampling_method", ("standard", "uniform_scale"))

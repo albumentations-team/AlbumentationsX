@@ -1,3 +1,4 @@
+import cv2
 import numpy as np
 import pytest
 from albucore import MAX_VALUES_BY_DTYPE
@@ -30,6 +31,16 @@ def test_channel_dropout_fill_matches_index_assignment(
     assert result.dtype == image.dtype
     assert result is not image
     assert not np.shares_memory(result, image)
+
+
+@pytest.mark.parametrize(("shape", "batched"), [((0, 7, 3), False), ((2, 0, 7, 3), True)])
+def test_channel_dropout_mean_accepts_empty_spatial_axes(shape: tuple[int, ...], batched: bool) -> None:
+    image = np.empty(shape, dtype=np.uint8)
+
+    result = fdropout.channel_dropout(image, (0,), "mean", batched=batched)
+
+    np.testing.assert_array_equal(result, image)
+    assert result.dtype == image.dtype
 
 
 @pytest.mark.parametrize(
@@ -914,3 +925,50 @@ def test_volume_grayscale_holes_preserve_singleton_width(dtype, channels):
     assert result.shape == source.shape
     assert result.dtype == source.dtype
     np.testing.assert_array_equal(result, expected)
+
+
+@pytest.mark.parametrize("dtype", [np.bool_, np.uint8])
+def test_sample_points_retains_seeded_component_and_pixel_order(dtype):
+    mask = np.array(
+        [[1, 1, 0, 0, 1], [1, 0, 0, 1, 1], [0, 0, 0, 0, 0], [1, 0, 0, 0, 0]],
+        dtype=dtype,
+    )
+    result = fdropout.sample_points_from_components(mask, 3, np.random.default_rng(137))
+    assert result is not None
+    points, sizes = result
+    expected_points = [[1, 0], [0, 1], [0, 0], [4, 0], [4, 1], [3, 1], [0, 3], [0, 3], [0, 3]]
+    np.testing.assert_array_equal(points, expected_points)
+    np.testing.assert_array_equal(sizes, np.asarray([np.sqrt(3)] * 6 + [1] * 3, dtype=np.float32))
+
+
+@pytest.mark.parametrize("shape", [(7, 11, 3), (7, 1, 1), (7, 1)])
+@pytest.mark.parametrize(
+    ("mask_dtype", "foreground_value"),
+    [(np.bool_, True), (np.uint8, 137), (np.int64, 256)],
+)
+def test_inpaint_dropout_mask_preserves_dtype_and_spatial_axes(shape, mask_dtype, foreground_value):
+    image = np.random.default_rng(137).integers(0, 256, shape, dtype=np.uint8)
+    mask = np.zeros(shape[:2], dtype=mask_dtype)
+    mask[3, 0] = foreground_value
+    reference_mask = (mask != 0).astype(np.uint8) * 255
+    if image.ndim == 3 and image.shape[-1] == 3:
+        expected = cv2.inpaint(image, reference_mask, 3, cv2.INPAINT_TELEA)
+    else:
+        gray = image.reshape(shape[:2])
+        color = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+        expected = cv2.cvtColor(
+            cv2.inpaint(color, reference_mask, 3, cv2.INPAINT_TELEA),
+            cv2.COLOR_BGR2GRAY,
+        )[..., None]
+
+    result = fdropout.apply_inpainting_to_mask(image, mask, "inpaint_telea")
+
+    assert result.dtype == image.dtype
+    assert result.shape == expected.shape
+    if min(shape[:2]) == 1:
+        filled = reference_mask != 0
+        np.testing.assert_array_equal(result[~filled], image.reshape(result.shape)[~filled])
+        # Separate OpenCV calls differed by one uint8 level on a singleton axis in Windows CI.
+        np.testing.assert_allclose(result[filled], expected[filled], atol=1, rtol=0)
+    else:
+        np.testing.assert_array_equal(result, expected)

@@ -1,7 +1,5 @@
 """Tests for RandomScale transform — uniform and anisotropic scaling."""
 
-import hashlib
-
 import cv2
 import numpy as np
 import pytest
@@ -22,21 +20,15 @@ class TestRandomScale:
         assert result["image"].shape == (40, 60, 3)
 
     def test_legacy_tuple_regression(self):
-        """Deterministic seeded regression test for the legacy tuple mode.
-
-        Golden hash locks the exact pixel output for tuple scale_range
-        with a fixed seed and deterministic input image.
-        """
+        """Preserve the seeded tuple size and default linear interpolation."""
         rng = np.random.default_rng(42)
         image = rng.integers(0, 256, (101, 97, 3), dtype=np.uint8)
         t = A.RandomScale(scale_range=(-0.25, 0.35), p=1.0)
         t.set_random_seed(42)
         result = t(image=image)["image"]
-        assert (
-            hashlib.sha256(result.tobytes()).hexdigest()
-            == "79cd1a26f4d0c7740bc9f69ddd9f4153c235df9bf11ad7775d64b4e1029c6d73"
-        )
         assert result.shape == (114, 109, 3)
+        expected = cv2.resize(image, (109, 114), interpolation=cv2.INTER_LINEAR)
+        np.testing.assert_array_equal(result, expected)
 
     @pytest.mark.parametrize("scale_range", SCALE_RANGES)
     @pytest.mark.parametrize("seed", [42, 99])

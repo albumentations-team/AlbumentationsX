@@ -106,7 +106,6 @@ FUNCTIONAL_BLUR_KERNELS: Mapping[str, KernelSupport] = {
     "convolve": KernelSupport(),
     "defocus": KernelSupport(),
     "zoom_blur": KernelSupport(),
-    "mode_filter": KernelSupport(),
     "glass_blur": KernelSupport(channels=(1, 3), sizes=("small", "medium")),
     "stochastic_convolve_shared": KernelSupport(),
     "stochastic_convolve_per_channel": KernelSupport(),
@@ -412,10 +411,6 @@ def _call_zoom_blur(benchmark: Any) -> np.ndarray:
     return fblur.zoom_blur(benchmark.image, benchmark.zoom_factors)
 
 
-def _call_mode_filter(benchmark: Any) -> np.ndarray:
-    return fblur.mode_filter(benchmark.image, 3)
-
-
 def _call_glass_blur(benchmark: Any) -> np.ndarray:
     return fblur.glass_blur(benchmark.image, 0.7, 2, benchmark.glass_iterations, benchmark.dxy, "fast")
 
@@ -440,7 +435,6 @@ BLUR_CALLS: Mapping[str, ImageKernelCall] = {
     "convolve": _call_convolve,
     "defocus": _call_defocus,
     "zoom_blur": _call_zoom_blur,
-    "mode_filter": _call_mode_filter,
     "glass_blur": _call_glass_blur,
     "stochastic_convolve_shared": _call_stochastic_convolve_shared,
     "stochastic_convolve_per_channel": _call_stochastic_convolve_per_channel,

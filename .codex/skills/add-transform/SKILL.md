@@ -44,6 +44,12 @@ Implement the operation in the corresponding functional module, without transfor
   transform support. For every concrete public transform, its `Targets:` docstring, effective `_targets`, and active
   dispatch keys describe the same behavior. A working inherited handler counts; a stub does not. Declare `images` and
   `masks` independently because batch support does not follow from `image` or `mask`.
+- For spatial transforms, read [Vector fields](../../../docs/vector-fields.md) before declaring field targets. Check
+  `gradient`, `displacement`, `vector_field`, and `normal` separately: covectors, finite endpoint offsets, local
+  vectors, and unit normals obey different component rules. Repeat the check for 3D targets and for 2D transforms
+  applied to volumes. A field target belongs in `_targets` only when the handler preserves that meaning. Keep field
+  input dtypes at float16/float32; the raster image dtype list does not apply to fields. Use the field target profiles
+  and exact geometry tests rather than relying on output shape alone.
 - `_targets` is the only source for active dispatch. Do not infer targets from method names or add an automatic route
   for `user_data`; it is passthrough unless a custom transform explicitly declares and implements that target.
 - Read [Instance and Frame Binding](../../../docs/design/instance_binding.md) when a transform supports batches or
@@ -99,7 +105,8 @@ If the transform samples constructor fields, write the realized values to `sampl
 Clear any original policy field that becomes mutually exclusive with the realized value. If a convenience alias emits
 the canonical constructor's state, declare `_applied_replay_class`.
 
-Check edge cases: uint8, float32, single channel, multichannel.
+Check raster edge cases: uint8, float32, single channel, and multichannel. For geometric fields, check both supported
+floating dtypes, NaN support, component layouts, and the semantics-specific transform rule instead of uint8 cases.
 
 ## 7. Verify
 

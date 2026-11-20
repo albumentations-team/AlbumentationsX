@@ -154,11 +154,24 @@ For a true pointwise mapping from uint8 input values to output values, compare:
 - StringZilla translation;
 - NumPy indexing or direct arithmetic.
 
-Include shared and per-channel tables, contiguous and non-contiguous input, and channels above OpenCV's common
-four-channel limit. A direct bitwise operation can beat every LUT for a bit mask.
+For a shared uint8-to-uint8 table, start with `albucore.apply_uint8_lut`. It uses StringZilla
+to translate contiguous bytes, with a caller-owned destination when supplied. In a one-thread
+224×224 RGB test with StringZilla 5.3.2 and OpenCV 5.0.0.93, the allocating router took about
+12 µs versus 39 µs for OpenCV on M4 Max and 4 µs versus 44 µs on Linux x86-64.
+[Linux measurements](https://github.com/albumentations-team/albucore/actions/runs/43411664719)
 
-Keep floating-point LUT tables `float32`. A float64 table can force a full float64 output and an expensive conversion
-back to float32.
+For distinct channel tables, compare a single interleaved OpenCV lookup against StringZilla
+on channel planes. Include the cost of splitting, merging, contiguous copies and output
+allocation. OpenCV accepts HWC crops with packed pixels and padding between rows. A
+single interleaved call can save the per-channel gathers and copies. Reuse existing
+planes or an existing output buffer when the complete operation wins. Check cropped,
+flipped and planar inputs as well as channel counts above four. A direct bitwise operation
+can beat lookup for a bit mask.
+
+OpenCV uses the table's dtype for the full output. Build the table in the required output
+dtype, typically uint8 for integer image transforms and float32 for normalized float32
+output. A float64 table doubles output bytes relative to float32 and can add a full-image
+cast. Preserve the operation's rounding when quantizing table entries.
 
 ### 6. Compare complete backend implementations
 

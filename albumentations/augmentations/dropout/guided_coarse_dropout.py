@@ -13,7 +13,7 @@ from albumentations.core.invocation import SamplingContext
 from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
 from albumentations.core.transform_params import SampledParams, TargetSet
-from albumentations.core.type_definitions import Targets
+from albumentations.core.type_definitions import VECTOR_FIELD_2D_TARGETS, Targets
 
 __all__ = ["GuidedCoarseDropout"]
 
@@ -48,7 +48,7 @@ class GuidedCoarseDropout(BaseDropout):
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
-        image, images, mask, masks, bboxes, keypoints
+        image, images, mask, masks, bboxes, keypoints, gradient, displacement, vector_field, normal
 
     Image types:
         uint8, float16, float32
@@ -82,7 +82,15 @@ class GuidedCoarseDropout(BaseDropout):
 
     """
 
-    _targets = (Targets.IMAGE, Targets.IMAGES, Targets.MASK, Targets.MASKS, Targets.BBOXES, Targets.KEYPOINTS)
+    _targets = (
+        Targets.IMAGE,
+        Targets.IMAGES,
+        Targets.MASK,
+        Targets.MASKS,
+        Targets.BBOXES,
+        Targets.KEYPOINTS,
+        *VECTOR_FIELD_2D_TARGETS,
+    )
     _supported_bbox_types: frozenset[str] = frozenset({"hbb"})
 
     class InitSchema(BaseDropoutInitSchema):

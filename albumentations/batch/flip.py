@@ -189,7 +189,12 @@ def _flip_selected(values: torch.Tensor, selected: torch.Tensor, dim: int) -> No
         sizes = (values.shape[0], *(size for size, _ in middle), *values.shape[-2:])
         strides = (values.stride(0), *(stride for _, stride in middle), *values.stride()[-2:])
         values = values.as_strided(sizes, strides, storage_offset=values.storage_offset())
-    values[selected] = torch.flip(values[selected], dims=(dim,))
+    if values.is_cuda:
+        values[selected] = torch.flip(values[selected], dims=(dim,))
+        return
+    for index in selected.nonzero().flatten().tolist():
+        sample = values[index]
+        sample.copy_(sample.flip((dim,)))
 
 
 def apply_flip_(values: torch.Tensor, plan: FlipPlan) -> torch.Tensor:

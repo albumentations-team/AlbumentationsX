@@ -497,6 +497,14 @@ def test_inference_and_model_backward(device: torch.device) -> None:
     assert torch.equal(model.weight.grad, expected.flatten(1).sum(dim=0, keepdim=True))
 
 
+def test_cpu_flip_buffers_one_sample_at_a_time(tmp_path: Path) -> None:
+    values = torch.zeros((16, 3, 64, 64), dtype=torch.float32)
+    plan = FlipPlan("horizontal", torch.arange(len(values)) % 2 == 0)
+    _, peak = measure_peak_tensor_bytes(lambda: apply_flip_(values, plan), tmp_path / "flip.json")
+    sample_bytes = values[0].numel() * values.element_size()
+    assert peak <= 2 * sample_bytes
+
+
 def _measure_peak(operation: Callable[[], torch.Tensor], device: torch.device, path: Path) -> tuple[torch.Tensor, int]:
     if device.type == "cpu":
         return measure_peak_tensor_bytes(operation, path)

@@ -145,9 +145,11 @@ def _donor_blocks(
             yield slice(row, row + 1), values[permutation[row]].unsqueeze(0)
         return
 
-    # The gathered and reflected blocks can coexist. Keep at least one sample per block.
-    workspace = _MIXUP_WORKSPACE_BYTES // 2 if flip_donor else _MIXUP_WORKSPACE_BYTES
-    block_size = max(1, workspace // max(sample_elements * torch.float32.itemsize, 1))
+    bytes_per_element = torch.float32.itemsize
+    if flip_donor:
+        # The gathered donors and their reflection coexist in the input dtype before FP32 interpolation.
+        bytes_per_element = 2 * max(bytes_per_element, values.element_size())
+    block_size = max(1, _MIXUP_WORKSPACE_BYTES // max(sample_elements * bytes_per_element, 1))
     for start in range(0, len(values), block_size):
         rows = slice(start, start + block_size)
         yield rows, values[permutation[rows]]

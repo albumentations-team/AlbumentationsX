@@ -299,6 +299,24 @@ def test_mixup_donor_flip_sampled_plan(mode: mixing.MixingMode) -> None:
     assert torch.equal(plan.lambdas, weights)
 
 
+@pytest.mark.parametrize("dtype", [torch.float64, torch.int64])
+def test_mixup_bounds_workspace_for_reflected_64bit_blocks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dtype: torch.dtype
+) -> None:
+    """Small CPU samples exercise the same block gather as accelerator tensors."""
+    values = torch.arange(17 * 32 * 32, dtype=dtype).reshape(17, 32, 32)
+    plan = MixUpPlan(torch.arange(len(values) - 1, -1, -1), torch.zeros(len(values)))
+    workspace = 64 * 1024
+    monkeypatch.setattr(mixing, "_MIXUP_WORKSPACE_BYTES", workspace)
+
+    result, peak_bytes = measure_peak_tensor_bytes(
+        lambda: apply_mixup(values, plan, flip_donor=True), tmp_path / "memory.json"
+    )
+
+    torch.testing.assert_close(result, values.flip((0, -1)), rtol=0, atol=0)
+    assert peak_bytes <= result.nbytes + workspace + 4096
+
+
 def test_mixup_bounds_workspace_for_oversized_sample(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     values = torch.arange(8 * 32 * 64, dtype=torch.float32).reshape(8, 32, 64)
     plan = MixUpPlan(torch.arange(7, -1, -1), torch.full((8,), 0.75))

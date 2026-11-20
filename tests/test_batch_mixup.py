@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import math
+import shutil
+import sys
 from typing import TYPE_CHECKING
 
 import pytest
@@ -339,3 +341,18 @@ def test_mixup_donor_flip_large_opposite_endpoints(dtype: torch.dtype, recipient
         plan = MixUpPlan(plan.permutation, torch.tensor([recipient_weight]))
         expected = values[..., [1, 0]] if recipient_weight == 0 else torch.zeros_like(values)
     assert torch.equal(apply_mixup(values, plan, flip_donor=True), expected)
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" or shutil.which("c++") is None, reason="Requires Linux CPU Inductor and C++"
+)
+def test_mixup_donor_flip_compiled_cpu_reuses_plan_inputs() -> None:
+    mix = torch.compile(apply_mixup, backend="inductor", fullgraph=True)
+    images = torch.tensor([[[2e38, -2e38]], [[4.0, 12.0]]], requires_grad=True)
+    plan = MixUpPlan(torch.tensor([0, 1]), torch.tensor([0.5, 1.0]))
+    mixed = mix(images, plan, flip_donor=True)
+    assert mixed.tolist() == [[[0.0, 0.0]], [[4.0, 12.0]]]
+    assert not mixed.requires_grad
+
+    next_plan = MixUpPlan(torch.tensor([1, 0]), torch.zeros(2))
+    torch.testing.assert_close(mix(images, next_plan, flip_donor=True), images.detach()[[1, 0]].flip((-1,)))

@@ -61,7 +61,11 @@ def sample_mixup(
 def apply_mixup(values: torch.Tensor, plan: MixUpPlan, *, flip_donor: bool = False) -> torch.Tensor:
     """Interpolate each sample with its donor along the batch axis.
 
-    MixUp runs outside autograd.
+    MixUp runs outside autograd. For repeated CPU batches, create
+    `mix = torch.compile(apply_mixup, fullgraph=True)` once before the training loop,
+    then call `mix(images, plan, flip_donor=True)` inside the loop. TorchInductor can
+    fuse donor selection, reversal and interpolation. The first call compiles the
+    function, and changes in shape, layout or dtype may trigger another compilation.
 
     Args:
         values (torch.Tensor): Tensor with the batch axis first, such as BCHW or BCDHW.

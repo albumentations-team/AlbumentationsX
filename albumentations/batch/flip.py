@@ -4,10 +4,16 @@ from __future__ import annotations
 
 import math
 from contextlib import nullcontext
-from typing import Final, Literal
+from functools import cache
+from importlib import import_module
+from typing import TYPE_CHECKING, Final, Literal
 
 import torch
 from torch import randint
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from types import ModuleType
 
 FlipDirection = Literal["horizontal", "vertical"]
 _FLIP_DTYPES: Final = frozenset(
@@ -158,47 +164,97 @@ def _validate_values(values: torch.Tensor, selected: torch.Tensor) -> None:
                 span += (size - 1) * stride
 
 
-def _flip_planes(values: torch.Tensor, selected: torch.Tensor, dim: int, middle: list[tuple[int, int]]) -> None:
-    # Only the chosen sample numbers cross devices. Each plane view keeps the caller's storage offset.
-    plane_count = math.prod(size for size, _ in middle)
-    for sample in selected.nonzero().flatten().tolist():
-        start = values.storage_offset() + sample * values.stride(0)
-        for ordinal in range(plane_count):
-            offset = start
-            remaining = ordinal
-            for size, stride in reversed(middle):
-                remaining, position = divmod(remaining, size)
-                offset += position * stride
-            plane = values.as_strided(values.shape[-2:], values.stride()[-2:], storage_offset=offset)
-            plane.copy_(plane.flip((dim,)))
+def _raster_views(values: torch.Tensor) -> Iterator[torch.Tensor]:
+    if values.ndim <= 5:
+        yield values
+        return
+    middle = [
+        (size, stride) for size, stride in zip(values.shape[1:-2], values.stride()[1:-2], strict=True) if size > 1
+    ]
+    if len(middle) <= 2:
+        sizes = (values.size(0), *(size for size, _ in middle), *values.shape[-2:])
+        strides = (values.stride(0), *(stride for _, stride in middle), *values.stride()[-2:])
+        yield values.as_strided(sizes, strides, storage_offset=values.storage_offset())
+        return
+    # Keep the batch axis on each spatial plane so all planes can reuse the same sample indices.
+    sizes = (values.size(0), *values.shape[-2:])
+    strides = (values.stride(0), *values.stride()[-2:])
+    for ordinal in range(math.prod(size for size, _ in middle)):
+        offset = values.storage_offset()
+        remaining = ordinal
+        for size, stride in reversed(middle):
+            remaining, position = divmod(remaining, size)
+            offset += position * stride
+        yield values.as_strided(sizes, strides, storage_offset=offset)
+
+
+@cache
+def _cuda_flip_backend(device: torch.device) -> ModuleType | None:
+    if torch.version.cuda is None or torch.cuda.get_device_capability(device) < (8, 0):
+        return None
+    try:
+        return import_module("albumentations.batch._flip_cuda")
+    except (AttributeError, ImportError, OSError, RuntimeError):
+        return None
+
+
+def _try_triton_flip(values: torch.Tensor, selected: torch.Tensor, dim: int) -> bool:
+    if (
+        values.ndim != 4
+        or values.dtype not in (torch.uint8, torch.float32)
+        or not values.is_contiguous()
+        or torch.compiler.is_compiling()
+        or torch._C._are_functorch_transforms_active()  # noqa: SLF001 - transformed tensors may lack addressable storage.
+    ):
+        return False
+    backend = _cuda_flip_backend(values.device)
+    return backend is not None and backend.try_flip(values, selected, dim)
+
+
+def _flip_samples(values: torch.Tensor, indices: list[int], dim: int) -> None:
+    if not indices:
+        return
+    for view in _raster_views(values):
+        for index in indices:
+            sample = view[index]
+            sample.copy_(sample.flip((dim,)))
+
+
+def _flip_cuda_indexed(values: torch.Tensor, indices: torch.Tensor, dim: int) -> None:
+    count = indices.numel()
+    if count == 0:
+        return
+    if count == 1:
+        _flip_samples(values, [int(indices.item())], dim)
+        return
+    destinations = None
+    for view in _raster_views(values):
+        flipped = view[indices].flip((dim,))
+        if torch.are_deterministic_algorithms_enabled() and not view.is_contiguous():
+            # Deterministic advanced scatter would copy the whole destination, including unselected pixels.
+            if destinations is None:
+                destinations = indices.tolist()
+            for index, source in zip(destinations, flipped.unbind(), strict=True):
+                view[index].copy_(source)
+        else:
+            view[indices] = flipped
 
 
 def _flip_selected(values: torch.Tensor, selected: torch.Tensor, dim: int) -> None:
-    # Deterministic CUDA scatter makes a contiguous copy of a strided destination.
-    scatter_copies_batch = (
-        values.is_cuda and torch.are_deterministic_algorithms_enabled() and not values.is_contiguous()
-    )
-    if values.ndim > 5 or scatter_copies_batch:
-        # Only spatial planes and at most two intervening axes reach the ordinary ATen kernels.
-        middle = [
-            (size, stride) for size, stride in zip(values.shape[1:-2], values.stride()[1:-2], strict=True) if size > 1
-        ]
-        if scatter_copies_batch or len(middle) > 2:
-            _flip_planes(values, selected, dim, middle)
-            return
-        sizes = (values.shape[0], *(size for size, _ in middle), *values.shape[-2:])
-        strides = (values.stride(0), *(stride for _, stride in middle), *values.stride()[-2:])
-        values = values.as_strided(sizes, strides, storage_offset=values.storage_offset())
-    if values.is_cuda:
-        values[selected] = torch.flip(values[selected], dims=(dim,))
+    if values.is_cuda and _try_triton_flip(values, selected, dim):
         return
-    for index in selected.nonzero().flatten().tolist():
-        sample = values[index]
-        sample.copy_(sample.flip((dim,)))
+    indices = selected.nonzero().flatten()
+    if values.is_cuda:
+        _flip_cuda_indexed(values, indices, dim)
+    else:
+        _flip_samples(values, indices.tolist(), dim)
 
 
 def apply_flip_(values: torch.Tensor, plan: FlipPlan) -> torch.Tensor:
     """Flip selected samples in place across the last axis (horizontal) or penultimate axis (vertical).
+
+    On CUDA, contiguous BCHW uint8 and float32 inputs can use an installed Triton backend.
+    The PyTorch fallback reuses the selected sample indices.
 
     Args:
         values (torch.Tensor): Writable, unnamed strided CPU or CUDA raster of shape

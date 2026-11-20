@@ -964,4 +964,11 @@ def test_inpaint_dropout_mask_preserves_dtype_and_spatial_axes(shape, mask_dtype
     result = fdropout.apply_inpainting_to_mask(image, mask, "inpaint_telea")
 
     assert result.dtype == image.dtype
-    np.testing.assert_array_equal(result, expected)
+    assert result.shape == expected.shape
+    if min(shape[:2]) == 1:
+        filled = reference_mask != 0
+        np.testing.assert_array_equal(result[~filled], image.reshape(result.shape)[~filled])
+        # Separate OpenCV calls differed by one uint8 level on a singleton axis in Windows CI.
+        np.testing.assert_allclose(result[filled], expected[filled], atol=1, rtol=0)
+    else:
+        np.testing.assert_array_equal(result, expected)

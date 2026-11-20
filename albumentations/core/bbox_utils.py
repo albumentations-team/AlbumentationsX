@@ -419,6 +419,8 @@ class BboxProcessor(DataProcessor[BboxParams]):
                 the same length as the input `data`.
 
         """
+        if not len(data):
+            return _empty_filter_result(data, self.params.bbox_type), np.zeros(0, dtype=bool)
         shape_2d = shape[:2] if len(shape) == 3 else shape
         return filter_bboxes_with_mask(
             data,

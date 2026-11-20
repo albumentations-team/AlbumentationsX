@@ -8,6 +8,22 @@ and [2.6.0](2.6.0.md).
 
 ## Validation
 
+### Clear observations after rejected trace snapshot targets
+
+- Previous behavior: After an observed call, rejecting an unknown snapshot target in `Compose.run_with_trace()` or
+  `ReplayCompose.run_with_trace()` left the preceding sample's applied params and config visible through leaf getters.
+- New behavior: This rejection clears the caller's completed observation, so `get_applied_params()` and
+  `get_applied_config()` return empty dictionaries. Earlier returned results, other callers, and an active outer
+  invocation retain their data. The error and RNG continuation are unchanged. This corrects stale observation exposure.
+- Affected users: Callers inspecting applied params or config after catching an unknown trace snapshot-target error,
+  including nested Compose and ReplayCompose pipelines.
+- Migration: No pipeline configuration change is needed. Save the observed configuration before the next call, for example
+  `previous_config = leaf.get_applied_config()` after a successful observed call.
+- First affected version: unreleased
+- Contract: [Invocation observation ownership](../design/compose-greenfield-architecture.md#permanent-contracts).
+- Tests: [Trace rejection and retained artifacts](../../tests/test_composition_tracing.py),
+  [caller and active-invocation isolation](../../tests/test_compose_reentrancy.py).
+
 ### Compose keeps bound instances aligned when a transform drops boxes
 
 - Previous behavior: A transform that removed bbox rows could leave extra mask rows or orphan keypoints when called

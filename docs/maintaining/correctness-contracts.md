@@ -56,6 +56,13 @@ For normalized floating-point RGBA, only RGB passes through uint8. The same rule
 slice of NumPy and CPU Tensor targets. [Functional tests](../../tests/functional/test_functional.py) and
 [transform and Compose tests](../../tests/test_augmentations.py).
 
+## Functional grayscale compression
+
+For a two-dimensional NumPy image of shape `H×W`, `fpixel.image_compression` compresses one grayscale plane.
+JPEG and WebP return `H×W×1` at the input dtype, including when the width is four. Direct callers can use
+`result[..., 0]` to obtain `H×W`. When a 2D image is passed to `Compose`, its public output has the original
+`H×W` shape. [`test_image_compression_gray_width_four`](../../tests/functional/test_functional.py).
+
 ## Box-aware RandomResizedCrop sampling
 
 When `RandomResizedCrop.bbox_preservation` is `"one_box"`, the sampled crop contains one uniformly

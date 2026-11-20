@@ -114,7 +114,11 @@ def apply_mixup(values: torch.Tensor, plan: MixUpPlan, *, flip_donor: bool = Fal
             torch.lerp(values[rows], paired, weight[rows], out=destination)
         else:
             mixed = values[rows].float()
-            mixed.lerp_(paired, weight[rows])
+            if flip_donor:
+                # Interpolate toward the recipient with its original weight, even near zero or a rounding tie.
+                torch.lerp(paired, mixed, recipient_weight[rows], out=mixed)
+            else:
+                mixed.lerp_(paired, weight[rows])
             if values.dtype is torch.uint8:
                 mixed.round_().clamp_(0, 255)
             destination.copy_(mixed)

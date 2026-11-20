@@ -4,14 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 import numpy as np
 import torch
-
-if TYPE_CHECKING:
-    from .composition import Compose
-
 
 ValuesType = TypeVar("ValuesType", bound=np.ndarray | torch.Tensor)
 
@@ -40,7 +36,6 @@ class FrameBinding:
 
     frames: list[dict[str, Any]]
     sources: np.ndarray
-    policy: Compose
     routes: dict[str, str] = field(default_factory=dict)
     rows: dict[str, RowIds] = field(default_factory=dict)
     frame_columns: dict[str, int] = field(default_factory=dict)

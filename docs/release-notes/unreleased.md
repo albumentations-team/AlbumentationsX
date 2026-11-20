@@ -8,7 +8,16 @@ and [2.6.0](2.6.0.md).
 
 ## Validation
 
-none
+### Compose keeps bound instances aligned when a transform drops boxes
+
+- Previous behavior: A transform that removed bbox rows could leave extra mask rows or orphan keypoints when called
+  inside a nested container or with `check_each_transform=False`.
+- New behavior: Compose aligns masks and grouped keypoints to the surviving bbox IDs before the next transform.
+- Affected users: Pipelines with `instance_binding` and transforms that remove bbox rows directly.
+- Migration: Keep the existing instance binding and bbox settings.
+- First affected version: unreleased
+- Contract: [Instance binding](../design/instance_binding.md#2-single-positional-alignment-invariant).
+- Tests: [Instance binding tests](../../tests/test_instance_binding.py).
 
 ## Geometry
 

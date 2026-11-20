@@ -13,10 +13,10 @@ The four meanings use different geometry rules:
 | `gradient`, `gradient3d` | Derivative of a scalar field, such as terrain height | Transform as a covector: `J^-T g` |
 | `displacement`, `displacement3d` | Finite offset from a point to a second point | Transform both endpoints: `T(p + d) - T(p)` |
 | `vector_field`, `vector_field3d` | Local vector, such as velocity or orientation | Transform with the local Jacobian: `J v` |
-| `normal`, `normal3d` | Surface normal | Inverse transpose, then unit-normalize |
+| `normal`, `normal3d` | Surface normal | Inverse transpose. Normalize the result after interpolation. |
 
 `normal` is stored on a 2D image grid with three components. The 2D deformation is lifted as
-`F(x, y, z) = (T_x(x, y), T_y(x, y), z)`, so Z remains unchanged before the normal is normalized. Components use a
+`F(x, y, z) = (T_x(x, y), T_y(x, y), z)`, so Z keeps its value until any normalization. Components use a
 common frame: X points right, Y points down, and Z points along the image-depth axis. Convert tangent-space normals to
 that frame before augmentation; no local tangent basis is stored. `normal3d` uses the full volume axes.
 
@@ -85,15 +85,23 @@ result = A.Compose([A.Resize3D(size=(16, 24, 32))], seed=137)(volume=volume, gra
 
 The same geometry parameters are sampled once and used by the image or volume route and every declared field route.
 For interpolation-based transforms, fields always use bilinear sampling in 2D and trilinear sampling in 3D, independent
-of the image and mask interpolation settings. Exact flips, crops, and axis permutations copy field values without
-interpolation.
+of the image and mask interpolation settings.
+
+## Exact geometry
+
+Flips, quarter turns, transposes, and other exact grid symmetries rearrange samples and permute or negate their
+components in the input dtype. Each component keeps its value up to the sign change, including any NaN or infinity.
+For example, `Transpose` maps the 2D vector `(NaN, 4)` to `(4, NaN)`. Exact symmetries preserve the length of normals.
+
+Whole-pixel and whole-voxel translations, including crop and pad, move samples with their components intact. Padding
+sets every component of the added samples to NaN.
 
 ## Invalid vectors and boundaries
 
 NaN marks invalid data without a separate mask target. If any component of an input vector is non-finite, the vector is
 excluded from interpolation. The remaining valid neighbors use renormalized weights, so one NaN neighbor does not
-weaken a constant field. If no valid neighbor contributes, the result is NaN in every component. Zero gradients and
-zero displacements are valid; a zero normal is invalid.
+weaken a constant field. If no valid neighbor contributes, the result is NaN in every component. A normal whose
+interpolated and transformed vector has zero length also becomes NaN in every component.
 
 ![With one NaN among four bilinear neighbors, the three finite vectors keep their value after the remaining weights are renormalized.](../img/advanced/vector-field-nan-interpolation.webp)
 
@@ -103,8 +111,9 @@ transform can still compute its mapped location.
 
 ## Numerical limits and cost
 
-Component calculations use float32 and are cast back to the input dtype. If a result overflows that dtype, the complete
-vector becomes NaN. Use float32 when field magnitudes or transform scales may approach float16's finite range.
+Interpolating transforms compute field components in float32 and cast the result back to the input dtype. If a result
+overflows that dtype, the complete vector becomes NaN. Use float32 when field magnitudes or transform scales may approach
+float16's finite range.
 
 Nonlinear displacement transforms may iteratively invert their spatial map. The work grows with field size, so high-
 resolution 3D fields can take substantially longer than affine transforms or local-vector fields.
@@ -116,9 +125,11 @@ fields are absent. Check a transform's `Targets:` section for its declared field
 ```mermaid
 flowchart LR
     I["Image or volume + named fields"] --> C["Compose samples one geometry"]
-    C --> R["Raster handler uses image/mask interpolation"]
-    C --> F["Field handler uses linear valid-weight interpolation"]
+    C --> R["Transform images, volumes, and masks"]
+    C --> E["Exact geometry reindexes field samples and components"]
+    C --> F["Interpolating geometry resamples valid neighbors"]
     F --> J["Transform components by field meaning"]
     R --> O["Aligned outputs"]
+    E --> O
     J --> O
 ```

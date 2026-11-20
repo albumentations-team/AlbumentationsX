@@ -1,9 +1,10 @@
 # Unreleased behavior changes
 
-Release baseline: 2.6.1
+Release baseline: 2.6.5
 
 Follow the [behavior compatibility policy](../maintaining/behavior-compatibility.md) when updating this inventory.
-Earlier changes shipped in [2.6.1](2.6.1.md) and [2.6.0](2.6.0.md).
+Earlier changes shipped in [2.6.5](2.6.5.md), [2.6.4](2.6.4.md), [2.6.3](2.6.3.md), [2.6.2](2.6.2.md), [2.6.1](2.6.1.md),
+and [2.6.0](2.6.0.md).
 
 ## Validation
 
@@ -20,54 +21,75 @@ Earlier changes shipped in [2.6.1](2.6.1.md) and [2.6.0](2.6.0.md).
 - Contract: [Optional Hub loading](../maintaining/correctness-contracts.md#optional-hub-loading).
 - Tests: [Optional Hub dependency routes](../../tests/test_hub_optional_dependency.py).
 
-### Vector-field input names and shapes
+### Compose keeps bound instances aligned when a transform drops boxes
 
-- Previous behavior: Compose had no built-in vector-field targets. Permissive pipelines could pass through undeclared
-  keywords such as `gradient`; strict pipelines required those keywords to be declared.
-- New behavior: `gradient`, `displacement`, `vector_field`, `normal`, and their `3d` variants are recognized
-  spatial targets. Vector-field inputs must have the documented component count, layout, and dtype, and must match
-  the spatial grid when shape checks are enabled. Strict Compose rejects `None` fields.
-- Affected users: Pipelines adding dense vector annotations and permissive pipelines using a new target name for
-  unrelated data.
-- Migration: Pass dense fields as float16 or float32 with the documented component axis. Move unrelated metadata
-  into `user_data`, for example `pipeline(image=image, user_data={"gradient": metadata})`. Omit absent fields
-  in strict pipelines.
+- Previous behavior: A transform that removed bbox rows could leave extra mask rows or orphan keypoints when called
+  inside a nested container or with `check_each_transform=False`.
+- New behavior: Compose aligns masks and grouped keypoints to the surviving bbox IDs before the next transform.
+- Affected users: Pipelines with `instance_binding` and transforms that remove bbox rows directly.
+- Migration: Keep the existing instance binding and bbox settings.
 - First affected version: unreleased
-- Contract: [Vector-field layouts and dtypes](../vector-fields.md#layouts-and-dtypes).
-- Tests: [Vector-field validation](../../tests/test_vector_field_targets.py).
+- Contract: [Instance binding](../design/instance_binding.md#2-single-positional-alignment-invariant).
+- Tests: [Instance binding tests](../../tests/test_instance_binding.py).
 
 ## Geometry
 
-### Dense fields follow sampled geometry
+### Affine supports raster targets with different sizes
 
-- Previous behavior: Dense vectors had no dedicated geometry. Aliasing them to images or masks treated components as
-  scalar channels.
-- New behavior: Supported transforms share the sampled geometry with the field and update its components according
-  to its meaning. Interpolation renormalizes finite neighbors, and out-of-bounds locations become NaN. Dropout keeps
-  fields as-is. CopyAndPaste, Mosaic, OverlayElements, Morphological, and PixelSpread skip their entire node when a
-  vector field is present.
-- Affected users: Optical-flow, surface-normal, local-vector, and gradient pipelines for images and volumes.
-- Migration: Use a semantic target, for example `pipeline(image=image, displacement=flow)` for flow in pixel
-  coordinates. Check each transform's declared support before adding fields to an existing pipeline.
+- Previous behavior: Affine required a common height and width even with `is_check_shapes=False`. Its applied
+  configuration also stored percentage translations in pixels and saved shear with the opposite sign.
+- New behavior: With shape checks disabled, Affine shares the sampled parameters across raster targets and computes
+  the warp for each height and width. Bounding boxes, keypoints, and vector fields still require a common size.
+  New applied configurations preserve percentage translations and the sampled shear in constructor units.
+- Affected users: Pipelines that augment rasters of different sizes in one call or reconstruct Affine from applied
+  configurations with percentage translation or shear.
+- Migration: Set `is_check_shapes=False` for mixed raster sizes. Recapture applied configurations that used percentage
+  translation or shear if you need to reproduce the original transform.
 - First affected version: unreleased
-- Contract: [Vector-field geometry and supported routes](../vector-fields.md).
-- Tests: [Field geometry](../../tests/functional/test_vector_field_geometry.py),
-  [routing, replay, and Tensor conversion](../../tests/test_vector_field_targets.py).
+- Contract: [Affine on rasters of different sizes](../geometry.md#affine-on-rasters-of-different-sizes).
+- Tests: [Geometry contracts](../../tests/contracts/test_geometry_contract.py).
+
+### OpticalDistortion maps fisheye annotations in continuous coordinates
+
+- Previous behavior: OpticalDistortion rasterized boxes to masks and could return original coordinates for a box
+  whose entire support left the frame. Keypoints used a raster mask or an inverse pixel grid.
+- New behavior: For a full-resolution fisheye map with constant border and a coefficient in `[-0.3, 0.3]`,
+  OpticalDistortion uses the inverse radial map for keypoints and sampled box edges when the map is monotone in
+  the frame. It fits boxes to the visible contour and applies `BboxParams.min_visibility` to the retained area
+  fraction. `KeypointParams.remove_invisible` controls whether out-of-frame keypoints and their labels are kept.
+- Affected users: Pipelines that pass keypoints, HBBs or OBBs to `OpticalDistortion(mode="fisheye")` in this range.
+- Migration: Update cached annotations or expected boxes and keypoints using the new transform. Pin the previous
+  version when reproducing an augmentation run that relied on raster-rounded coordinates or retained boxes.
+- First affected version: unreleased
+- Contract: [OpticalDistortion annotation geometry](../geometry.md#opticaldistortion-annotation-geometry).
+- Tests: [OpticalDistortion annotation tests](../../tests/test_optical_distortion_annotations.py).
+
+### GridElasticDeform handles cells without an invertible homography
+
+- Previous behavior: Collapsed cells could produce image and annotation results from a non-invertible warp.
+- New behavior: Cells with collinear destination corners stay at their source rectangles. Source rectangles without
+  area contribute no warp. Images and annotations use the same recovered grid.
+- Affected users: Pipelines and saved replays in which a fine grid or a large displacement collapses a cell.
+- Migration: Regenerate expected outputs for samples with collapsed cells.
+- First affected version: unreleased
+- Contract: [Grid elastic deformation](../geometry.md).
+- Tests: [Geometry contracts](../../tests/contracts/test_geometry_contract.py).
+
+### Dropout inpainting honors every nonzero mask value
+
+- Previous behavior: Converting a numeric mask to `uint8` could turn a nonzero value such as `256` into zero,
+  leaving that pixel unchanged.
+- New behavior: Dropout inpainting treats every nonzero mask value as foreground.
+- Affected users: Direct callers of `fill_masked_holes` with a numeric dropout mask and an inpainting fill.
+- Migration: Pass the same mask to use the corrected behavior. Cast the mask to `uint8` before calling the function
+  to reproduce the old pixel selection.
+- First affected version: unreleased
+- Contract: [Interpolation, borders, and fill](../geometry.md#interpolation-borders-and-fill).
+- Tests: [Dropout inpainting tests](../../tests/functional/test_dropout.py).
 
 ## Determinism
 
-### Reduced-precision CUDA normalization
-
-- Previous behavior: InputNormalizer used PyTorch operations with a full-size FP32 intermediate before casting.
-- New behavior: Eligible CUDA inputs use fused Triton kernels that write FP16 or BF16 directly. Fixed normalization
-  retains FP32 arithmetic. Per-sample modes use tiled FP32 statistics, so rounding can differ from PyTorch.
-- Affected users: InputNormalizer on Linux with Triton and CUDA compute capability 8.0 or later, for eligible
-  combinations of layout, input dtype, and reduced-precision output.
-- Migration: Existing calls select the route automatically. Use tolerance-based comparisons for per-sample
-  normalization. Pin 2.6.1 when reproducing exact outputs from that release.
-- First affected version: unreleased
-- Contract: [CUDA input normalization](../maintaining/correctness-contracts.md#cuda-input-normalization).
-- Tests: [InputNormalizer CUDA parity and fallback](../../tests/test_batch_normalization.py).
+none
 
 ## Constructor defaults
 
@@ -75,18 +97,7 @@ none
 
 ## Deprecations
 
-### ModeFilter removal
-
-- Previous behavior: `A.ModeFilter` replaced each pixel with the most frequent value in its neighborhood per channel.
-- New behavior: AlbumentationsX removes the transform. Loading a saved pipeline or replay containing it raises
-  `ValueError` for an unknown transform.
-- Affected users: Pipelines that call `A.ModeFilter` or load configurations or replay records that contain it.
-- Migration: Remove the transform from the pipeline and regenerate saved configurations and replay records. Use
-  `albumentationsx==2.6.1` to reproduce existing pipelines and replay records that require this filter.
-- First affected version: unreleased
-- Contract: [Replay and deserialization validation](../validation.md).
-- Tests: [Public constructor coverage](../../tests/contracts/test_constructor_parameter_coverage.py),
-  [unknown transform validation](../../tests/contracts/test_validation_contract.py).
+none
 
 ## Regression vectors
 

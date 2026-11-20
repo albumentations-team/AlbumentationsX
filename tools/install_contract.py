@@ -10,7 +10,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-DEFAULT_OPENCV_REQUIREMENT = "opencv-python-headless>=5.0.0.93"
+DEFAULT_OPENCV_REQUIREMENT = "opencv-python-headless>=5.1.0.95"
 MISSING_TORCH_GUIDANCE = 'pip install "albumentationsx[headless]"'
 
 

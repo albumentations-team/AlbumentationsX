@@ -30,14 +30,15 @@ The vector channel is mandatory; NumPy is channel-last and a plain CPU Tensor is
 | `normal` | `(H, W, 3)` | `(3, H, W)` | X, Y, Z |
 | `gradient3d`, `displacement3d`, `vector_field3d`, `normal3d` | `(D, H, W, 3)` | `(3, D, H, W)` | X, Y, Z |
 
-Only float16 and float32 are accepted. NaN marks an invalid vector; any non-finite component invalidates the complete vector
-after interpolation or computed geometry. Bilinear/trilinear sampling excludes invalid neighbours and renormalizes the
-remaining weights. Sampling outside source pixel/voxel cells produces NaN independently of image border mode.
+Only float16 and float32 are accepted. Bilinear and trilinear sampling exclude vectors with any non-finite component
+and renormalize the remaining weights. Sampling outside source pixel or voxel cells produces NaN independently of the
+image border mode. [Exact geometry](../vector-fields.md#exact-geometry) preserves individual component values up to sign
+changes and preserves normal lengths.
 
 `gradient` transforms as a covector (`J^-T g`), `vector_field` as a local vector (`J v`), and `displacement` by
-transforming both endpoints (`T(p+d)-T(p)`). `normal` and `normal3d` use inverse transpose and unit normalization. A
-2D transform applied to a 3D field lifts XY geometry with an unchanged Z axis. `normal` is a camera-frame surface
-normal under that lift; tangent-space basis conversion remains the caller's responsibility.
+transforming both endpoints (`T(p+d)-T(p)`). `normal` and `normal3d` use inverse transpose and unit normalization for
+interpolating transforms. A 2D transform applied to a 3D field lifts XY geometry with an unchanged Z axis. `normal` is
+a camera-frame surface normal under that lift. Convert tangent-space normals to the camera frame before augmentation.
 
 Compose recognizes the eight canonical names even when a selected transform leaves them unchanged. Only a transform
 that declares a field in `_targets` participates in the generated field profile. Unsupported nodes use a leaf-local
@@ -129,8 +130,8 @@ several asymmetric class regions, and annotations carry multiple aligned label f
 | `obb-labels` | image, mask, OBBs, two label fields | Finite normalized geometry, angle column, and aligned fields |
 | `keypoints-labels` | image, mask, keypoints, labels | Finite keypoints and aligned labels |
 | `volume-mask3d` | `volume`, `mask3d` | Slice/depth behavior, spatial synchronization, and dtype |
-| `image-vector-fields` | image, four 2D field targets | Output shape/dtype, vector validity, and unit normals |
-| `volume-vector-fields3d` | volume, four 3D field targets | Output shape/dtype, vector validity, and unit normals |
+| `image-vector-fields` | image, four 2D field targets | Output shape/dtype, vector validity, and normal lengths |
+| `volume-vector-fields3d` | volume, four 3D field targets | Output shape/dtype, vector validity, and normal lengths |
 
 The HBB and OBB profiles use separate `BboxParams`. A case collects only for bbox types declared in
 `_supported_bbox_types`.

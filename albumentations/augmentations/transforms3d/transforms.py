@@ -19,14 +19,15 @@ from pydantic import AfterValidator, field_validator, model_validator
 from albumentations.augmentations.crops._sampling import SamplingMethod, sample_3d_crop_shape
 from albumentations.augmentations.geometric import functional as fgeometric
 from albumentations.augmentations.geometric._functional_vector_fields import (
-    transform_vector_components_3d,
+    reorient_vector_field,
+    restore_vector_field_dtype,
     warp_vector_field_from_pull_grid_3d,
 )
 from albumentations.augmentations.transforms3d import functional as f3d
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.keypoints_utils import KeypointsProcessor
 from albumentations.core.pydantic import check_range_bounds, nondecreasing
-from albumentations.core.transform_params import SampledParams, TargetSet
+from albumentations.core.transform_params import SampledParams, SampledParamsError, TargetSet
 from albumentations.core.transforms_interface import BaseTransformInitSchema, Transform3D
 from albumentations.core.type_definitions import (
     C4_INVERSE,
@@ -78,28 +79,24 @@ def _sampling_volume_shape(targets: TargetSet) -> tuple[int, int, int]:
     return targets.require_aligned_spatial_shape(NUM_DIMENSIONS)
 
 
-def _forward_matrix_from_reindex(reindex: Any) -> np.ndarray:
-    depth, height, width = np.mgrid[:3, :3, :3]
-    coordinate_grid = np.stack((width, height, depth), axis=-1).astype(np.float32)
-    mapped = reindex(coordinate_grid)
-    center = mapped[1, 1, 1]
-    pull_jacobian = np.column_stack(
-        (
-            mapped[1, 1, 2] - center,
-            mapped[1, 2, 1] - center,
-            mapped[2, 1, 1] - center,
-        ),
-    )
-    try:
-        return np.linalg.inv(pull_jacobian).astype(np.float32, copy=False)
-    except np.linalg.LinAlgError:
-        return np.full((3, 3), np.nan, dtype=np.float32)
+def _reference_volume_shape(targets: TargetSet) -> tuple[int, int, int]:
+    shape = targets.reference_spatial_shape(NUM_DIMENSIONS)
+    if shape is None:
+        raise SampledParamsError("transform sampling requires a spatial target")
+    return shape
 
 
-def _apply_reindexed_vector_field_3d(field: np.ndarray, target: str, reindex: Any) -> np.ndarray:
-    transformed = reindex(field)
-    matrix = _forward_matrix_from_reindex(reindex)
-    return transform_vector_components_3d(transformed, matrix, semantics=target)
+_CUBE_AXIS_PROBE = np.empty((2, 2, 2), dtype=np.uint8)
+_XYZ_AXIS_BY_STRIDE = {1: 1, 2: 2, 4: 3, -1: -1, -2: -2, -4: -3}
+
+
+def _apply_reindexed_vector_field_3d(
+    field: np.ndarray,
+    reindexed_probe: np.ndarray,
+) -> np.ndarray:
+    # Unique strides identify the source XYZ axes and their signs even for singleton field axes.
+    component_order = tuple(_XYZ_AXIS_BY_STRIDE[stride] for stride in reversed(reindexed_probe.strides))
+    return reorient_vector_field(field, component_order, spatial_rank=3)
 
 
 def _reindex_vector_field_tiles_3d(
@@ -785,6 +782,8 @@ class Resize3D(Transform3D):
     """
 
     _targets = VOLUME_GEOMETRIC_TARGETS
+    _sampling_spatial_rank = None
+    _replay_reference_shape = (3, "source_shape")
 
     class InitSchema(BaseTransformInitSchema):
         size: Annotated[tuple[int, int, int], AfterValidator(check_range_bounds(1, None))]
@@ -810,7 +809,7 @@ class Resize3D(Transform3D):
         targets: TargetSet,
         sampling: SamplingContext,
     ) -> SampledParams:
-        return SampledParams(params={"source_shape": _sampling_volume_shape(targets)})
+        return SampledParams(params={"source_shape": _reference_volume_shape(targets)})
 
     def apply_to_volume(self, volume: VolumeType | torch.Tensor, **params: Any) -> VolumeType:
         return cast("VolumeType", resize3d(volume, self.size, self.interpolation))
@@ -1195,6 +1194,8 @@ class Pad3D(BasePad3D):
         >>> padded_keypoint_labels = transformed["keypoint_labels"]  # Labels remain unchanged
 
     """
+
+    _sampling_spatial_rank = None
 
     class InitSchema(BasePad3D.InitSchema):
         padding: int | tuple[int, int, int] | tuple[int, int, int, int, int, int]
@@ -2295,6 +2296,8 @@ class Flip3D(Transform3D):
     """
 
     _targets = VOLUME_GEOMETRIC_TARGETS
+    _sampling_spatial_rank = None
+    _replay_reference_shape = (3, "volume_shape")
 
     class InitSchema(BaseTransformInitSchema):
         axes: tuple[AxisIndex3D, ...]
@@ -2344,7 +2347,7 @@ class Flip3D(Transform3D):
             flip_axes = tuple(axis for axis in self.axes if sampling.py_random.random() < 0.5)
 
         sampling.applied_overrides["flip_axes"] = flip_axes
-        return SampledParams(params={"flip_axes": flip_axes, "volume_shape": _sampling_volume_shape(targets)})
+        return SampledParams(params={"flip_axes": flip_axes, "volume_shape": _reference_volume_shape(targets)})
 
     def _get_label_transform_name(self, **params: Any) -> str | None:
         """Return the Flip3D semantic-mapping event for a realized orientation-reversing reflection, allowing mask3d
@@ -2388,11 +2391,8 @@ class Flip3D(Transform3D):
         flip_axes = params["flip_axes"]
         if not flip_axes:
             return field
-        component_matrix = np.eye(3, dtype=np.float32)
-        for spatial_axis in flip_axes:
-            component_matrix[2 - spatial_axis, 2 - spatial_axis] = -1
-        transformed = np.flip(field, axis=flip_axes)
-        return transform_vector_components_3d(transformed, component_matrix, semantics=target)
+        order = tuple(-(3 - axis) if axis in flip_axes else 3 - axis for axis in (2, 1, 0))
+        return reorient_vector_field(field, order, spatial_rank=3)
 
     def apply_to_keypoints(
         self,
@@ -2478,6 +2478,8 @@ class CubicSymmetry(Transform3D):
     """
 
     _targets = VOLUME_GEOMETRIC_TARGETS
+    _sampling_spatial_rank = None
+    _replay_reference_shape = (3, "volume_shape")
 
     def __init__(
         self,
@@ -2506,7 +2508,7 @@ class CubicSymmetry(Transform3D):
 
         """
         # Randomly select one of 48 possible transformations
-        volume_shape = _sampling_volume_shape(targets)
+        volume_shape = _reference_volume_shape(targets)
         return SampledParams(params={"index": sampling.py_random.randint(0, 47), "volume_shape": volume_shape})
 
     def _get_label_transform_name(self, **params: Any) -> str | None:
@@ -2523,7 +2525,7 @@ class CubicSymmetry(Transform3D):
         index = params["index"]
         if index == 0:
             return field
-        return _apply_reindexed_vector_field_3d(field, target, lambda value: f3d.transform_cube(value, index))
+        return _apply_reindexed_vector_field_3d(field, f3d.transform_cube(_CUBE_AXIS_PROBE, index))
 
     def apply_to_keypoints(
         self,
@@ -2581,6 +2583,8 @@ class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified 
     """
 
     _targets = VOLUME_GEOMETRIC_TARGETS
+    _sampling_spatial_rank = None
+    _replay_reference_shape = (3, "volume_shape")
 
     class InitSchema(BaseTransformInitSchema):
         axis_pairs: tuple[AxisPair3D, ...]
@@ -2633,7 +2637,7 @@ class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified 
             params={
                 "axis_pair": axis_pair,
                 "rotation_count": rotation_count,
-                "volume_shape": _sampling_volume_shape(targets),
+                "volume_shape": _reference_volume_shape(targets),
             }
         )
 
@@ -2667,8 +2671,7 @@ class RandomRotate90_3D(Transform3D):  # noqa: N801 - Public API name specified 
             return field
         return _apply_reindexed_vector_field_3d(
             field,
-            target,
-            lambda value: f3d.rotate90_3d(value, rotation_count, axis_pair),
+            f3d.rotate90_3d(_CUBE_AXIS_PROBE, rotation_count, axis_pair),
         )
 
     def apply_to_keypoints(
@@ -2796,12 +2799,13 @@ class GridShuffle3D(Transform3D):
     ) -> np.ndarray:
         tiles = params["tiles"]
         mapping = params["mapping"]
-        return _shuffle_vector_field_3d(
+        result = _shuffle_vector_field_3d(
             field,
             tiles,
             mapping,
             displacement=target == "displacement3d",
         )
+        return field if result is field else restore_vector_field_dtype(result, field.dtype)
 
     def apply_to_keypoints(
         self,

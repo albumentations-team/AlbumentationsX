@@ -86,6 +86,27 @@ def test_equalize_preserves_inputs(route: str, channels: int, mode: Literal["pil
     assert result.flags.writeable
 
 
+@pytest.mark.parametrize("layout", ["dense", "row-strided", "flipped"])
+@pytest.mark.parametrize("route", ["functional", "compose"])
+def test_equalize_pil_rgb_readonly_inputs_match_pillow(layout: str, route: str) -> None:
+    rng = np.random.default_rng(137)
+    source = rng.integers(0, 256, (226, 231, 3), dtype=np.uint8)
+    source[..., 0] = 137
+    image = source[1:-1, 3:227]
+    if layout == "dense":
+        image = image.copy()
+    elif layout == "flipped":
+        image = image[:, ::-1]
+    image.flags.writeable = False
+    before = image.copy()
+
+    result = run_equalize(image, route)
+
+    np.testing.assert_array_equal(result, pil_equalize(before), strict=True)
+    np.testing.assert_array_equal(image, before)
+    assert result.flags.writeable
+
+
 def test_equalize_compose_channel_free_grayscale() -> None:
     image = issue_image(1)[..., 0]
     before = image.copy()
@@ -169,7 +190,8 @@ def test_equalize_cv_full_histogram(channels: int, masked: bool) -> None:
     np.testing.assert_array_equal(image, before)
 
 
-def test_equalize_cv_partial_mask() -> None:
+@pytest.mark.parametrize("channel_axis", [False, True])
+def test_equalize_cv_partial_mask(channel_axis: bool) -> None:
     image, mask = partial_mask_fixture(1)
     image[-1, -2:, 0] = [255, 224]
     before, mask_before = image.copy(), mask.copy()
@@ -179,8 +201,13 @@ def test_equalize_cv_partial_mask() -> None:
     expected[15, -1] = 255
     # No selected histogram mass lies between 32 and 224; both intermediate levels map to zero.
     expected[-1, -2:] = 255
+    if not channel_axis:
+        image, mask, before, mask_before, expected = (
+            array[..., 0] for array in (image, mask, before, mask_before, expected)
+        )
     result = run_equalize(image, "functional", mode="cv", mask=mask)
-    np.testing.assert_array_equal(result[..., 0][selection], selected_expected)
+    plane = result[..., 0] if channel_axis else result
+    np.testing.assert_array_equal(plane[selection], selected_expected)
     np.testing.assert_array_equal(result, expected)
     np.testing.assert_array_equal(image, before)
     np.testing.assert_array_equal(mask, mask_before)

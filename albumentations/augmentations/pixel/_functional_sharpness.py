@@ -180,7 +180,8 @@ def chromatic_aberration(
         interpolation,
     )
 
-    result = np.dstack([red_distorted, img[..., 1], blue_distorted])
+    green = cv2.extractChannel(img, 1)
+    result = cast("ImageUInt8", cv2.merge((red_distorted, green, blue_distorted)))
     return restore_uint8_working_image(result, input_dtype)
 
 

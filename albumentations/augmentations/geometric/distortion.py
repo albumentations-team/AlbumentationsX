@@ -28,7 +28,7 @@ target types.
 """
 
 from collections.abc import Mapping
-from typing import Annotated, Any, Literal, Self
+from typing import Annotated, Any, ClassVar, Literal, Self
 
 import numpy as np
 from albucore import remap
@@ -43,6 +43,7 @@ from pydantic import (
 
 import albumentations.augmentations.pixel.functional as fpixel
 from albumentations.augmentations.utils import check_range
+from albumentations.core.bbox_utils import BboxProcessor
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.pydantic import (
     check_range_bounds,
@@ -67,7 +68,12 @@ from albumentations.core.type_definitions import (
 )
 
 from . import functional as fgeometric
-from ._functional_distortion import _tps_transform_grid
+from ._functional_distortion import (
+    _tps_transform_grid,
+    fisheye_inverse_is_monotone,
+    remap_fisheye_bboxes,
+    remap_fisheye_keypoints,
+)
 
 __all__ = [
     "ElasticTransform",
@@ -652,10 +658,14 @@ class OpticalDistortion(BaseDistortion):
     Supported bboxes:
         hbb, obb
     Note:
-        - The distortion is applied using OpenCV's initUndistortRectifyMap and remap functions.
+        - Camera mode builds its raster map with OpenCV. Fisheye mode builds a radial map.
         - The distortion coefficient (k) is randomly sampled from the distort_range range.
         - Bounding boxes and keypoints are transformed along with the image to maintain consistency.
-        - Fisheye model directly applies radial distortion
+        - With a full-resolution fisheye map, constant border, and a sampled coefficient in [-0.3, 0.3],
+          keypoints and box outlines are transformed geometrically if the radius mapping is monotone in the frame.
+          Boxes must retain a visible contour and meet BboxParams.min_visibility.
+          KeypointParams.remove_invisible controls whether points outside the frame are kept.
+          The keypoint remapping method selects how points are handled for other settings.
 
     Examples:
         >>> import albumentations as A
@@ -669,6 +679,12 @@ class OpticalDistortion(BaseDistortion):
         >>> transformed_keypoints = transformed['keypoints']
 
     """
+
+    _target_apply_methods: ClassVar[Mapping[str, str]] = {
+        "volume": "apply_to_images",
+        "bboxes": "_apply_to_optical_bboxes",
+        "keypoints": "_apply_to_optical_keypoints",
+    }
 
     class InitSchema(BaseDistortion.InitSchema):
         distort_range: tuple[float, float]
@@ -711,32 +727,81 @@ class OpticalDistortion(BaseDistortion):
         image_shape = targets.require_aligned_spatial_shape(2)
         _, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
 
-        k = sampling.py_random.uniform(*self.distort_range)
+        distortion = sampling.py_random.uniform(*self.distort_range)
+        sampling.applied_overrides["distort_range"] = distortion
+        analytic_distortion = (
+            distortion
+            if self.mode == "fisheye"
+            and self.border_mode == CV2_BORDER_CONSTANT
+            and scaled_shape == image_shape
+            and -0.3 <= distortion <= 0.3
+            and fisheye_inverse_is_monotone(image_shape, distortion)
+            else None
+        )
 
-        sampling.applied_overrides["distort_range"] = k
-
-        if k == 0:
+        if distortion == 0:
             height, width = image_shape
             map_y, map_x = np.meshgrid(
                 np.arange(height, dtype=np.float32),
                 np.arange(width, dtype=np.float32),
                 indexing="ij",
             )
-            return SampledParams(params={"map_x": map_x, "map_y": map_y})
+            return SampledParams(
+                params={
+                    "map_x": map_x,
+                    "map_y": map_y,
+                    "analytic_distortion": analytic_distortion,
+                }
+            )
 
         if self.mode == "camera":
             map_x, map_y = fgeometric.get_camera_matrix_distortion_maps(
                 scaled_shape,
-                k,
+                distortion,
             )
         else:
             map_x, map_y = fgeometric.get_fisheye_distortion_maps(
                 scaled_shape,
-                k,
+                distortion,
             )
         map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
-        return SampledParams(params={"map_x": map_x, "map_y": map_y})
+        return SampledParams(
+            params={
+                "map_x": map_x,
+                "map_y": map_y,
+                "analytic_distortion": analytic_distortion,
+            }
+        )
+
+    def _apply_to_optical_bboxes(
+        self,
+        bboxes: np.ndarray,
+        map_x: np.ndarray,
+        map_y: np.ndarray,
+        shape: tuple[int, int],
+        bbox_type: Literal["hbb", "obb"],
+        analytic_distortion: float | None,
+        **params: Any,
+    ) -> np.ndarray:
+        if analytic_distortion is not None:
+            processor = self.get_processor("bboxes")
+            min_visibility = processor.params.min_visibility if isinstance(processor, BboxProcessor) else 0.0
+            return remap_fisheye_bboxes(bboxes, shape[:2], analytic_distortion, bbox_type, min_visibility)
+        return super().apply_to_bboxes(bboxes, map_x, map_y, shape, bbox_type, **params)
+
+    def _apply_to_optical_keypoints(
+        self,
+        keypoints: np.ndarray,
+        map_x: np.ndarray,
+        map_y: np.ndarray,
+        shape: tuple[int, int],
+        analytic_distortion: float | None,
+        **params: Any,
+    ) -> np.ndarray:
+        if analytic_distortion is not None:
+            return remap_fisheye_keypoints(keypoints, shape[:2], analytic_distortion)
+        return super().apply_to_keypoints(keypoints, map_x, map_y, shape, **params)
 
 
 class GridDistortion(BaseDistortion):
@@ -1352,11 +1417,6 @@ class PixelSpread(BaseDistortion):
         map_resolution, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
         scaled_height, scaled_width = scaled_shape
 
-        row_coords, col_coords = np.meshgrid(
-            np.arange(scaled_height, dtype=np.float32),
-            np.arange(scaled_width, dtype=np.float32),
-            indexing="ij",
-        )
         scaled_radius = max(1, round(self.radius * map_resolution))
         offsets = sampling.random_generator.integers(
             -scaled_radius,
@@ -1364,8 +1424,14 @@ class PixelSpread(BaseDistortion):
             size=(scaled_height, scaled_width, 2),
             dtype=np.int32,
         )
-        map_y = (row_coords + offsets[..., 0]).astype(np.float32)
-        map_x = (col_coords + offsets[..., 1]).astype(np.float32)
+        row_coords = np.arange(scaled_height, dtype=np.float32)[:, None]
+        col_coords = np.arange(scaled_width, dtype=np.float32)
+        map_y = np.empty(scaled_shape, dtype=np.float32)
+        map_x = np.empty_like(map_y)
+        # Large offsets need the original wide addition before rounding the sum to float32.
+        working_dtype = np.float32 if scaled_radius <= 2**24 else np.float64
+        np.add(row_coords, offsets[..., 0], dtype=working_dtype, out=map_y)
+        np.add(col_coords, offsets[..., 1], dtype=working_dtype, out=map_x)
         map_x, map_y = self._maybe_upscale_maps(map_x, map_y, image_shape)
 
         return SampledParams(params={"map_x": map_x, "map_y": map_y})

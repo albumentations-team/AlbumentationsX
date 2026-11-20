@@ -12,7 +12,7 @@ from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 from functools import cache
-from typing import Annotated, Any, ClassVar, Protocol, TypeVar, cast, get_args, get_type_hints
+from typing import Annotated, Any, ClassVar, Literal, Protocol, TypeVar, cast, get_args, get_type_hints
 from warnings import warn
 
 import cv2
@@ -383,7 +383,6 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
 
     Args:
         interpolation (int): Interpolation method for image transforms.
-        fill (int | float | list[int] | list[float]): Fill value for image padding.
         fill_mask (int | float | list[int] | list[float]): Fill value for mask padding.
         deterministic (bool, optional): Whether the transform is deterministic.
         save_key (str, optional): Key for saving transform parameters.
@@ -407,7 +406,6 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
     _transform_init_args_names_cache: ClassVar[tuple[str, ...] | None] = None
     call_backup = None
     interpolation: int
-    fill: tuple[float, ...] | float
     fill_mask: tuple[float, ...] | float | None
     # replay mode params
     deterministic: bool = False
@@ -419,6 +417,7 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
     _valid_applied_config_keys_cache: ClassVar[frozenset[str] | None] = None
     _applied_replay_class: ClassVar[type["BasicTransform"] | None] = None
     _sampling_spatial_rank: ClassVar[int | None] = None
+    _replay_reference_shape: ClassVar[tuple[Literal[2, 3], str] | None] = None
     _runtime_param_materializer: ClassVar[_RuntimeParamMaterializer | None] = None
     _runtime_generated_params: ClassVar[frozenset[str]] = frozenset()
     _runtime_binding_params: ClassVar[Mapping[str, None]] = {}
@@ -1077,6 +1076,15 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         sampled_params = SampledParams.from_dict(deepcopy(replay_params))
         targets = self._build_target_set(kwargs)
         self._validate_spatial_targets(targets)
+        if self._replay_reference_shape is not None:
+            rank, name = self._replay_reference_shape
+            shape = targets.reference_spatial_shape(rank)
+            if shape is not None and shape != sampled_params.params.get(name, ())[:rank]:
+                sampled_params = SampledParams(
+                    {**sampled_params.params, name: shape},
+                    sampled_params.target_params,
+                    sampled_params.target_schema,
+                )
         if (
             "bbox_type" not in sampled_params.params
             and not sampled_params.target_params
@@ -1851,7 +1859,7 @@ class DualTransform(BasicTransform):
         Targets.MASKS3D,
     )
     _target_apply_methods: ClassVar[Mapping[str, str]] = {"volume": "apply_to_images"}
-    _sampling_spatial_rank = 2
+    _sampling_spatial_rank: ClassVar[int | None] = 2
 
     _supported_bbox_types: frozenset[str] = frozenset({"hbb"})  # Default: only axis-aligned boxes
     _semantic_mask_label_mappings: dict[str, dict[int, int]]
@@ -1929,6 +1937,7 @@ class DualTransform(BasicTransform):
         return self._apply_to_batch(mask3d, lambda mask: self.apply_to_mask(mask, *args, **params))
 
     def _apply_vector_field_target(self, target: str, field: np.ndarray, **params: Any) -> np.ndarray:
+        """Apply field geometry and return the input dtype."""
         from albumentations.augmentations.geometric._functional_vector_fields import (
             warp_vector_field_2d,
             warp_vector_field_from_pull_map_2d,
@@ -1959,39 +1968,29 @@ class DualTransform(BasicTransform):
         output_shape = params.get("output_shape", params.get("shape"))
         source_shape = vector_field.shape[-3:-1] if vector_field.ndim == 4 else vector_field.shape[:2]
         spatial_shape = tuple(output_shape[:2]) if output_shape is not None else source_shape
-        transformed = warp_vector_field_2d(
+        crop_coords = None
+        if all(name in params for name in ("x_min", "x_max", "y_min", "y_max")):
+            x_min, x_max, y_min, y_max = (int(params[name]) for name in ("x_min", "x_max", "y_min", "y_max"))
+            if min(x_min, y_min) >= 0 and x_max > x_min and y_max > y_min:
+                crop_coords = (x_min, y_min, x_max, y_max)
+        return warp_vector_field_2d(
             vector_field,
             matrix.astype(np.float32, copy=False),
             spatial_shape,
             semantics=semantics,
+            crop_coords=crop_coords,
         )
-        if all(name in params for name in ("x_min", "x_max", "y_min", "y_max")):
-            x_min, x_max, y_min, y_max = (int(params[name]) for name in ("x_min", "x_max", "y_min", "y_max"))
-            if min(x_min, y_min) >= 0 and x_max > x_min and y_max > y_min:
-                transformed = (
-                    transformed[y_min:y_max, x_min:x_max]
-                    if transformed.ndim == 3
-                    else transformed[:, y_min:y_max, x_min:x_max]
-                )
-        return transformed
 
     def _dispatch_vector_field_target(
         self, target: str, field: NDArray[np.generic] | torch.Tensor | None, **params: Any
     ) -> Any:
         if field is None:
             return None
-        field_array = tensor_to_numpy_spatial(field, target) if isinstance(field, torch.Tensor) else field
-        field_array = cast("NDArray[np.float16] | NDArray[np.float32]", field_array)
-        transformed = self._apply_vector_field_target(target, field_array, **params)
-        if transformed is field_array:
-            return field
-
-        from albumentations.augmentations.geometric._functional_vector_fields import restore_vector_field_dtype
-
-        restored = restore_vector_field_dtype(np.asarray(transformed, dtype=np.float32), field_array.dtype)
         if isinstance(field, torch.Tensor):
-            return numpy_to_tensor_spatial(restored, target)
-        return restored
+            field_array = tensor_to_numpy_spatial(field, target)
+            transformed = self._apply_vector_field_target(target, field_array, **params)
+            return field if transformed is field_array else numpy_to_tensor_spatial(transformed, target)
+        return self._apply_vector_field_target(target, field, **params)
 
     def apply_to_gradient(self, gradient: NDArray[np.generic] | torch.Tensor, **params: Any) -> Any:
         return self._dispatch_vector_field_target("gradient", gradient, **params)
@@ -2356,6 +2355,7 @@ class NoOp(DualTransform):
     _targets = ALL_TARGETS
     _target_apply_methods: ClassVar[Mapping[str, str]] = {"volume": "apply_to_volume"}
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})  # NoOp passes all bbox types
+    _sampling_spatial_rank: ClassVar[int | None] = None
 
     def apply_to_keypoints(self, keypoints: np.ndarray, **params: Any) -> np.ndarray:
         return keypoints
@@ -2420,7 +2420,7 @@ class Transform3D(DualTransform):
         Targets.MASKS3D,
     )
     _target_apply_methods: ClassVar[Mapping[str, str]] = {"volume": "apply_to_volume"}
-    _sampling_spatial_rank = 3
+    _sampling_spatial_rank: ClassVar[int | None] = 3
 
     def apply_to_volume(self, volume: VolumeType, *args: Any, **params: Any) -> VolumeType:
         """Apply transform to single 3D volume. Override in subclasses; input shape (D, H, W, C)
@@ -2436,6 +2436,7 @@ class Transform3D(DualTransform):
     ) -> np.ndarray:
         from albumentations.augmentations.geometric._functional_vector_fields import (
             crop_and_resize_vector_field_3d,
+            translate_vector_field,
             warp_vector_field_3d,
         )
 
@@ -2453,16 +2454,16 @@ class Transform3D(DualTransform):
                 pad_front = 0 if pad_params is None else pad_params["pad_front"]
                 pad_top = 0 if pad_params is None else pad_params["pad_top"]
                 pad_left = 0 if pad_params is None else pad_params["pad_left"]
-                matrix = np.asarray(
-                    ((1, 0, 0, pad_left - x_min), (0, 1, 0, pad_top - y_min), (0, 0, 1, pad_front - z_min)),
-                    dtype=np.float32,
-                )
                 output_shape = (
                     z_max - z_min,
                     y_max - y_min,
                     x_max - x_min,
                 )
-                return warp_vector_field_3d(vector_field, matrix, output_shape, semantics=target)
+                return translate_vector_field(
+                    vector_field,
+                    output_shape,
+                    (pad_front - z_min, pad_top - y_min, pad_left - x_min),
+                )
             if hasattr(self, "size"):
                 output_shape = tuple(self.size)
                 return crop_and_resize_vector_field_3d(
@@ -2476,16 +2477,12 @@ class Transform3D(DualTransform):
         if padding is not None and len(padding) == 6:
             pad_front, pad_back, pad_top, pad_bottom, pad_left, pad_right = padding
             depth, height, width = vector_field.shape[:3]
-            matrix = np.asarray(
-                ((1, 0, 0, pad_left), (0, 1, 0, pad_top), (0, 0, 1, pad_front)),
-                dtype=np.float32,
-            )
             output_shape = (
                 depth + pad_front + pad_back,
                 height + pad_top + pad_bottom,
                 width + pad_left + pad_right,
             )
-            return warp_vector_field_3d(vector_field, matrix, output_shape, semantics=target)
+            return translate_vector_field(vector_field, output_shape, (pad_front, pad_top, pad_left))
 
         if hasattr(self, "size") and len(self.size) == 3:
             output_depth, output_height, output_width = self.size

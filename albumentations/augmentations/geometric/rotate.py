@@ -157,6 +157,8 @@ class RandomRotate90(DualTransform):
 
     _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+    _sampling_spatial_rank = None
+    _replay_reference_shape = (2, "shape")
 
     class InitSchema(BaseTransformInitSchema):
         group_element: Literal["e", "r90", "r180", "r270"] | None
@@ -195,7 +197,7 @@ class RandomRotate90(DualTransform):
         return fgeometric.rot90(img, group_element)
 
     def _apply_vector_field_target(self, target: str, field: np.ndarray, **params: Any) -> np.ndarray:
-        return transform_vector_field_symmetry(field, target, params["group_element"])
+        return transform_vector_field_symmetry(field, params["group_element"])
 
     def sample_parameters(
         self,

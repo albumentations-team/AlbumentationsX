@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import json
 
+import cv2
 import numpy as np
 import pytest
+import torch
 from pytest_mock import MockerFixture
 
 import albumentations as A
 from albumentations.augmentations.geometric._functional_vector_fields import (
-    permute_vector_field_components_2d,
-    permute_vector_field_components_3d,
     pull_map_from_matrix_2d,
     pull_map_from_matrix_3d,
     resample_field_2d,
@@ -33,22 +33,24 @@ def test_bilinear_resampling_renormalizes_finite_vector_neighbours(dtype: type[n
     map_x = np.array([[0.5, -0.25, -0.75]], dtype=np.float32)
     map_y = np.full_like(map_x, 0.5)
 
-    result = resample_field_2d(field, map_x, map_y)
+    result, supported = resample_field_2d(field, map_x, map_y)
 
-    np.testing.assert_array_equal(np.isnan(result), [[[False, False], [False, False], [True, True]]])
+    np.testing.assert_array_equal(supported, [[True, True, False]])
+    assert np.isnan(result[0, 2]).all()
     np.testing.assert_array_equal(result[0, :2], np.array([[10.0, -4.0], [10.0, -4.0]], dtype=np.float32))
 
 
 def test_bilinear_resampling_marks_empty_support_and_partial_vectors_as_invalid() -> None:
     field = np.full((2, 2, 2), np.nan, dtype=np.float32)
     field[0, 0] = (3.0, np.nan)
-    result = resample_field_2d(
+    result, supported = resample_field_2d(
         field,
         np.array([[0.0, 4.0]], dtype=np.float32),
         np.array([[0.0, 4.0]], dtype=np.float32),
     )
 
     assert np.isnan(result).all()
+    assert not supported.any()
 
 
 @pytest.mark.parametrize(
@@ -126,30 +128,61 @@ def test_3d_normal_uses_inverse_transpose_and_becomes_unit_length() -> None:
     np.testing.assert_allclose(result[0, 0, 0], expected, rtol=1e-6, atol=1e-7)
 
 
-def test_horizontal_flip_reindexes_and_reorients_each_field_type() -> None:
-    field = np.asarray([[[1.0, 2.0], [3.0, 4.0]]], dtype=np.float32)
-    result = permute_vector_field_components_2d(
-        field,
-        spatial_axes=(1,),
-        component_matrix=np.diag((-1.0, 1.0)).astype(np.float32),
-        semantics="gradient",
+@pytest.mark.parametrize("dtype", (np.float16, np.float32))
+@pytest.mark.parametrize("tensor", (False, True), ids=("numpy", "cpu-tensor"))
+@pytest.mark.parametrize(
+    ("element", "grid", "basis"),
+    (
+        ("e", [[0, 1, 2], [3, 4, 5]], ((1, 0), (0, 1))),
+        ("r90", [[2, 5], [1, 4], [0, 3]], ((0, 1), (-1, 0))),
+        ("r180", [[5, 4, 3], [2, 1, 0]], ((-1, 0), (0, -1))),
+        ("r270", [[3, 0], [4, 1], [5, 2]], ((0, -1), (1, 0))),
+        ("v", [[3, 4, 5], [0, 1, 2]], ((1, 0), (0, -1))),
+        ("h", [[2, 1, 0], [5, 4, 3]], ((-1, 0), (0, 1))),
+        ("t", [[0, 3], [1, 4], [2, 5]], ((0, 1), (1, 0))),
+        ("hvt", [[5, 2], [4, 1], [3, 0]], ((0, -1), (-1, 0))),
+    ),
+)
+def test_d4_reindexes_vector_field_targets(
+    dtype: type[np.generic],
+    tensor: bool,
+    element: str,
+    grid: list[list[int]],
+    basis: tuple[tuple[int, int], tuple[int, int]],
+) -> None:
+    vectors = np.asarray([(1, -2), (np.finfo(dtype).max, 4), (5, -6), (7, 8), (9, -10), (11, 12)], dtype=dtype)
+    vectors[3:] = ((np.nan, 8), (np.inf, -10), (11, -np.inf))
+    matrix = np.asarray(basis, dtype=dtype)
+    component_order = np.abs(matrix).argmax(axis=1)
+    expected = vectors[np.asarray(grid)][..., component_order] * matrix[np.arange(2), component_order]
+    image = np.zeros((2, 3, 1), dtype=np.uint8)
+    field = vectors.reshape(2, 3, 2)
+    normal = np.concatenate((field, np.full((2, 3, 1), 3, dtype=dtype)), axis=-1)
+    raster = torch.from_numpy(np.moveaxis(image, -1, 0).copy()) if tensor else image
+    data = torch.from_numpy(np.moveaxis(field, -1, 0).copy()) if tensor else field
+    normal_input = torch.from_numpy(np.moveaxis(normal, -1, 0).copy()) if tensor else normal
+    original = data.clone() if isinstance(data, torch.Tensor) else data.copy()
+
+    result = A.Compose([A.D4(group_element=element, p=1)])(
+        image=raster,
+        gradient=data,
+        displacement=data,
+        vector_field=data,
+        normal=normal_input,
     )
 
-    np.testing.assert_array_equal(result, [[[(-3.0), 4.0], [(-1.0), 2.0]]])
-
-
-def test_3d_axis_permutation_reorders_spatial_axes_and_components() -> None:
-    field = np.empty((2, 3, 4, 3), dtype=np.float32)
-    field[...] = (1.0, 2.0, 3.0)
-    result = permute_vector_field_components_3d(
-        field,
-        spatial_permutation=(2, 1, 0),
-        component_matrix=np.asarray(((0, 0, 1), (0, 1, 0), (1, 0, 0)), dtype=np.float32),
-        semantics="gradient3d",
-    )
-
-    assert result.shape == (4, 3, 2, 3)
-    np.testing.assert_array_equal(result, np.broadcast_to((3.0, 2.0, 1.0), result.shape))
+    for target in ("gradient", "displacement", "vector_field"):
+        output = result[target]
+        assert type(output) is type(data)
+        assert output.dtype == data.dtype
+        actual = np.moveaxis(output.numpy(), 0, -1) if tensor else output
+        np.testing.assert_array_equal(actual, expected)
+    normal_output = result["normal"]
+    assert normal_output.dtype == normal_input.dtype
+    normal_values = np.moveaxis(normal_output.numpy(), 0, -1) if tensor else normal_output
+    np.testing.assert_array_equal(normal_values[..., :2], expected)
+    np.testing.assert_array_equal(normal_values[..., 2], np.full(expected.shape[:2], 3, dtype=dtype))
+    np.testing.assert_array_equal(data, original)
 
 
 def test_affine_pull_map_uses_half_pixel_resize_coordinates_and_source_domain() -> None:
@@ -500,16 +533,39 @@ def test_horizontal_flip_reorients_components_through_the_public_compose_path() 
     np.testing.assert_array_equal(result["vector_field"], np.broadcast_to((-2.0, 4.0), (2, 3, 2)))
 
 
-def test_pad_marks_added_vector_field_cells_as_nan() -> None:
-    field = np.ones((2, 3, 2), dtype=np.float32)
+@pytest.mark.parametrize("dtype", (np.float16, np.float32))
+def test_pad_marks_added_vector_field_cells_as_nan(dtype: type[np.generic]) -> None:
+    field = np.arange(12, dtype=dtype).reshape(2, 3, 2)
+    field[1, 1, 0] = np.inf
     image = np.zeros((2, 3, 1), dtype=np.float32)
+    expected = np.full((4, 5, 2), np.nan, dtype=dtype)
+    expected[1:-1, 1:-1] = field
 
-    result = A.Compose([A.Pad(padding=1)])(image=image, gradient=field)
+    result = A.Compose([A.Pad(padding=1, border_mode=cv2.BORDER_REFLECT)])(image=image, gradient=field)
 
-    assert result["gradient"].shape == (4, 5, 2)
-    assert np.isnan(result["gradient"][0]).all()
-    np.testing.assert_array_equal(result["gradient"][1:3, 1:4], field)
-    assert np.isnan(result["gradient"][-1]).all()
+    assert result["gradient"].dtype == field.dtype
+    np.testing.assert_array_equal(result["gradient"], expected)
+
+
+@pytest.mark.parametrize("tensor", (False, True), ids=("numpy", "cpu-tensor"))
+def test_exact_3d_crop_and_pad_preserve_field_components(tensor: bool) -> None:
+    field = np.zeros((2, 4, 6, 3), dtype=np.float16)
+    field[..., 0] = np.nextafter(np.float16(0), np.float16(1))
+    field[0, 1, 2, 2] = np.nan
+    volume = np.zeros((2, 4, 6, 1), dtype=np.uint8)
+    pipeline = A.Compose([A.CenterCrop3D(size=(2, 2, 2)), A.Pad3D(padding=1)])
+    expected = np.pad(field[:, 1:3, 2:4], ((1, 1), (1, 1), (1, 1), (0, 0)), constant_values=np.nan)
+    if tensor:
+        volume_input = torch.from_numpy(np.moveaxis(volume, -1, 0).copy())
+        field_input = torch.from_numpy(np.moveaxis(field, -1, 0).copy())
+    else:
+        volume_input, field_input = volume, field
+
+    output = pipeline(volume=volume_input, displacement3d=field_input)["displacement3d"]
+
+    assert output.dtype == field_input.dtype
+    actual = np.moveaxis(output.numpy(), 0, -1) if tensor else output
+    np.testing.assert_array_equal(actual, expected)
 
 
 def test_pad_if_needed3d_replays_sparse_float16_field() -> None:
@@ -574,6 +630,24 @@ def test_flip3d_reorients_components_in_xyz_order() -> None:
     result = A.Compose([A.Flip3D(flip_axes=(0, 2))])(volume=volume, vector_field3d=field)
 
     np.testing.assert_array_equal(result["vector_field3d"], np.broadcast_to((-1.0, 2.0, -3.0), field.shape))
+
+
+def test_cubic_symmetry_reorients_field_with_singleton_axis(monkeypatch: pytest.MonkeyPatch) -> None:
+    volume = np.zeros((1, 2, 3, 1), dtype=np.uint8)
+    field = np.arange(1, 19, dtype=np.float16).reshape(1, 2, 3, 3)
+    field[0, 0, 1, 1] = np.inf
+    expected = -field.transpose(1, 2, 0, 3)[::-1, ::-1, ::-1, :][..., (2, 0, 1)]
+    monkeypatch.setattr(
+        A.CubicSymmetry,
+        "sample_parameters",
+        lambda *args, **kwargs: SampledParams(params={"index": 37, "volume_shape": volume.shape[:3]}),
+    )
+
+    result = A.Compose([A.CubicSymmetry(p=1)])(volume=volume, gradient3d=field, normal3d=field)
+
+    for target in ("gradient3d", "normal3d"):
+        assert result[target].dtype == np.float16
+        np.testing.assert_array_equal(result[target], expected)
 
 
 def test_random_rotate90_3d_reorients_components_in_the_selected_axis_pair() -> None:

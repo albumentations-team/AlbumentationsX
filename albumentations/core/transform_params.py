@@ -232,6 +232,25 @@ class TargetSet:
         return tuple(tuple(views) for views in grouped.values())
 
     @overload
+    def reference_spatial_shape(self, rank: Literal[2]) -> tuple[int, int] | None: ...
+
+    @overload
+    def reference_spatial_shape(self, rank: Literal[3]) -> tuple[int, int, int] | None: ...
+
+    def reference_spatial_shape(self, rank: Literal[2, 3]) -> tuple[int, ...] | None:
+        """Return the canonical spatial shape, falling back to an alias when no canonical target is present."""
+        fallback = None
+        for view in self.ordered:
+            shape = _spatial_shape_for_rank(view, rank)
+            if shape is None:
+                continue
+            if view.name == view.canonical_type:
+                return shape
+            if fallback is None:
+                fallback = shape
+        return fallback
+
+    @overload
     def aligned_spatial_shape(self, rank: Literal[2]) -> tuple[int, int] | None: ...
 
     @overload

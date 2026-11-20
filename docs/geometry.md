@@ -60,6 +60,18 @@ intermediate resize dimensions and all four padding amounts. Both map annotation
 that recorded output geometry. Spatially materialized parameters may require the recorded shape. See
 [replay contracts](design/applied-config-replay-contracts.md) and the [resize replay tests](../tests/contracts/test_geometry_contract.py).
 
+### Affine on rasters of different sizes
+
+Use `Compose(is_check_shapes=False)` to apply one [Affine](https://albumentations.ai/explore/transform/Affine/) to
+images, masks, and volumes of different sizes in the same call. Affine samples the rotation, scale, shear, and
+translation once, then builds one warp per `(H, W)`. For example, a horizontal `translate_percent` of `0.25` shifts a
+128-pixel-wide image by 32 pixels and a 256-pixel-wide image by 64. A `translate_px` of 32 shifts both by 32 pixels.
+
+With `fit_output=True`, each size gets its own output bounds. Volume depth stays the same, and all slices of a volume
+use the same warp. Each batch remains a regular array with one shape. Bounding boxes, keypoints, and vector fields
+still require a common spatial frame. For mixed sizes, `ReplayCompose` checks that each recorded target has its
+original height and width.
+
 ## Bounds, filtering, and annotation rows
 
 `Compose` checks input kinds, ranks, annotation rows, finite coordinates, label counts, and spatial alignment before
@@ -119,6 +131,9 @@ Padding and affine paths that explicitly support reflected annotations can creat
 paths follow the family's coordinate or mask policy, so a raster border mode alone gives no guarantee of copied
 annotations. [Pad and reflection tests](../tests/test_bbox.py) · [Fill tests](../tests/test_crop.py)
 
+With `inpaint_telea` or `inpaint_ns`, the dropout function `fill_masked_holes` inpaints every nonzero pixel in the
+two-dimensional dropout mask.
+
 ## Rules and tests by family
 
 The [transform case registry](../tests/helpers/transform_cases.py) is the source of constructor modes. The audit starts
@@ -136,7 +151,7 @@ caller input ownership, and replay. The focused tests below add geometric oracle
 | Rotation and affine | Sample one policy. Raster and keypoint matrices use center `((W - 1) / 2, (H - 1) / 2)`. Box matrices use `(W / 2, H / 2)`. Affine applies scale, rotation, shear, and translation relative to the pivot. `fit_output` floors the transformed minima, ceils the maxima, translates the origin, and sets each dimension to `maximum - minimum + 1`. `Rotate(crop_border=True)` applies a sampled interior crop after the warp. `SafeRotate` scales the rotated frame into the input size. HBBs follow the selected box-enclosure method. OBBs use transformed corners on the affine path. | [Affine matrix, pivots, and geometry](../tests/functional/test_affine.py), [rotated crop and safe rotation](../tests/test_transforms.py), [analytical OBB tests](../tests/test_obb_analytical.py). |
 | Perspective | Sample one quadrilateral and homography. The base width and height use the longer corresponding sides of the sampled quadrilateral, with a minimum side length of two during estimation and truncation to integers. `fit_output` expands the frame and rounds the translated corners. `keep_size=True` composes the output scale into the homography once. Rasters, keypoint positions, and box corners share the final matrix. HBBs enclose mapped corners. OBBs are constructed and fitted in pixel coordinates, then normalized in the output frame. Replay uses the recorded homography and perspective frame dimensions. With `keep_size=True` the output scale targets the current input dimensions. | [Single warp and aligned keypoints](../tests/test_transforms.py), [projection and angle handling](../tests/test_keypoint.py), [rectangular-frame OBBs, matrix sharing, and legacy replay](../tests/contracts/test_geometry_contract.py). |
 | Remap distortions | Share a pair of output-to-input coordinate maps. Distortion modes that sample a lower map resolution expand the maps to the output frame before use. Boxes use rasterized support, nearest-neighbor remap, and recovery of enclosing boxes. For OBBs the support polygon comes from the rotated corners rounded to pixels. An exact identity map preserves the OBB through the remap step without mask quantization. The mask keypoint method rasterizes point markers and returns output pixel locations. The direct method uses a discrete inverse map. ElasticTransform uses its continuous control-field inverse for keypoints and shares dense maps for raster targets and boxes. | [Map resolution and target alignment](../tests/test_distortion_map_resolution.py), [remap algorithms](../tests/functional/test_geometric.py), [elastic inverse and replay](../tests/test_elastic_transform.py), [OBB identity and warped support](../tests/contracts/test_geometry_contract.py). |
-| Grid elastic deformation | Sample source rectangles and destination quadrilaterals. Prepare one homography per cell and share it across raster targets, HBB masks, and keypoints. Later destination cells overwrite earlier cells at overlap. Keypoints use half-open source cells, followed by clipping to pixel centers. HBBs enclose warped binary support. A saved `generated_mesh` is sufficient for replay. | [Shared matrices, cell boundaries, legacy replay, and wide masks](../tests/contracts/test_geometry_contract.py). |
+| Grid elastic deformation | Sample source rectangles and destination quadrilaterals. Prepare one homography per cell and share it across raster targets, HBB masks, and keypoints. Skip source rectangles without area. Keep a cell at its source rectangle when three destination corners are collinear. Later destination cells overwrite earlier cells at overlap. Keypoints use half-open source cells, followed by clipping to pixel centers. HBBs enclose warped binary support. A saved `generated_mesh` is sufficient for replay. | [Shared matrices, cell boundaries, legacy replay, and wide masks](../tests/contracts/test_geometry_contract.py). |
 | Grid shuffle | Sample integer tiles and a permutation within groups of equal tile shape. Image and mask tiles move without resampling. Keypoints move by the offset of their source tile. Boxes are rebuilt from visible components of the permuted box masks, so a box crossing tiles can yield multiple surviving boxes. | [Tile construction](../tests/functional/test_geometric.py), [image permutation](../tests/test_transforms.py), [keypoint tile offsets](../tests/test_keypoint.py), [box components, visibility, and metadata](../tests/test_bbox.py). |
 | Morphology | Use one elliptical structuring element for erosion or dilation in the existing frame. HBBs follow the bounds of their independently processed binary masks. Keypoint positions stay in the same frame. | [Morphology and dtype](../tests/functional/test_morphology.py), [box morphology](../tests/test_bbox.py). |
 
@@ -164,3 +179,16 @@ The same registry includes 2D dual cases whose annotation semantics follow a dif
   alignment. Extended profiles check empty HBB, OBB, and keypoint inputs with their label fields. Keep exact
   same-environment replay checks where the case declares them. [Stability modes](maintaining/correctness-contracts.md) ·
   [Target profile assertions](../tests/helpers/target_profiles.py)
+
+
+## OpticalDistortion annotation geometry
+
+With a full-resolution `mode="fisheye"` map, constant border, and a sampled `distort_range` coefficient
+between −0.3 and 0.3, `OpticalDistortion` inverts the radial map at keypoints and sampled box edges if the radius
+mapping is monotone throughout the frame.
+It clips box contours to the source and output frames, then fits a horizontal or oriented rectangle to the visible
+contour. `BboxParams.min_visibility` compares the clipped contour area with its area before output clipping, using a
+linear extension of the radial inverse beyond the frame when necessary. Boxes with no visible contour are removed
+along with their labels. `KeypointParams.remove_invisible` controls
+whether out-of-frame keypoints and their labels are kept. Masks and images use the raster map.
+For other configurations, `keypoint_remapping_method` selects the existing point remapping algorithm.

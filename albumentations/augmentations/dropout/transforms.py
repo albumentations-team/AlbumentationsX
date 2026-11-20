@@ -185,7 +185,7 @@ class BaseDropout(DualTransform):
         super().__init__(p=p)
         if fill == "grayscale" and fill_mask is not None:
             raise ValueError("fill_mask must be None when fill='grayscale'")
-        self.fill = fill  # type: ignore[assignment]
+        self.fill = fill
         self.fill_mask = fill_mask
 
     def _validate_fill_channel_count(
@@ -365,6 +365,7 @@ class PixelDropout(DualTransform):
 
     _targets = ALL_GEOMETRIC_TARGETS
     _supported_bbox_types: frozenset[str] = frozenset({"hbb", "obb"})
+    _sampling_spatial_rank = None
 
     def __init__(
         self,

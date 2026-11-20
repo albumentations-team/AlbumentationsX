@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import math
-import shutil
-import sys
 from typing import TYPE_CHECKING
 
 import pytest
@@ -343,16 +341,14 @@ def test_mixup_donor_flip_large_opposite_endpoints(dtype: torch.dtype, recipient
     assert torch.equal(apply_mixup(values, plan, flip_donor=True), expected)
 
 
-@pytest.mark.skipif(
-    sys.platform != "linux" or shutil.which("c++") is None, reason="Requires Linux CPU Inductor and C++"
-)
-def test_mixup_donor_flip_compiled_cpu_reuses_plan_inputs() -> None:
-    mix = torch.compile(apply_mixup, backend="inductor", fullgraph=True)
-    images = torch.tensor([[[2e38, -2e38]], [[4.0, 12.0]]], requires_grad=True)
-    plan = MixUpPlan(torch.tensor([0, 1]), torch.tensor([0.5, 1.0]))
-    mixed = mix(images, plan, flip_donor=True)
-    assert mixed.tolist() == [[[0.0, 0.0]], [[4.0, 12.0]]]
-    assert not mixed.requires_grad
-
-    next_plan = MixUpPlan(torch.tensor([1, 0]), torch.zeros(2))
-    torch.testing.assert_close(mix(images, next_plan, flip_donor=True), images.detach()[[1, 0]].flip((-1,)))
+@pytest.mark.parametrize("width", [16383, 16384])
+def test_mixup_donor_flip_cpu_view_boundary(width: int) -> None:
+    values = torch.arange(6 * width, dtype=torch.float32).reshape(3, 1, 2 * width)[..., ::2]
+    original = values.clone()
+    # Two recipients share the last donor. Both index spellings must resolve to the same row.
+    plan = MixUpPlan(torch.tensor([-1, 2, 0], dtype=torch.int32), torch.tensor([0.0, 0.5, 1.0]))
+    result = apply_mixup(values, plan, flip_donor=True)
+    reversed_last = original[2, :, torch.arange(width - 1, -1, -1)]
+    expected = torch.stack((reversed_last, 0.5 * (original[1] + reversed_last), original[2]))
+    assert torch.equal(result, expected)
+    assert torch.equal(values, original)

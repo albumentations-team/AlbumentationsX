@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Final, Literal
 
@@ -10,6 +11,7 @@ import torch
 
 MixingMode = Literal["pair", "element", "batch"]
 _MIXUP_WORKSPACE_BYTES: Final = 64 * 1024**2
+_CPU_DONOR_VIEW_MIN_ELEMENTS: Final = 16 * 1024
 _BETA_LOG_DOMAIN_THRESHOLD: Final = 0.1
 _FP32: Final = torch.finfo(torch.float32)
 
@@ -61,11 +63,7 @@ def sample_mixup(
 def apply_mixup(values: torch.Tensor, plan: MixUpPlan, *, flip_donor: bool = False) -> torch.Tensor:
     """Interpolate each sample with its donor along the batch axis.
 
-    MixUp runs outside autograd. For repeated CPU batches, create
-    `mix = torch.compile(apply_mixup, fullgraph=True)` once before the training loop,
-    then call `mix(images, plan, flip_donor=True)` inside the loop. TorchInductor can
-    fuse donor selection, reversal and interpolation. The first call compiles the
-    function, and changes in shape, layout or dtype may trigger another compilation.
+    MixUp runs outside autograd.
 
     Args:
         values (torch.Tensor): Tensor with the batch axis first, such as BCHW or BCDHW.
@@ -103,33 +101,52 @@ def apply_mixup(values: torch.Tensor, plan: MixUpPlan, *, flip_donor: bool = Fal
         return result
     recipient_weight = plan.lambdas.detach().float().reshape((len(values),) + (1,) * (values.ndim - 1))
     weight = 1 - recipient_weight
-    # Limit the FP32 block to 64 MiB, or one sample if it exceeds that size.
-    sample_bytes = math.prod(values.shape[1:]) * torch.float32.itemsize
-    # A flip needs a second donor buffer while the reversed block is materialized.
-    workspace = _MIXUP_WORKSPACE_BYTES // 2 if flip_donor else _MIXUP_WORKSPACE_BYTES
-    block_size = max(1, workspace // max(sample_bytes, 1))
-    for start in range(0, len(values), block_size):
-        stop = start + block_size
-        paired = values[plan.permutation[start:stop]].float()
-        if flip_donor:
-            paired = paired.flip((-1,))
-        destination = result[start:stop]
+    for rows, donors in _donor_blocks(values, plan.permutation, flip_donor=flip_donor):
+        paired = donors.flip((-1,)) if flip_donor else donors
+        del donors
+        paired = paired.float()
+        destination = result[rows]
         if flip_donor and values.dtype in (torch.bfloat16, torch.float32, torch.float64):
             # Subtracting finite opposite-sign endpoints in lerp can overflow FP32.
-            paired.mul_(weight[start:stop])
-            paired.addcmul_(values[start:stop].float(), recipient_weight[start:stop])
-            destination.copy_(paired)
+            paired.mul_(weight[rows])
+            torch.addcmul(paired, values[rows].float(), recipient_weight[rows], out=destination)
         elif values.dtype is torch.float32:
-            torch.lerp(values[start:stop], paired, weight[start:stop], out=destination)
+            torch.lerp(values[rows], paired, weight[rows], out=destination)
         else:
-            mixed = values[start:stop].float()
-            mixed.lerp_(paired, weight[start:stop])
+            mixed = values[rows].float()
+            mixed.lerp_(paired, weight[rows])
             if values.dtype is torch.uint8:
                 mixed.round_().clamp_(0, 255)
             destination.copy_(mixed)
             del mixed
         del paired
     return result
+
+
+def _donor_blocks(
+    values: torch.Tensor, permutation: torch.Tensor, *, flip_donor: bool
+) -> Iterator[tuple[slice, torch.Tensor]]:
+    """Select donor views for large CPU images and bounded gathers for other inputs."""
+    sample_elements = math.prod(values.shape[1:])
+    if (
+        flip_donor
+        and values.device.type == "cpu"
+        and permutation.device.type == "cpu"
+        and sample_elements >= _CPU_DONOR_VIEW_MIN_ELEMENTS
+        and permutation.ndim == 1
+        and permutation.dtype in (torch.int32, torch.int64)
+    ):
+        # Scalar indexing selects a view. Small images benefit from sharing dispatch across a block.
+        for row in range(len(values)):
+            yield slice(row, row + 1), values[permutation[row]].unsqueeze(0)
+        return
+
+    # The gathered and reflected blocks can coexist. Keep at least one sample per block.
+    workspace = _MIXUP_WORKSPACE_BYTES // 2 if flip_donor else _MIXUP_WORKSPACE_BYTES
+    block_size = max(1, workspace // max(sample_elements * torch.float32.itemsize, 1))
+    for start in range(0, len(values), block_size):
+        rows = slice(start, start + block_size)
+        yield rows, values[permutation[rows]]
 
 
 def _permutation(batch_size: int, device: torch.device, generator: torch.Generator, mode: MixingMode) -> torch.Tensor:

@@ -98,6 +98,11 @@ lower bounds.
 
 ## OpenCV Policy
 
+Importing AlbumentationsX requires OpenCV 5.1 or later. PyPI wheels must be
+version 5.1.0.95 or later; the import check rejects older runtimes. The
+`headless`, `gui`, `contrib`, and `contrib-headless` extras declare the same
+wheel minimum.
+
 The default CI runtime path uses `opencv-python-headless`. The
 `opencv-contrib-python-headless` extra receives a smoke test. GUI OpenCV wheels
 are outside normal Linux CI unless a workflow has a real GUI reason.

@@ -29,12 +29,8 @@ __all__ = [
 
 
 class ImageCompression(ImageOnlyTransform):
-    """Reduce image quality via JPEG or WebP compression. quality_range and compression_type
-    control strength and format. Simulates real-world compression artifacts.
-
-    This transform simulates the effect of saving an image with lower quality settings,
-    which can introduce compression artifacts. It's useful for data augmentation and
-    for testing model robustness against varying image qualities.
+    """Simulate the artifacts introduced by saving an image as JPEG or WebP to test model
+    robustness to compression at different quality settings.
 
     Args:
         quality_range (tuple[int, int]): Range for the compression quality.
@@ -60,23 +56,22 @@ class ImageCompression(ImageOnlyTransform):
         Any
 
     Note:
-        - This transform expects images with 1, 3, or 4 channels.
-        - For JPEG compression, alpha channels (4th channel) will be ignored.
-        - WebP compression supports transparency (4 channels).
-        - The actual file is not saved to disk; the compression is simulated in memory.
-        - Lower quality values result in smaller file sizes but may introduce visible artifacts.
-        - This transform can be useful for:
-          * Data augmentation to improve model robustness
-          * Testing how models perform on images of varying quality
-          * Simulating images transmitted over low-bandwidth connections
+        - One channel is compressed as grayscale. Two channels are padded with a zero third channel for
+          compression. Three channels are compressed together as a color image.
+        - For exactly four channels, JPEG and WebP both compress RGB and return four channels. The fourth
+          channel is copied bit for bit, including when it represents a spectral band. For floating-point RGBA,
+          only RGB is quantized to uint8 and restored to the input dtype.
+        - For five or more channels, the first three are compressed together and each additional band is
+          compressed separately as grayscale.
 
     Examples:
         >>> import numpy as np
         >>> import albumentations as A
-        >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
-        >>> transform = A.ImageCompression(quality_range=(50, 90), compression_type=0, p=1.0)
-        >>> result = transform(image=image)
-        >>> compressed_image = result["image"]
+        >>> image = np.random.default_rng(137).integers(0, 256, (100, 100, 4), dtype=np.uint8)
+        >>> transform = A.ImageCompression(quality_range=(50, 90), compression_type="jpeg", p=1.0)
+        >>> compressed = transform(image=image)["image"]
+        >>> np.array_equal(compressed[..., 3], image[..., 3])
+        True
 
     References:
         - JPEG compression: https://en.wikipedia.org/wiki/JPEG

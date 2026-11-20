@@ -1212,6 +1212,97 @@ def test_image_compression_compose_preserves_singleton_channel(dtype, compressio
     np.testing.assert_array_equal(image, original)
 
 
+def _check_public_rgba(image, quality, compression_type, route):
+    image_type = ".jpg" if compression_type == "jpeg" else ".webp"
+    original = image.copy()
+    expected_rgb = fpixel.image_compression(original[..., :3], quality, image_type)
+    transform = A.ImageCompression(compression_type=compression_type, quality_range=(quality, quality), p=1)
+    pipeline = A.Compose([transform], seed=137, strict=True) if route == "compose" else transform
+    result = pipeline(image=image)["image"]
+
+    assert result.shape == original.shape
+    assert result.dtype == original.dtype
+    np.testing.assert_array_equal(result[..., :3], expected_rgb, strict=True)
+    assert result[..., 3].tobytes() == original[..., 3].tobytes()
+    np.testing.assert_array_equal(image, original, strict=True)
+    return result
+
+
+@pytest.mark.parametrize("route", ["direct", "compose"])
+@pytest.mark.parametrize("compression_type", ["jpeg", "webp"])
+@pytest.mark.parametrize("quality", [1, 75, 90, 91, 92, 93, 94, 95, 99, 100])
+def test_image_compression_rgba_circle(route, compression_type, quality):
+    image = np.empty((64, 64, 4), dtype=np.uint8)
+    image[..., :3] = (20, 110, 220)
+    y, x = np.ogrid[:64, :64]
+    image[..., 3] = np.where((x - 32) ** 2 + (y - 32) ** 2 <= 20**2, 255, 0)
+    result = _check_public_rgba(image, quality, compression_type, route)
+    if compression_type == "webp":
+        bgra = cv2.cvtColor(image, cv2.COLOR_RGBA2BGRA)
+        ok, encoded = cv2.imencode(".webp", bgra, (cv2.IMWRITE_WEBP_QUALITY, quality))
+        assert ok
+        native = cv2.imdecode(encoded, cv2.IMREAD_UNCHANGED)
+        assert native.shape == image.shape
+        np.testing.assert_array_equal(result[..., 3], native[..., 3], strict=True)
+
+
+@pytest.mark.parametrize("route", ["direct", "compose"])
+@pytest.mark.parametrize("compression_type", ["jpeg", "webp"])
+@pytest.mark.parametrize("quality", [1, 100])
+@pytest.mark.parametrize("dtype", [np.float16, np.float32])
+def test_image_compression_rgba_float_precision(route, compression_type, quality, dtype):
+    image = np.random.default_rng(137).random((7, 9, 4), dtype=np.float32).astype(dtype)
+    image[:, ::2, 3] = 0.5
+    image[:, 1::2, 3] = 0.5009765625
+    _check_public_rgba(image, quality, compression_type, route)
+
+
+@pytest.mark.parametrize("target", ["image", "images", "volume", "volumes"])
+@pytest.mark.parametrize("container", ["numpy", "tensor"])
+@pytest.mark.parametrize("compression_type", ["jpeg", "webp"])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
+def test_image_compression_rgba_targets(target, container, compression_type, dtype):
+    leading_axes = {"image": (), "images": (2,), "volume": (3,), "volumes": (2, 3)}[target]
+    shape = (*leading_axes, 7, 11, 4)
+    rng = np.random.default_rng(137)
+    if dtype is np.uint8:
+        parent = rng.integers(0, 256, shape, dtype=np.uint8)
+        alpha = np.arange(63, dtype=np.uint8) * 4
+    else:
+        parent = rng.random(shape, dtype=np.float32).astype(dtype)
+        alpha = (np.arange(63, dtype=dtype) + 0.5) / 64
+    image = parent[..., 1:-1, :]
+    for offset, index in enumerate(np.ndindex(leading_axes)):
+        image[index][..., 3] = np.roll(alpha, offset).reshape(7, 9)
+    original = parent.copy()
+    if container == "tensor":
+        source = numpy_to_tensor_spatial(image.copy(), target)
+    else:
+        image.setflags(write=False)
+        source = image
+    pipeline = A.Compose(
+        [A.ImageCompression(compression_type=compression_type, quality_range=(75, 75), p=1)],
+        seed=137,
+        strict=True,
+    )
+    result = pipeline(**{target: source})[target]
+
+    assert type(result) is type(source)
+    assert result.shape == source.shape
+    assert result.dtype == source.dtype
+    if container == "tensor":
+        assert result.device.type == source.device.type == "cpu"
+        result = tensor_to_numpy_spatial(result, target)
+        np.testing.assert_array_equal(tensor_to_numpy_spatial(source, target), original[..., 1:-1, :], strict=True)
+    np.testing.assert_array_equal(parent, original, strict=True)
+    image_type = ".jpg" if compression_type == "jpeg" else ".webp"
+    for index in np.ndindex(leading_axes):
+        frame = image[index]
+        assert result[index][..., 3].tobytes() == frame[..., 3].tobytes()
+        expected_rgb = fpixel.image_compression(frame[..., :3], 75, image_type)
+        np.testing.assert_array_equal(result[index][..., :3], expected_rgb, strict=True)
+
+
 @pytest.mark.parametrize("target", ["image", "images", "volume", "volumes"])
 @pytest.mark.parametrize("container", ["numpy", "tensor"])
 @pytest.mark.parametrize("channels", [1, 3])

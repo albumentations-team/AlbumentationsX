@@ -525,8 +525,12 @@ def image_compression(
     quality: int,
     image_type: Literal[".jpg", ".webp"],
 ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
-    """Compress image with JPEG or WebP to simulate artifacts. quality, image_type (.jpg/.webp).
-    Lower quality increases blockiness. Floating inputs are quantized to uint8 and restored.
+    """Simulate JPEG or WebP compression artifacts at a fixed quality. On four-channel images,
+    compress RGB and copy the fourth channel at its original precision.
+
+    A single channel uses grayscale. Two channels are zero-padded to three for compression.
+    With three or more channels, the first three are compressed together. On images with
+    five or more channels, each additional band is compressed independently as grayscale.
 
     Args:
         img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image
@@ -534,13 +538,30 @@ def image_compression(
         image_type (Literal['.jpg', '.webp']): Type of compression to use
 
     Returns:
-        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Compressed image
+        NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]: Image of the input dtype with a channel axis.
+            Both codecs return four channels for RGBA, including when the fourth band contains spectral data.
+            Only channels sent to the codec are quantized to uint8 and restored to the input dtype.
 
     """
+    num_channels = 1 if img.ndim == 2 else get_num_channels(img)
+    if num_channels == 4:
+        rgb = _compress_image_channels(img[..., :NUM_RGB_CHANNELS], quality, image_type, NUM_RGB_CHANNELS)
+        result = np.empty_like(img, order="C")
+        result[..., :NUM_RGB_CHANNELS] = rgb
+        result[..., 3] = img[..., 3]
+        return result
+    return _compress_image_channels(img, quality, image_type, num_channels)
+
+
+def _compress_image_channels(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+    quality: int,
+    image_type: Literal[".jpg", ".webp"],
+    num_channels: int,
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     img, input_dtype = to_uint8_working_image(img)
     # Determine the quality flag for compression
     quality_flag = cv2.IMWRITE_JPEG_QUALITY if image_type == ".jpg" else cv2.IMWRITE_WEBP_QUALITY
-    num_channels = get_num_channels(img)
 
     # Prepare to encode and decode
     def encode_decode(

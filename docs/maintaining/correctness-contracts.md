@@ -47,6 +47,15 @@ composition/tensor route, or a deliberate golden compatibility contract.
 - Serialization contract: supported transforms round-trip through
   serialization and replay checks.
 
+## ImageCompression RGBA
+
+For an image with exactly four channels, JPEG and WebP return four channels of the input dtype at every quality
+from 1 through 100. The first three channels equal a separate call on RGB at the same quality, including colors
+under fully transparent pixels. The fourth channel is copied bit for bit, whether it holds alpha or a spectral band.
+For normalized floating-point RGBA, only RGB passes through uint8. The same rule applies to every frame and depth
+slice of NumPy and CPU Tensor targets. [Functional tests](../../tests/functional/test_functional.py) and
+[transform and Compose tests](../../tests/test_augmentations.py).
+
 ## Box-aware RandomResizedCrop sampling
 
 When `RandomResizedCrop.bbox_preservation` is `"one_box"`, the sampled crop contains one uniformly

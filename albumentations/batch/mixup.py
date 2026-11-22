@@ -134,15 +134,18 @@ def _mixup_blocks(
     values: torch.Tensor, plan: MixUpPlan, *, flip_donor: bool
 ) -> Iterator[tuple[slice, torch.Tensor, torch.Tensor, torch.Tensor]]:
     """Yield recipients' row slices, donors and both FP32 weights within the workspace budget."""
+    permutation = plan.permutation
     sample_elements = math.prod(values.shape[1:])
     bytes_per_sample = sample_elements * torch.float32.itemsize
     if flip_donor:
         # Gather/flip and FP32 blending each need two image buffers. The weights can also require FP32 promotion.
         working_itemsize = max(torch.float32.itemsize, values.element_size())
         bytes_per_sample = 2 * (sample_elements * working_itemsize + torch.float32.itemsize)
+        if permutation.dtype is torch.int32:
+            # Advanced indexing can allocate an int64 donor index per row during the gather.
+            bytes_per_sample += torch.int64.itemsize
     block_size = _MIXUP_WORKSPACE_BYTES // max(bytes_per_sample, 1)
 
-    permutation = plan.permutation
     can_select_views = (
         flip_donor
         and values.device.type == "cpu"

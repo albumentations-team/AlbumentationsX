@@ -300,20 +300,28 @@ def test_mixup_donor_flip_sampled_plan(mode: mixing.MixingMode) -> None:
 
 
 @pytest.mark.parametrize(
-    ("dtype", "weight_dtype"),
+    ("shape", "dtype", "weight_dtype", "index_dtype"),
     [
-        (torch.bfloat16, torch.float32),
-        (torch.bfloat16, torch.float16),
-        (torch.float64, torch.float32),
-        (torch.int64, torch.float32),
+        ((17, 32, 32), torch.bfloat16, torch.float32, torch.int64),
+        ((17, 32, 32), torch.bfloat16, torch.float16, torch.int64),
+        ((17, 32, 32), torch.float64, torch.float32, torch.int64),
+        ((17, 32, 32), torch.int64, torch.float32, torch.int64),
+        ((4096, 1, 1), torch.bfloat16, torch.float16, torch.int32),
+        ((4096, 1, 1), torch.float32, torch.float16, torch.int32),
     ],
 )
 def test_mixup_bounds_workspace_for_reflected_blocks(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dtype: torch.dtype, weight_dtype: torch.dtype
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    shape: tuple[int, int, int],
+    dtype: torch.dtype,
+    weight_dtype: torch.dtype,
+    index_dtype: torch.dtype,
 ) -> None:
     """Small CPU samples exercise the same block gather as accelerator tensors."""
-    values = (torch.arange(17 * 32 * 32) % 251).reshape(17, 32, 32).to(dtype)
-    plan = MixUpPlan(torch.arange(len(values) - 1, -1, -1), torch.full((len(values),), 0.25, dtype=weight_dtype))
+    values = (torch.arange(math.prod(shape)) % 251).reshape(shape).to(dtype)
+    indices = torch.arange(-1, -len(values) - 1, -1, dtype=index_dtype)
+    plan = MixUpPlan(indices, torch.full((len(values),), 0.25, dtype=weight_dtype))
     workspace = 64 * 1024
     monkeypatch.setattr(mixing, "_MIXUP_WORKSPACE_BYTES", workspace)
 

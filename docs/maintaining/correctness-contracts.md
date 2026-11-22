@@ -104,10 +104,10 @@ as `{"telemetry": false}` for settings; this exception does not restore general 
 `ALBUMENTATIONS_NO_TELEMETRY` and `ALBUMENTATIONS_OFFLINE` independently disable telemetry when set to `1` or
 case-insensitive `true`, overriding file settings. Other environment values do not undo a stored opt-out. Without an
 object setting, preserved legacy opt-out, or disabling environment override, telemetry defaults to `true`.
-Loading never rewrites the file or creates a missing settings file. Missing files, malformed JSON, and `OSError`
-raised while opening or reading an existing file retain defaults before environment overrides; other errors keep
-their existing propagation behavior. The [settings import tests](../../tests/test_settings_import.py) cover these
-boundaries in isolated processes, simulate the caught read error, and check Compose/client delivery with a transport
+Loading never rewrites the file or creates a missing settings file. Missing files, malformed JSON, JSON decoder
+limits on integer digits or nesting depth, and `OSError` while opening or reading a file all retain defaults before
+environment overrides. Text encoding errors still propagate. The [settings import tests](../../tests/test_settings_import.py)
+exercise JSON fallback and environment overrides in isolated processes, simulate a read error, and check Compose/client delivery with a transport
 spy and an enabled positive control without contacting a telemetry endpoint.
 
 ## Stability Modes

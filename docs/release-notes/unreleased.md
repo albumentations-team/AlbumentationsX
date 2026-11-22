@@ -1,10 +1,11 @@
 # Unreleased behavior changes
 
-Release baseline: 2.6.5
+Release baseline: 2.6.6
 
 Follow the [behavior compatibility policy](../maintaining/behavior-compatibility.md) when updating this inventory.
-Earlier changes shipped in [2.6.5](2.6.5.md), [2.6.4](2.6.4.md), [2.6.3](2.6.3.md), [2.6.2](2.6.2.md), [2.6.1](2.6.1.md),
-and [2.6.0](2.6.0.md).
+Earlier changes shipped in [2.6.6](2.6.6.md), [2.6.5](https://github.com/albumentations-team/AlbumentationsX/releases/tag/2.6.5),
+[2.6.4](https://github.com/albumentations-team/AlbumentationsX/releases/tag/2.6.4), [2.6.3](https://github.com/albumentations-team/AlbumentationsX/releases/tag/2.6.3),
+[2.6.2](2.6.2.md), [2.6.1](2.6.1.md), and [2.6.0](2.6.0.md).
 
 ## Validation
 
@@ -15,7 +16,8 @@ and [2.6.0](2.6.0.md).
 - New behavior: Only JSON objects merge general settings. A legacy array that fully converts to a dictionary
   preserves only an effective telemetry opt-out: its last `telemetry` value must be falsey, and is normalized to
   Boolean `false` in memory. Other array entries are ignored. Invalid arrays, including an opt-out followed by an
-  invalid element, and other roots retain defaults before environment overrides. Valid objects, caught file errors,
+  invalid element, and other roots retain defaults before environment overrides. The same fallback applies if the
+  JSON decoder rejects an integer with too many digits or a value nested too deeply. Valid objects, caught file errors,
   and malformed-JSON fallback keep their existing behavior; loading never rewrites the settings file.
 - Affected users: Users with non-object settings files can import the package. Previously effective legacy telemetry
   opt-outs remain disabled, including non-boolean falsey values. Other settings from arrays no longer apply.
@@ -28,33 +30,34 @@ and [2.6.0](2.6.0.md).
 - Contract: [Settings loading](../maintaining/correctness-contracts.md#settings-loading).
 - Tests: [Fresh-process settings import and overrides](../../tests/test_settings_import.py).
 
+### OpenCV import requires version 5.1 or later
+
+- Previous behavior: Importing `albumentations` did not reject OpenCV versions below 5.1, and the OpenCV extras
+  allowed older wheels.
+- New behavior: Import raises an actionable `ImportError` for native OpenCV versions below 5.1 or PyPI wheels
+  below 5.1.0.95. The OpenCV extras require wheels at or above 5.1.0.95.
+- Affected users: Installations that reuse OpenCV 4.x or an older 5.1 wheel.
+- Migration: Update the selected OpenCV variant to 5.1 or later; PyPI wheels must be at least 5.1.0.95. For
+  example, install `albumentationsx[headless]` or the matching GUI or contrib extra.
+- First affected version: unreleased
+- Contract: [OpenCV runtime minimum](../maintaining/support-policy.md#opencv-policy).
+- Tests: [OpenCV import requirements](../../tests/test_import_requirements.py).
+
 ### Compose keeps bound instances aligned when a transform drops boxes
 
-- Previous behavior: A transform that removed bbox rows could leave extra mask rows or orphan keypoints when called
-  inside a nested container or with `check_each_transform=False`.
-- New behavior: Compose aligns masks and grouped keypoints to the surviving bbox IDs before the next transform.
-- Affected users: Pipelines with `instance_binding` and transforms that remove bbox rows directly.
-- Migration: Keep the existing instance binding and bbox settings.
+- Previous behavior: Filtering bbox rows during preprocessing or inside a nested container could leave masks or
+  grouped keypoints attached to removed or different instances, especially with `check_each_transform=False`.
+- New behavior: Compose aligns masks and grouped keypoints to surviving bbox IDs at input and transform boundaries,
+  including nested execution and deferred filtering.
+- Affected users: Pipelines with `instance_binding` where input filtering, transforms, or bbox processors remove
+  rows.
+- Migration: No configuration change is required. Regenerate cached outputs or expectations that captured
+  misaligned instances.
 - First affected version: unreleased
 - Contract: [Instance binding](../design/instance_binding.md#2-single-positional-alignment-invariant).
 - Tests: [Instance binding tests](../../tests/test_instance_binding.py).
 
 ## Geometry
-
-### Affine supports raster targets with different sizes
-
-- Previous behavior: Affine required a common height and width even with `is_check_shapes=False`. Its applied
-  configuration also stored percentage translations in pixels and saved shear with the opposite sign.
-- New behavior: With shape checks disabled, Affine shares the sampled parameters across raster targets and computes
-  the warp for each height and width. Bounding boxes, keypoints, and vector fields still require a common size.
-  New applied configurations preserve percentage translations and the sampled shear in constructor units.
-- Affected users: Pipelines that augment rasters of different sizes in one call or reconstruct Affine from applied
-  configurations with percentage translation or shear.
-- Migration: Set `is_check_shapes=False` for mixed raster sizes. Recapture applied configurations that used percentage
-  translation or shear if you need to reproduce the original transform.
-- First affected version: unreleased
-- Contract: [Affine on rasters of different sizes](../geometry.md#affine-on-rasters-of-different-sizes).
-- Tests: [Geometry contracts](../../tests/contracts/test_geometry_contract.py).
 
 ### OpticalDistortion maps fisheye annotations in continuous coordinates
 

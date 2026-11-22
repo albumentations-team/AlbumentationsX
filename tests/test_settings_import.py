@@ -134,6 +134,21 @@ def test_import_ignores_non_object_settings(tmp_path: Path, content: str) -> Non
 
 
 @pytest.mark.parametrize(
+    "content",
+    [
+        pytest.param("9" * 4301, id="integer-digit-limit"),
+        pytest.param("[" * 2000 + "]" * 2000, id="array-nesting-limit"),
+    ],
+)
+@pytest.mark.parametrize("offline", [False, True], ids=["defaults", "offline"])
+def test_import_recovers_from_decoder_limits(tmp_path: Path, content: str, *, offline: bool) -> None:
+    environment = {"PYTHONINTMAXSTRDIGITS": "4300", "ALBUMENTATIONS_OFFLINE": str(int(offline))}
+    state = _import_settings(tmp_path, content, environment)
+    assert state["settings"] == {"telemetry": not offline}
+    assert state["telemetry_enabled"] is (not offline)
+
+
+@pytest.mark.parametrize(
     ("content", "expected_telemetry"),
     [
         pytest.param('[["telemetry", false], ["sentinel", 137]]', False, id="false"),

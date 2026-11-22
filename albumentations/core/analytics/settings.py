@@ -27,29 +27,37 @@ class SettingsManager:
         }
         self._settings = self._load_settings()
 
+    def _read_settings_file(self) -> object:
+        """Return decoded JSON, or None when the file is absent, unreadable, or exceeds JSON limits."""
+        if not self.settings_file.exists():
+            return None
+        try:
+            with self.settings_file.open() as f:
+                return json.load(f)
+        except UnicodeDecodeError:
+            # Preserve the existing error for a file that cannot be read as text.
+            raise
+        except (OSError, ValueError, RecursionError):
+            return None
+
     def _load_settings(self) -> dict[str, Any]:
         """Merge defaults, file contents (if present), and env vars (ALBUMENTATIONS_NO_TELEMETRY, OFFLINE).
         Returns the merged dict.
         """
         settings = self.defaults.copy()
 
-        if self.settings_file.exists():
+        file_settings = self._read_settings_file()
+        if isinstance(file_settings, dict):
+            settings.update(file_settings)
+        elif isinstance(file_settings, list):
+            # Preserve only effective legacy opt-outs, never a partially valid array.
             try:
-                with self.settings_file.open() as f:
-                    file_settings = json.load(f)
-                    if isinstance(file_settings, dict):
-                        settings.update(file_settings)
-                    elif isinstance(file_settings, list):
-                        # Preserve only effective legacy opt-outs, never a partially valid array.
-                        try:
-                            legacy_settings = dict(file_settings)
-                        except (TypeError, ValueError):
-                            pass
-                        else:
-                            if not legacy_settings.get("telemetry", True):
-                                settings["telemetry"] = False
-            except (OSError, json.JSONDecodeError):
+                legacy_settings = dict(file_settings)
+            except (TypeError, ValueError):
                 pass
+            else:
+                if not legacy_settings.get("telemetry", True):
+                    settings["telemetry"] = False
 
         # Override with environment variables
         if os.environ.get("ALBUMENTATIONS_NO_TELEMETRY", "").lower() in ("1", "true"):

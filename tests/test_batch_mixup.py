@@ -299,13 +299,21 @@ def test_mixup_donor_flip_sampled_plan(mode: mixing.MixingMode) -> None:
     assert torch.equal(plan.lambdas, weights)
 
 
-@pytest.mark.parametrize("dtype", [torch.float64, torch.int64])
-def test_mixup_bounds_workspace_for_reflected_64bit_blocks(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dtype: torch.dtype
+@pytest.mark.parametrize(
+    ("dtype", "weight_dtype"),
+    [
+        (torch.bfloat16, torch.float32),
+        (torch.bfloat16, torch.float16),
+        (torch.float64, torch.float32),
+        (torch.int64, torch.float32),
+    ],
+)
+def test_mixup_bounds_workspace_for_reflected_blocks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dtype: torch.dtype, weight_dtype: torch.dtype
 ) -> None:
     """Small CPU samples exercise the same block gather as accelerator tensors."""
-    values = torch.arange(17 * 32 * 32, dtype=dtype).reshape(17, 32, 32)
-    plan = MixUpPlan(torch.arange(len(values) - 1, -1, -1), torch.zeros(len(values)))
+    values = (torch.arange(17 * 32 * 32) % 251).reshape(17, 32, 32).to(dtype)
+    plan = MixUpPlan(torch.arange(len(values) - 1, -1, -1), torch.full((len(values),), 0.25, dtype=weight_dtype))
     workspace = 64 * 1024
     monkeypatch.setattr(mixing, "_MIXUP_WORKSPACE_BYTES", workspace)
 
@@ -313,8 +321,9 @@ def test_mixup_bounds_workspace_for_reflected_64bit_blocks(
         lambda: apply_mixup(values, plan, flip_donor=True), tmp_path / "memory.json"
     )
 
-    torch.testing.assert_close(result, values.flip((0, -1)), rtol=0, atol=0)
-    assert peak_bytes <= result.nbytes + workspace + 4096
+    expected = 0.25 * values.float() + 0.75 * values.flip((0, -1)).float()
+    torch.testing.assert_close(result, expected.to(dtype), rtol=0, atol=0)
+    assert peak_bytes - result.nbytes <= workspace
 
 
 def test_mixup_bounds_workspace_for_oversized_sample(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -374,7 +383,7 @@ def test_mixup_donor_flip_large_opposite_endpoints(dtype: torch.dtype, recipient
     assert torch.equal(apply_mixup(values, plan, flip_donor=True), expected)
 
 
-@pytest.mark.parametrize("width", [16383, 16384])
+@pytest.mark.parametrize("width", [mixing._CPU_DONOR_VIEW_MIN_ELEMENTS - 1, mixing._CPU_DONOR_VIEW_MIN_ELEMENTS])
 def test_mixup_donor_flip_cpu_view_boundary(width: int) -> None:
     values = torch.arange(6 * width, dtype=torch.float32).reshape(3, 1, 2 * width)[..., ::2]
     original = values.clone()

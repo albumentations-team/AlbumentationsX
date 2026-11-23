@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import pytest
@@ -65,9 +66,27 @@ def test_mixup_preserves_uint8_transport_contract_with_explicit_rounding() -> No
     assert mixed.flatten().tolist() == [128, 128]
 
 
+@pytest.mark.parametrize("dtype", [torch.uint8, torch.float16, torch.float32])
+def test_mixup_flips_only_the_donor_width(dtype: torch.dtype) -> None:
+    values = torch.tensor([[[[0, 4], [8, 12]]], [[[20, 28], [32, 40]]]], dtype=dtype)
+    original = values.clone()
+    plan = MixUpPlan(torch.tensor([1, 0]), torch.tensor([0.75, 0.5]))
+    expected = torch.tensor([[[[7, 8], [16, 17]]], [[[12, 14], [22, 24]]]], dtype=dtype)
+    torch.testing.assert_close(apply_mixup(values, plan, flip_donor=True), expected)
+    torch.testing.assert_close(apply_mixup(values, plan, flip_donor=False), apply_mixup(values, plan))
+    torch.testing.assert_close(values, original)
+
+
+def test_mixup_rejects_flipping_class_targets() -> None:
+    plan = MixUpPlan(torch.tensor([1, 0]), torch.tensor([0.75, 0.5]))
+    with pytest.raises(ValueError, match="spatial tensors"):
+        apply_mixup(torch.ones(2, 10), plan, flip_donor=True)
+
+
 @pytest.mark.parametrize("dtype", [torch.uint8, torch.float16, torch.bfloat16, torch.float32, torch.float64])
+@pytest.mark.parametrize("flip_donor", [False, True])
 def test_mixup_bounds_workspace_without_changing_values(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dtype: torch.dtype
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dtype: torch.dtype, flip_donor: bool
 ) -> None:
     """Force multiple blocks and compare against one full-tensor interpolation."""
     values = (torch.arange(9 * 2 * 3 * 64 * 65) % 251).reshape(9, 2, 3, 64, 65).to(dtype).transpose(-1, -2)
@@ -76,9 +95,14 @@ def test_mixup_bounds_workspace_without_changing_values(
     workspace = 2 * values[0].numel() * torch.float32.itemsize
     monkeypatch.setattr(mixing, "_MIXUP_WORKSPACE_BYTES", workspace)
     reference_float = values.float()
-    reference = torch.lerp(reference_float, reference_float[plan.permutation], (1 - plan.lambdas).view(-1, 1, 1, 1, 1))
+    donors = reference_float[plan.permutation]
+    if flip_donor:
+        donors = donors.flip((-1,))
+    reference = torch.lerp(reference_float, donors, (1 - plan.lambdas).view(-1, 1, 1, 1, 1))
     expected = reference.round().clamp(0, 255).to(dtype) if dtype == torch.uint8 else reference.to(dtype)
-    result, peak_bytes = measure_peak_tensor_bytes(lambda: apply_mixup(values, plan), tmp_path / "memory.json")
+    result, peak_bytes = measure_peak_tensor_bytes(
+        lambda: apply_mixup(values, plan, flip_donor=flip_donor), tmp_path / f"{dtype}-{flip_donor}.json"
+    )
     workspace_blocks = 1 if dtype is torch.float32 else 3
     assert peak_bytes <= result.numel() * result.element_size() + workspace_blocks * workspace + 4096
     torch.testing.assert_close(result, expected)
@@ -95,26 +119,29 @@ def test_batch_operations_return_training_inputs_outside_autograd() -> None:
     with torch.autograd.forward_ad.dual_level():
         dual_values = torch.autograd.forward_ad.make_dual(values, torch.ones_like(values))
         dual_lambdas = torch.autograd.forward_ad.make_dual(lambdas, torch.ones_like(lambdas))
-        mixed = apply_mixup(dual_values, MixUpPlan(permutation, dual_lambdas))
+        plan = MixUpPlan(permutation, dual_lambdas)
+        mixed = apply_mixup(dual_values, plan)
+        flipped = apply_mixup(dual_values, plan, flip_donor=True)
         normalized = normalizer(dual_values)
-        for output in (mixed, normalized):
+        for output in (mixed, flipped, normalized):
             assert torch.autograd.forward_ad.unpack_dual(output).tangent is None
             assert not output.requires_grad
             assert not output.is_inference()
 
     model = torch.nn.Linear(4, 1, bias=False)
-    batch = normalized.flatten(1) + mixed.flatten(1)
+    batch = normalized.flatten(1) + mixed.flatten(1) + flipped.flatten(1)
     model(batch).sum().backward()
     torch.testing.assert_close(model.weight.grad, batch.sum(dim=0, keepdim=True))
     assert values.grad is None
     assert lambdas.grad is None
 
 
-def test_mixup_supports_an_empty_batch() -> None:
+@pytest.mark.parametrize("flip_donor", [False, True])
+def test_mixup_donor_flip_supports_an_empty_batch(flip_donor: bool) -> None:
     values = torch.empty((0, 2, 3, 7), dtype=torch.float16)
     plan = MixUpPlan(torch.empty(0, dtype=torch.int64), torch.empty(0))
 
-    result = apply_mixup(values, plan)
+    result = apply_mixup(values, plan, flip_donor=flip_donor)
 
     torch.testing.assert_close(result, values)
 
@@ -201,3 +228,177 @@ def test_mixup_large_finite_alpha_rounds_to_the_midpoint() -> None:
     )
 
     torch.testing.assert_close(plan.lambdas, torch.full((2,), 0.5))
+
+
+@pytest.mark.parametrize(
+    "device",
+    ["cpu", pytest.param("cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable"))],
+)
+def test_mixup_donor_flip_example(device: str) -> None:
+    images = torch.tensor([[[0.0, 4.0, 8.0]], [[12.0, 20.0, 28.0]]], device=device)
+    plan = MixUpPlan(torch.tensor([1, 0], device=device), torch.tensor([0.75, 0.5], device=device))
+    assert apply_mixup(images, plan, flip_donor=True).tolist() == [[[7, 8, 9]], [[10, 12, 14]]]
+    standard = [[[3, 8, 13]], [[6, 12, 18]]]
+    assert apply_mixup(images, plan).tolist() == standard
+    assert apply_mixup(images, plan, flip_donor=False).tolist() == standard
+    assert apply_mixup(torch.eye(2, device=device), plan).tolist() == [[0.75, 0.25], [0.5, 0.5]]
+
+
+@pytest.mark.parametrize("shape", [(2, 3, 5), (2, 4, 3, 5), (2, 4, 2, 3, 5), (2, 3, 1)])
+def test_mixup_donor_flip_width_coordinates(shape: tuple[int, ...]) -> None:
+    values = torch.arange(math.prod(shape), dtype=torch.float32).reshape(shape)
+    plan = MixUpPlan(torch.tensor([1, 0]), torch.zeros(2))
+    expected = values[[1, 0]][..., list(reversed(range(shape[-1])))]
+    assert torch.equal(apply_mixup(values, plan, flip_donor=True), expected)
+
+
+@pytest.mark.parametrize("shape", [(), (2,), (0, 2)])
+def test_mixup_donor_flip_rejects_low_rank(shape: tuple[int, ...]) -> None:
+    batch = shape[0] if shape else 0
+    plan = MixUpPlan(torch.arange(batch), torch.ones(batch))
+    with pytest.raises(ValueError):
+        apply_mixup(torch.empty(shape), plan, flip_donor=True)
+
+
+def test_mixup_donor_flip_manual_self_match() -> None:
+    values = torch.tensor([[[0.0, 4.0, 8.0]]])
+    plan = MixUpPlan(torch.tensor([0]), torch.tensor([0.75]))
+    assert apply_mixup(values, plan, flip_donor=True).tolist() == [[[2, 4, 6]]]
+    with pytest.raises(TypeError):
+        apply_mixup(values, plan, True)
+
+
+@pytest.mark.parametrize("mode", ["pair", "element", "batch"])
+def test_mixup_donor_flip_sampled_plan(mode: mixing.MixingMode) -> None:
+    generator = torch.Generator().manual_seed(137)
+    values = torch.arange(30, dtype=torch.float32).reshape(5, 2, 3)
+    plan = sample_mixup(batch_size=5, alpha=1.0, device=values.device, generator=generator, mode=mode)
+    original = values.clone()
+    donors = plan.permutation.clone()
+    weights = plan.lambdas.clone()
+    cpu_state = torch.get_rng_state()
+    sampler_state = generator.get_state()
+    flipped = apply_mixup(values, plan, flip_donor=True)
+    standard = apply_mixup(values, plan)
+    explicit = apply_mixup(values, plan, flip_donor=False)
+    assert torch.equal(torch.get_rng_state(), cpu_state)
+    assert torch.equal(generator.get_state(), sampler_state)
+    assert torch.equal(standard, explicit)
+    for index, (donor, weight) in enumerate(zip(donors, weights, strict=True)):
+        recipient = weight * original[index]
+        donor_values = original[donor]
+        torch.testing.assert_close(standard[index], recipient + (1 - weight) * donor_values)
+        torch.testing.assert_close(flipped[index], recipient + (1 - weight) * donor_values[:, [2, 1, 0]])
+    if mode == "pair":
+        self_match = donors == torch.arange(5)
+        assert self_match.sum() == 1
+        assert torch.equal(flipped[self_match], original[self_match])
+    flipped.zero_()
+    assert torch.equal(values, original)
+    assert torch.equal(plan.permutation, donors)
+    assert torch.equal(plan.lambdas, weights)
+
+
+@pytest.mark.parametrize(
+    ("shape", "dtype", "weight_dtype", "index_dtype"),
+    [
+        ((17, 32, 32), torch.bfloat16, torch.float32, torch.int64),
+        ((17, 32, 32), torch.bfloat16, torch.float16, torch.int64),
+        ((17, 32, 32), torch.float64, torch.float32, torch.int64),
+        ((17, 32, 32), torch.int64, torch.float32, torch.int64),
+        ((4096, 1, 1), torch.bfloat16, torch.float16, torch.int32),
+        ((4096, 1, 1), torch.float32, torch.float16, torch.int32),
+    ],
+)
+def test_mixup_bounds_workspace_for_reflected_blocks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    shape: tuple[int, int, int],
+    dtype: torch.dtype,
+    weight_dtype: torch.dtype,
+    index_dtype: torch.dtype,
+) -> None:
+    """Small CPU samples exercise the same block gather as accelerator tensors."""
+    values = (torch.arange(math.prod(shape)) % 251).reshape(shape).to(dtype)
+    indices = torch.arange(-1, -len(values) - 1, -1, dtype=index_dtype)
+    plan = MixUpPlan(indices, torch.full((len(values),), 0.25, dtype=weight_dtype))
+    workspace = 64 * 1024
+    monkeypatch.setattr(mixing, "_MIXUP_WORKSPACE_BYTES", workspace)
+
+    result, peak_bytes = measure_peak_tensor_bytes(
+        lambda: apply_mixup(values, plan, flip_donor=True), tmp_path / "memory.json"
+    )
+
+    expected = 0.25 * values.float() + 0.75 * values.flip((0, -1)).float()
+    torch.testing.assert_close(result, expected.to(dtype), rtol=0, atol=0)
+    assert peak_bytes - result.nbytes <= workspace
+
+
+def test_mixup_bounds_workspace_for_oversized_sample(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    values = torch.arange(8 * 32 * 64, dtype=torch.float32).reshape(8, 32, 64)
+    plan = MixUpPlan(torch.arange(7, -1, -1), torch.full((8,), 0.75))
+    monkeypatch.setattr(mixing, "_MIXUP_WORKSPACE_BYTES", 4096)
+    batch, height, width = torch.meshgrid(torch.arange(8), torch.arange(32), torch.arange(64), indexing="ij")
+    expected = 0.75 * values[batch, height, width] + 0.25 * values[7 - batch, height, 63 - width]
+    result, peak_bytes = measure_peak_tensor_bytes(
+        lambda: apply_mixup(values, plan, flip_donor=True), tmp_path / "memory.json"
+    )
+    assert torch.equal(result, expected)
+    assert peak_bytes <= result.nbytes + 2 * values[0].nbytes + 4096
+
+
+def test_mixup_numeric_transport_uint8() -> None:
+    # Half-integers round to even. Extrapolation must saturate both ends.
+    values = torch.tensor([[[0, 2]], [[1, 1]], [[0, 255]], [[0, 255]]], dtype=torch.uint8)
+    plan = MixUpPlan(torch.tensor([1, 0, 3, 2]), torch.tensor([0.5, 0.5, 2.0, 2.0], dtype=torch.float16))
+    assert apply_mixup(values, plan, flip_donor=True).tolist() == [[[0, 2]], [[2, 0]], [[0, 255]], [[0, 255]]]
+
+
+@pytest.mark.parametrize(
+    ("dtype", "endpoint", "recipient_weight", "expected"),
+    [
+        (torch.float16, 32768, 2**-26, [2**-11, 32768]),
+        (torch.uint8, 3, 0.5 - 2**-25, [1, 2]),
+    ],
+)
+def test_mixup_donor_flip_numeric_transport_keeps_recipient_weight(
+    dtype: torch.dtype, endpoint: int, recipient_weight: float, expected: list[float]
+) -> None:
+    values = torch.tensor([[[endpoint, 0]]], dtype=dtype)
+    plan = MixUpPlan(torch.tensor([0]), torch.tensor([recipient_weight], dtype=torch.float32))
+    assert apply_mixup(values, plan, flip_donor=True).tolist() == [[expected]]
+
+
+def test_mixup_numeric_transport_float64() -> None:
+    values = torch.tensor([[[0.0, 16_777_217.0]]], dtype=torch.float64)
+    plan = MixUpPlan(torch.tensor([0]), torch.tensor([0.5], dtype=torch.float64))
+    result = apply_mixup(values, plan, flip_donor=True)
+    assert result.dtype == torch.float64
+    assert result.tolist() == [[[8_388_608.0, 8_388_608.0]]]
+
+
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float32, torch.float64])
+@pytest.mark.parametrize("recipient_weight", [1.0, 0.0, 0.5])
+def test_mixup_donor_flip_large_opposite_endpoints(dtype: torch.dtype, recipient_weight: float) -> None:
+    values = torch.tensor([[[2e38, -2e38]]], dtype=torch.float32).to(dtype)
+    plan = sample_mixup(batch_size=1, alpha=1.0, device=values.device, generator=torch.Generator().manual_seed(137))
+    if recipient_weight == 1:
+        assert plan.lambdas.item() == 1
+        expected = values
+    else:
+        plan = MixUpPlan(plan.permutation, torch.tensor([recipient_weight]))
+        expected = values[..., [1, 0]] if recipient_weight == 0 else torch.zeros_like(values)
+    assert torch.equal(apply_mixup(values, plan, flip_donor=True), expected)
+
+
+@pytest.mark.parametrize("width", [mixing._CPU_DONOR_VIEW_MIN_ELEMENTS - 1, mixing._CPU_DONOR_VIEW_MIN_ELEMENTS])
+def test_mixup_donor_flip_cpu_view_boundary(width: int) -> None:
+    values = torch.arange(6 * width, dtype=torch.float32).reshape(3, 1, 2 * width)[..., ::2]
+    original = values.clone()
+    # Two recipients share the last donor. Both index spellings must resolve to the same row.
+    plan = MixUpPlan(torch.tensor([-1, 2, 0], dtype=torch.int32), torch.tensor([0.0, 0.5, 1.0]))
+    result = apply_mixup(values, plan, flip_donor=True)
+    reversed_last = original[2, :, torch.arange(width - 1, -1, -1)]
+    expected = torch.stack((reversed_last, 0.5 * (original[1] + reversed_last), original[2]))
+    assert torch.equal(result, expected)
+    assert torch.equal(values, original)

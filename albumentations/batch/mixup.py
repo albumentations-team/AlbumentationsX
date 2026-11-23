@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Final, Literal
 
@@ -10,6 +11,8 @@ import torch
 
 MixingMode = Literal["pair", "element", "batch"]
 _MIXUP_WORKSPACE_BYTES: Final = 64 * 1024**2
+_CPU_DONOR_VIEW_MIN_ELEMENTS: Final = 20 * 1024
+_CPU_DONOR_BLOCK_ELEMENTS: Final = 128 * 1024
 _BETA_LOG_DOMAIN_THRESHOLD: Final = 0.1
 _FP32: Final = torch.finfo(torch.float32)
 
@@ -58,7 +61,7 @@ def sample_mixup(
 
 
 @torch.no_grad()
-def apply_mixup(values: torch.Tensor, plan: MixUpPlan) -> torch.Tensor:
+def apply_mixup(values: torch.Tensor, plan: MixUpPlan, *, flip_donor: bool = False) -> torch.Tensor:
     """Interpolate each sample with its donor along the batch axis.
 
     MixUp runs outside autograd.
@@ -66,40 +69,113 @@ def apply_mixup(values: torch.Tensor, plan: MixUpPlan) -> torch.Tensor:
     Args:
         values (torch.Tensor): Tensor with the batch axis first, such as BCHW or BCDHW.
         plan (MixUpPlan): Donor indices and weights for every sample on the input device.
+        flip_donor (bool): Flip the donor along the last (width) axis before blending.
+            Use for spatial tensors such as BHW, BCHW or BCDHW. For BHWC, first move
+            channels with `values.movedim(-1, 1)`. Defaults to False.
 
     Returns:
         torch.Tensor: A tensor with the input shape and dtype. Interpolation uses FP32. Uint8
         results are rounded to the nearest integer (ties to even) and clipped to [0, 255].
 
     Raises:
-        ValueError: If the input has no batch axis or the plan lengths differ from the batch size.
+        ValueError: If the input has no batch axis, the plan lengths differ from the batch size,
+            or a donor flip is requested for a tensor with fewer than three dimensions.
+
+    Examples:
+        >>> import torch
+        >>> from albumentations.batch import MixUpPlan, apply_mixup
+        >>> images = torch.tensor([[[0., 4., 8.]], [[12., 20., 28.]]])
+        >>> plan = MixUpPlan(torch.tensor([1, 0]), torch.tensor([0.75, 0.5]))
+        >>> mixed = apply_mixup(images, plan, flip_donor=True)
+        >>> assert mixed.tolist() == [[[7, 8, 9]], [[10, 12, 14]]]
+        >>> targets = apply_mixup(torch.eye(2), plan)
+        >>> assert targets.tolist() == [[0.75, 0.25], [0.5, 0.5]]
 
     """
     if values.ndim < 1 or len(values) != len(plan.permutation) or len(values) != len(plan.lambdas):
         raise ValueError("Mixing plan batch size must match values.")
+    if flip_donor and values.ndim < 3:
+        raise ValueError("Donor flipping requires spatial tensors with at least three dimensions (BHW).")
     values = values.detach()
     result = torch.empty_like(values)
     if not len(values):
         return result
-    weight = (1 - plan.lambdas.detach().float()).view((len(values),) + (1,) * (values.ndim - 1))
-    # Limit the FP32 block to 64 MiB, or one sample if it exceeds that size.
-    sample_bytes = math.prod(values.shape[1:]) * torch.float32.itemsize
-    block_size = max(1, _MIXUP_WORKSPACE_BYTES // max(sample_bytes, 1))
-    for start in range(0, len(values), block_size):
-        stop = start + block_size
-        paired = values[plan.permutation[start:stop]].float()
-        destination = result[start:stop]
-        if values.dtype is torch.float32:
-            torch.lerp(values[start:stop], paired, weight[start:stop], out=destination)
+    for rows, donors, recipient_weight, donor_weight in _mixup_blocks(values, plan, flip_donor=flip_donor):
+        paired = donors.flip((-1,)) if flip_donor else donors
+        del donors
+        paired = paired.float()
+        destination = result[rows]
+        if flip_donor and values.dtype in (torch.bfloat16, torch.float32, torch.float64):
+            # Subtracting finite opposite-sign endpoints in lerp can overflow FP32.
+            paired.mul_(donor_weight)
+            if values.dtype is torch.bfloat16:
+                # The FP32 donor owns the accumulator. addcmul promotes the recipient before the final BF16 cast.
+                destination.copy_(paired.addcmul_(values[rows], recipient_weight))
+            else:
+                torch.addcmul(paired, values[rows].float(), recipient_weight, out=destination)
+        elif values.dtype is torch.float32:
+            torch.lerp(values[rows], paired, donor_weight, out=destination)
         else:
-            mixed = values[start:stop].float()
-            mixed.lerp_(paired, weight[start:stop])
+            mixed = values[rows].float()
+            if flip_donor:
+                # Interpolate toward the recipient with its original weight, even near zero or a rounding tie.
+                torch.lerp(paired, mixed, recipient_weight, out=mixed)
+            else:
+                mixed.lerp_(paired, donor_weight)
             if values.dtype is torch.uint8:
                 mixed.round_().clamp_(0, 255)
             destination.copy_(mixed)
             del mixed
-        del paired
+        del paired, recipient_weight, donor_weight
     return result
+
+
+def _mixup_blocks(
+    values: torch.Tensor, plan: MixUpPlan, *, flip_donor: bool
+) -> Iterator[tuple[slice, torch.Tensor, torch.Tensor, torch.Tensor]]:
+    """Yield recipients' row slices, donors and both FP32 weights within the workspace budget."""
+    permutation = plan.permutation
+    sample_elements = math.prod(values.shape[1:])
+    bytes_per_sample = sample_elements * torch.float32.itemsize
+    if flip_donor:
+        # Gather/flip and FP32 blending each need two image buffers. The weights can also require FP32 promotion.
+        working_itemsize = max(torch.float32.itemsize, values.element_size())
+        bytes_per_sample = 2 * (sample_elements * working_itemsize + torch.float32.itemsize)
+        if permutation.dtype is torch.int32:
+            # Advanced indexing can allocate an int64 donor index per row during the gather.
+            bytes_per_sample += torch.int64.itemsize
+    block_size = _MIXUP_WORKSPACE_BYTES // max(bytes_per_sample, 1)
+
+    can_select_views = (
+        flip_donor
+        and values.device.type == "cpu"
+        and permutation.device.type == "cpu"
+        and permutation.ndim == 1
+        and permutation.dtype in (torch.int32, torch.int64)
+    )
+    use_views = can_select_views and (len(values) == 1 or sample_elements >= _CPU_DONOR_VIEW_MIN_ELEMENTS)
+    if can_select_views and not use_views:
+        # Group small images to amortize dispatch without repeatedly copying a whole CPU batch.
+        block_size = min(block_size, _CPU_DONOR_BLOCK_ELEMENTS // max(sample_elements, 1))
+    block_size = max(1, block_size)
+    weights = plan.lambdas.detach().reshape((len(values),) + (1,) * (values.ndim - 1))
+    for start in range(0, len(values), block_size):
+        stop = min(start + block_size, len(values))
+        rows = slice(start, stop)
+        recipient_weight = weights[rows].float()
+        donor_weight = 1 - recipient_weight
+        if use_views:
+            for row, donor_index, row_recipient_weight, row_donor_weight in zip(
+                range(start, stop),
+                permutation[rows].tolist(),
+                recipient_weight.unbind(),
+                donor_weight.unbind(),
+                strict=True,
+            ):
+                yield slice(row, row + 1), values[donor_index].unsqueeze(0), row_recipient_weight, row_donor_weight
+        else:
+            yield rows, values[permutation[rows]], recipient_weight, donor_weight
+        del recipient_weight, donor_weight
 
 
 def _permutation(batch_size: int, device: torch.device, generator: torch.Generator, mode: MixingMode) -> torch.Tensor:

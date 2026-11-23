@@ -1,0 +1,63 @@
+---
+name: release-notes
+description: Generate release notes for AlbumentationsX. Use when the user asks to prepare, draft, or write release notes for a new version (e.g. "prepare release notes for 2.x.y", "draft release X").
+disable-model-invocation: true
+---
+
+# Release notes
+
+This skill runs only on explicit invocation: `/release-notes` in Claude Code (`disable-model-invocation`)
+and `$release-notes` in Codex (`agents/openai.yaml`).
+
+## Where they live
+
+`_internal/release_notes/RELEASE_NOTES_<version>.md` (e.g. `RELEASE_NOTES_2.2.0.md`).
+
+## Source of truth for what changed
+
+- `docs/release-notes/unreleased.md` is the behavior-change inventory checked by `python -m tools.check_behavior_changes`
+  under [Behavior compatibility](../../../docs/maintaining/behavior-compatibility.md). Build `## Breaking changes` and
+  every behavior-change entry from it, keeping its previous behavior, new behavior, migration, and links. Do not write
+  a second, divergent change list. If a commit changes observable behavior but is missing from the inventory, report
+  the gap to the user instead of describing the change only in the notes.
+- `git log --oneline <prev_tag>..HEAD` and `git show --stat <sha>` per commit.
+- `git diff <prev_tag>..HEAD -- README.md` for the canonical added/removed transforms list.
+- `git diff <prev_tag>..HEAD -- pyproject.toml` for dependency / version bumps.
+- The PR descriptions in commit messages — they're written carefully, mine them for one-liners.
+
+## Required structure
+
+1. `## Summary` — 3–5 bullet TL;DR.
+2. `## Breaking changes` — every backwards-incompatible change. Be specific (old → new). Include short before/after code snippets when the API surface changed.
+3. `## New features` — new transforms, new core features, new params on existing transforms.
+4. `## Bug fixes` — one entry per fix, link the PR.
+5. `## Misc` — CI, build, deps, internal refactors users might notice.
+6. `## Commits` — table of `commit | PR | description` for every commit since the previous tag.
+
+Match the tone of the latest `_internal/release_notes/RELEASE_NOTES_<version>.md`: terse, technical, no marketing fluff, no emoji.
+
+## Transform name → link
+
+Link the first meaningful mention of a transform in each section, including headings and table entries:
+
+```markdown
+[TransformName](https://albumentations.ai/explore/transform/TransformName/)
+```
+
+Repeated mentions in the same paragraph may use plain backticked names. Keep code fences runnable, without links.
+For parameter renames, link the transform separately and put the parameter name in code.
+
+Do **not** link:
+- Core classes (`Compose`, `BboxParams`, `KeypointParams`, `BasicTransform`, `BaseDistortion`).
+- Parameter names (`angle_range`, `blur_range`).
+- Helper functions (`unpack_label_wrappers`, `to_tuple`).
+- Internal modules (`core/utils.py`).
+
+## Other conventions
+
+- Code references use single backticks for params/files; triple-backtick fenced blocks for code samples.
+- Use the actual commit short SHA (7 chars) and the real PR number in the commits table.
+- "Breaking changes" section comes **before** "New features" — users scan that first.
+- For mass renames, use a single 2-column table (`Old | New`) instead of a bullet list.
+- If a feature spans multiple PRs (e.g. instance binding in #222, #223, #237), mention them inline in the prose, not as separate entries.
+- If `pyproject.toml` version isn't bumped yet, note that in the response to the user; do not bump it as part of writing the notes.

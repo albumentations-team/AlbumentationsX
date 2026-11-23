@@ -94,7 +94,9 @@ def test_run_passes_all_changed_paths_to_enabled_rules(tmp_path: Path) -> None:
         (("tests/test_rules.py",), ("docstring-format",)),
         (("tools/ax_coding_guidance/example.py",), ("coding-guidance",)),
         ((".pre-commit-config.yaml",), ("coding-guidance", "public-transform-docstrings")),
-        (("albumentations/example.py",), tuple(runner.RULES)),
+        ((".agents/skills/benchmark/SKILL.md",), ("agent-skills",)),
+        ((".claude/skills/benchmark",), ("agent-skills",)),
+        (("albumentations/example.py",), tuple(name for name in runner.RULES if name != "agent-skills")),
     ],
 )
 def test_selected_rule_ids_use_each_rule_file_scope(

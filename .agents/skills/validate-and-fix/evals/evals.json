@@ -1,0 +1,34 @@
+[
+  {
+    "id": "validate-and-fix-hit-1",
+    "prompt": "I'm done with the change; run the checks and fix whatever fails",
+    "expected_output": "validate-and-fix",
+    "assertions": [
+      "selects validate-and-fix"
+    ]
+  },
+  {
+    "id": "validate-and-fix-hit-2",
+    "prompt": "Прогони тесты и pre-commit по моим изменениям и почини ошибки",
+    "expected_output": "validate-and-fix",
+    "assertions": [
+      "selects validate-and-fix"
+    ]
+  },
+  {
+    "id": "validate-and-fix-miss-1",
+    "prompt": "Explain what Compose does",
+    "expected_output": "not validate-and-fix",
+    "assertions": [
+      "does not select validate-and-fix"
+    ]
+  },
+  {
+    "id": "validate-and-fix-miss-2",
+    "prompt": "Draft a reply to a GitHub issue about installation",
+    "expected_output": "not validate-and-fix",
+    "assertions": [
+      "does not select validate-and-fix"
+    ]
+  }
+]

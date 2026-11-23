@@ -1,0 +1,42 @@
+[
+  {
+    "id": "add-transform-hit-1",
+    "prompt": "Add a new transform RandomVignette that darkens image corners",
+    "expected_output": "add-transform",
+    "assertions": [
+      "selects add-transform"
+    ]
+  },
+  {
+    "id": "add-transform-hit-2",
+    "prompt": "Реализуй новую аугментацию ChromaticAberration с поддержкой масок и bbox",
+    "expected_output": "add-transform",
+    "assertions": [
+      "selects add-transform"
+    ]
+  },
+  {
+    "id": "add-transform-hit-3",
+    "prompt": "Create a transform that simulates JPEG blocking artifacts",
+    "expected_output": "add-transform",
+    "assertions": [
+      "selects add-transform"
+    ]
+  },
+  {
+    "id": "add-transform-miss-1",
+    "prompt": "Fix the off-by-one in Rotate's bbox handling",
+    "expected_output": "not add-transform",
+    "assertions": [
+      "does not select add-transform"
+    ]
+  },
+  {
+    "id": "add-transform-miss-2",
+    "prompt": "Write release notes for 2.6.8",
+    "expected_output": "not add-transform",
+    "assertions": [
+      "does not select add-transform"
+    ]
+  }
+]

@@ -228,6 +228,8 @@ exclude = [
   "docs",
   "legal",
   ".github",
+  ".agents",
+  ".claude",
   ".codex",
   "conda.recipe",
 ]
@@ -484,7 +486,7 @@ check_references = true
 # Pre-commit hook check-google-docstrings reads this section (see package README).
 # Public transform preview metadata is checked separately in tests/test_docstrings.py.
 # Each physical line must be <= 120 chars (ruff E501); do not disable E501 or use # noqa: E501.
-# See .codex/skills/docstring-deep-dive and docs/contributing/coding_guidelines.md.
+# See .agents/skills/docstring-deep-dive and docs/contributing/coding_guidelines.md.
 [tool.docstring_checker]
 paths = [ "albumentations" ]
 require_param_types = true
@@ -494,6 +496,7 @@ exclude_files = [ "__init__.py" ]
 verbose = false
 
 [tool.ax-rules.rules]
+agent-skills = true
 coding-guidance = true
 docstring-format = true
 naming-conflicts = true

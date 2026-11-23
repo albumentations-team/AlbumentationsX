@@ -1,0 +1,42 @@
+[
+  {
+    "id": "docstring-deep-dive-hit-1",
+    "prompt": "Перепиши docstring у RandomGamma, пример не запускается",
+    "expected_output": "docstring-deep-dive",
+    "assertions": [
+      "selects docstring-deep-dive"
+    ]
+  },
+  {
+    "id": "docstring-deep-dive-hit-2",
+    "prompt": "Improve the documentation of the GridDistortion transform",
+    "expected_output": "docstring-deep-dive",
+    "assertions": [
+      "selects docstring-deep-dive"
+    ]
+  },
+  {
+    "id": "docstring-deep-dive-hit-3",
+    "prompt": "The See also section of ElasticTransform is missing related transforms",
+    "expected_output": "docstring-deep-dive",
+    "assertions": [
+      "selects docstring-deep-dive"
+    ]
+  },
+  {
+    "id": "docstring-deep-dive-miss-1",
+    "prompt": "Update README installation instructions",
+    "expected_output": "not docstring-deep-dive",
+    "assertions": [
+      "does not select docstring-deep-dive"
+    ]
+  },
+  {
+    "id": "docstring-deep-dive-miss-2",
+    "prompt": "Review CoarseDropout for correctness before merge",
+    "expected_output": "not docstring-deep-dive",
+    "assertions": [
+      "does not select docstring-deep-dive"
+    ]
+  }
+]

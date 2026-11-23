@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypeAlias
 
-from tools import check_docstring_format, check_naming_conflicts
+from tools import check_agent_skills, check_docstring_format, check_naming_conflicts
 from tools.ax_coding_guidance.runner import InfrastructureError, run_repo
 
 RuleCheck: TypeAlias = Callable[[Path, tuple[Path, ...]], int]
@@ -19,6 +19,13 @@ RuleSelector: TypeAlias = Callable[[Path, tuple[Path, ...]], bool]
 
 class ConfigurationError(ValueError):
     """Raised when the AX rule selection is invalid."""
+
+
+def _run_agent_skills(root: Path, _: tuple[Path, ...]) -> int:
+    errors = check_agent_skills.collect_errors(root)
+    for error in errors:
+        print(error)
+    return int(bool(errors))
 
 
 def _run_coding_guidance(root: Path, _: tuple[Path, ...]) -> int:
@@ -69,6 +76,13 @@ def _relative_paths(root: Path, filenames: tuple[Path, ...]) -> tuple[str, ...]:
     return tuple(path.relative_to(root).as_posix() for path in filenames)
 
 
+def _matches_agent_skills(root: Path, filenames: tuple[Path, ...]) -> bool:
+    return any(
+        path == "tools/check_agent_skills.py" or path.startswith((".agents/skills/", ".claude/skills/"))
+        for path in _relative_paths(root, filenames)
+    )
+
+
 def _matches_coding_guidance(root: Path, filenames: tuple[Path, ...]) -> bool:
     return any(
         path in {".pre-commit-config.yaml", "tests/test_ax_coding_guidance.py"}
@@ -112,6 +126,7 @@ class Rule:
 
 
 RULES: dict[str, Rule] = {
+    "agent-skills": Rule(_run_agent_skills, _matches_agent_skills),
     "coding-guidance": Rule(_run_coding_guidance, _matches_coding_guidance),
     "docstring-format": Rule(_run_docstring_format, _matches_docstring_format),
     "naming-conflicts": Rule(_run_naming_conflicts, _matches_naming_conflicts),

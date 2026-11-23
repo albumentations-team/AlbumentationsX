@@ -1,0 +1,42 @@
+[
+  {
+    "id": "mixing-transforms-hit-1",
+    "prompt": "Mosaic ignores my donor keypoint labels, figure out why",
+    "expected_output": "mixing-transforms",
+    "assertions": [
+      "selects mixing-transforms"
+    ]
+  },
+  {
+    "id": "mixing-transforms-hit-2",
+    "prompt": "Как передать доноров в CopyAndPaste с несколькими label_fields?",
+    "expected_output": "mixing-transforms",
+    "assertions": [
+      "selects mixing-transforms"
+    ]
+  },
+  {
+    "id": "mixing-transforms-hit-3",
+    "prompt": "Review OverlayElements metadata handling",
+    "expected_output": "mixing-transforms",
+    "assertions": [
+      "selects mixing-transforms"
+    ]
+  },
+  {
+    "id": "mixing-transforms-miss-1",
+    "prompt": "Add bbox support to Rotate",
+    "expected_output": "not mixing-transforms",
+    "assertions": [
+      "does not select mixing-transforms"
+    ]
+  },
+  {
+    "id": "mixing-transforms-miss-2",
+    "prompt": "Speed up HorizontalFlip on uint8 images",
+    "expected_output": "not mixing-transforms",
+    "assertions": [
+      "does not select mixing-transforms"
+    ]
+  }
+]

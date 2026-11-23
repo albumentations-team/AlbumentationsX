@@ -9,7 +9,7 @@ order matters: remove work before making the remaining work faster. Treat every 
 until correctness tests and representative benchmarks support it.
 
 This file is canonical at `albucore/docs/performance-optimization.md`. AlbumentationsX keeps a synchronized fallback
-copy under `.codex/skills/performance-optimization/references/` so its performance skill can load the guide without a
+copy under `.agents/skills/performance-optimization/references/` so its performance skill can load the guide without a
 sibling Albucore checkout.
 
 For eager CPU PyTorch candidates, also follow Albucore's `docs/torch-performance-optimization.md` workflow.
@@ -349,8 +349,9 @@ user explicitly requests a thread-scaling experiment.
 Record the CPU model and enabled backend capabilities, including `nk.get_capabilities()` when NumKong is used.
 Check that these flags match the intended host profile before accepting timings. A restricted macOS process can deny
 `sysctl` and silently disable NEON in NumKong ([#407](https://github.com/ashvardanian/NumKong/issues/407)). Measurements
-under that restricted profile do not establish native-host performance. In Codex, run local macOS ARM64 benchmark
-commands with `sandbox_permissions="require_escalated"`; verify `nk.get_capabilities()["neon"]` is true in the
+under that restricted profile do not establish native-host performance. Run local macOS ARM64 benchmark commands
+outside the agent sandbox (Codex: request escalated permissions; Claude Code: disable the sandbox for that
+command); verify `nk.get_capabilities()["neon"]` is true in the
 benchmark process. `benchmark_router_synthetic.py` refuses native acceptance timing when that check fails. Use
 `--allow-restricted-isa` only to label a run diagnostic. Do not force global backend capabilities just to obtain faster
 results.

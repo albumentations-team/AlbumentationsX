@@ -4,6 +4,8 @@ include = [
   "tests/**",
   "tools/**",
   ".github/**",
+  ".agents/**",
+  ".claude/**",
   ".codex/**",
   "legal/**",
   "THIRD_PARTY_LICENSES/**",

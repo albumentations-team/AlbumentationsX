@@ -11,8 +11,9 @@ from pathlib import Path
 
 import yaml
 
-SKILLS_DIR = Path(".agents/skills")
-CLAUDE_SKILLS_DIR = Path(".claude/skills")
+# POSIX strings: symlink targets and messages must not depend on the host path separator.
+SKILLS_DIR = ".agents/skills"
+CLAUDE_SKILLS_DIR = ".claude/skills"
 NAME_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 MAX_NAME_LENGTH = 64
 MAX_DESCRIPTION_LENGTH = 1024  # Codex limit; Claude Code truncates description + when_to_use at 1536.
@@ -54,18 +55,18 @@ def _link_errors(root: Path, skill_names: set[str]) -> list[str]:
     claude_dir = root / CLAUDE_SKILLS_DIR
     entries = {entry.name: entry for entry in claude_dir.iterdir()} if claude_dir.is_dir() else {}
     errors = [
-        f"{CLAUDE_SKILLS_DIR / name}: missing; run `ln -s ../../{SKILLS_DIR / name} {CLAUDE_SKILLS_DIR / name}`"
+        f"{CLAUDE_SKILLS_DIR}/{name}: missing; run `ln -s ../../{SKILLS_DIR}/{name} {CLAUDE_SKILLS_DIR}/{name}`"
         for name in sorted(skill_names - set(entries))
     ]
     for name, entry in sorted(entries.items()):
-        label = (CLAUDE_SKILLS_DIR / name).as_posix()
-        expected = f"../../{(SKILLS_DIR / name).as_posix()}"
+        label = f"{CLAUDE_SKILLS_DIR}/{name}"
+        expected = f"../../{SKILLS_DIR}/{name}"
         if not entry.is_symlink():
             errors.append(f"{label}: must be a symlink to {expected}; keep skill files in {SKILLS_DIR}")
         elif name not in skill_names:
-            errors.append(f"{label}: no matching {SKILLS_DIR / name}; delete the link")
-        elif str(entry.readlink()) != expected:
-            errors.append(f"{label}: points to {str(entry.readlink())!r}; expected {expected!r}")
+            errors.append(f"{label}: no matching {SKILLS_DIR}/{name}; delete the link")
+        elif (target := entry.readlink().as_posix()) != expected:
+            errors.append(f"{label}: points to {target!r}; expected {expected!r}")
     return errors
 
 

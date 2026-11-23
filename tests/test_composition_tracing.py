@@ -1,12 +1,95 @@
 import copy
 import json
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 import numpy as np
 import pytest
 
 import albumentations as A
+from tests.helpers.contract_assertions import assert_contract_values_equal
+
+
+def _trace_record_values(records: tuple[A.TraceRecord, ...]) -> list[dict[str, Any]]:
+    return [
+        {
+            "node_path": record.node_path,
+            "event_index": record.event_index,
+            "occurrence_index": record.occurrence_index,
+            "class_fullname": record.class_fullname,
+            "node_kind": record.node_kind,
+            "status": record.status,
+            "params": None if record.params is None else dict(record.params),
+            "snapshot": None if record.snapshot is None else dict(record.snapshot),
+            "elapsed_ns": record.elapsed_ns,
+        }
+        for record in records
+    ]
+
+
+@pytest.mark.parametrize("root_type", [A.Compose, A.ReplayCompose])
+@pytest.mark.parametrize("nested", [False, True], ids=["flat", "nested"])
+@pytest.mark.parametrize("prior_traced", [False, True], ids=["ordinary-prior", "traced-prior"])
+def test_trace_unknown_target_clears_previous_observation(
+    root_type: type[A.Compose],
+    nested: bool,
+    prior_traced: bool,
+) -> None:
+    """Clear a primed observation without changing retained artifacts or the next random result."""
+
+    def make_pipeline() -> tuple[A.Compose, A.RandomBrightnessContrast]:
+        leaf = A.RandomBrightnessContrast(p=1.0)
+        child = A.Compose([leaf]) if nested else leaf
+        return root_type([child], seed=137, save_applied_params=not prior_traced), leaf
+
+    def run_prior(pipeline: A.Compose) -> tuple[dict[str, Any], tuple[A.TraceRecord, ...]]:
+        if prior_traced:
+            traced = pipeline.run_with_trace(image=image, options=A.TraceOptions(snapshot_targets=("image",)))
+            return traced.data, traced.records
+        return pipeline(image=image), ()
+
+    image = np.arange(45, dtype=np.uint8).reshape(3, 5, 3)
+    expected_image = image.copy()
+    pipeline, leaf = make_pipeline()
+    prior_data, prior_records = run_prior(pipeline)
+    prior_params = leaf.get_applied_params()
+    prior_config = leaf.get_applied_config()
+    assert prior_params
+    assert prior_config
+    prior_artifacts = {"data": prior_data, "params": prior_params, "config": prior_config}
+    expected_artifacts = copy.deepcopy(prior_artifacts)
+    expected_records = copy.deepcopy(_trace_record_values(prior_records))
+    callbacks: list[A.TraceRecord] = []
+
+    with pytest.raises(ValueError, match=r"^Unknown trace snapshot targets: missing$"):
+        pipeline.run_with_trace(
+            image=image,
+            options=A.TraceOptions(snapshot_targets=("missing",), observer=callbacks.append),
+        )
+
+    assert leaf.get_applied_params() == {}
+    assert leaf.get_applied_config() == {}
+    assert callbacks == []
+    assert_contract_values_equal(image, expected_image)
+    assert_contract_values_equal(prior_artifacts, expected_artifacts)
+    assert_contract_values_equal(_trace_record_values(prior_records), expected_records)
+
+    retry = pipeline.run_with_trace(image=image)
+    retry_params = leaf.get_applied_params()
+    retry_config = leaf.get_applied_config()
+    assert retry_params
+    assert retry_config
+    reference, reference_leaf = make_pipeline()
+    run_prior(reference)
+    expected_retry = reference.run_with_trace(image=image)
+
+    assert_contract_values_equal(retry.data["image"], expected_retry.data["image"])
+    assert_contract_values_equal(retry_params, reference_leaf.get_applied_params())
+    assert_contract_values_equal(retry_config, reference_leaf.get_applied_config())
+    assert_contract_values_equal(image, expected_image)
+    assert_contract_values_equal(prior_artifacts, expected_artifacts)
+    assert_contract_values_equal(_trace_record_values(prior_records), expected_records)
 
 
 def test_run_with_trace_reports_the_executed_leaf_at_its_structural_path() -> None:
@@ -275,17 +358,25 @@ def test_trace_matches_nested_replay_compose_execution() -> None:
     assert traced.data["replay"] == expected["replay"]
 
 
-def test_trace_validates_nested_additional_target_sources() -> None:
+@pytest.mark.parametrize("traced", [False, True], ids=["ordinary", "traced"])
+def test_trace_validates_nested_additional_target_sources(traced: bool) -> None:
+    leaf = A.RandomBrightnessContrast(p=1.0)
     pipeline = A.Compose(
-        [A.Compose([A.NoOp(p=1.0)], additional_targets={"image2": "image"}, p=1.0)],
+        [A.Compose([leaf], additional_targets={"image2": "image"}, p=1.0)],
         seed=137,
+        save_applied_params=True,
     )
+    image = np.arange(45, dtype=np.uint8).reshape(3, 5, 3)
+    pipeline(image=image, image2=image.copy())
+    assert leaf.get_applied_params()
+    assert leaf.get_applied_config()
 
+    call = pipeline.run_with_trace if traced else pipeline
     with pytest.raises(ValueError, match="Additional target 'image2' requires canonical target 'image'"):
-        pipeline(image2=np.zeros((3, 5, 3), dtype=np.uint8))
+        call(image2=image)
 
-    with pytest.raises(ValueError, match="Additional target 'image2' requires canonical target 'image'"):
-        pipeline.run_with_trace(image2=np.zeros((3, 5, 3), dtype=np.uint8))
+    assert leaf.get_applied_params() == {}
+    assert leaf.get_applied_config() == {}
 
 
 def test_trace_snapshots_are_post_step_owned_copies() -> None:
@@ -375,16 +466,39 @@ def test_trace_snapshots_include_all_synchronized_public_targets() -> None:
     assert not np.shares_memory(leaf_record.snapshot["image"], traced.data["image"])
 
 
-def test_trace_options_reject_invalid_snapshot_configuration() -> None:
+@pytest.mark.parametrize("root_type", [A.Compose, A.ReplayCompose])
+def test_trace_options_reject_invalid_snapshot_configuration(root_type: type[A.Compose]) -> None:
+    """Check that a rejected call on a fresh pipeline exposes no observations."""
     with pytest.raises(TypeError, match="not a string"):
         A.TraceOptions(snapshot_targets="image")
 
-    pipeline = A.Compose([A.NoOp(p=1.0)], seed=137)
+    leaf = A.NoOp(p=1.0)
+    pipeline = root_type([leaf], seed=137)
     with pytest.raises(ValueError, match="Unknown trace snapshot targets: missing"):
         pipeline.run_with_trace(
             image=np.zeros((2, 2, 3), dtype=np.uint8),
             options=A.TraceOptions(snapshot_targets=("missing",)),
         )
+
+    assert leaf.get_applied_params() == {}
+    assert leaf.get_applied_config() == {}
+
+
+@pytest.mark.parametrize("root_type", [A.Compose, A.ReplayCompose])
+def test_trace_options_constructor_failure_preserves_previous_observation(root_type: type[A.Compose]) -> None:
+    leaf = A.RandomBrightnessContrast(p=1.0)
+    pipeline = root_type([leaf], seed=137, save_applied_params=True)
+    pipeline(image=np.arange(45, dtype=np.uint8).reshape(3, 5, 3))
+    prior_params = copy.deepcopy(leaf.get_applied_params())
+    prior_config = copy.deepcopy(leaf.get_applied_config())
+    assert prior_params
+    assert prior_config
+
+    with pytest.raises(TypeError, match="not a string"):
+        A.TraceOptions(snapshot_targets="image")
+
+    assert_contract_values_equal(leaf.get_applied_params(), prior_params)
+    assert_contract_values_equal(leaf.get_applied_config(), prior_config)
 
 
 def test_trace_reports_every_node_when_the_root_is_skipped() -> None:

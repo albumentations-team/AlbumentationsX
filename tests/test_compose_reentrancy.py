@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import random
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -18,6 +19,7 @@ import albumentations.core.invocation as invocation_module
 from albumentations.core.invocation import SamplingContext
 from albumentations.core.transform_params import SampledParams, TargetSet
 from albumentations.core.transforms_interface import ImageOnlyTransform
+from tests.helpers.contract_assertions import assert_contract_values_equal
 
 T = TypeVar("T")
 
@@ -256,6 +258,98 @@ def test_plain_compose_discards_child_observations() -> None:
 
     assert transform.get_applied_params() == {}
     assert transform.get_applied_config() == {}
+
+
+def test_rejected_trace_preserves_other_thread_observation() -> None:
+    leaf = A.RandomBrightnessContrast(p=1.0)
+    pipeline = A.Compose([leaf], seed=137, save_applied_params=True)
+    image = np.arange(45, dtype=np.uint8).reshape(3, 5, 3)
+    rejecting_ready = Event()
+    preserving_ready = Event()
+    rejection_finished = Event()
+
+    def reject_trace() -> None:
+        pipeline(image=image, invocation_seed=137)
+        prior_params = copy.deepcopy(leaf.get_applied_params())
+        prior_config = copy.deepcopy(leaf.get_applied_config())
+        assert prior_params
+        assert prior_config
+        rejecting_ready.set()
+        try:
+            _wait(preserving_ready)
+            with pytest.raises(ValueError, match=r"^Unknown trace snapshot targets: missing$"):
+                pipeline.run_with_trace(image=image, options=A.TraceOptions(snapshot_targets=("missing",)))
+            assert leaf.get_applied_params() == {}
+            assert leaf.get_applied_config() == {}
+        finally:
+            rejection_finished.set()
+
+    def preserve_observation() -> None:
+        pipeline(image=image, invocation_seed=271)
+        prior_params = copy.deepcopy(leaf.get_applied_params())
+        prior_config = copy.deepcopy(leaf.get_applied_config())
+        assert prior_params
+        assert prior_config
+        preserving_ready.set()
+        _wait(rejecting_ready)
+        _wait(rejection_finished)
+        assert_contract_values_equal(leaf.get_applied_params(), prior_params)
+        assert_contract_values_equal(leaf.get_applied_config(), prior_config)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        rejecting_future = _submit(executor, reject_trace)
+        preserving_future = _submit(executor, preserve_observation)
+        try:
+            rejecting_future.result(timeout=5)
+            preserving_future.result(timeout=5)
+        finally:
+            rejecting_ready.set()
+            preserving_ready.set()
+            rejection_finished.set()
+
+
+def test_rejected_trace_preserves_active_outer_invocation() -> None:
+    leaf = A.RandomBrightnessContrast(p=1.0)
+    pipeline = A.Compose([leaf], seed=137)
+    image = np.arange(45, dtype=np.uint8).reshape(3, 5, 3)
+    observed: list[A.TraceRecord] = []
+    rejected_callbacks: list[A.TraceRecord] = []
+
+    def reject_during_leaf(record: A.TraceRecord) -> None:
+        if record.node_kind != "leaf" or observed:
+            return
+        observed.append(record)
+        outer_invocation = invocation_module.get_current_invocation()
+        prior_params = copy.deepcopy(leaf.get_applied_params())
+        prior_config = copy.deepcopy(leaf.get_applied_config())
+        assert outer_invocation is not None
+        assert prior_params
+        assert prior_config
+
+        with pytest.raises(ValueError, match=r"^Unknown trace snapshot targets: missing$"):
+            pipeline.run_with_trace(
+                image=image,
+                options=A.TraceOptions(snapshot_targets=("missing",), observer=rejected_callbacks.append),
+            )
+
+        assert invocation_module.get_current_invocation() is outer_invocation
+        assert_contract_values_equal(leaf.get_applied_params(), prior_params)
+        assert_contract_values_equal(leaf.get_applied_config(), prior_config)
+        assert rejected_callbacks == []
+
+    result = pipeline.run_with_trace(image=image, options=A.TraceOptions(observer=reject_during_leaf))
+    result_params = leaf.get_applied_params()
+    result_config = leaf.get_applied_config()
+    assert result_params
+    assert result_config
+    assert len(observed) == 1
+    assert invocation_module.get_current_invocation() is None
+    reference_leaf = A.RandomBrightnessContrast(p=1.0)
+    reference = A.Compose([reference_leaf], seed=137).run_with_trace(image=image)
+
+    assert_contract_values_equal(result.data, reference.data)
+    assert_contract_values_equal(result_params, reference_leaf.get_applied_params())
+    assert_contract_values_equal(result_config, reference_leaf.get_applied_config())
 
 
 def test_all_skipped_compose_discards_child_observations_without_a_context() -> None:

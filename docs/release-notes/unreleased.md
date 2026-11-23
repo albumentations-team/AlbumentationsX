@@ -9,18 +9,31 @@ Earlier changes shipped in [2.6.6](2.6.6.md), [2.6.5](https://github.com/albumen
 
 ## Validation
 
-### Missing optional Hub dependency
+### Clear observations after rejected trace snapshot targets
 
-- Previous behavior: `Compose.from_pretrained` with a Hub repository ID raised an incidental `NameError`
-  when `huggingface_hub` was not installed.
-- New behavior: The Hub download route raises an actionable `ImportError` with an installation command.
-  Valid local configurations still load without the optional dependency.
-- Affected users: Callers loading Hub repository IDs without the `hub` extra, including offline cache lookups.
-- Migration: Install the extra with `pip install 'albumentationsx[hub]'`, or catch `ImportError` instead of
-  the incidental `NameError`. Valid local loads need no change.
+- Previous behavior: After an observed call, rejecting an unknown snapshot target in `Compose.run_with_trace()` or
+  `ReplayCompose.run_with_trace()` left the preceding sample's applied params and config visible through leaf getters.
+- New behavior: This rejection clears the caller's completed observation, so `get_applied_params()` and
+  `get_applied_config()` return empty dictionaries. Earlier returned results, other callers, and an active outer
+  invocation retain their data. The error and RNG continuation are unchanged. This corrects stale observation exposure.
+- Affected users: Callers inspecting applied params or config after catching an unknown trace snapshot-target error,
+  including nested Compose and ReplayCompose pipelines.
+- Migration: To keep the previous configuration, record an observation and save it before the next trace request.
+
+  ```python
+  import albumentations as A
+  import numpy as np
+
+  leaf = A.HorizontalFlip(p=1.0)
+  pipeline = A.Compose([leaf], save_applied_params=True)
+  pipeline(image=np.zeros((2, 2, 3), dtype=np.uint8))
+  previous_config = leaf.get_applied_config()
+  ```
+
 - First affected version: unreleased
-- Contract: [Optional Hub loading](../maintaining/correctness-contracts.md#optional-hub-loading).
-- Tests: [Optional Hub dependency routes](../../tests/test_hub_optional_dependency.py).
+- Contract: [Invocation observation ownership](../design/compose-greenfield-architecture.md#permanent-contracts).
+- Tests: [Trace rejection and retained artifacts](../../tests/test_composition_tracing.py),
+  [caller and active-invocation isolation](../../tests/test_compose_reentrancy.py).
 
 ### OpenCV import requires version 5.1 or later
 
@@ -34,6 +47,19 @@ Earlier changes shipped in [2.6.6](2.6.6.md), [2.6.5](https://github.com/albumen
 - First affected version: unreleased
 - Contract: [OpenCV runtime minimum](../maintaining/support-policy.md#opencv-policy).
 - Tests: [OpenCV import requirements](../../tests/test_import_requirements.py).
+
+### Missing optional Hub dependency
+
+- Previous behavior: `Compose.from_pretrained` with a Hub repository ID raised an incidental `NameError`
+  when `huggingface_hub` was not installed.
+- New behavior: The Hub download route raises an actionable `ImportError` with an installation command.
+  Valid local configurations still load without the optional dependency.
+- Affected users: Callers loading Hub repository IDs without the `hub` extra, including offline cache lookups.
+- Migration: Install the extra with `pip install 'albumentationsx[hub]'`, or catch `ImportError` instead of
+  the incidental `NameError`. Valid local loads need no change.
+- First affected version: unreleased
+- Contract: [Optional Hub loading](../maintaining/correctness-contracts.md#optional-hub-loading).
+- Tests: [Optional Hub dependency routes](../../tests/test_hub_optional_dependency.py).
 
 ### Compose keeps bound instances aligned when a transform drops boxes
 

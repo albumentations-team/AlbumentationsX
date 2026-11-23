@@ -1,0 +1,34 @@
+[
+  {
+    "id": "internal-workspace-hit-1",
+    "prompt": "Save a quick debug script that dumps intermediate masks somewhere local",
+    "expected_output": "internal-workspace",
+    "assertions": [
+      "selects internal-workspace"
+    ]
+  },
+  {
+    "id": "internal-workspace-hit-2",
+    "prompt": "Положи временный ноутбук с экспериментом так, чтобы он не попал в коммит",
+    "expected_output": "internal-workspace",
+    "assertions": [
+      "selects internal-workspace"
+    ]
+  },
+  {
+    "id": "internal-workspace-miss-1",
+    "prompt": "Add a permanent test for Mosaic",
+    "expected_output": "not internal-workspace",
+    "assertions": [
+      "does not select internal-workspace"
+    ]
+  },
+  {
+    "id": "internal-workspace-miss-2",
+    "prompt": "Move tools/foo.py into tools/maintained/",
+    "expected_output": "not internal-workspace",
+    "assertions": [
+      "does not select internal-workspace"
+    ]
+  }
+]

@@ -1,0 +1,42 @@
+[
+  {
+    "id": "review-transform-hit-1",
+    "prompt": "Проверь трансформ CoarseDropout перед мержем",
+    "expected_output": "review-transform",
+    "assertions": [
+      "selects review-transform"
+    ]
+  },
+  {
+    "id": "review-transform-hit-2",
+    "prompt": "Review the new PlasmaShadow transform for correctness and test coverage",
+    "expected_output": "review-transform",
+    "assertions": [
+      "selects review-transform"
+    ]
+  },
+  {
+    "id": "review-transform-hit-3",
+    "prompt": "Audit ShiftScaleRotate's replay and target contracts",
+    "expected_output": "review-transform",
+    "assertions": [
+      "selects review-transform"
+    ]
+  },
+  {
+    "id": "review-transform-miss-1",
+    "prompt": "Add a new transform RandomVignette",
+    "expected_output": "not review-transform",
+    "assertions": [
+      "does not select review-transform"
+    ]
+  },
+  {
+    "id": "review-transform-miss-2",
+    "prompt": "Benchmark ToFloat against main",
+    "expected_output": "not review-transform",
+    "assertions": [
+      "does not select review-transform"
+    ]
+  }
+]

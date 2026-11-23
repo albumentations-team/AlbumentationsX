@@ -1,0 +1,42 @@
+[
+  {
+    "id": "benchmark-hit-1",
+    "prompt": "Замерь, стало ли быстрее GaussianBlur после моего патча",
+    "expected_output": "benchmark",
+    "assertions": [
+      "selects benchmark"
+    ]
+  },
+  {
+    "id": "benchmark-hit-2",
+    "prompt": "Is my change to Normalize actually faster? Compare against main",
+    "expected_output": "benchmark",
+    "assertions": [
+      "selects benchmark"
+    ]
+  },
+  {
+    "id": "benchmark-hit-3",
+    "prompt": "Run ASV for the affected families on this branch",
+    "expected_output": "benchmark",
+    "assertions": [
+      "selects benchmark"
+    ]
+  },
+  {
+    "id": "benchmark-miss-1",
+    "prompt": "Profile why import albumentations takes 2 seconds and explain",
+    "expected_output": "not benchmark",
+    "assertions": [
+      "does not select benchmark"
+    ]
+  },
+  {
+    "id": "benchmark-miss-2",
+    "prompt": "Add a docstring example to Blur",
+    "expected_output": "not benchmark",
+    "assertions": [
+      "does not select benchmark"
+    ]
+  }
+]

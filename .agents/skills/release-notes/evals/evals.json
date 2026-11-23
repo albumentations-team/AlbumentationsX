@@ -1,0 +1,36 @@
+[
+  {
+    "id": "release-notes-hit-1",
+    "prompt": "$release-notes 2.6.8",
+    "expected_output": "release-notes",
+    "assertions": [
+      "selects release-notes"
+    ],
+    "explicit": true
+  },
+  {
+    "id": "release-notes-hit-2",
+    "prompt": "/release-notes 2.6.8",
+    "expected_output": "release-notes",
+    "assertions": [
+      "selects release-notes"
+    ],
+    "explicit": true
+  },
+  {
+    "id": "release-notes-miss-1",
+    "prompt": "Prepare release notes for 2.6.8",
+    "expected_output": "not release-notes",
+    "assertions": [
+      "does not select release-notes"
+    ]
+  },
+  {
+    "id": "release-notes-miss-2",
+    "prompt": "Подготовь release notes для 2.6.8",
+    "expected_output": "not release-notes",
+    "assertions": [
+      "does not select release-notes"
+    ]
+  }
+]

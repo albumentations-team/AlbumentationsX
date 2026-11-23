@@ -1,0 +1,42 @@
+[
+  {
+    "id": "performance-optimization-hit-1",
+    "prompt": "Optimize the functional kernel of ToGray for float32",
+    "expected_output": "performance-optimization",
+    "assertions": [
+      "selects performance-optimization"
+    ]
+  },
+  {
+    "id": "performance-optimization-hit-2",
+    "prompt": "Ускорь apply_to_images у RandomBrightnessContrast",
+    "expected_output": "performance-optimization",
+    "assertions": [
+      "selects performance-optimization"
+    ]
+  },
+  {
+    "id": "performance-optimization-hit-3",
+    "prompt": "This dtype conversion in Normalize allocates twice; reduce allocations",
+    "expected_output": "performance-optimization",
+    "assertions": [
+      "selects performance-optimization"
+    ]
+  },
+  {
+    "id": "performance-optimization-miss-1",
+    "prompt": "Rewrite the README introduction",
+    "expected_output": "not performance-optimization",
+    "assertions": [
+      "does not select performance-optimization"
+    ]
+  },
+  {
+    "id": "performance-optimization-miss-2",
+    "prompt": "Update the CLA text",
+    "expected_output": "not performance-optimization",
+    "assertions": [
+      "does not select performance-optimization"
+    ]
+  }
+]

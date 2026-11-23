@@ -1,0 +1,42 @@
+[
+  {
+    "id": "license-integrity-hit-1",
+    "prompt": "Поправь docs/privacy.md, добавь, какие поля телеметрии собираются",
+    "expected_output": "license-integrity",
+    "assertions": [
+      "selects license-integrity"
+    ]
+  },
+  {
+    "id": "license-integrity-hit-2",
+    "prompt": "Update CLA.md to a new version and archive the old one",
+    "expected_output": "license-integrity",
+    "assertions": [
+      "selects license-integrity"
+    ]
+  },
+  {
+    "id": "license-integrity-hit-3",
+    "prompt": "Add a new runtime dependency's license to the dependency-license registry",
+    "expected_output": "license-integrity",
+    "assertions": [
+      "selects license-integrity"
+    ]
+  },
+  {
+    "id": "license-integrity-miss-1",
+    "prompt": "Write a LinkedIn post about the new release",
+    "expected_output": "not license-integrity",
+    "assertions": [
+      "does not select license-integrity"
+    ]
+  },
+  {
+    "id": "license-integrity-miss-2",
+    "prompt": "Fix a typo in a transform docstring",
+    "expected_output": "not license-integrity",
+    "assertions": [
+      "does not select license-integrity"
+    ]
+  }
+]

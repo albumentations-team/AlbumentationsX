@@ -46,7 +46,7 @@ performance-shape, documentation, bbox propagation, and target-specific sampling
 `BboxParams.__init__(bbox_type="hbb")` compatibility default is intentional. At the call boundary, `BasicTransform`
 treats box targets as normalized HBBs when no bounding-box processor is configured. Internal transform, processor,
 and functional calls must pass `bbox_type` explicitly. Keep design judgment and benchmark interpretation in the relevant
-review skill rather than duplicating these mechanical checks. `AGENTS.md`, `.codex/rules/`, and `.codex/skills/` point
+review skill rather than duplicating these mechanical checks. `AGENTS.md`, `.codex/rules/`, and `.agents/skills/` point
 to this document and the hook instead of restating the AXG catalog.
 
 - Before handing off Python changes, run the fast local quality gate:
@@ -576,7 +576,7 @@ read sampled values from `**params` inside the transform method.
 
 Keep batch and channel axes distinct. Reshaping `(N, H, W, 1)` into `(H, W, N)` adds a transpose and may require a
 copy; OpenCV processes those channels sequentially. Use the
-[benchmark skill](https://github.com/albumentations-team/AlbumentationsX/blob/main/.codex/skills/benchmark/SKILL.md)
+[benchmark skill](https://github.com/albumentations-team/AlbumentationsX/blob/main/.agents/skills/benchmark/SKILL.md)
 for the required direct and Compose measurements.
 
 ### Coordinate Systems
@@ -635,7 +635,7 @@ interface; do not repeat it on each override.
 - Use `Note` bullets for factual details. Put recommendations in `See also`.
 
 Use the
-[docstring review skill](https://github.com/albumentations-team/AlbumentationsX/blob/main/.codex/skills/docstring-deep-dive/SKILL.md)
+[docstring review skill](https://github.com/albumentations-team/AlbumentationsX/blob/main/.agents/skills/docstring-deep-dive/SKILL.md)
 to review reader-facing quality.
 
 ### Examples in Docstrings
@@ -743,13 +743,13 @@ np.testing.assert_array_equal(transformed_image, image)
 ## Performance Optimization
 
 Use
-[Performance Optimization](https://github.com/albumentations-team/AlbumentationsX/blob/main/.codex/skills/performance-optimization/SKILL.md)
+[Performance Optimization](https://github.com/albumentations-team/AlbumentationsX/blob/main/.agents/skills/performance-optimization/SKILL.md)
 and its synchronized reference
 for runtime audits. The workflow covers removable work, memory traffic, vectorization, grouped reductions, LUTs,
 random generation, backend selection, Albucore ownership, and aliasing.
 
 Treat each candidate as a hypothesis. Use the
-[benchmark skill](https://github.com/albumentations-team/AlbumentationsX/blob/main/.codex/skills/benchmark/SKILL.md)
+[benchmark skill](https://github.com/albumentations-team/AlbumentationsX/blob/main/.agents/skills/benchmark/SKILL.md)
 to compare
 baseline and candidate on the affected public routes, and record every measured cell and any regressions.
 
@@ -787,7 +787,7 @@ Before submitting your PR:
 3. Add broader tests, benchmarks, or type checks only when the changed route requires them.
 4. Update public documentation when the public contract changed.
 
-Use `.codex/skills/validate-and-fix/SKILL.md` for the decision-based validation workflow.
+Use `.agents/skills/validate-and-fix/SKILL.md` for the decision-based validation workflow.
 
 ## Getting Help
 

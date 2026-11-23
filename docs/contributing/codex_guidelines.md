@@ -7,15 +7,15 @@ AX source contracts; [Coding Guidelines](coding_guidelines.md) explains its diag
 
 | Task | Read first |
 | --- | --- |
-| Add or substantially change a transform | `.codex/skills/add-transform/SKILL.md` |
-| Review a transform | `.codex/skills/review-transform/SKILL.md` |
-| Change, inspect, or optimize runtime code | `.codex/skills/performance-optimization/SKILL.md` |
-| Measure a runtime claim | `.codex/skills/benchmark/SKILL.md` |
-| Write public docstrings | `.codex/skills/docstring-deep-dive/SKILL.md` |
+| Add or substantially change a transform | `.agents/skills/add-transform/SKILL.md` |
+| Review a transform | `.agents/skills/review-transform/SKILL.md` |
+| Change, inspect, or optimize runtime code | `.agents/skills/performance-optimization/SKILL.md` |
+| Measure a runtime claim | `.agents/skills/benchmark/SKILL.md` |
+| Write public docstrings | `.agents/skills/docstring-deep-dive/SKILL.md` |
 | Change tests | `.codex/rules/testing-conventions.md` |
-| Change mixing transforms | `.codex/skills/mixing-transforms/SKILL.md` |
-| Change licensing, procurement/privacy copy, packaging legal metadata, or CLA text | `.codex/skills/license-integrity/SKILL.md` |
-| Validate a completed change | `.codex/skills/validate-and-fix/SKILL.md` |
+| Change mixing transforms | `.agents/skills/mixing-transforms/SKILL.md` |
+| Change licensing, procurement/privacy copy, packaging legal metadata, or CLA text | `.agents/skills/license-integrity/SKILL.md` |
+| Validate a completed change | `.agents/skills/validate-and-fix/SKILL.md` |
 
 Read a design document only when the change enters its boundary:
 
@@ -27,6 +27,13 @@ Read a design document only when the change enters its boundary:
 - `docs/design/mosaic.md` for Mosaic metadata and annotation handling;
 - `docs/design/numpy-tensor-routing.md` for Tensor execution; and
 - `docs/design/torch-dependency-and-ci-greenfield.md` for Torch packaging or CI.
+
+## Skill layout
+
+Repository skills live in `.agents/skills/<name>/`, which Codex reads. Claude Code reads `.claude/skills/<name>`, a
+relative symlink to that directory; commit both. The `agent-skills` rule in `check-ax-rules` rejects a missing or
+wrong link and invalid frontmatter. `release-notes` is explicit-only in both agents. Each skill keeps trigger cases
+in `evals/evals.json`; run them with `python tools/eval_skill_triggers.py`.
 
 ## Work in this order
 

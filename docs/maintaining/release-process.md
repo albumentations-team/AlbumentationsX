@@ -16,35 +16,15 @@ The maintainer performs three actions:
 3. Select that existing tag, prepare the GitHub Release notes, and select
    **Publish release**.
 
-Include the applicable [unreleased notes](../release-notes/unreleased.md), especially
-custom-transform migration requirements, when preparing the release text.
-
-Complete the [behavior-change checklist](#behavior-change-checklist) under the
-[behavior compatibility policy](behavior-compatibility.md) before increasing the version.
+Build the release text from the merged pull requests and commits since the previous tag, and call out behavior changes
+and migration steps, especially custom-transform migration requirements, under the
+[behavior compatibility policy](behavior-compatibility.md).
 
 Later merges into `main` do not change the release tag or its verified bundle.
 No draft release, Release Candidate run, artifact ID, or manual promotion
 approval is required.
 
 ## The Version-Bump PR Is the Release Gate
-
-### Behavior-change checklist
-
-Complete the inventory before opening the version-bump PR. The preflight checks below validate that evidence
-automatically when the version increases.
-
-1. Check every change since the release baseline against the [behavior inventory](../release-notes/unreleased.md).
-   Include random sequences, replay and serialization, geometry, annotation handling, validation, defaults, and outputs.
-2. For each change, record previous and new behavior, affected users, a minimal migration example, first affected
-   version, owning contract, and permanent tests. Record `none` explicitly for categories with no observable change.
-3. Audit removal warnings: each deprecation needs a replacement and an unreleased removal version or a testable
-   condition. Ordinary compatibility warnings must not imply a removal deadline. Honor any explicitly announced window.
-4. For changed regression expectations, record the rationale and old/new behavior epochs in the pull request and notes;
-   update the registry, vectors, and manifest together. Keep unaffected sentinels unchanged.
-5. Run `python -m tools.check_behavior_changes` and the vector verifier. Release preflight reads this same inventory
-   into the correctness report and requires the bumped version to be newer than the recorded baseline.
-6. Publish the migration notes with the package and generated report. Before the following release, archive the notes
-   under their released version, advance the baseline, and start a new inventory with explicit `none` categories.
 
 ### Preflight checks
 

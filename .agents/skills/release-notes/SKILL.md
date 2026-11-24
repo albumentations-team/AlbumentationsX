@@ -15,11 +15,9 @@ and `$release-notes` in Codex (`agents/openai.yaml`).
 
 ## Source of truth for what changed
 
-- `docs/release-notes/unreleased.md` is the behavior-change inventory checked by `python -m tools.check_behavior_changes`
-  under [Behavior compatibility](../../../docs/maintaining/behavior-compatibility.md). Build `## Breaking changes` and
-  every behavior-change entry from it, keeping its previous behavior, new behavior, migration, and links. Do not write
-  a second, divergent change list. If a commit changes observable behavior but is missing from the inventory, report
-  the gap to the user instead of describing the change only in the notes.
+- Behavior changes follow the [behavior compatibility policy](../../../docs/maintaining/behavior-compatibility.md).
+  Build `## Breaking changes` from the merged PRs and commits below, giving previous behavior, new behavior, and a
+  minimal migration for each.
 - `git log --oneline <prev_tag>..HEAD` and `git show --stat <sha>` per commit.
 - `git diff <prev_tag>..HEAD -- README.md` for the canonical added/removed transforms list.
 - `git diff <prev_tag>..HEAD -- pyproject.toml` for dependency / version bumps.

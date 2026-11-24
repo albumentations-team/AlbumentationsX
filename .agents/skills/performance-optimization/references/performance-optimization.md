@@ -4,6 +4,16 @@
 
 Albucore routers run after the caller has validated the input contract. Upstream code owns container, rank, layout, dtype, device, contiguity, autograd state, and operation-control validation. NumPy uses channel-last layouts; CPU Tensor layouts are explicit. Albucore keeps only dispatch branches and kernel-required normalization needed to select and execute the benchmarked implementation; hot paths must not repeat those checks.
 
+## NaN contract
+
+Only vector fields carry NaN (float16/float32 arrays where NaN marks an invalid vector). The split is by function:
+AlbumentationsX calls only `remap`, `remap3d` and the `tensor_bridge` helpers (`numpy_to_tensor_layout`,
+`numpy_to_tensor_storage`, `tensor_to_numpy_channel_last`, `tensor_to_numpy_storage`) on fields, so only these must keep
+NaN exactly; `tests/test_nan_field_contract.py` pins it. Images, masks and volumes contain no NaN, so every other operation
+(arithmetic, quantization, statistics, normalization, LUT, flip, rotate, crop, pad, resize) assumes finite input and
+leaves NaN behavior unspecified. A NaN guard on those routes is a pass that buys nothing: delete it rather than add one, and
+benchmark and test those routes on finite data. Inf and signed zero behave as before.
+
 Use this workflow whenever implementing, reviewing, or profiling runtime code in Albucore or AlbumentationsX. Its
 order matters: remove work before making the remaining work faster. Treat every proposed optimization as a hypothesis
 until correctness tests and representative benchmarks support it.
@@ -340,7 +350,8 @@ does not justify an unreviewed output change.
 ## Benchmark every candidate, including rejected ones
 
 Use the repository benchmark skill and policy. CPU comparisons run with exactly one thread per process for every
-candidate. Disable OpenCV internal parallelism with `cv2.setNumThreads(0)` and, when used, set both Torch intra-op and
+candidate, including quick ad-hoc checks. Production runs Albucore under AX in PyTorch DataLoader workers with one
+thread each, while Albucore itself is measured as is, without AX or DataLoader. Disable OpenCV internal parallelism with `cv2.setNumThreads(0)` and, when used, set both Torch intra-op and
 inter-op threads to one before work starts. Set `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS`,
 `VECLIB_MAXIMUM_THREADS`, and `NUMEXPR_NUM_THREADS` to `1` before importing numerical libraries. Record effective
 library thread settings; do not rely on environment variables alone. Benchmark additional thread counts only when the

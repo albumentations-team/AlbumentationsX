@@ -275,3 +275,13 @@ def test_low_map_resolution_applies_consistently_to_targets(transform_cls, param
     assert result["mask"].shape == mask.shape
     assert len(result["bboxes"]) == len(result["bbox_labels"])
     assert len(result["keypoints"]) == len(result["keypoint_labels"])
+
+
+@pytest.mark.parametrize("transform_cls", [A.ThinPlateSpline, A.WaterRefraction, A.PiecewiseAffine])
+@pytest.mark.parametrize(("size", "expected_map_side"), [(64, 64), (128, 128), (256, 128), (512, 128), (1024, 256)])
+def test_automatic_map_resolution_is_a_quarter_with_a_128_sample_floor(transform_cls, size, expected_map_side):
+    transform = transform_cls(p=1.0)
+    transform(image=_make_image((size, size, 3)))
+
+    assert transform_cls().map_resolution_range is None
+    assert transform.applied_config["map_resolution_range"] == expected_map_side / size

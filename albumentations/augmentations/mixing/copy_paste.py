@@ -344,12 +344,6 @@ class CopyAndPaste(DualTransform):
             alive[in_range] &= visibility_mask[valid_ids]
         return bbox_id_col[alive].astype(int).tolist()
 
-    @staticmethod
-    def _resize_mask_to_target(mask: np.ndarray, target_shape: tuple[int, int]) -> np.ndarray:
-        if mask.shape[0] != target_shape[0] or mask.shape[1] != target_shape[1]:
-            return fgeometric.resize(mask, target_shape, cv2.INTER_NEAREST)
-        return mask
-
     # ------------------------------------------------------------------
     # Donor-side / target-side coord_format <-> pixel conversion helpers.
     # The user passes donor `bbox` / `keypoints` in the same coord_format declared in

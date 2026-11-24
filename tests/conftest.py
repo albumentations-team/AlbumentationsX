@@ -1,6 +1,3 @@
-import multiprocessing
-import sys
-
 import cv2
 import numpy as np
 import pytest
@@ -91,18 +88,6 @@ def template():
 @pytest.fixture
 def float_template():
     return cv2.randu(np.zeros((100, 100, 3), dtype=np.float32), 0, 1)
-
-
-@pytest.fixture(scope="package")
-def mp_pool():
-    # Usage of `fork` as a start method for multiprocessing could lead to deadlocks on macOS.
-    # Because `fork` was the default start method for macOS until Python 3.8
-    # we had to manually set the start method to `spawn` to avoid those issues.
-    if sys.platform == "darwin":
-        method = "spawn"
-    else:
-        method = None
-    return multiprocessing.get_context(method).Pool(4)
 
 
 # Create independent RNGs for module-level constants to avoid order-dependent results

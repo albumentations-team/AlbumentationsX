@@ -49,7 +49,6 @@ __all__ = [
 
 
 HALF = 0.5
-TWO = 2
 
 
 class BlurInitSchema(BaseTransformInitSchema):

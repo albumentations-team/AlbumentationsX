@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 import albumentations as A
+import albumentations.augmentations.pixel.functional as fpixel
 from albumentations.core.tensor import numpy_to_tensor_spatial, tensor_to_numpy_spatial
 
 
@@ -54,3 +55,19 @@ def test_shot_noise_compose_supports_all_targets_and_dtypes(target, container, d
         float32_result, _ = run(image.astype(np.float32))
         expected = tensor_to_numpy_spatial(float32_result, target) if container == "tensor" else float32_result
         np.testing.assert_array_equal(actual, expected.astype(np.float16))
+
+
+@pytest.mark.parametrize("scale", [0.05, 0.3, 1.0])
+@pytest.mark.parametrize("level", [0, 17, 128, 255])
+def test_shot_noise_uint8_matches_poisson_output_distribution(scale, level):
+    rng = np.random.default_rng(137)
+    num_samples = 200_000
+    image = np.full((1, num_samples, 1), level, dtype=np.uint8)
+
+    actual = fpixel.shot_noise(image, scale, rng).ravel()
+
+    expected_counts = rng.poisson((level / 255) ** 2.2 / scale + 1e-6, num_samples)
+    expected = np.rint(255 * np.clip(expected_counts * scale, 0, 1) ** (1 / 2.2)).astype(np.uint8)
+    actual_pmf = np.bincount(actual, minlength=256) / num_samples
+    expected_pmf = np.bincount(expected, minlength=256) / num_samples
+    assert 0.5 * np.abs(actual_pmf - expected_pmf).sum() < 0.01

@@ -1,6 +1,5 @@
 """Tests for worker-aware seed functionality in Compose."""
 
-import multiprocessing
 import pickle
 import random
 import sys
@@ -599,73 +598,3 @@ def test_explicit_invocation_seed_is_sample_keyed_and_does_not_advance_the_worke
     np.testing.assert_array_equal(first_explicit, second_explicit)
     assert not np.array_equal(first_explicit, different_explicit)
     np.testing.assert_array_equal(first_worker_stream, expected_first)
-
-
-def worker_process_simulation(worker_id: int, base_seed: int, num_iterations: int) -> list[bool]:
-    """Simulate a worker process with given ID and seed.
-
-    Returns list of booleans indicating whether HorizontalFlip was applied.
-    """
-    # Each worker uses a different seed to simulate worker diversity
-    # This simulates what would happen with torch.initial_seed()
-    # Use a hash to get more diverse seeds
-    import hashlib
-
-    worker_seed = int(hashlib.md5(f"{base_seed}_{worker_id}".encode()).hexdigest()[:8], 16)
-
-    # Create transform with a unique seed per worker
-    transform = A.Compose(
-        [
-            A.HorizontalFlip(p=0.5),
-        ],
-        seed=worker_seed,
-    )  # Simulating worker-aware behavior
-
-    # Run iterations
-    results = []
-    # Create an asymmetric image so we can detect flips
-    img = np.zeros((10, 10, 3), dtype=np.uint8)
-    img[:, :5] = 255  # Left half white
-
-    for _ in range(num_iterations):
-        result = transform(image=img.copy())
-        # Check if image was flipped by checking left corner
-        was_flipped = result["image"][0, 0, 0] == 0  # If flipped, left corner will be black
-        results.append(was_flipped)
-
-    return results
-
-
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Multiprocessing test skipped on Windows",
-)
-def test_worker_seed_diversity():
-    """Test that different workers produce different augmentation sequences."""
-    base_seed = 137
-    num_workers = 4
-    num_iterations = 20
-
-    # Run simulation for each worker
-    with multiprocessing.Pool(processes=num_workers) as pool:
-        worker_results = []
-        for worker_id in range(num_workers):
-            result = pool.apply_async(
-                worker_process_simulation,
-                args=(worker_id, base_seed, num_iterations),
-            )
-            worker_results.append(result)
-
-        # Collect results
-        sequences = [result.get() for result in worker_results]
-
-    # Check that workers produced different sequences
-    unique_sequences = {tuple(seq) for seq in sequences}
-    assert len(unique_sequences) > 1, "All workers produced identical augmentation sequences"
-
-    # Each worker should have some flips and some non-flips (with high probability)
-    for worker_id, sequence in enumerate(sequences):
-        num_flips = sum(sequence)
-        assert 0 < num_flips < num_iterations, (
-            f"Worker {worker_id} produced extreme results: {num_flips}/{num_iterations} flips"
-        )

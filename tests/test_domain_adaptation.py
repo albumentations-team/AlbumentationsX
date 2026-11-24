@@ -801,3 +801,20 @@ def test_fourier_domain_adaptation_matches_full_spectrum_reference(shape, beta):
 
     expected = np.clip(_fda_full_spectrum_reference(source, target, beta), 0, 255).astype(np.uint8)
     assert np.abs(actual.astype(np.int16) - expected).max() <= 1
+
+
+def test_fourier_domain_adaptation_rejects_a_target_smaller_than_the_window():
+    source = np.zeros((64, 64, 3), dtype=np.uint8)
+    target = np.zeros((32, 32, 3), dtype=np.uint8)
+
+    with pytest.raises(ValueError, match="does not fit the target"):
+        fourier_domain_adaptation(source, target, 0.1)
+
+
+def test_fourier_domain_adaptation_is_finite_for_tiny_source_amplitudes():
+    source = np.full((8, 8, 1), 1e-40, dtype=np.float32)
+    target = np.ones((8, 8, 1), dtype=np.float32)
+
+    result = fourier_domain_adaptation(source, target, 0.3)
+
+    assert np.isfinite(result).all()

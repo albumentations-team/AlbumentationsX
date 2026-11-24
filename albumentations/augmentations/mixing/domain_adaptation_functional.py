@@ -571,6 +571,11 @@ def fourier_domain_adaptation(
     if h2 > h1 and w2 > w1:
         window = np.ix_((np.arange(h1, h2) - height // 2) % height, (np.arange(w1, w2) - width // 2) % width)
         trg_height, trg_width = trg_img.shape[:2]
+        if h2 > trg_height or w2 > trg_width:
+            raise ValueError(
+                f"The adaptation window ({h2 - h1}, {w2 - w1}) does not fit the target image of shape "
+                f"{(trg_height, trg_width)}",
+            )
         trg_window = np.ix_(
             (np.arange(h1, h2) - trg_height // 2) % trg_height,
             (np.arange(w1, w2) - trg_width // 2) % trg_width,
@@ -579,8 +584,14 @@ def fourier_domain_adaptation(
         amp_src = np.abs(block)
         amp_trg = np.abs(fft_trg[trg_window])
         # Keep the source phase; a zero source amplitude has phase 0, so it takes the target amplitude as is.
-        scale = np.divide(amp_trg, amp_src, out=np.zeros_like(amp_src), where=amp_src > 0)
-        fft_src[window] = np.where(amp_src > 0, block * scale, amp_trg)
+        # The ratio can exceed float32 range for tiny nonzero source amplitudes, so form it in float64.
+        scale = np.divide(
+            amp_trg.astype(np.float64),
+            amp_src.astype(np.float64),
+            out=np.zeros(amp_src.shape, dtype=np.float64),
+            where=amp_src > 0,
+        )
+        fft_src[window] = np.where(amp_src > 0, block.astype(np.complex128) * scale, amp_trg)
 
     src_in_trg = fft.ifft2(fft_src, axes=(0, 1)).real
 

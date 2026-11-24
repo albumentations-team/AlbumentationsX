@@ -285,3 +285,34 @@ def test_automatic_map_resolution_is_a_quarter_with_a_128_sample_floor(transform
 
     assert transform_cls().map_resolution_range is None
     assert transform.applied_config["map_resolution_range"] == expected_map_side / size
+
+
+@pytest.mark.parametrize("transform_cls", [A.ThinPlateSpline, A.WaterRefraction, A.PiecewiseAffine])
+def test_automatic_map_resolution_scales_both_axes_equally(transform_cls):
+    transform = transform_cls(p=1.0)
+    transform(image=_make_image((256, 1024, 3)))
+
+    assert transform.applied_config["map_resolution_range"] == 0.5
+
+
+def test_piecewise_affine_absolute_scale_keeps_full_image_pixels_at_automatic_resolution():
+    image = _make_image((1024, 1024, 3))
+    spreads = []
+    for resolution in ((1.0, 1.0), None):
+        transform = A.PiecewiseAffine(
+            scale_range=(8, 8),
+            nb_rows_range=(8, 8),
+            nb_cols_range=(8, 8),
+            absolute_scale=True,
+            map_resolution_range=resolution,
+            p=1.0,
+        )
+        sampled = []
+        for seed in range(8):
+            transform.set_random_seed(seed)
+            replay = A.ReplayCompose([transform], seed=seed)(image=image)["replay"]["transforms"][0]["params"]
+            maps = SampledParams.from_dict(replay).params_for("image")
+            sampled.append((maps["map_x"] - np.arange(1024, dtype=np.float32)[None, :]).std())
+        spreads.append(np.mean(sampled))
+
+    assert 0.7 < spreads[1] / spreads[0] < 1.4

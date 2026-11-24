@@ -186,7 +186,7 @@ class BaseRemapTransform(DualTransform):
 
 
 _AUTO_MAP_RESOLUTION = 0.25
-_AUTO_MAP_MIN_SIDE = 128
+_AUTO_MAP_MIN_SIDE = 128  # samples on the shorter side
 
 
 def _validate_map_resolution_range(value: tuple[float, float] | None) -> tuple[float, float] | None:
@@ -240,15 +240,11 @@ class BaseDistortion(BaseRemapTransform):
     ) -> tuple[float, tuple[int, int]]:
         height, width = image_shape
         if self.map_resolution_range is None:
-            # Automatic: a quarter-resolution map, but never fewer than 128 samples per side (a smaller image
-            # keeps its full size), so small images are not under-sampled.
-            scaled_shape = (
-                max(2, min(height, max(int(height * _AUTO_MAP_RESOLUTION), _AUTO_MAP_MIN_SIDE))),
-                max(2, min(width, max(int(width * _AUTO_MAP_RESOLUTION), _AUTO_MAP_MIN_SIDE))),
-            )
-            map_resolution = scaled_shape[0] / height
+            # Automatic: a quarter-resolution map, but never fewer than 128 samples on the shorter side (a smaller
+            # image keeps its full size). One factor for both axes keeps displacement and wavelengths isotropic.
+            map_resolution = min(1.0, max(_AUTO_MAP_RESOLUTION, _AUTO_MAP_MIN_SIDE / min(height, width)))
             sampling.applied_overrides["map_resolution_range"] = map_resolution
-            return map_resolution, scaled_shape
+            return map_resolution, (max(2, int(height * map_resolution)), max(2, int(width * map_resolution)))
 
         min_resolution, max_resolution = self.map_resolution_range
         map_resolution = (
@@ -513,8 +509,8 @@ class PiecewiseAffine(BaseDistortion):
         map_resolution_range (tuple[float, float]): Range for sampling the displacement map resolution
             relative to the target size. Values below 1.0 generate lower-resolution maps and upscale
             them, trading precision for speed. None (default) uses a quarter-resolution map with at
-            least 128 samples per side, or the full image size when it is smaller; the displacement is visually
-            indistinguishable and several times faster. Pass (1.0, 1.0) for full-resolution maps.
+            least 128 samples on the shorter side, or the full image size when it is smaller; the displacement
+            is visually indistinguishable and several times faster. Pass (1.0, 1.0) for full-resolution maps.
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
@@ -599,7 +595,7 @@ class PiecewiseAffine(BaseDistortion):
         sampling: SamplingContext,
     ) -> SampledParams:
         image_shape = targets.require_aligned_spatial_shape(2)
-        _, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
+        map_resolution, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
 
         nb_rows = np.clip(sampling.py_random.randint(*self.nb_rows_range), 2, None)
         nb_cols = np.clip(sampling.py_random.randint(*self.nb_cols_range), 2, None)
@@ -612,7 +608,8 @@ class PiecewiseAffine(BaseDistortion):
         map_x, map_y = fgeometric.create_piecewise_affine_maps(
             image_shape=scaled_shape,
             grid=(nb_rows, nb_cols),
-            scale=scale,
+            # An absolute scale is in full-image pixels; the maps are built, then upscaled by 1 / map_resolution.
+            scale=scale * map_resolution if self.absolute_scale else scale,
             absolute_scale=self.absolute_scale,
             random_generator=sampling.random_generator,
         )
@@ -1032,8 +1029,8 @@ class ThinPlateSpline(BaseDistortion):
         map_resolution_range (tuple[float, float]): Range for sampling the displacement map resolution
             relative to the target size. Values below 1.0 generate lower-resolution maps and upscale
             them, trading precision for speed. None (default) uses a quarter-resolution map with at
-            least 128 samples per side, or the full image size when it is smaller; the displacement is visually
-            indistinguishable and several times faster. Pass (1.0, 1.0) for full-resolution maps.
+            least 128 samples on the shorter side, or the full image size when it is smaller; the displacement
+            is visually indistinguishable and several times faster. Pass (1.0, 1.0) for full-resolution maps.
 
         p (float): Probability of applying the transform. Default: 0.5
 
@@ -1210,8 +1207,8 @@ class WaterRefraction(BaseDistortion):
         map_resolution_range (tuple[float, float]): Range for sampling the displacement map resolution
             relative to the target size. Values below 1.0 generate lower-resolution maps and upscale
             them, trading precision for speed. None (default) uses a quarter-resolution map with at
-            least 128 samples per side, or the full image size when it is smaller; the displacement is visually
-            indistinguishable and several times faster. Pass (1.0, 1.0) for full-resolution maps.
+            least 128 samples on the shorter side, or the full image size when it is smaller; the displacement
+            is visually indistinguishable and several times faster. Pass (1.0, 1.0) for full-resolution maps.
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:

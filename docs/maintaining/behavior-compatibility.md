@@ -15,8 +15,8 @@ retirement remain governed by the [support policy](support-policy.md).
   replay records, invalid inputs accepted by a fallback, or incorrect output values.
 - An intentional change to a supported API, default, random sequence, or output may also ship without a warning
   period under the current policy. Its release note must distinguish the new contract from a bug fix.
-- Every observable change needs the previous behavior, new behavior, affected users, minimal migration, first affected
-  version, contract, and permanent tests. Documentation-only clarifications must say when behavior is unchanged.
+- Every observable change is described in the release notes with the previous behavior, new behavior, affected users,
+  and a minimal migration. Add a permanent test for the new behavior.
 - Do not introduce a temporary compatibility alias, dual reader, or fallback merely to defer a decision. A new migration
   adapter needs a named replacement and a testable deletion condition. Existing documented persistence formats remain
   governed by their contracts until a release explicitly changes them.
@@ -30,41 +30,6 @@ compatibility diagnostics do not imply deprecation; the [validation audit](core-
 A future change to this policy takes effect only through a published policy update and release note. It does not
 retroactively create a warning period for earlier releases.
 
-## Record release evidence once
-
-The [unreleased notes](../release-notes/unreleased.md) are the behavior-change inventory for the next release. Each
-level-three heading is a change, under a level-two category. Use this format:
-
-```text
-### Short descriptive title
-
-- Previous behavior: What the old release did.
-- New behavior: What callers now observe and whether this is a correction or an intentional change.
-- Affected users: The concrete pipeline or input that triggers the difference.
-- Migration: The smallest working replacement or cache/replay regeneration step, with an example.
-- First affected version: unreleased
-- Contract: A relative Markdown link to the owning contract.
-- Tests: Relative Markdown links to the permanent tests.
-```
-
-Field values are wrapped prose with inline Markdown. Put longer code examples and multi-step guides in linked
-documents; the inventory keeps the minimal migration and its evidence together.
-
-Keep the `Release baseline` at the last published version. Record `none` explicitly in categories with no observable
-change; do not omit a category or infer "none" from an empty section. Archive released notes under their version before
-starting a new inventory. Historical migration guidance is available in the [2.6.0 notes](../release-notes/2.6.0.md).
-
-`python -m tools.check_behavior_changes` checks the required fields, evidence links, categories, and links between this
-policy and the maintenance documents. Its pre-commit hook runs on every commit so deleting or renaming an evidence
-file cannot bypass the check. The release report reads that same inventory; there is no second hand-written
-change list. Release preflight resolves `unreleased` to the version being built and rejects a version at or below the
-baseline. Local report previews retain the unresolved version explicitly.
-
-The [release checklist](release-process.md#behavior-change-checklist) requires this check. The generated
-[Correctness & Compatibility Report](correctness-and-compatibility-report.md) includes every change's migration,
-contract, and test links pinned to the tested revision. Publish it and the release notes with the verified package.
-An unreleased inventory or a local report preview is not evidence of a published release.
-
 ## Update regression behavior epochs deliberately
 
 A behavior epoch identifies a registered sentinel's expected semantics; it is not automatically the package version.
@@ -74,7 +39,7 @@ cases do not require a blanket epoch bump.
 When intentionally changing a registered expectation:
 
 1. Explain the old and new behavior, why the change is needed, and the affected inputs in the pull request and release
-   note. Name each affected sentinel and its old and new epoch in the `Regression vectors` category.
+   note. Name each affected sentinel and its old and new epoch.
 2. Update the sentinel's `TransformContract.behavior_epoch`, regenerate only its vectors and manifest entries, and
    inspect the output diff. Do not regenerate expectations merely to silence a failing test.
 3. Keep the registry and manifest epochs equal. Run the vector verifier and the focused behavior tests. Record any

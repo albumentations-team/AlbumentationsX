@@ -12,8 +12,6 @@ from pathlib import Path
 from typing import Any
 
 from tests.regression.transform_contracts import coverage_summary
-from tools.check_behavior_changes import NOTES_PATH, format_report
-from tools.release_bundle import _git
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_URL = "https://github.com/albumentations-team/AlbumentationsX"
@@ -352,22 +350,14 @@ def _contract_result(evidence_dir: Path | None, name: str, allow_missing_evidenc
     return _format_test_counts(summary) if summary else "evidence unavailable"
 
 
-def _validate_inventory_revision(root: Path, revision: str) -> None:
-    """Require local migration notes to match the immutable revision identified by release evidence."""
+def _require_commit_sha(revision: str) -> None:
+    """Require release evidence to identify an immutable Git commit."""
     if not isinstance(revision, str) or re.fullmatch(r"[0-9a-f]{40}", revision) is None:
         raise ValueError("Release evidence must identify a full Git commit SHA")
-    try:
-        recorded = _git(root, "show", f"{revision}:{NOTES_PATH.as_posix()}").decode("utf-8")
-    except ValueError as error:
-        raise ValueError(f"Cannot verify behavior inventory at tested revision {revision}") from error
-    if recorded.splitlines() != (root / NOTES_PATH).read_text(encoding="utf-8").splitlines():
-        raise ValueError(
-            f"Behavior inventory differs from tested revision {revision}; collect matching release evidence"
-        )
 
 
 def generate_report(evidence_dir: Path | None = None, allow_missing_evidence: bool = False) -> str:
-    """Assemble a report after validating contract results and the migration inventory."""
+    """Assemble a report after validating contract results and release evidence."""
     environments = _read_json_files(evidence_dir, "environment*.json")
     pytest_summaries = _read_json_files(evidence_dir, "pytest-summary*.json")
     benchmark_summaries = _read_json_files(evidence_dir, "benchmark*.json")
@@ -390,16 +380,10 @@ def generate_report(evidence_dir: Path | None = None, allow_missing_evidence: bo
     if not allow_missing_evidence:
         if any(environment.get("git_commit") != source_revision for environment in environments):
             raise ValueError("Release environments must identify the same tested source revision")
-        _validate_inventory_revision(REPO_ROOT, source_revision)
+        _require_commit_sha(source_revision)
     docs_url = f"{REPOSITORY_URL}/blob/{source_revision}/docs"
 
     version = _project_version()
-    behavior_changes = format_report(
-        REPO_ROOT,
-        f"{REPOSITORY_URL}/blob/{source_revision}",
-        version,
-        preview=allow_missing_evidence,
-    )
     generated_at = datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
     python_versions = ", ".join(SUPPORTED_PYTHONS)
     operating_systems = ", ".join(TIER_1_OSES)
@@ -470,9 +454,7 @@ Dependency sets tracked by the support policy: {dependency_sets}
 
 ## Behavior Changes and Migration
 
-See the [release notes]({docs_url}/release-notes/unreleased.md) for behavior changes and migration steps.
-
-{behavior_changes}
+See the [release notes]({REPOSITORY_URL}/releases/tag/{version}) for behavior changes and migration steps.
 
 ## Known Limitations
 

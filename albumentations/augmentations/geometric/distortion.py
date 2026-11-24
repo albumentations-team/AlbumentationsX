@@ -187,6 +187,7 @@ class BaseRemapTransform(DualTransform):
 
 _AUTO_MAP_RESOLUTION = 0.25
 _AUTO_MAP_MIN_SIDE = 128  # samples on the shorter side
+_MIN_WAVELENGTH_SAMPLES = 4  # automatic WaterRefraction maps keep waves above aliasing
 
 
 def _validate_map_resolution_range(value: tuple[float, float] | None) -> tuple[float, float] | None:
@@ -1290,13 +1291,24 @@ class WaterRefraction(BaseDistortion):
         sampling: SamplingContext,
     ) -> SampledParams:
         image_shape = targets.require_aligned_spatial_shape(2)
-        _, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
-        scaled_height, scaled_width = scaled_shape
+        map_resolution, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
 
-        img_size = min(scaled_height, scaled_width)
         amplitude_frac = sampling.py_random.uniform(*self.amplitude_range)
         wavelength_frac = sampling.py_random.uniform(*self.wavelength_range)
         num_waves = sampling.py_random.randint(*self.num_waves_range)
+
+        if self.map_resolution_range is None:
+            # Waves are sampled on integer map coordinates; keep at least this many samples per wavelength.
+            required_resolution = _MIN_WAVELENGTH_SAMPLES / (wavelength_frac * min(image_shape))
+            if required_resolution > map_resolution:
+                map_resolution = min(1.0, required_resolution)
+                scaled_shape = (
+                    max(2, int(image_shape[0] * map_resolution)),
+                    max(2, int(image_shape[1] * map_resolution)),
+                )
+                sampling.applied_overrides["map_resolution_range"] = map_resolution
+        scaled_height, scaled_width = scaled_shape
+        img_size = min(scaled_height, scaled_width)
 
         sampling.applied_overrides["amplitude_range"] = amplitude_frac
         sampling.applied_overrides["wavelength_range"] = wavelength_frac

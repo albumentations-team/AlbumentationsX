@@ -325,3 +325,20 @@ def test_piecewise_affine_absolute_scale_keeps_full_image_pixels_at_automatic_re
         spreads.append(np.mean(sampled))
 
     assert 0.7 < spreads[1] / spreads[0] < 1.4
+
+
+def test_automatic_water_refraction_resolution_rises_for_short_wavelengths(monkeypatch):
+    map_shapes = []
+    upscale = fgeometric.upscale_distortion_maps
+
+    def record(map_x, map_y, image_shape, interpolation):
+        map_shapes.append(map_x.shape)
+        return upscale(map_x, map_y, image_shape, interpolation)
+
+    monkeypatch.setattr(fgeometric, "upscale_distortion_maps", record)
+    image = _make_image((1024, 1024, 3))
+
+    A.WaterRefraction(wavelength_range=(0.00390625, 0.00390625), p=1.0)(image=image)
+    A.WaterRefraction(wavelength_range=(0.1, 0.1), p=1.0)(image=image)
+
+    assert map_shapes == [(1024, 1024), (256, 256)]

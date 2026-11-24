@@ -288,11 +288,20 @@ def test_automatic_map_resolution_is_a_quarter_with_a_128_sample_floor(transform
 
 
 @pytest.mark.parametrize("transform_cls", [A.ThinPlateSpline, A.WaterRefraction, A.PiecewiseAffine])
-def test_automatic_map_resolution_scales_both_axes_equally(transform_cls):
+def test_automatic_map_resolution_scales_both_axes_equally(transform_cls, monkeypatch):
+    map_shapes = []
+    upscale = fgeometric.upscale_distortion_maps
+
+    def record(map_x, map_y, image_shape, interpolation):
+        map_shapes.append(map_x.shape)
+        return upscale(map_x, map_y, image_shape, interpolation)
+
+    monkeypatch.setattr(fgeometric, "upscale_distortion_maps", record)
     transform = transform_cls(p=1.0)
     transform(image=_make_image((256, 1024, 3)))
 
     assert transform.applied_config["map_resolution_range"] == 0.5
+    assert map_shapes == [(128, 512)]
 
 
 def test_piecewise_affine_absolute_scale_keeps_full_image_pixels_at_automatic_resolution():

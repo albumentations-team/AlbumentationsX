@@ -14,6 +14,14 @@ NaN exactly; `tests/test_nan_field_contract.py` pins it. Images, masks and volum
 leaves NaN behavior unspecified. A NaN guard on those routes is a pass that buys nothing: delete it rather than add one, and
 benchmark and test those routes on finite data. Inf and signed zero behave as before.
 
+## Speed over bit-exactness
+
+Speed is the top routing priority. Rounding-level differences (ulp-scale gaps between backends, fused versus two-rounding
+arithmetic, float32 versus float64 accumulation) are acceptable when a route is faster. Document the tolerance of the faster
+route in the docstring and the public-API row, and test it against that tolerance, not bitwise. Gross errors stay
+unacceptable: wrong saturation or overflow (`1e10 * pixel` must give 255, not 0), a wrong `std` from near-constant
+cancellation, wrong shape or dtype, or a crash on valid input.
+
 Use this workflow whenever implementing, reviewing, or profiling runtime code in Albucore or AlbumentationsX. Its
 order matters: remove work before making the remaining work faster. Treat every proposed optimization as a hypothesis
 until correctness tests and representative benchmarks support it.
@@ -218,8 +226,8 @@ globally fastest:
   including dispatch, bridges, allocations, casts, and output restoration. Float16-versus-float32 comparisons are
   mandatory diagnostics, not an independent migration blocker. Pursue missing upstream kernels when useful; do not
   remove dtype support or hide a slow route behind a kernel-only benchmark.
-- A substantial simplification may cost at most 5% on an individual public operation only when accuracy is preserved
-  and memory does not grow. For Albucore, assess this on Core public operations alone. Verify these conditions
+- A substantial simplification may cost at most 5% on an individual public operation only when the result stays within the
+  documented tolerance (see Speed over bit-exactness) and memory does not grow. For Albucore, assess this on Core public operations alone. Verify these conditions
   independently on Linux x86-64 and macOS ARM64; gains on one platform cannot compensate for regressions on another.
   For AX runtime changes that can alter executed work, the complete AX path must also have no sustained slowdown.
   For Albucore-only changes, this AX condition applies only when the user explicitly requests downstream AX

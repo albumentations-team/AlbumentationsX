@@ -506,7 +506,8 @@ def fourier_domain_adaptation(
             grayscale or RGB.
         target_img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): The target image used as a reference
             for adaptation.
-            Should have the same dimensions as the source image.
+            Should have the same dimensions as the source image; a smaller target works while the adaptation
+            window still fits it.
         beta (float): The adaptation strength, typically in the range [0, 1].
             Higher values result in stronger adaptation towards the target image's style.
 
@@ -515,7 +516,7 @@ def fourier_domain_adaptation(
             the input image.
 
     Raises:
-        ValueError: If the source and target images have different shapes.
+        ValueError: If the adaptation window, sized from the source image and beta, does not fit the target image.
 
     Note:
         - Both input images are converted to float32 for processing.

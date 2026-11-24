@@ -818,3 +818,22 @@ def test_fourier_domain_adaptation_is_finite_for_tiny_source_amplitudes():
     result = fourier_domain_adaptation(source, target, 0.3)
 
     assert np.isfinite(result).all()
+
+
+@pytest.mark.parametrize(
+    ("source_shape", "target_shape"),
+    [((11, 13, 3), (9, 17, 3)), ((64, 64, 3), (80, 70, 3)), ((40, 40, 1), (31, 52, 1))],
+)
+@pytest.mark.parametrize("beta", [0.05, 0.1, 0.2])
+def test_fourier_domain_adaptation_keeps_the_source_window_on_a_different_sized_target(
+    source_shape, target_shape, beta
+):
+    """The window is sized and placed from the source and read from the target's own shifted spectrum."""
+    rng = np.random.default_rng(137)
+    source = rng.integers(0, 256, source_shape, dtype=np.uint8)
+    target = rng.integers(0, 256, target_shape, dtype=np.uint8)
+
+    actual = fourier_domain_adaptation(source, target, beta)
+
+    expected = np.clip(_fda_full_spectrum_reference(source, target, beta), 0, 255).astype(np.uint8)
+    assert np.abs(actual.astype(np.int16) - expected).max() <= 1

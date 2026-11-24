@@ -104,6 +104,9 @@ def add_noise_by_patches(
 
 # Resolution of the inverse-CDF tables used to sample uint8 shot noise.
 _SHOT_NOISE_TABLE_BITS = 12
+# The table has 256 x (1 / scale) entries before it is collapsed; very small scales draw Poisson variates directly
+# so memory stays bounded by the image rather than by the scale.
+_SHOT_NOISE_TABLE_MAX_OUTCOMES = 1024
 
 
 def _shot_noise_table(scale: float) -> NDArray[np.uint8]:
@@ -159,9 +162,9 @@ def shot_noise(
 
     """
     input_dtype = img.dtype
-    if input_dtype.type is np.uint8:
+    if input_dtype.type is np.uint8 and np.floor(1 / scale) < _SHOT_NOISE_TABLE_MAX_OUTCOMES:
         return _shot_noise_uint8(cast("NDArray[np.uint8]", img), scale, random_generator)
-    if input_dtype.type is np.float16:
+    if input_dtype.type is np.uint8 or input_dtype.type is np.float16:
         img = convert_dtype(img, np.float32)
 
     if img.ndim == 4:

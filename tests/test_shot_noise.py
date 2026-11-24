@@ -3,6 +3,7 @@ import pytest
 
 import albumentations as A
 import albumentations.augmentations.pixel.functional as fpixel
+from albumentations.augmentations.pixel import _functional_noise as functional_noise
 from albumentations.core.tensor import numpy_to_tensor_spatial, tensor_to_numpy_spatial
 
 
@@ -71,3 +72,16 @@ def test_shot_noise_uint8_matches_poisson_output_distribution(scale, level):
     actual_pmf = np.bincount(actual, minlength=256) / num_samples
     expected_pmf = np.bincount(expected, minlength=256) / num_samples
     assert 0.5 * np.abs(actual_pmf - expected_pmf).sum() < 0.01
+
+
+def test_shot_noise_uint8_small_scale_does_not_build_an_unbounded_table(monkeypatch):
+    def fail(scale):
+        raise AssertionError("table construction should be skipped for tiny scales")
+
+    monkeypatch.setattr(functional_noise, "_shot_noise_table", fail)
+    image = np.full((4, 4, 3), 128, dtype=np.uint8)
+
+    result = fpixel.shot_noise(image, 1e-6, np.random.default_rng(137))
+
+    assert result.shape == image.shape
+    assert result.dtype == np.uint8

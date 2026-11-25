@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import math
+import py_compile
 import sys
 from importlib import import_module
+from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -19,7 +21,6 @@ from tests.helpers.tensor_memory import measure_peak_tensor_bytes
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
     from types import ModuleType
 
     from albumentations.batch.flip import FlipDirection
@@ -467,11 +468,17 @@ def test_cuda_generator_and_plan_device_boundaries() -> None:
     device = torch.device("cuda", torch.cuda.current_device())
     generator = torch.Generator(device=device).manual_seed(137)
     state = generator.get_state()
-    for size, probability in [(0, 0.5), (4, 0), (4, 1)]:
-        for mismatch in [torch.device("cpu"), torch.device("cuda", device.index + 1)]:
+    mismatches = (torch.device("cpu"), torch.device("cuda", device.index + 1), "cuda:255", f"cuda:{device.index + 256}")
+    for size, probability in [(0, 0.5), (4, 0), (4, 1), (4, 0.5)]:
+        for mismatch in mismatches:
             with pytest.raises(ValueError):
                 sample_flip(batch_size=size, direction="vertical", p=probability, device=mismatch, generator=generator)
     assert torch.equal(state, generator.get_state())
+    requested = sample_flip(batch_size=17, direction="vertical", device=str(device), generator=generator)
+    reference = torch.Generator(device=device).manual_seed(137)
+    expected = sample_flip(batch_size=17, direction="vertical", device=device, generator=reference)
+    assert torch.equal(requested.selected, expected.selected)
+    assert torch.equal(generator.get_state(), reference.get_state())
     plan = sample_flip(batch_size=2, direction="horizontal", p=0, device="cuda", generator=generator)
     assert plan.selected.device == device
     values = torch.arange(12).reshape(2, 2, 3)
@@ -558,13 +565,22 @@ def test_cuda_triton_updates_saved_tensor_and_accepts_inference() -> None:
 
 
 @pytest.mark.usefixtures("triton_flip_backend")
-def test_cuda_triton_large_batch() -> None:
-    values = torch.arange(65536 * 3, device="cuda").to(torch.uint8).view(65536, 1, 1, 3)
+@pytest.mark.parametrize(
+    ("shape", "axis"),
+    [
+        ((65536, 1, 1, 3), "horizontal"),
+        ((8, 1, 2047, 2051), "horizontal"),
+        ((16, 1, 2049, 2080), "horizontal"),
+        ((16, 1, 2049, 2080), "vertical"),
+    ],
+)
+def test_cuda_triton_large_grid(shape: tuple[int, ...], axis: FlipDirection) -> None:
+    values = torch.arange(math.prod(shape), dtype=torch.uint8, device="cuda").view(shape)
     selected = torch.arange(len(values), device=values.device) == len(values) - 1
     expected = values.clone()
-    expected[-1].copy_(_reverse(values[-1], "horizontal"))
+    expected[-1].copy_(_reverse(values[-1], axis))
     with patch.object(flipping, "_flip_cuda_indexed", side_effect=AssertionError("Unexpected fallback")):
-        assert apply_flip_(values, FlipPlan("horizontal", selected)) is values
+        assert apply_flip_(values, FlipPlan(axis, selected)) is values
     assert torch.equal(values, expected)
 
 
@@ -599,13 +615,20 @@ def test_cuda_hybrid_uses_selected_indices(kind: str, count: int) -> None:
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="Requires CUDA.")
-def test_cuda_flip_without_triton(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("missing", ["triton", "kernel_source"])
+def test_cuda_flip_with_unavailable_backend(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, missing: str) -> None:
     values = torch.arange(60, device="cuda", dtype=torch.float32).reshape(4, 1, 3, 5)
     selected = torch.tensor([True, False, False, True], device=values.device)
     expected = values.clone()
     expected[[0, 3]] = _reverse(values[[0, 3]], "horizontal")
     monkeypatch.delitem(sys.modules, "albumentations.batch._flip_cuda", raising=False)
-    monkeypatch.setitem(sys.modules, "triton", None)
+    if missing == "triton":
+        monkeypatch.setitem(sys.modules, "triton", None)
+    else:
+        pytest.importorskip("triton")
+        source = Path(flipping.__file__).with_name("_flip_cuda.py")
+        py_compile.compile(str(source), str(tmp_path / "_flip_cuda.pyc"), str(tmp_path / source.name), doraise=True)
+        monkeypatch.setattr(import_module("albumentations.batch"), "__path__", [str(tmp_path)])
     flipping._cuda_flip_backend.cache_clear()
     try:
         with patch.object(flipping, "_flip_cuda_indexed", wraps=flipping._flip_cuda_indexed) as hybrid:
@@ -664,6 +687,28 @@ def test_cuda_flip_propagates_launch_error(triton_flip_backend: ModuleType) -> N
         prepare.return_value.__getitem__.return_value.side_effect = RuntimeError("Launch failed")
         with pytest.raises(RuntimeError, match="Launch failed"):
             apply_flip_(values, plan)
+
+
+@pytest.mark.usefixtures("triton_flip_backend")
+def test_cuda_flip_error_after_write_invalidates_saved_tensor() -> None:
+    knobs = pytest.importorskip("triton.knobs")
+    values = torch.arange(3, dtype=torch.float32, device="cuda").reshape(1, 1, 1, 3)
+    expected = _reverse(values, "horizontal")
+    plan = FlipPlan("horizontal", torch.ones(1, dtype=torch.bool, device=values.device))
+    weight = torch.ones_like(values, requires_grad=True)
+    loss = (weight * values).sum()
+
+    def fail_after_launch(_metadata: object) -> None:
+        raise RuntimeError("Failed after flip launch")
+
+    with (
+        patch.object(knobs.runtime, "launch_exit_hook", fail_after_launch),
+        pytest.raises(RuntimeError, match="Failed after flip launch"),
+    ):
+        apply_flip_(values, plan)
+    assert torch.equal(values, expected)
+    with pytest.raises(RuntimeError, match="modified by an inplace operation"):
+        loss.backward()
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="Requires CUDA.")

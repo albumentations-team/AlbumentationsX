@@ -8,6 +8,7 @@ import torch
 triton: Any = import_module("triton")
 tl: Any = import_module("triton.language")
 _BLOCK_SIZE = 512
+_LARGE_GRID_PAIRS = 2**24
 _MAX_GRID_X = 2**31 - 1
 
 
@@ -57,11 +58,13 @@ def try_flip(values: torch.Tensor, selected: torch.Tensor, dim: int) -> bool:
     batch, channels, height, width = values.shape
     horizontal = dim == -1
     pairs = channels * (height * (width // 2) if horizontal else (height // 2) * width)
-    programs = batch * triton.cdiv(pairs, _BLOCK_SIZE)
+    # Wide tiles reduce selection checks on large grids. Keep smaller tiles for rows with unaligned starts.
+    block_size = 2048 if batch * pairs >= _LARGE_GRID_PAIRS and width % 32 == 0 else _BLOCK_SIZE
+    programs = batch * triton.cdiv(pairs, block_size)
     if programs > _MAX_GRID_X:
         return False
     grid = (programs, 1, 1)
-    args = (values, selected, channels, height, width, horizontal, _BLOCK_SIZE)
+    args = (values, selected, channels, height, width, horizontal, block_size)
     with torch.cuda.device(values.device):
         # Triton's specialization cache also accounts for the alignment of offset views.
         try:
@@ -71,7 +74,7 @@ def try_flip(values: torch.Tensor, selected: torch.Tensor, dim: int) -> bool:
             launch = kernel[grid]
         except Exception:  # noqa: BLE001 -- Triton and its driver use no common preparation exception.
             return False
-        # A launch error must propagate. Retrying after a write could undo the flip.
+        # The launcher can enqueue writes and then raise. Autograd must see that mutation even on error.
+        torch.autograd.graph.increment_version(values)
         launch(*args)
-    torch.autograd.graph.increment_version(values)
     return True

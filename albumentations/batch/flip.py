@@ -94,10 +94,14 @@ def _generator_device(device: torch.device | str, generator: torch.Generator) ->
     if requested.type == "cpu" and actual.type == "cpu":
         return actual
     if requested.type == "cuda" and actual.type == "cuda":
-        index = torch.cuda.current_device() if requested.index is None else requested.index
+        if isinstance(device, str) and ":" in device:
+            # torch.device can narrow an explicit index, e.g. "cuda:256" to cuda:0.
+            index = int(device.partition(":")[2])
+        else:
+            index = torch.cuda.current_device() if requested.index is None else requested.index
         if index == actual.index:
             return actual
-    raise ValueError(f"Flip device {requested} must match the CPU or CUDA generator device {actual}.")
+    raise ValueError(f"Flip device {device} must match the CPU or CUDA generator device {actual}.")
 
 
 def _sample_selection(count: int, probability: float, device: torch.device, generator: torch.Generator) -> torch.Tensor:
@@ -194,7 +198,7 @@ def _cuda_flip_backend(device: torch.device) -> ModuleType | None:
         return None
     try:
         return import_module("albumentations.batch._flip_cuda")
-    except (AttributeError, ImportError, OSError, RuntimeError):
+    except (AttributeError, ImportError, OSError, RuntimeError, ValueError):
         return None
 
 

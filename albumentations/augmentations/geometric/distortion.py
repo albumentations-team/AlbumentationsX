@@ -28,7 +28,7 @@ target types.
 """
 
 from collections.abc import Mapping
-from typing import Annotated, Any, ClassVar, Literal, Self
+from typing import Annotated, Any, ClassVar, Literal, Self, cast
 
 import numpy as np
 from albucore import remap
@@ -185,6 +185,17 @@ class BaseRemapTransform(DualTransform):
         raise NotImplementedError(f"{self.__class__.__name__} must implement apply_to_keypoints")
 
 
+_AUTO_MAP_RESOLUTION = 0.25
+_AUTO_MAP_MIN_SIDE = 128  # samples on the shorter side
+_MIN_WAVELENGTH_SAMPLES = 4  # automatic WaterRefraction maps keep waves above aliasing
+
+
+def _validate_map_resolution_range(value: tuple[float, float] | None) -> tuple[float, float] | None:
+    if value is None:
+        return None
+    return nondecreasing(cast("tuple[float, float]", check_range_bounds(0, 1, min_inclusive=False)(value)))
+
+
 class BaseDistortion(BaseRemapTransform):
     """Provide map-resolution sampling and direct/mask keypoint policies for remap-based distortion subclasses that
     do not define their own continuous inverse.
@@ -197,9 +208,8 @@ class BaseDistortion(BaseRemapTransform):
     class InitSchema(BaseRemapTransform.InitSchema):
         keypoint_remapping_method: Literal["direct", "mask"]
         map_resolution_range: Annotated[
-            tuple[float, float],
-            AfterValidator(check_range_bounds(0, 1, min_inclusive=False)),
-            AfterValidator(nondecreasing),
+            tuple[float, float] | None,
+            AfterValidator(_validate_map_resolution_range),
         ]
 
     def __init__(
@@ -211,7 +221,7 @@ class BaseDistortion(BaseRemapTransform):
         border_mode: BorderModeType = CV2_BORDER_CONSTANT,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
-        map_resolution_range: tuple[float, float] = (1.0, 1.0),
+        map_resolution_range: tuple[float, float] | None = (1.0, 1.0),
     ):
         super().__init__(
             interpolation=interpolation,
@@ -229,6 +239,14 @@ class BaseDistortion(BaseRemapTransform):
         image_shape: tuple[int, int],
         sampling: SamplingContext,
     ) -> tuple[float, tuple[int, int]]:
+        height, width = image_shape
+        if self.map_resolution_range is None:
+            # Automatic: a quarter-resolution map, but never fewer than 128 samples on the shorter side (a smaller
+            # image keeps its full size). One factor for both axes keeps displacement and wavelengths isotropic.
+            map_resolution = min(1.0, max(_AUTO_MAP_RESOLUTION, _AUTO_MAP_MIN_SIDE / min(height, width)))
+            sampling.applied_overrides["map_resolution_range"] = map_resolution
+            return map_resolution, (max(2, int(height * map_resolution)), max(2, int(width * map_resolution)))
+
         min_resolution, max_resolution = self.map_resolution_range
         map_resolution = (
             min_resolution
@@ -237,7 +255,6 @@ class BaseDistortion(BaseRemapTransform):
         )
         sampling.applied_overrides["map_resolution_range"] = map_resolution
 
-        height, width = image_shape
         scaled_shape = (
             max(2, int(height * map_resolution)),
             max(2, int(width * map_resolution)),
@@ -492,7 +509,9 @@ class PiecewiseAffine(BaseDistortion):
             Default: "mask"
         map_resolution_range (tuple[float, float]): Range for sampling the displacement map resolution
             relative to the target size. Values below 1.0 generate lower-resolution maps and upscale
-            them, trading precision for speed. Default: (1.0, 1.0).
+            them, trading precision for speed. None (default) uses a quarter-resolution map with at
+            least 128 samples on the shorter side, or the full image size when it is smaller; the displacement
+            is visually indistinguishable and several times faster. Pass (1.0, 1.0) for full-resolution maps.
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
@@ -551,7 +570,7 @@ class PiecewiseAffine(BaseDistortion):
         border_mode: BorderModeType = CV2_BORDER_CONSTANT,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
-        map_resolution_range: tuple[float, float] = (1.0, 1.0),
+        map_resolution_range: tuple[float, float] | None = None,
     ):
         super().__init__(
             p=p,
@@ -577,7 +596,7 @@ class PiecewiseAffine(BaseDistortion):
         sampling: SamplingContext,
     ) -> SampledParams:
         image_shape = targets.require_aligned_spatial_shape(2)
-        _, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
+        map_resolution, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
 
         nb_rows = np.clip(sampling.py_random.randint(*self.nb_rows_range), 2, None)
         nb_cols = np.clip(sampling.py_random.randint(*self.nb_cols_range), 2, None)
@@ -590,7 +609,8 @@ class PiecewiseAffine(BaseDistortion):
         map_x, map_y = fgeometric.create_piecewise_affine_maps(
             image_shape=scaled_shape,
             grid=(nb_rows, nb_cols),
-            scale=scale,
+            # An absolute scale is in full-image pixels; the maps are built, then upscaled by 1 / map_resolution.
+            scale=scale * map_resolution if self.absolute_scale else scale,
             absolute_scale=self.absolute_scale,
             random_generator=sampling.random_generator,
         )
@@ -702,7 +722,7 @@ class OpticalDistortion(BaseDistortion):
         border_mode: BorderModeType = CV2_BORDER_CONSTANT,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
-        map_resolution_range: tuple[float, float] = (1.0, 1.0),
+        map_resolution_range: tuple[float, float] | None = (1.0, 1.0),
     ):
         super().__init__(
             interpolation=interpolation,
@@ -894,7 +914,7 @@ class GridDistortion(BaseDistortion):
         border_mode: BorderModeType = CV2_BORDER_CONSTANT,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
-        map_resolution_range: tuple[float, float] = (1.0, 1.0),
+        map_resolution_range: tuple[float, float] | None = (1.0, 1.0),
     ):
         super().__init__(
             interpolation=interpolation,
@@ -1009,7 +1029,9 @@ class ThinPlateSpline(BaseDistortion):
             Default: "mask"
         map_resolution_range (tuple[float, float]): Range for sampling the displacement map resolution
             relative to the target size. Values below 1.0 generate lower-resolution maps and upscale
-            them, trading precision for speed. Default: (1.0, 1.0).
+            them, trading precision for speed. None (default) uses a quarter-resolution map with at
+            least 128 samples on the shorter side, or the full image size when it is smaller; the displacement
+            is visually indistinguishable and several times faster. Pass (1.0, 1.0) for full-resolution maps.
 
         p (float): Probability of applying the transform. Default: 0.5
 
@@ -1101,7 +1123,7 @@ class ThinPlateSpline(BaseDistortion):
         border_mode: BorderModeType = CV2_BORDER_CONSTANT,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
-        map_resolution_range: tuple[float, float] = (1.0, 1.0),
+        map_resolution_range: tuple[float, float] | None = None,
     ):
         super().__init__(
             interpolation=interpolation,
@@ -1185,7 +1207,9 @@ class WaterRefraction(BaseDistortion):
         fill_mask (float | tuple): Fill value for mask borders. Default: 0.
         map_resolution_range (tuple[float, float]): Range for sampling the displacement map resolution
             relative to the target size. Values below 1.0 generate lower-resolution maps and upscale
-            them, trading precision for speed. Default: (1.0, 1.0).
+            them, trading precision for speed. None (default) uses a quarter-resolution map with at
+            least 128 samples on the shorter side, or the full image size when it is smaller; the displacement
+            is visually indistinguishable and several times faster. Pass (1.0, 1.0) for full-resolution maps.
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
@@ -1242,7 +1266,7 @@ class WaterRefraction(BaseDistortion):
         border_mode: BorderModeType = CV2_BORDER_REFLECT_101,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
-        map_resolution_range: tuple[float, float] = (1.0, 1.0),
+        map_resolution_range: tuple[float, float] | None = None,
         p: float = 0.5,
     ):
         super().__init__(
@@ -1267,13 +1291,24 @@ class WaterRefraction(BaseDistortion):
         sampling: SamplingContext,
     ) -> SampledParams:
         image_shape = targets.require_aligned_spatial_shape(2)
-        _, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
-        scaled_height, scaled_width = scaled_shape
+        map_resolution, scaled_shape = self._get_map_resolution_and_shape(image_shape, sampling)
 
-        img_size = min(scaled_height, scaled_width)
         amplitude_frac = sampling.py_random.uniform(*self.amplitude_range)
         wavelength_frac = sampling.py_random.uniform(*self.wavelength_range)
         num_waves = sampling.py_random.randint(*self.num_waves_range)
+
+        if self.map_resolution_range is None:
+            # Waves are sampled on integer map coordinates; keep at least this many samples per wavelength.
+            required_resolution = _MIN_WAVELENGTH_SAMPLES / (wavelength_frac * min(image_shape))
+            if required_resolution > map_resolution:
+                map_resolution = min(1.0, required_resolution)
+                scaled_shape = (
+                    max(2, int(image_shape[0] * map_resolution)),
+                    max(2, int(image_shape[1] * map_resolution)),
+                )
+                sampling.applied_overrides["map_resolution_range"] = map_resolution
+        scaled_height, scaled_width = scaled_shape
+        img_size = min(scaled_height, scaled_width)
 
         sampling.applied_overrides["amplitude_range"] = amplitude_frac
         sampling.applied_overrides["wavelength_range"] = wavelength_frac
@@ -1391,7 +1426,7 @@ class PixelSpread(BaseDistortion):
         border_mode: BorderModeType = CV2_BORDER_REFLECT_101,
         fill: tuple[float, ...] | float = 0,
         fill_mask: tuple[float, ...] | float = 0,
-        map_resolution_range: tuple[float, float] = (1.0, 1.0),
+        map_resolution_range: tuple[float, float] | None = (1.0, 1.0),
         p: float = 0.5,
     ):
         super().__init__(

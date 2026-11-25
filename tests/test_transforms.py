@@ -1,5 +1,7 @@
 import copy
 import json
+import multiprocessing
+import pickle
 import random
 from collections.abc import Callable
 from functools import partial
@@ -219,12 +221,16 @@ def test_semantic_mask_interpolation(augmentation_cls, params, image):
     np.testing.assert_array_equal(np.unique(data["mask"]), np.array([0, 64, 128, 192]))
 
 
-def __test_multiprocessing_support_proc(args):
-    x, transform = args
-    data = {"image": x}
+def _input_data(transform, image):
+    data = {"image": image}
     if isinstance(transform, A.GuidedCoarseDropout):
-        data[transform.region_key] = np.ones(x.shape[:2], dtype=np.uint8)
-    return transform(**data)
+        data[transform.region_key] = np.ones(image.shape[:2], dtype=np.uint8)
+    return data
+
+
+def _spawned_call(args):
+    pipeline, image, invocation_seed = args
+    return pipeline(image=image, invocation_seed=invocation_seed)["image"]
 
 
 @pytest.mark.parametrize(
@@ -247,15 +253,27 @@ def __test_multiprocessing_support_proc(args):
         },
     ),
 )
-def test_multiprocessing_support(mp_pool, augmentation_cls, params):
-    """Checks whether we can use augmentations in multiprocessing environments"""
+def test_pickled_transform_reproduces_output(augmentation_cls, params):
+    """A pickled pipeline, as sent to DataLoader workers, reproduces the original output."""
     image = SQUARE_FLOAT_IMAGE if augmentation_cls == A.FromFloat else SQUARE_UINT8_IMAGE
-    aug = augmentation_cls(p=1, **params)
+    transform = augmentation_cls(p=1, **params)
+    pipeline = A.Compose([transform], strict=True)
+    restored = pickle.loads(pickle.dumps(pipeline))  # noqa: S301 - round-trip of a locally created Compose
+    data = _input_data(transform, image)
 
-    mp_pool.map(
-        __test_multiprocessing_support_proc,
-        ((x, aug) for x in [image] * 10),
-    )
+    expected = pipeline(**data, invocation_seed=137)["image"]
+    actual = restored(**data, invocation_seed=137)["image"]
+
+    np.testing.assert_array_equal(actual, expected)
+
+
+def test_pipeline_runs_in_spawned_worker():
+    """One real spawn round trip covers unpickling and executing a pipeline in a fresh interpreter."""
+    pipeline = A.Compose([A.Affine(rotate=(-30, 30), p=1)], strict=True)
+    with multiprocessing.get_context("spawn").Pool(1) as pool:
+        actual = pool.map(_spawned_call, [(pipeline, SQUARE_UINT8_IMAGE, 137)])[0]
+
+    np.testing.assert_array_equal(actual, pipeline(image=SQUARE_UINT8_IMAGE, invocation_seed=137)["image"])
 
 
 def test_force_apply():

@@ -7,7 +7,6 @@ from typing import Annotated, Any, Literal
 
 import numpy as np
 from numpy.typing import NDArray
-from pydantic import BaseModel
 from pydantic.functional_validators import AfterValidator
 
 from albumentations.augmentations.pixel import functional as fpixel
@@ -132,12 +131,6 @@ class ImageCompression(ImageOnlyTransform):
                 "image_type": image_type,
             }
         )
-
-
-class InterpolationPydantic(BaseModel):
-    upscale: FullInterpolationType
-
-    downscale: FullInterpolationType
 
 
 class Downscale(ImageOnlyTransform):

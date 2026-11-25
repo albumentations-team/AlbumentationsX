@@ -8,19 +8,15 @@ and provide a centralized location for commonly used values.
 """
 
 from enum import Enum
-from typing import Final, Literal, NewType, NotRequired, TypeAlias, TypeVar
+from typing import Final, Literal, NewType, TypeAlias, TypeVar
 
 import cv2
 import numpy as np
 from numpy import float32, uint8
 from numpy.typing import NDArray
-from typing_extensions import TypedDict
 
 Number = TypeVar("Number", float, int)
 ArrayT = TypeVar("ArrayT", bound=np.ndarray)
-
-IntNumType = np.integer | NDArray[np.integer]
-FloatNumType = np.floating | NDArray[np.floating]
 
 # Supported image dtypes; array rank is independent of dtype.
 ImageUInt8: TypeAlias = NDArray[uint8]
@@ -34,15 +30,8 @@ VolumeType: TypeAlias = NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.flo
 # corresponding values so static checkers can validate transform configuration domains.
 CV2_INTER_NEAREST: Literal[0] = 0
 CV2_INTER_LINEAR: Literal[1] = 1
-CV2_INTER_CUBIC: Literal[2] = 2
 CV2_INTER_AREA: Literal[3] = 3
-CV2_INTER_LANCZOS4: Literal[4] = 4
-CV2_INTER_LINEAR_EXACT: Literal[5] = 5
-CV2_INTER_NEAREST_EXACT: Literal[6] = 6
 CV2_BORDER_CONSTANT: Literal[0] = 0
-CV2_BORDER_REPLICATE: Literal[1] = 1
-CV2_BORDER_REFLECT: Literal[2] = 2
-CV2_BORDER_WRAP: Literal[3] = 3
 CV2_BORDER_REFLECT_101: Literal[4] = 4
 InterpolationType: TypeAlias = Literal[0, 1, 2, 3, 4]
 FullInterpolationType: TypeAlias = Literal[0, 1, 2, 3, 4, 5, 6]
@@ -74,29 +63,6 @@ D4_INVERSE: dict[D4GroupElement, D4GroupElement] = {
     "t": "t",
     "hvt": "hvt",
 }
-
-
-class ReferenceImage(TypedDict):
-    """TypedDict for reference image data: image (required), optional mask, bbox, keypoints.
-    Use for reference-based transforms (e.g. style transfer, exemplar).
-
-    A typed dictionary defining the structure of reference image data used within
-    Albumentations, including optional components like masks, bounding boxes,
-    and keypoints.
-
-    Args:
-        image (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): The reference image array (uint8 or
-            float32).
-        mask (np.ndarray | None): Optional mask array.
-        bbox (tuple[float, ...] | np.ndarray | None): Optional bounding box coordinates.
-        keypoints (tuple[float, ...] | np.ndarray | None): Optional keypoint coordinates.
-
-    """
-
-    image: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]
-    mask: NotRequired[np.ndarray]
-    bbox: NotRequired[tuple[float, ...] | np.ndarray]
-    keypoints: NotRequired[tuple[float, ...] | np.ndarray]
 
 
 class Targets(Enum):
@@ -167,9 +133,6 @@ VECTOR_FIELD_TARGET_INFO_BY_NAME: Final = {
     target.name.lower(): shape for target, shape in VECTOR_FIELD_TARGET_INFO.items()
 }
 VECTOR_FIELD_TARGET_NAMES: Final = frozenset(VECTOR_FIELD_TARGET_INFO_BY_NAME)
-VECTOR_FIELD_2D_TARGET_NAMES: Final = frozenset(
-    name for name, (spatial_rank, _) in VECTOR_FIELD_TARGET_INFO_BY_NAME.items() if spatial_rank == 2
-)
 VECTOR_FIELD_3D_TARGET_NAMES: Final = frozenset(
     name for name, (spatial_rank, _) in VECTOR_FIELD_TARGET_INFO_BY_NAME.items() if spatial_rank == 3
 )
@@ -209,14 +172,8 @@ MONO_CHANNEL_DIMENSIONS = 2
 NUM_RGB_CHANNELS = 3
 
 PAIR = 2
-TWO = 2
-THREE = 3
-FOUR = 4
 SEVEN = 7
 EIGHT = 8
-THREE_SIXTY = 360
-
-BIG_INTEGER = np.iinfo(np.uint32).max
 MAX_RAIN_ANGLE = 45  # Maximum angle for rain augmentation in degrees
 
 LENGTH_RAW_BBOX = 4

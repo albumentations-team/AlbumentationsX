@@ -90,10 +90,6 @@ class SerializableMeta(ABCMeta):
         """
         return get_shortest_class_fullname(cls)
 
-    @classmethod
-    def _to_dict(cls) -> dict[str, Any]:
-        return {}
-
 
 class Serializable(metaclass=SerializableMeta):
     @classmethod

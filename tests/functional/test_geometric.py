@@ -997,3 +997,45 @@ class TestComputeAffineWarpOutputShape:
             assert len(shape) == 3
         else:
             assert len(shape) == 2
+
+
+def _distort_image_full_frame_reference(image, mesh, interpolation):
+    from albumentations.augmentations.geometric._functional_grid import prepare_grid_elastic_geometry
+
+    geometry = prepare_grid_elastic_geometry(mesh)
+    height, width = image.shape[:2]
+    result = np.zeros_like(image)
+    mask = np.zeros((height, width), dtype=np.uint8)
+    for matrix, contour in zip(geometry.matrices, geometry.destination_contours, strict=True):
+        warped = cv2.warpPerspective(image, matrix, (width, height), flags=interpolation)
+        mask[:] = 0
+        cv2.fillConvexPoly(mask, contour, 255)
+        result = cv2.copyTo(warped, mask, result)
+    return result
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("interpolation", [cv2.INTER_NEAREST, cv2.INTER_LINEAR])
+def test_distort_image_matches_full_frame_warps(dtype, interpolation):
+    rng = np.random.default_rng(137)
+    height, width, grid = 90, 120, 5
+    image = rng.integers(0, 256, (height, width, 3), dtype=np.uint8)
+    image = image if dtype == np.uint8 else image.astype(np.float32) / 255
+    xs, ys = np.linspace(0, width, grid + 1), np.linspace(0, height, grid + 1)
+    rows = []
+    for row in range(grid):
+        for col in range(grid):
+            x1, x2, y1, y2 = xs[col], xs[col + 1], ys[row], ys[row + 1]
+            jitter = rng.uniform(-6, 6, 8)
+            corners = np.array([x1, y1, x2, y1, x2, y2, x1, y2]) + jitter
+            rows.append([x1, y1, x2, y2, *corners])
+    mesh = np.array(rows)
+
+    result = fgeometric.distort_image(image, mesh, interpolation)
+
+    expected = _distort_image_full_frame_reference(image, mesh, interpolation)
+    if interpolation == cv2.INTER_NEAREST:
+        # Composing the shifted matrix can flip the rounding of a few boundary samples.
+        assert (result != expected).mean() < 1e-3
+    else:
+        np.testing.assert_allclose(result, expected, rtol=0, atol=1 if dtype == np.uint8 else 1e-4)

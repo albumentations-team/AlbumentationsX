@@ -11,8 +11,9 @@ from typing import Any, Literal, Protocol, cast
 
 import cv2
 import numpy as np
-from albucore import add_weighted, clip, convert_dtype, get_num_channels, mean_std
+from albucore import add_weighted, clip, convert_dtype, get_num_channels, match_histograms_uint8, mean_std
 from numpy.typing import NDArray
+from scipy import fft
 
 import albumentations.augmentations.geometric.functional as fgeometric
 from albumentations.augmentations.pixel._functional_shared import (
@@ -505,7 +506,8 @@ def fourier_domain_adaptation(
             grayscale or RGB.
         target_img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): The target image used as a reference
             for adaptation.
-            Should have the same dimensions as the source image.
+            Should have the same dimensions as the source image; a smaller target works while the adaptation
+            window still fits it.
         beta (float): The adaptation strength, typically in the range [0, 1].
             Higher values result in stronger adaptation towards the target image's style.
 
@@ -514,7 +516,7 @@ def fourier_domain_adaptation(
             the input image.
 
     Raises:
-        ValueError: If the source and target images have different shapes.
+        ValueError: If the adaptation window, sized from the source image and beta, does not fit the target image.
 
     Note:
         - Both input images are converted to float32 for processing.
@@ -557,34 +559,42 @@ def fourier_domain_adaptation(
         convert_dtype(target_img, np.float32) if target_img.dtype.type is np.float16 else target_img.astype(np.float32)
     )
 
-    num_channels = src_img.shape[-1]
+    height, width = src_img.shape[:2]
+    fft_src = fft.fft2(src_img, axes=(0, 1))
+    fft_trg = fft.fft2(trg_img, axes=(0, 1))
 
-    # Prepare container for the output image
-    src_in_trg = np.zeros_like(src_img)
+    # Only the centered low-frequency window changes. Map it back to unshifted FFT coordinates
+    # instead of shifting the whole spectrum.
+    border = int(np.floor(min(height, width) * beta))
+    center_x, center_y = fgeometric.center((height, width))
+    h1, h2 = max(0, int(center_y - border)), min(int(center_y + border), height)
+    w1, w2 = max(0, int(center_x - border)), min(int(center_x + border), width)
+    if h2 > h1 and w2 > w1:
+        window = np.ix_((np.arange(h1, h2) - height // 2) % height, (np.arange(w1, w2) - width // 2) % width)
+        trg_height, trg_width = trg_img.shape[:2]
+        if h2 > trg_height or w2 > trg_width:
+            raise ValueError(
+                f"The adaptation window ({h2 - h1}, {w2 - w1}) does not fit the target image of shape "
+                f"{(trg_height, trg_width)}",
+            )
+        trg_window = np.ix_(
+            (np.arange(h1, h2) - trg_height // 2) % trg_height,
+            (np.arange(w1, w2) - trg_width // 2) % trg_width,
+        )
+        block = fft_src[window]
+        amp_src = np.abs(block)
+        amp_trg = np.abs(fft_trg[trg_window])
+        # Keep the source phase; a zero source amplitude has phase 0, so it takes the target amplitude as is.
+        # The ratio can exceed float32 range for tiny nonzero source amplitudes, so form it in float64.
+        scale = np.divide(
+            amp_trg.astype(np.float64),
+            amp_src.astype(np.float64),
+            out=np.zeros(amp_src.shape, dtype=np.float64),
+            where=amp_src > 0,
+        )
+        fft_src[window] = np.where(amp_src > 0, block.astype(np.complex128) * scale, amp_trg)
 
-    for channel_id in range(num_channels):
-        # Perform FFT on each channel
-        fft_src = np.fft.fft2(src_img[:, :, channel_id])
-        fft_trg = np.fft.fft2(trg_img[:, :, channel_id])
-
-        # Shift the zero frequency component to the center
-        fft_src_shifted = np.fft.fftshift(fft_src)
-        fft_trg_shifted = np.fft.fftshift(fft_trg)
-
-        amp_src, pha_src = np.abs(fft_src_shifted), np.angle(fft_src_shifted)
-        amp_trg = np.abs(fft_trg_shifted)
-
-        # Mutate the amplitude part of the source with the target
-        mutated_amp = low_freq_mutate(amp_src.copy(), amp_trg, beta)
-
-        # Combine the mutated amplitude with the original phase
-        fft_src_mutated = np.fft.ifftshift(mutated_amp * np.exp(1j * pha_src))
-
-        # Perform inverse FFT
-        src_in_trg_channel = np.fft.ifft2(fft_src_mutated)
-
-        # Store the result in the corresponding channel of the output image
-        src_in_trg[:, :, channel_id] = np.real(src_in_trg_channel)
+    src_in_trg = fft.ifft2(fft_src, axes=(0, 1)).real
 
     result = clip(src_in_trg, img.dtype)
     return result[..., 0] if is_channel_less else result
@@ -681,32 +691,10 @@ def match_histograms(
 
     """
     image, input_dtype = to_uint8_working_image(image)
-    if reference.dtype.type is not np.uint8:
-        reference = convert_dtype(reference, np.uint8)
+    reference_uint8 = np.asarray(
+        reference if reference.dtype.type is np.uint8 else convert_dtype(reference, np.uint8),
+        dtype=np.uint8,
+    )
 
-    matched = np.empty(image.shape, dtype=np.uint8)
-
-    num_channels = image.shape[-1]
-
-    for channel in range(num_channels):
-        matched_channel = _match_cumulative_cdf(image[..., channel], reference[..., channel]).astype(np.uint8)
-        matched[..., channel] = matched_channel
-
+    matched = match_histograms_uint8(image, reference_uint8)
     return restore_uint8_working_image(matched, input_dtype)
-
-
-def _match_cumulative_cdf(source: np.ndarray, template: np.ndarray) -> np.ndarray:
-    src_lookup = source.reshape(-1)
-    src_counts = np.bincount(src_lookup)
-    tmpl_counts = np.bincount(template.reshape(-1))
-
-    # omit values where the count was 0
-    tmpl_values = np.nonzero(tmpl_counts)[0]
-    tmpl_counts = tmpl_counts[tmpl_values]
-
-    # calculate normalized quantiles for each array
-    src_quantiles = np.cumsum(src_counts) / source.size
-    tmpl_quantiles = np.cumsum(tmpl_counts) / template.size
-
-    interp_a_values = cast("np.ndarray", np.interp(src_quantiles, tmpl_quantiles, tmpl_values))
-    return interp_a_values[src_lookup].reshape(source.shape).astype(np.uint8)

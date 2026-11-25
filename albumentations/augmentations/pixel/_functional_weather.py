@@ -379,20 +379,26 @@ def add_fog(
     """
     img, input_dtype = to_uint8_working_image(img)
     result = img.copy()
+    height, width = result.shape[:2]
+    alpha = alpha_coef * fog_intensity
 
     for (x, y), radius in zip(fog_particle_positions, fog_particle_radiuses, strict=True):
-        overlay = result.copy()
+        # Outside the circle the overlay equals the result, and blending a pixel with itself returns it unchanged,
+        # so only the circle's bounding box needs blending.
+        y_min, y_max = max(0, y - radius), min(height, y + radius + 1)
+        x_min, x_max = max(0, x - radius), min(width, x + radius + 1)
+        if y_min >= y_max or x_min >= x_max:
+            continue
+        region = result[y_min:y_max, x_min:x_max]
+        overlay = region.copy()
         cv2.circle(
             overlay,
-            center=(x, y),
+            center=(x - x_min, y - y_min),
             radius=radius,
             color=(255, 255, 255),
             thickness=-1,
         )
-
-        # Progressive blending
-        alpha = alpha_coef * fog_intensity
-        cv2.addWeighted(overlay, alpha, result, 1 - alpha, 0, dst=result)
+        cv2.addWeighted(overlay, alpha, region, 1 - alpha, 0, dst=region)
 
     # Final subtle blur
     blur_size = max(3, min(img.shape[:2]) // 30)
@@ -403,6 +409,26 @@ def add_fog(
     cv2.GaussianBlur(blur_view, (blur_size, blur_size), 0, dst=blur_view)
 
     return restore_uint8_working_image(clip(result, out=result), input_dtype)
+
+
+def _grow_bounds(bounds: list[int], x: int, y: int, radius: int, width: int, height: int) -> None:
+    """Extend [x_min, y_min, x_max, y_max] by the image-clipped box of a circle, with a one-pixel margin."""
+    bounds[0] = min(bounds[0], max(0, x - radius - 1))
+    bounds[1] = min(bounds[1], max(0, y - radius - 1))
+    bounds[2] = max(bounds[2], min(width, x + radius + 2))
+    bounds[3] = max(bounds[3], min(height, y + radius + 2))
+
+
+def _blend_roi_inplace(overlay: np.ndarray, output: np.ndarray, alpha: float, bounds: list[int]) -> None:
+    x_min, y_min, x_max, y_max = bounds
+    if x_max <= x_min or y_max <= y_min:
+        return
+    output[y_min:y_max, x_min:x_max] = add_weighted(
+        np.ascontiguousarray(overlay[y_min:y_max, x_min:x_max]),
+        alpha,
+        np.ascontiguousarray(output[y_min:y_max, x_min:x_max]),
+        1 - alpha,
+    )
 
 
 @_maybe_process_in_chunks
@@ -476,11 +502,16 @@ def add_sun_flare_overlay(
     weighted_brightness = 0.0
     total_radius_length = 0.0
 
+    height, width = img.shape[:2]
+    # Where overlay equals output the blend returns the pixel unchanged, so blend only the bounding box
+    # of the circles drawn so far.
+    bounds = [width, height, 0, 0]
     for alpha, (x, y), rad3, circle_color in circles:
         weighted_brightness += alpha * rad3
         total_radius_length += rad3
         cv2.circle(overlay, (x, y), rad3, circle_color, -1)
-        output = add_weighted(overlay, alpha, output, 1 - alpha)
+        _grow_bounds(bounds, x, y, rad3, width, height)
+        _blend_roi_inplace(overlay, output, alpha, bounds)
 
     point = [int(x) for x in flare_center]
 
@@ -495,10 +526,12 @@ def add_sun_flare_overlay(
 
     rad = np.linspace(1, src_radius, num=num_times)
 
+    bounds = [width, height, 0, 0]
     for i in range(num_times):
         cv2.circle(overlay, point, int(rad[i]), src_color, -1)
         alp = alpha[num_times - i - 1] * alpha[num_times - i - 1] * alpha[num_times - i - 1]
-        output = add_weighted(overlay, alp, output, 1 - alp)
+        _grow_bounds(bounds, point[0], point[1], int(rad[i]), width, height)
+        _blend_roi_inplace(overlay, output, alp, bounds)
 
     return restore_uint8_working_image(output, input_dtype)
 
@@ -848,8 +881,9 @@ def spatter_rain_batch(
     input_dtype = images.dtype
     result = _prepare_spatter_batch(images)
     np.add(result, rain, out=result)
-    np.clip(result, 0, 1, out=result)
-    return convert_dtype(result, dtype=input_dtype) if input_dtype == np.uint8 else result
+    if input_dtype == np.uint8:  # uint8 conversion saturates
+        return convert_dtype(result, dtype=input_dtype)
+    return clip(result, out=result)
 
 
 def spatter_mud_batch(
@@ -873,8 +907,9 @@ def spatter_mud_batch(
     result = _prepare_spatter_batch(images)
     np.multiply(result, non_mud, out=result)
     np.add(result, mud, out=result)
-    np.clip(result, 0, 1, out=result)
-    return convert_dtype(result, dtype=input_dtype) if input_dtype == np.uint8 else result
+    if input_dtype == np.uint8:  # uint8 conversion saturates
+        return convert_dtype(result, dtype=input_dtype)
+    return clip(result, out=result)
 
 
 def get_rain_params(

@@ -2,6 +2,7 @@ import json
 import warnings
 from typing import Any
 
+import cv2
 import numpy as np
 import pytest
 from albucore.filter3d import gaussian_blur3d
@@ -70,6 +71,37 @@ def test_glass_blur_float_uint8_diff_less_than_two(val_uint8: list[int]) -> None
 
     # The difference between the results of float32 and uint8 will be at most 2.
     assert np.all(diff <= 2.0)
+
+
+def _glass_blur_fast_reference(image: np.ndarray, sigma: float, max_delta: int, iterations: int, dxy: np.ndarray):
+    blurred = cv2.GaussianBlur(image, ksize=(0, 0), sigmaX=sigma).reshape(image.shape)
+    swap_image = blurred[..., 0] if image.shape[-1] == 1 else blurred
+    hs = np.arange(image.shape[0] - max_delta, max_delta, -1)
+    ws = np.arange(image.shape[1] - max_delta, max_delta, -1)
+    h = np.tile(hs, ws.shape[0])
+    w = np.repeat(ws, hs.shape[0])
+    for i in range(iterations):
+        dy = dxy[:, i, 0]
+        dx = dxy[:, i, 1]
+        swap_image[h, w], swap_image[h + dy, w + dx] = swap_image[h + dy, w + dx], swap_image[h, w]
+    return cv2.GaussianBlur(blurred, ksize=(0, 0), sigmaX=sigma).reshape(image.shape)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("channels", [1, 3, 5])
+def test_glass_blur_fast_matches_two_axis_swap_reference(dtype: np.dtype, channels: int) -> None:
+    rng = np.random.default_rng(137)
+    image = rng.integers(0, 256, (41, 37, channels), dtype=np.uint8)
+    if dtype is np.float32:
+        image = image.astype(np.float32) / 255
+    sigma, max_delta, iterations = 0.7, 3, 3
+    num_swaps = len(range(41 - max_delta, max_delta, -1)) * len(range(37 - max_delta, max_delta, -1))
+    # Narrow offsets make many swaps share destinations, which pins the write order.
+    dxy = rng.integers(-max_delta, max_delta, size=(num_swaps, iterations, 2))
+
+    result = fblur.glass_blur(image, sigma, max_delta, iterations, dxy, "fast")
+
+    np.testing.assert_array_equal(result, _glass_blur_fast_reference(image, sigma, max_delta, iterations, dxy))
 
 
 @pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])

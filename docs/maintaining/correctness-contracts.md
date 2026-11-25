@@ -47,6 +47,15 @@ composition/tensor route, or a deliberate golden compatibility contract.
 - Serialization contract: supported transforms round-trip through
   serialization and replay checks.
 
+## Box-aware RandomResizedCrop sampling
+
+When `RandomResizedCrop.bbox_preservation` is `"one_box"`, the sampled crop contains one uniformly
+selected box across active bbox fields. The `"all_boxes"` mode contains every box. With no boxes, the
+transform uses ordinary random-resized-crop sampling. The configured `scale` and aspect-ratio bounds
+are relaxed only when needed to satisfy the selected box constraint; `BboxParams` filters still apply
+after the crop. The [permanent transform tests](../../tests/test_random_resized_crop.py) cover both
+selection modes, aliases, replay, and geometry.
+
 ## ImageCompression RGBA
 
 For an image with exactly four channels, JPEG and WebP return four channels of the input dtype at every quality
@@ -64,15 +73,6 @@ JPEG and WebP return `H×W×1` at the input dtype, including when the width is f
 shape on both applied and skipped calls, including grayscale frames in `images`, `volume` and `volumes`.
 [`test_image_compression_gray_width_four`](../../tests/functional/test_functional.py) ·
 [`test_image_compression_standalone_grayscale_shape`](../../tests/test_augmentations.py).
-
-## Box-aware RandomResizedCrop sampling
-
-When `RandomResizedCrop.bbox_preservation` is `"one_box"`, the sampled crop contains one uniformly
-selected box across active bbox fields. The `"all_boxes"` mode contains every box. With no boxes, the
-transform uses ordinary random-resized-crop sampling. The configured `scale` and aspect-ratio bounds
-are relaxed only when needed to satisfy the selected box constraint; `BboxParams` filters still apply
-after the crop. The [permanent transform tests](../../tests/test_random_resized_crop.py) cover both
-selection modes, aliases, replay, and geometry.
 
 ## Macenko stain estimation
 

@@ -109,6 +109,16 @@ Output points outside the input pixel or voxel cells are NaN regardless of the i
 therefore adds NaN field values. A known displacement endpoint can remain finite outside the visible output when the
 transform can still compute its mapped location.
 
+### Albucore functions that may receive a field
+
+Fields are the only AX data that contains NaN. Field targets may call only `remap`, `remap3d` and the
+`albucore.tensor_bridge` layout helpers (`numpy_to_tensor_layout`, `numpy_to_tensor_storage`,
+`tensor_to_numpy_channel_last`, `tensor_to_numpy_storage`); Albucore keeps NaN exact in these. Every other Albucore value
+operation (arithmetic, dtype conversion, clipping, LUT, statistics, normalization, flip, rotate, crop, pad, resize) is
+image, mask and volume only, and its result for NaN input is unspecified. Field code lives in
+`albumentations/augmentations/geometric/_functional_vector_fields.py`, and `tests/test_vector_field_albucore_boundary.py`
+fails when it imports any other Albucore name.
+
 ## Numerical limits and cost
 
 Interpolating transforms compute field components in float32 and cast the result back to the input dtype. If a result

@@ -4,6 +4,24 @@
 
 Albucore routers run after the caller has validated the input contract. Upstream code owns container, rank, layout, dtype, device, contiguity, autograd state, and operation-control validation. NumPy uses channel-last layouts; CPU Tensor layouts are explicit. Albucore keeps only dispatch branches and kernel-required normalization needed to select and execute the benchmarked implementation; hot paths must not repeat those checks.
 
+## NaN contract
+
+Only vector fields carry NaN (float16/float32 arrays where NaN marks an invalid vector). The split is by function:
+AlbumentationsX calls only `remap`, `remap3d` and the `tensor_bridge` helpers (`numpy_to_tensor_layout`,
+`numpy_to_tensor_storage`, `tensor_to_numpy_channel_last`, `tensor_to_numpy_storage`) on fields, so only these must keep
+NaN exactly; `tests/test_nan_field_contract.py` pins it. Images, masks and volumes contain no NaN, so every other operation
+(arithmetic, quantization, statistics, normalization, LUT, flip, rotate, crop, pad, resize) assumes finite input and
+leaves NaN behavior unspecified. A NaN guard on those routes is a pass that buys nothing: delete it rather than add one, and
+benchmark and test those routes on finite data. Inf and signed zero behave as before.
+
+## Speed over bit-exactness
+
+Speed is the top routing priority. Rounding-level differences (ulp-scale gaps between backends, fused versus two-rounding
+arithmetic, float32 versus float64 accumulation) are acceptable when a route is faster. Document the tolerance of the faster
+route in the docstring and the public-API row, and test it against that tolerance, not bitwise. Gross errors stay
+unacceptable: wrong saturation or overflow (`1e10 * pixel` must give 255, not 0), a wrong `std` from near-constant
+cancellation, wrong shape or dtype, or a crash on valid input.
+
 Use this workflow whenever implementing, reviewing, or profiling runtime code in Albucore or AlbumentationsX. Its
 order matters: remove work before making the remaining work faster. Treat every proposed optimization as a hypothesis
 until correctness tests and representative benchmarks support it.
@@ -208,8 +226,8 @@ globally fastest:
   including dispatch, bridges, allocations, casts, and output restoration. Float16-versus-float32 comparisons are
   mandatory diagnostics, not an independent migration blocker. Pursue missing upstream kernels when useful; do not
   remove dtype support or hide a slow route behind a kernel-only benchmark.
-- A substantial simplification may cost at most 5% on an individual public operation only when accuracy is preserved
-  and memory does not grow. For Albucore, assess this on Core public operations alone. Verify these conditions
+- A substantial simplification may cost at most 5% on an individual public operation only when the result stays within the
+  documented tolerance (see Speed over bit-exactness) and memory does not grow. For Albucore, assess this on Core public operations alone. Verify these conditions
   independently on Linux x86-64 and macOS ARM64; gains on one platform cannot compensate for regressions on another.
   For AX runtime changes that can alter executed work, the complete AX path must also have no sustained slowdown.
   For Albucore-only changes, this AX condition applies only when the user explicitly requests downstream AX
@@ -340,7 +358,8 @@ does not justify an unreviewed output change.
 ## Benchmark every candidate, including rejected ones
 
 Use the repository benchmark skill and policy. CPU comparisons run with exactly one thread per process for every
-candidate. Disable OpenCV internal parallelism with `cv2.setNumThreads(0)` and, when used, set both Torch intra-op and
+candidate, including quick ad-hoc checks. Production runs Albucore under AX in PyTorch DataLoader workers with one
+thread each, while Albucore itself is measured as is, without AX or DataLoader. Disable OpenCV internal parallelism with `cv2.setNumThreads(0)` and, when used, set both Torch intra-op and
 inter-op threads to one before work starts. Set `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS`,
 `VECLIB_MAXIMUM_THREADS`, and `NUMEXPR_NUM_THREADS` to `1` before importing numerical libraries. Record effective
 library thread settings; do not rely on environment variables alone. Benchmark additional thread counts only when the

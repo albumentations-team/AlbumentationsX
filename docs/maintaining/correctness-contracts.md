@@ -47,6 +47,14 @@ composition/tensor route, or a deliberate golden compatibility contract.
 - Serialization contract: supported transforms round-trip through
   serialization and replay checks.
 
+## Optional Hub loading
+
+[`Compose.from_pretrained`](../../albumentations/core/hub_mixin.py) loads valid local configurations without
+`huggingface_hub`. Loading a Hub repository ID without that optional dependency raises `ImportError` with an
+installation command. An existing local directory missing its configuration retains `FileNotFoundError` with a
+dependency hint. The [offline Hub tests](../../tests/test_hub_optional_dependency.py) cover these routes, the
+existing push guard, and installed-Hub download forwarding and HTTP errors.
+
 ## Box-aware RandomResizedCrop sampling
 
 When `RandomResizedCrop.bbox_preservation` is `"one_box"`, the sampled crop contains one uniformly
@@ -87,6 +95,28 @@ from its statistics and preserves zero padding. Fused reductions use tiled FP32 
 numerical tolerances. Unsupported inputs and recognized Triton compilation failures use the PyTorch implementation.
 The [batch normalization tests](../../tests/test_batch_normalization.py) check parity, constant planes, layout,
 and fallback behavior.
+
+## Settings loading
+
+Package import loads settings from defaults, then merges every entry of `settings.json` only when its JSON root is
+an object, then applies environment overrides. Object values and unknown keys are preserved without validation or
+coercion. Non-object roots contribute no general settings.
+
+One compatibility exception preserves telemetry opt-outs in legacy arrays accepted by the previous dictionary
+merge. If the entire array converts to a dictionary and its final `telemetry` value is falsey (`false`, `0`, `null`,
+`""`, `[]`, or `{}`), telemetry is set to Boolean `false` in memory. The last duplicate key wins; other entries are
+ignored. Missing or truthy telemetry values do not change defaults. If any element prevents conversion, the entire
+array is ignored, including a valid opt-out prefix. Loading never partially applies an array. Prefer an object such
+as `{"telemetry": false}` for settings; this exception does not restore general array settings.
+
+`ALBUMENTATIONS_NO_TELEMETRY` and `ALBUMENTATIONS_OFFLINE` independently disable telemetry when set to `1` or
+case-insensitive `true`, overriding file settings. Other environment values do not undo a stored opt-out. Without an
+object setting, preserved legacy opt-out, or disabling environment override, telemetry defaults to `true`.
+Loading never rewrites the file or creates a missing settings file. Missing files, malformed JSON, JSON decoder
+limits on integer digits or nesting depth, and `OSError` while opening or reading a file all retain defaults before
+environment overrides. Text encoding errors still propagate. The [settings import tests](../../tests/test_settings_import.py)
+exercise JSON fallback and environment overrides in isolated processes, simulate a read error, and check Compose/client delivery with a transport
+spy and an enabled positive control without contacting a telemetry endpoint.
 
 ## Stability Modes
 

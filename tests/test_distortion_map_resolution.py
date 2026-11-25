@@ -275,3 +275,70 @@ def test_low_map_resolution_applies_consistently_to_targets(transform_cls, param
     assert result["mask"].shape == mask.shape
     assert len(result["bboxes"]) == len(result["bbox_labels"])
     assert len(result["keypoints"]) == len(result["keypoint_labels"])
+
+
+@pytest.mark.parametrize("transform_cls", [A.ThinPlateSpline, A.WaterRefraction, A.PiecewiseAffine])
+@pytest.mark.parametrize(("size", "expected_map_side"), [(64, 64), (128, 128), (256, 128), (512, 128), (1024, 256)])
+def test_automatic_map_resolution_is_a_quarter_with_a_128_sample_floor(transform_cls, size, expected_map_side):
+    transform = transform_cls(p=1.0)
+    transform(image=_make_image((size, size, 3)))
+
+    assert transform_cls().map_resolution_range is None
+    assert transform.applied_config["map_resolution_range"] == expected_map_side / size
+
+
+@pytest.mark.parametrize("transform_cls", [A.ThinPlateSpline, A.WaterRefraction, A.PiecewiseAffine])
+def test_automatic_map_resolution_scales_both_axes_equally(transform_cls, monkeypatch):
+    map_shapes = []
+    upscale = fgeometric.upscale_distortion_maps
+
+    def record(map_x, map_y, image_shape, interpolation):
+        map_shapes.append(map_x.shape)
+        return upscale(map_x, map_y, image_shape, interpolation)
+
+    monkeypatch.setattr(fgeometric, "upscale_distortion_maps", record)
+    transform = transform_cls(p=1.0)
+    transform(image=_make_image((256, 1024, 3)))
+
+    assert transform.applied_config["map_resolution_range"] == 0.5
+    assert map_shapes == [(128, 512)]
+
+
+def test_piecewise_affine_absolute_scale_keeps_full_image_pixels_at_automatic_resolution():
+    image = _make_image((1024, 1024, 3))
+    spreads = []
+    for resolution in ((1.0, 1.0), None):
+        transform = A.PiecewiseAffine(
+            scale_range=(8, 8),
+            nb_rows_range=(8, 8),
+            nb_cols_range=(8, 8),
+            absolute_scale=True,
+            map_resolution_range=resolution,
+            p=1.0,
+        )
+        sampled = []
+        for seed in range(8):
+            transform.set_random_seed(seed)
+            replay = A.ReplayCompose([transform], seed=seed)(image=image)["replay"]["transforms"][0]["params"]
+            maps = SampledParams.from_dict(replay).params_for("image")
+            sampled.append((maps["map_x"] - np.arange(1024, dtype=np.float32)[None, :]).std())
+        spreads.append(np.mean(sampled))
+
+    assert 0.7 < spreads[1] / spreads[0] < 1.4
+
+
+def test_automatic_water_refraction_resolution_rises_for_short_wavelengths(monkeypatch):
+    map_shapes = []
+    upscale = fgeometric.upscale_distortion_maps
+
+    def record(map_x, map_y, image_shape, interpolation):
+        map_shapes.append(map_x.shape)
+        return upscale(map_x, map_y, image_shape, interpolation)
+
+    monkeypatch.setattr(fgeometric, "upscale_distortion_maps", record)
+    image = _make_image((1024, 1024, 3))
+
+    A.WaterRefraction(wavelength_range=(0.00390625, 0.00390625), p=1.0)(image=image)
+    A.WaterRefraction(wavelength_range=(0.1, 0.1), p=1.0)(image=image)
+
+    assert map_shapes == [(1024, 1024), (256, 256)]

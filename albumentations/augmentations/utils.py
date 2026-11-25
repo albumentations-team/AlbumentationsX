@@ -368,41 +368,6 @@ class PCA:
         total_variance = reduce_sum(self.explained_variance_)
         return self.explained_variance_ / total_variance
 
-    def cumulative_explained_variance_ratio(self) -> np.ndarray:
-        """Return cumulative fraction of variance explained (monotonic 0 to <= 1). Useful for
-        choosing n_components to retain e.g. 95% variance. Raises if not fitted.
-
-        Returns the cumulative sum of explained variance ratios. This is useful
-        for determining how many components are needed to explain a desired
-        amount of variance in the data.
-
-        Returns:
-            np.ndarray: Array of shape (n_components,) containing the cumulative
-                fraction of variance explained. The i-th element is the total
-                variance explained by the first i+1 components.
-
-        Raises:
-            ValueError: If the model has not been fitted yet (via explained_variance_ratio).
-
-        Note:
-            - Values are monotonically increasing from 0 to <= 1.0
-            - Useful for choosing n_components to retain desired variance
-            - Common thresholds are 0.95 or 0.99 (95% or 99% of variance)
-
-        Examples:
-            >>> import numpy as np
-            >>> from albumentations.augmentations.utils import PCA
-            >>> data = np.random.randn(100, 10)
-            >>> pca = PCA()  # Keep all components
-            >>> pca.fit(data)
-            >>> cumsum = pca.cumulative_explained_variance_ratio()
-            >>> # Find how many components explain 95% of variance
-            >>> n_components_95 = np.argmax(cumsum >= 0.95) + 1
-            >>> print(f"Need {n_components_95} components for 95% variance")
-
-        """
-        return np.cumsum(self.explained_variance_ratio())
-
 
 def handle_empty_array(param_name: str) -> Callable[[F], F]:
     """Decorator: return empty array when the named array param is empty; else call

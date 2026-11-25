@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Literal, cast
 
 from numpy.typing import NDArray
+from scipy import special
 
 from ._functional_shared import (
     MAX_VALUES_BY_DTYPE,
@@ -101,6 +102,48 @@ def add_noise_by_patches(
     return result
 
 
+# Resolution of the inverse-CDF tables used to sample uint8 shot noise.
+_SHOT_NOISE_TABLE_BITS = 12
+# The table has 256 x (1 / scale) entries before it is collapsed; very small scales draw Poisson variates directly
+# so memory stays bounded by the image rather than by the scale.
+_SHOT_NOISE_TABLE_MAX_OUTCOMES = 1024
+
+
+def _shot_noise_table(scale: float) -> NDArray[np.uint8]:
+    """Per input level, a table of 2**12 uint8 outputs that is uniform over the Poisson outcomes.
+
+    A pixel at level l draws k ~ Poisson((l/255)**2.2 / scale) and outputs the uint8 of
+    clip(k * scale, 0, 1) ** (1 / 2.2). Outcomes are collapsed to uint8 values, so a uniform draw in
+    [0, 2**12) indexes the inverse CDF with probabilities resolved to 2**-12.
+    """
+    size = 1 << _SHOT_NOISE_TABLE_BITS
+    num_outcomes = int(np.floor(1 / scale)) + 1  # k >= num_outcomes always saturates to 1
+    levels = (np.arange(256, dtype=np.float32) / 255) ** np.float32(2.2)
+    lam = levels.astype(np.float64) / scale + 1e-6
+    cdf = special.pdtr(np.arange(num_outcomes)[None, :], lam[:, None])
+    bounds = np.empty((256, num_outcomes + 2), dtype=np.int64)
+    bounds[:, 0] = 0
+    bounds[:, 1:-1] = np.rint(cdf * size)
+    bounds[:, -1] = size
+    outputs = np.rint(255 * np.clip(np.arange(num_outcomes) * scale, 0, 1) ** (1 / 2.2)).astype(np.uint8)
+    outputs = np.append(outputs, np.uint8(255))
+    counts = np.diff(np.maximum.accumulate(bounds, axis=1), axis=1)
+    return np.repeat(np.tile(outputs, 256), counts.ravel()).reshape(256, size)
+
+
+def _shot_noise_uint8(
+    img: NDArray[np.uint8],
+    scale: float,
+    random_generator: np.random.Generator,
+) -> NDArray[np.uint8]:
+    """Sample uint8 shot noise from a per-level table instead of drawing one Poisson variate per element."""
+    table = _shot_noise_table(scale).ravel()
+    draws = random_generator.integers(0, 1 << _SHOT_NOISE_TABLE_BITS, size=img.shape, dtype=np.uint16)
+    index = img.astype(np.uint32) << _SHOT_NOISE_TABLE_BITS
+    index |= draws
+    return table.take(index)
+
+
 def shot_noise(
     img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
     scale: float,
@@ -119,6 +162,8 @@ def shot_noise(
 
     """
     input_dtype = img.dtype
+    if input_dtype.type is np.uint8 and np.floor(1 / scale) < _SHOT_NOISE_TABLE_MAX_OUTCOMES:
+        return _shot_noise_uint8(cast("NDArray[np.uint8]", img), scale, random_generator)
     if input_dtype.type is np.uint8 or input_dtype.type is np.float16:
         img = convert_dtype(img, np.float32)
 

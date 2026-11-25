@@ -33,7 +33,7 @@ requirements:
     - pydantic>=2.12.4
     - typing-extensions>=4.9.0
     - opencv-python-headless>=5.1.0.95
-    - albucore==0.3.11
+    - albucore==0.3.13
     - numkong>=7.8.7
     - stringzilla>=5.3.2
 

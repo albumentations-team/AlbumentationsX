@@ -1018,46 +1018,6 @@ def process_cell_geometry(
     return result
 
 
-def shift_cell_coordinates(
-    processed_item_geom: ProcessedMosaicItem,
-    placement_coords: tuple[int, int, int, int],
-) -> ProcessedMosaicItem:
-    """Shift bbox and keypoint coords by placement offset onto final canvas. Returns
-    ProcessedMosaicItem with image, mask, shifted bboxes and keypoints.
-
-    Args:
-        processed_item_geom (ProcessedMosaicItem): The output from process_cell_geometry.
-        placement_coords (tuple[int, int, int, int]): The (x1, y1, x2, y2) placement on the final canvas.
-
-    Returns: (ProcessedMosaicItem): A dictionary with keys 'bboxes' and 'keypoints', containing the shifted
-        numpy arrays (potentially empty).
-
-    """
-    tgt_x1, tgt_y1, _, _ = placement_coords
-
-    shifted_bboxes = None
-    shifted_keypoints = None
-
-    bboxes_geom = processed_item_geom.get("bboxes")
-    if bboxes_geom is not None and np.asarray(bboxes_geom).size > 0:
-        bboxes_geom_arr = np.asarray(bboxes_geom)  # Ensure it's an array
-        bbox_shift_vector = np.array([tgt_x1, tgt_y1, tgt_x1, tgt_y1], dtype=np.int32)
-        shifted_bboxes = fgeometric.shift_bboxes(bboxes_geom_arr, bbox_shift_vector)
-
-    keypoints_geom = processed_item_geom.get("keypoints")
-    if keypoints_geom is not None and np.asarray(keypoints_geom).size > 0:
-        keypoints_geom_arr = np.asarray(keypoints_geom)  # Ensure it's an array
-        kp_shift_vector = np.array([tgt_x1, tgt_y1, 0], dtype=keypoints_geom_arr.dtype)
-        shifted_keypoints = fgeometric.shift_keypoints(keypoints_geom_arr, kp_shift_vector)
-
-    return {
-        "bboxes": shifted_bboxes,
-        "keypoints": shifted_keypoints,
-        "image": processed_item_geom["image"],
-        "mask": processed_item_geom.get("mask"),
-    }
-
-
 def assemble_mosaic_from_processed_cells(
     processed_cells: dict[tuple[int, int, int, int], dict[str, Any]],
     target_shape: tuple[int, ...],  # Use full canvas shape (H, W) or (H, W, C)

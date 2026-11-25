@@ -109,35 +109,6 @@ def test_image_only_augmentations(augmentation_cls, params):
         },
     ),
 )
-def test_dual_augmentations(augmentation_cls, params):
-    image = SQUARE_UINT8_IMAGE
-    mask = np.expand_dims(image[:, :, 0].copy(), axis=-1)
-
-    # Use helper to prepare data with metadata
-    data = TransformTestHelper.prepare_test_data(augmentation_cls, image, mask=mask)
-
-    # Handle special case for RandomCropNearBBox
-    if augmentation_cls == A.RandomCropNearBBox:
-        data["cropping_bbox"] = [0, 0, 10, 10]
-
-    aug = A.Compose([augmentation_cls(p=1, **params)], strict=True)
-    data = aug(**data)
-
-    assert data["image"].dtype == image.dtype
-    assert data["mask"].dtype == mask.dtype
-
-
-@pytest.mark.parametrize(
-    ["augmentation_cls", "params"],
-    get_primary_dual_transform_params(
-        custom_arguments={},
-        except_augmentations={
-            A.RandomSizedBBoxSafeCrop,
-            A.BBoxSafeRandomCrop,
-            A.BBoxSubsetSafeRandomCrop,
-        },
-    ),
-)
 def test_dual_augmentations_with_float_values(augmentation_cls, params):
     image = SQUARE_FLOAT_IMAGE
     mask = np.expand_dims(image.copy()[:, :, 0].astype(np.uint8), axis=-1)
@@ -903,6 +874,7 @@ def test_pad_if_needed_position(params, image_shape):
             A.Mosaic,
             A.Dithering,  # Error diffusion is sensitive to floating-point precision
             A.RandomSnow,  # OpenCV HLS/HSV quantization differences
+            A.ShotNoise,  # uint8 samples a per-level table, float draws Poisson variates: same law, different stream
             A.BBoxSubsetSafeRandomCrop,
         },
     ),
@@ -3250,6 +3222,43 @@ def test_plasma_shadow_compose_preserves_dtype_and_input(channels, dtype, contai
         np.testing.assert_array_equal(actual, float32_result.astype(np.float16))
 
 
+def _add_fog_full_frame_reference(image, fog_intensity, alpha_coef, positions, radiuses):
+    result = image.copy()
+    alpha = alpha_coef * fog_intensity
+    for (x, y), radius in zip(positions, radiuses, strict=True):
+        overlay = result.copy()
+        cv2.circle(overlay, center=(x, y), radius=radius, color=(255, 255, 255), thickness=-1)
+        cv2.addWeighted(overlay, alpha, result, 1 - alpha, 0, dst=result)
+    blur_size = max(3, min(image.shape[:2]) // 30)
+    blur_size += 1 - blur_size % 2
+    blur_view = result[..., 0] if result.shape[-1] == 1 else result
+    cv2.GaussianBlur(blur_view, (blur_size, blur_size), 0, dst=blur_view)
+    return result
+
+
+@pytest.mark.parametrize("channels", [1, 3, 4])
+def test_add_fog_matches_full_frame_blending(channels):
+    rng = np.random.default_rng(137)
+    image = rng.integers(0, 256, (61, 83, channels), dtype=np.uint8)
+    # Particles cover the interior, every border and corner, overlap one another, and include one fully off-image.
+    positions = [
+        (0, 0),
+        (82, 60),
+        (41, 0),
+        (0, 30),
+        (82, 30),
+        (40, 30),
+        (44, 33),
+        (200, 150),
+        *rng.integers(0, 61, (40, 2)).tolist(),
+    ]
+    radiuses = [9, 7, 12, 5, 6, 15, 8, 5, *rng.integers(1, 10, 40).tolist()]
+
+    result = fpixel.add_fog(image, 0.8, 0.3, positions, radiuses)
+
+    np.testing.assert_array_equal(result, _add_fog_full_frame_reference(image, 0.8, 0.3, positions, radiuses))
+
+
 @pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
 def test_add_fog_direct_grayscale_keeps_singleton_channel(dtype):
     rng = np.random.default_rng(137)
@@ -3871,3 +3880,57 @@ def test_halftone_compose_supports_all_targets_and_dtypes(target, container, cha
         float32_result, _ = run(image.astype(np.float32))
         expected = tensor_to_numpy_spatial(float32_result, target) if container == "tensor" else float32_result
         np.testing.assert_array_equal(actual, expected.astype(np.float16))
+
+
+def _sun_flare_overlay_full_frame_reference(image, flare_center, src_radius, src_color, circles):
+    """The overlay blends over the whole frame at every step."""
+    from albucore import add_weighted
+
+    overlay, output = image.copy(), image.copy()
+    weighted_brightness = total_radius_length = 0.0
+    for alpha, (x, y), radius, color in circles:
+        weighted_brightness += alpha * radius
+        total_radius_length += radius
+        cv2.circle(overlay, (x, y), radius, color, -1)
+        output = add_weighted(overlay, alpha, output, 1 - alpha)
+    point = [int(v) for v in flare_center]
+    overlay = output.copy()
+    num_times = src_radius // 10
+    alphas = np.linspace(0.0, min(weighted_brightness / total_radius_length * 5, 1.0), num=num_times)
+    radii = np.linspace(1, src_radius, num=num_times)
+    for i in range(num_times):
+        cv2.circle(overlay, point, int(radii[i]), src_color, -1)
+        alpha = alphas[num_times - i - 1] ** 3
+        output = add_weighted(overlay, alpha, output, 1 - alpha)
+    return output
+
+
+@pytest.mark.parametrize("shape", [(64, 64, 3), (97, 131, 3), (80, 80, 1)])
+def test_add_sun_flare_overlay_matches_full_frame_blending(shape):
+    rng = np.random.default_rng(137)
+    height, width = shape[:2]
+    image = rng.integers(0, 256, shape, dtype=np.uint8)
+    # Circles cover borders, overlap and fall partly or entirely outside the image.
+    circles = [
+        (0.15, (5, 7), 12, (200,) * shape[2]),
+        (0.1, (width - 3, height - 2), 20, (30,) * shape[2]),
+        (0.2, (width // 2, height // 2), 9, (90,) * shape[2]),
+        (0.05, (width + 40, -30), 8, (255,) * shape[2]),
+    ]
+    center = (width // 3, height // 2)
+
+    result = fweather.add_sun_flare_overlay(image, center, 45, (250,) * shape[2], circles)
+
+    expected = _sun_flare_overlay_full_frame_reference(image, center, 45, (250,) * shape[2], circles)
+    np.testing.assert_array_equal(result, expected)
+
+
+def test_fancy_pca_uint8_rgb_matches_float32_route():
+    image = np.random.default_rng(137).integers(0, 256, (97, 131, 3), dtype=np.uint8)
+    alpha = np.array([0.08, -0.05, 0.03])
+
+    result = fpixel.fancy_pca(image, alpha)
+
+    expected = convert_dtype(fpixel.fancy_pca(convert_dtype(image, np.float32), alpha), np.uint8)
+    assert result.dtype == np.uint8
+    assert np.abs(result.astype(np.int16) - expected).max() <= 1

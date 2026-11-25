@@ -4133,6 +4133,20 @@ class TestPosterizeBitwise:
 
         np.testing.assert_array_equal(result, expected)
 
+    @pytest.mark.parametrize("view", ["crop", "flipped"])
+    def test_per_channel_bits_strided_input_uint8(self, view):
+        rng = np.random.default_rng(137)
+        base = rng.integers(0, 256, (24, 30, 5), dtype=np.uint8)
+        img = base[3:19, 4:25] if view == "crop" else base[:, ::-1]
+        original = img.copy()
+        bits = [1, 3, 4, 6, 7]
+        masks = np.array([~np.uint8(2 ** (8 - channel_bits) - 1) for channel_bits in bits], dtype=np.uint8)
+
+        result = fpixel.posterize(img, bits)
+
+        np.testing.assert_array_equal(result, original & masks)
+        np.testing.assert_array_equal(img, original)
+
 
 class TestToGrayDesaturationUint8FastPath:
     """Verify uint16 bit-shift fast path matches float32 reference."""

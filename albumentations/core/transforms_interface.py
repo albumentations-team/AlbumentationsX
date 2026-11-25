@@ -404,7 +404,6 @@ class BasicTransform(InvocationRngOwner, Serializable, metaclass=CombinedMeta):
         Callable[..., Any],
     ]  # mapping for targets (plus additional targets) and methods for which they depend
     _transform_init_args_names_cache: ClassVar[tuple[str, ...] | None] = None
-    call_backup = None
     interpolation: int
     fill_mask: tuple[float, ...] | float | None
     # replay mode params

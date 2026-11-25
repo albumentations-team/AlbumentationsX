@@ -485,6 +485,17 @@ def test_match_histograms_identity(shape, dtype):
     np.testing.assert_allclose(result, image, rtol=1e-5, atol=1e-8)
 
 
+@pytest.mark.parametrize("channels", [1, 3, 5])
+def test_match_histograms_matches_skimage(channels):
+    rng = np.random.default_rng(137)
+    source = rng.integers(0, 256, (37, 41, channels), dtype=np.uint8)
+    reference = rng.integers(20, 200, (23, 29, channels), dtype=np.uint8)
+
+    actual = our_match_histograms(source, reference)
+
+    np.testing.assert_array_equal(actual, skimage_match_histograms(source, reference, channel_axis=-1).astype(np.uint8))
+
+
 def test_match_histograms_different_shapes():
     source = generate_random_image((100, 100, 3), np.uint8)
     reference = generate_random_image((50, 50, 3), np.uint8)
@@ -757,3 +768,72 @@ def test_direct_domain_adaptation_preserves_grayscale_channel_representation(
     np.testing.assert_array_equal(source, original)
     np.testing.assert_array_equal(reference, reference_before)
     assert actual.dtype == dtype
+
+
+def _fda_full_spectrum_reference(source, target, beta):
+    """Shift, mutate and unshift the whole spectrum per channel in float64."""
+    height, width = source.shape[:2]
+    border = int(np.floor(min(height, width) * beta))
+    center_y, center_x = (height - 1) / 2, (width - 1) / 2
+    h1, h2 = max(0, int(center_y - border)), min(int(center_y + border), height)
+    w1, w2 = max(0, int(center_x - border)), min(int(center_x + border), width)
+    result = np.empty(source.shape, dtype=np.float64)
+    for channel in range(source.shape[-1]):
+        fft_src = np.fft.fftshift(np.fft.fft2(source[..., channel].astype(np.float64)))
+        amp_trg = np.abs(np.fft.fftshift(np.fft.fft2(target[..., channel].astype(np.float64))))
+        amp = np.abs(fft_src)
+        amp[h1:h2, w1:w2] = amp_trg[h1:h2, w1:w2]
+        result[..., channel] = np.fft.ifft2(np.fft.ifftshift(amp * np.exp(1j * np.angle(fft_src)))).real
+    return result
+
+
+@pytest.mark.parametrize("shape", [(64, 64, 3), (33, 47, 3), (50, 31, 1), (40, 40, 5)])
+@pytest.mark.parametrize("beta", [0.0, 0.05, 0.3, 1.0])
+def test_fourier_domain_adaptation_matches_full_spectrum_reference(shape, beta):
+    rng = np.random.default_rng(137)
+    source = rng.integers(0, 256, shape, dtype=np.uint8)
+    target = rng.integers(0, 256, shape, dtype=np.uint8)
+    # A zero-amplitude source bin inside the window must take the target amplitude.
+    source[...] = source[:1, :1]
+    source[: shape[0] // 2] = rng.integers(0, 256, source[: shape[0] // 2].shape, dtype=np.uint8)
+
+    actual = fourier_domain_adaptation(source, target, beta)
+
+    expected = np.clip(_fda_full_spectrum_reference(source, target, beta), 0, 255).astype(np.uint8)
+    assert np.abs(actual.astype(np.int16) - expected).max() <= 1
+
+
+def test_fourier_domain_adaptation_rejects_a_target_smaller_than_the_window():
+    source = np.zeros((64, 64, 3), dtype=np.uint8)
+    target = np.zeros((32, 32, 3), dtype=np.uint8)
+
+    with pytest.raises(ValueError, match="does not fit the target"):
+        fourier_domain_adaptation(source, target, 0.1)
+
+
+def test_fourier_domain_adaptation_is_finite_for_tiny_source_amplitudes():
+    source = np.full((8, 8, 1), 1e-40, dtype=np.float32)
+    target = np.ones((8, 8, 1), dtype=np.float32)
+
+    result = fourier_domain_adaptation(source, target, 0.3)
+
+    assert np.isfinite(result).all()
+
+
+@pytest.mark.parametrize(
+    ("source_shape", "target_shape"),
+    [((11, 13, 3), (9, 17, 3)), ((64, 64, 3), (80, 70, 3)), ((40, 40, 1), (31, 52, 1))],
+)
+@pytest.mark.parametrize("beta", [0.05, 0.1, 0.2])
+def test_fourier_domain_adaptation_keeps_the_source_window_on_a_different_sized_target(
+    source_shape, target_shape, beta
+):
+    """The window is sized and placed from the source and read from the target's own shifted spectrum."""
+    rng = np.random.default_rng(137)
+    source = rng.integers(0, 256, source_shape, dtype=np.uint8)
+    target = rng.integers(0, 256, target_shape, dtype=np.uint8)
+
+    actual = fourier_domain_adaptation(source, target, beta)
+
+    expected = np.clip(_fda_full_spectrum_reference(source, target, beta), 0, 255).astype(np.uint8)
+    assert np.abs(actual.astype(np.int16) - expected).max() <= 1

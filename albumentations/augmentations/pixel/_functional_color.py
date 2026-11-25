@@ -234,10 +234,10 @@ def posterize(
         result = cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", uint8_img & mask)
         return restore_uint8_working_image(cast("ImageUInt8", result), input_dtype)
 
-    result_img = np.empty_like(uint8_img)
-    for i, channel_bits in enumerate(bits_array):
-        mask = ~np.uint8(2 ** (8 - int(channel_bits)) - 1)
-        np.bitwise_and(uint8_img[..., i], mask, out=result_img[..., i])
+    channel_masks = ~(np.left_shift(np.uint8(1), 8 - bits_array) - np.uint8(1))
+    # One contiguous mask row per image row keeps the AND a single SIMD pass instead of one strided pass per channel.
+    rows = uint8_img.reshape(-1, uint8_img.shape[-2] * uint8_img.shape[-1])
+    result_img = np.bitwise_and(rows, np.tile(channel_masks, uint8_img.shape[-2])).reshape(uint8_img.shape)
 
     result = cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", result_img)
     return restore_uint8_working_image(cast("ImageUInt8", result), input_dtype)
@@ -1422,10 +1422,10 @@ def colorize(
         else np.array([black, mid, white], dtype=np.float32) / 255.0
     )
     out = np.empty((*img.shape[:-1], 3), dtype=np.float32)
-    gray_clipped = cast("NDArray[np.float16 | np.float32]", np.clip(img, 0.0, 1.0))
+    # np.interp holds the end values outside the [0, 1] anchors, so no clip is needed.
     for color_channel in range(3):
         out[..., color_channel : color_channel + 1] = np.interp(
-            gray_clipped, anchor_intensity_float, anchor_color_float[:, color_channel]
+            img, anchor_intensity_float, anchor_color_float[:, color_channel]
         )
     return convert_dtype(out, dtype=img.dtype)
 

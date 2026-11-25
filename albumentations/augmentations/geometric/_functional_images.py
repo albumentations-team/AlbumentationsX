@@ -855,22 +855,35 @@ def distort_image(
     source = image[..., None] if channel_less else image
     distorted_image = np.zeros(source.shape, dtype=source.dtype)
     height, width = source.shape[:2]
-    mask = np.zeros((height, width), dtype=np.uint8)
 
     for matrix, contour in zip(geometry.matrices, geometry.destination_contours, strict=True):
+        # Warp and copy only the bounding box of the destination cell: nothing outside it is ever written.
+        box_x, box_y, box_w, box_h = cv2.boundingRect(contour)
+        x_min, y_min = max(0, box_x), max(0, box_y)
+        x_max, y_max = min(width, box_x + box_w + 1), min(height, box_y + box_h + 1)
+        if x_max <= x_min or y_max <= y_min:
+            continue
+
+        shift = np.array([[1, 0, -x_min], [0, 1, -y_min], [0, 0, 1]], dtype=np.float64)
         warped = warp_perspective(
             source,
-            matrix,
-            dsize=(width, height),
+            shift @ matrix,
+            dsize=(x_max - x_min, y_max - y_min),
             flags=interpolation,
             border_mode=cv2.BORDER_CONSTANT,
             border_value=0,
         )
 
-        mask[:] = 0
-        cv2.fillConvexPoly(mask, contour, 255)
+        mask = np.zeros((y_max - y_min, x_max - x_min), dtype=np.uint8)
+        cv2.fillConvexPoly(mask, contour - np.array([x_min, y_min], dtype=contour.dtype), 255)
 
-        distorted_image = cv2.copyTo(warped, mask, distorted_image)
+        if warped.ndim == MONO_CHANNEL_DIMENSIONS:
+            warped = warped[..., None]
+        if warped.dtype.kind == "f":
+            # Near the horizon of a degenerate cell the bounding box can include pixels OpenCV maps to non-finite
+            # values. They are rarely inside the cell contour; keep them out of the output.
+            np.nan_to_num(warped, copy=False, nan=0.0, posinf=0.0, neginf=0.0)
+        np.copyto(distorted_image[y_min:y_max, x_min:x_max], warped, where=mask[..., None] > 0)
 
     return distorted_image[..., 0] if channel_less else distorted_image
 

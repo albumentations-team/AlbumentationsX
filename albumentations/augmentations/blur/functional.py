@@ -91,15 +91,19 @@ def glass_blur(
     swap_image = x[..., 0] if single_channel else x
 
     if mode == "fast":
-        hs = np.arange(img.shape[0] - max_delta, max_delta, -1)
-        ws = np.arange(img.shape[1] - max_delta, max_delta, -1)
-        h: int | np.ndarray = np.tile(hs, ws.shape[0])
-        w: int | np.ndarray = np.repeat(ws, hs.shape[0])
+        # Flat int32 pixel indices replace two-axis int64 fancy indexing; the write order, and therefore the
+        # result for repeated destinations, is unchanged.
+        width = swap_image.shape[1]
+        pixels = swap_image.reshape(swap_image.shape[0] * width, -1)
+        hs = np.arange(img.shape[0] - max_delta, max_delta, -1, dtype=np.int32)
+        ws = np.arange(img.shape[1] - max_delta, max_delta, -1, dtype=np.int32)
+        source = np.tile(hs, ws.shape[0]) * np.int32(width) + np.repeat(ws, hs.shape[0])
 
         for i in range(iterations):
-            dy = dxy[:, i, 0]
-            dx = dxy[:, i, 1]
-            swap_image[h, w], swap_image[h + dy, w + dx] = swap_image[h + dy, w + dx], swap_image[h, w]
+            target = source + (dxy[:, i, 0] * width + dxy[:, i, 1]).astype(np.int32)
+            source_values = pixels[source]
+            pixels[source] = pixels[target]
+            pixels[target] = source_values
 
     elif mode == "exact":
         for ind, (i, h, w) in enumerate(

@@ -272,28 +272,6 @@ def quantize_value(value: float, n_levels: int) -> float:
     return quantized / (n_levels - 1)
 
 
-def quantize_array(arr: np.ndarray, n_levels: int) -> np.ndarray:
-    """Quantize array in [0, 1] to n_levels levels (vectorized). Returns float32. Used when
-    full-image quantization is needed without error diffusion.
-
-    Args:
-        arr (np.ndarray): Input array in [0, 1] range.
-        n_levels (int): Number of discrete levels.
-
-    Returns:
-        np.ndarray: Quantized array in [0, 1] range.
-
-    """
-    if n_levels == 2:
-        return (arr >= 0.5).astype(np.float32)
-
-    # Vectorized quantization
-    # Scale to [0, n_levels-1], round, then scale back
-    scaled = arr * (n_levels - 1)
-    quantized = np.round(scaled) / (n_levels - 1)
-    return quantized.astype(np.float32)
-
-
 def random_dither_uint8(
     img: ImageUInt8,
     n_colors: int,

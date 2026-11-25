@@ -11,3 +11,5 @@ Read `.codex/rules/albumentations-rules.md`. For scoped work, read:
 
 - `.codex/rules/benchmarking.md` for performance-sensitive changes
 - `.codex/rules/testing-conventions.md` for test changes
+
+Every timing, including a quick ad-hoc check, runs with exactly one CPU thread per process (env vars, `cv2.setNumThreads(0)`, Torch intra- and inter-op threads set to 1). Load the `benchmark` skill before any timing; it holds the full controls.

@@ -114,6 +114,31 @@ def _replace_segments_with_mean(
     return result
 
 
+_RGB_IMAGE_NDIM = 3
+_RGB_CHANNELS = 3
+
+
+def _fancy_pca_uint8_rgb(img: NDArray[np.uint8], alpha_vector: np.ndarray) -> NDArray[np.uint8]:
+    """FancyPCA for uint8 RGB as one affine colour map: y = x + E diag(alpha * lambda) E-free (x - mean).
+
+    The noise is linear in the centred pixels, so the covariance comes from a Gram matrix and the
+    per-pixel work is a single cv2.transform that rounds and saturates to uint8.
+    """
+    pixels = img.reshape(-1, _RGB_CHANNELS)
+    count = pixels.shape[0]
+    sums = pixels.sum(axis=0, dtype=np.int64).astype(np.float64)
+    pixels_f32 = pixels.astype(np.float32)
+    gram = (pixels_f32.T @ pixels_f32).astype(np.float64)
+    cov = (gram - np.outer(sums, sums) / count) / max(count - 1, 1) / 255.0**2
+    eig_vals, eig_vecs = np.linalg.eigh(cov)
+    sort_perm = eig_vals[::-1].argsort()
+    eig_vals, eig_vecs = eig_vals[sort_perm], eig_vecs[:, sort_perm]
+    noise_matrix = eig_vecs @ np.diag(alpha_vector * eig_vals)
+    mean = sums / count
+    affine = np.hstack([np.eye(_RGB_CHANNELS) + noise_matrix, (-(noise_matrix @ mean))[:, None]]).astype(np.float32)
+    return cast("NDArray[np.uint8]", cv2.transform(img, affine))
+
+
 def fancy_pca(
     img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32], alpha_vector: np.ndarray
 ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
@@ -150,6 +175,8 @@ def fancy_pca(
 
     """
     input_dtype = img.dtype
+    if input_dtype.type is np.uint8 and img.ndim == _RGB_IMAGE_NDIM and img.shape[-1] == _RGB_CHANNELS:
+        return _fancy_pca_uint8_rgb(cast("NDArray[np.uint8]", img), alpha_vector)
     if input_dtype.type is np.uint8 or input_dtype.type is np.float16:
         img = convert_dtype(img, np.float32)
 
@@ -186,7 +213,8 @@ def fancy_pca(
 
     img_pca = img_pca.reshape(orig_shape)
 
-    np.clip(img_pca, 0, 1, out=img_pca)
+    if input_dtype.type is not np.uint8:  # uint8 conversion saturates
+        np.clip(img_pca, 0, 1, out=img_pca)  # float64 working buffer, which albucore clip does not accept
     return convert_dtype(img_pca.astype(np.float32, copy=False), dtype=input_dtype)
 
 
@@ -595,14 +623,16 @@ def apply_brightness_contrast_torchvision_batch(
     if ensure_safe_output:
         result = np.multiply(images, gains.reshape(broadcast_shape), dtype=np.float32)
         np.add(result, offsets.reshape(broadcast_shape), out=result)
-        np.clip(result, 0.0, 1.0, out=result)
+        if images.dtype.type is not np.uint8:  # uint8 conversion saturates
+            clip(result, out=result)
         return convert_dtype(result, dtype=images.dtype)
 
     result = np.multiply(images, contrast_factor, dtype=np.float32)
     np.add(result, offsets.reshape(broadcast_shape), out=result)
     np.clip(result, 0.0, 1.0, out=result)
     np.multiply(result, brightness_factor, out=result)
-    np.clip(result, 0.0, 1.0, out=result)
+    if images.dtype.type is not np.uint8:  # uint8 conversion saturates
+        clip(result, out=result)
     return convert_dtype(result, dtype=images.dtype)
 
 

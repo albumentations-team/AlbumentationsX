@@ -948,52 +948,6 @@ def bbox_distort_image(
     return bboxes
 
 
-@handle_empty_array("bboxes")
-def bboxes_piecewise_affine(
-    bboxes: np.ndarray,
-    map_x: np.ndarray,
-    map_y: np.ndarray,
-    border_mode: int,
-    image_shape: tuple[int, int],
-) -> np.ndarray:
-    """Apply piecewise affine to bboxes via map_x, map_y. bbox->mask->remap->bbox.
-    border_mode, image_shape. For PiecewiseAffine with bboxes.
-
-    This function applies a piecewise affine transformation to the bounding boxes of an image.
-    It first converts the bounding boxes to masks, then applies the transformation, and finally
-    converts the transformed masks back to bounding boxes.
-
-    Args:
-        bboxes (np.ndarray): The bounding boxes to transform.
-        map_x (np.ndarray): The x-coordinates of the transformation.
-        map_y (np.ndarray): The y-coordinates of the transformation.
-        border_mode (int): The border mode to use for the transformation.
-        image_shape (tuple[int, int]): The shape of the image.
-
-    Returns:
-        np.ndarray: The transformed bounding boxes.
-
-    """
-    masks = masks_from_bboxes(bboxes, image_shape).transpose(1, 2, 0)
-
-    transformed_masks = remap(
-        masks,
-        map_x,
-        map_y,
-        interpolation=cv2.INTER_NEAREST,
-        border_mode=border_mode,
-        border_value=0,
-    )
-
-    if transformed_masks.ndim == NUM_MULTI_CHANNEL_DIMENSIONS:
-        transformed_masks = transformed_masks.transpose(2, 0, 1)
-
-    # Normalize the returned bboxes
-    bboxes[:, :4] = bboxes_from_masks(transformed_masks)
-
-    return bboxes
-
-
 def is_valid_component(
     component_area: float,
     original_area: float,
@@ -1130,7 +1084,6 @@ __all__ = [
     "bboxes_grid_shuffle",
     "bboxes_hflip",
     "bboxes_morphology",
-    "bboxes_piecewise_affine",
     "bboxes_rot90",
     "bboxes_transpose",
     "bboxes_vflip",

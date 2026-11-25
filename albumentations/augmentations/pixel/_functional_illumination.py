@@ -1231,19 +1231,6 @@ def prepare_drop_values(
     return np.full(array.shape, broadcast_values, dtype=array.dtype)
 
 
-def get_mask_array(data: dict[str, Any]) -> np.ndarray | None:
-    """Return the first usable 2D mask plane from singular or batched 2D and 3D targets when no image data is available
-    during parameter sampling.
-    """
-    if "mask" in data:
-        return data["mask"]
-    if "masks" in data and data["masks"].shape[0] > 0:
-        return data["masks"][0]
-    if "mask3d" in data and data["mask3d"].shape[0] > 0:
-        return data["mask3d"][0]
-    return None
-
-
 def _create_vignette_mask(
     height: int,
     width: int,
@@ -1363,51 +1350,39 @@ def apply_halftone(
         else img[..., 0].astype(np.float32) / MAX_VALUES_BY_DTYPE[np.uint8]
     )
 
+    # Per-cell statistics for the whole grid at once; floor division matches the int() truncation of a cell mean.
+    y_starts = np.arange(0, height, dot_size)
+    x_starts = np.arange(0, width, dot_size)
+    y_ends = np.minimum(y_starts + dot_size, height)
+    x_ends = np.minimum(x_starts + dot_size, width)
+    cell_counts = (y_ends - y_starts)[:, None] * (x_ends - x_starts)[None, :]
+    cell_colors = np.add.reduceat(np.add.reduceat(img.astype(np.uint32), y_starts, axis=0), x_starts, axis=1)
+    cell_colors //= cell_counts[..., None].astype(np.uint32)
+    cell_lum = np.add.reduceat(np.add.reduceat(luminance.astype(np.float64), y_starts, axis=0), x_starts, axis=1)
+    cell_radii = np.maximum(1, (dot_size * 0.5 * (cell_lum / cell_counts)).astype(np.int64))
+
+    canvas = np.zeros_like(img)
     use_cell_mask = num_channels > 4
-
-    if use_cell_mask:
-        canvas = np.zeros_like(img)
-        for y_start in range(0, height, dot_size):
-            for x_start in range(0, width, dot_size):
-                y_end = min(y_start + dot_size, height)
-                x_end = min(x_start + dot_size, width)
-
-                cell_lum = float(mean(luminance[y_start:y_end, x_start:x_end]))
-                cell_h = y_end - y_start
-                cell_w = x_end - x_start
-                radius = max(1, int(dot_size * 0.5 * cell_lum))
-
-                cell = img[y_start:y_end, x_start:x_end]
-                avg_color = np.asarray(mean(cell.reshape(-1, num_channels), axis=0)).astype(img.dtype)
-
+    for row, (y_start, y_end) in enumerate(zip(y_starts.tolist(), y_ends.tolist(), strict=True)):
+        for col, (x_start, x_end) in enumerate(zip(x_starts.tolist(), x_ends.tolist(), strict=True)):
+            radius = int(cell_radii[row, col])
+            color = cell_colors[row, col]
+            if use_cell_mask:
                 # Cell-local mask: avoids O(N_cells * H * W) allocation
-                local_cx = cell_w // 2
-                local_cy = cell_h // 2
-                dot_mask = np.zeros((cell_h, cell_w), dtype=np.uint8)
-                cv2.circle(dot_mask, (local_cx, local_cy), radius, 255, -1, lineType=cv2.LINE_AA)
-                mask_bool = dot_mask > 0
-                canvas[y_start:y_end, x_start:x_end][mask_bool] = avg_color
-    else:
-        canvas = np.zeros_like(img)
-        for y_start in range(0, height, dot_size):
-            for x_start in range(0, width, dot_size):
-                y_end = min(y_start + dot_size, height)
-                x_end = min(x_start + dot_size, width)
-
-                cell_lum = float(mean(luminance[y_start:y_end, x_start:x_end]))
-                cx = (x_start + x_end) // 2
-                cy = (y_start + y_end) // 2
-                radius = max(1, int(dot_size * 0.5 * cell_lum))
-
-                cell = img[y_start:y_end, x_start:x_end]
-                if num_channels > 1:
-                    color: tuple[int, ...] | int = tuple(
-                        int(v) for v in np.asarray(mean(cell.reshape(-1, num_channels), axis=0))
-                    )
-                else:
-                    color = int(mean(cell))
-
-                cv2.circle(canvas, (cx, cy), radius, color, -1, lineType=cv2.LINE_AA)
+                dot_mask = np.zeros((y_end - y_start, x_end - x_start), dtype=np.uint8)
+                cv2.circle(
+                    dot_mask, ((x_end - x_start) // 2, (y_end - y_start) // 2), radius, 255, -1, lineType=cv2.LINE_AA
+                )
+                canvas[y_start:y_end, x_start:x_end][dot_mask > 0] = color.astype(img.dtype)
+            else:
+                cv2.circle(
+                    canvas,
+                    ((x_start + x_end) // 2, (y_start + y_end) // 2),
+                    radius,
+                    tuple(color.tolist()) if num_channels > 1 else int(color[0]),
+                    -1,
+                    lineType=cv2.LINE_AA,
+                )
 
     if blend > 0:
         result = add_weighted(img, blend, canvas, 1.0 - blend)
@@ -1554,6 +1529,5 @@ __all__ = [
     "generate_water_displacement_maps",
     "get_drop_mask",
     "get_histogram_bounds",
-    "get_mask_array",
     "prepare_drop_values",
 ]

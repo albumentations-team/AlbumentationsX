@@ -9,6 +9,13 @@ always_apply: false
 Use the `performance-optimization` skill and its canonical reference before changing a hot route. Use the `benchmark`
 skill when the task needs measurements.
 
+**Every timing runs with exactly one CPU thread, including quick ad-hoc checks.** Production is AX under a PyTorch
+DataLoader with one thread per worker, so a multi-threaded timing measures the wrong thing. Before importing numerical
+libraries set `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS`, `VECLIB_MAXIMUM_THREADS`, and
+`NUMEXPR_NUM_THREADS` to `1`; then call `cv2.setNumThreads(0)`, `torch.set_num_threads(1)`, and
+`torch.set_num_interop_threads(1)`. Time thread counts above one only on an explicit user request. Never write a bare
+`timeit` loop; load the `benchmark` skill first.
+
 Benchmark when a change can alter an executed runtime path, and select only the routes and axes that can falsify its
 performance claim. Compare baseline and candidate at the same revision boundary and in the same environment. Include
 the public `Compose` route as well as the direct kernel when both are affected.

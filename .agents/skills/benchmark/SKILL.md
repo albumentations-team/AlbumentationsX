@@ -11,6 +11,15 @@ Documentation and mechanical refactors with no plausible runtime effect need no 
 Read [Performance Optimization](../performance-optimization/SKILL.md) and its required reference before selecting
 candidates. Define the changed route and the workload dimension that could falsify the proposed speedup.
 
+## One thread, always
+
+**Every timing runs with exactly one CPU thread, including quick ad-hoc checks.** Production is AX under a PyTorch
+DataLoader with one thread per worker, so a multi-threaded timing measures the wrong thing. Before importing numerical
+libraries set `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS`, `VECLIB_MAXIMUM_THREADS`, and
+`NUMEXPR_NUM_THREADS` to `1`; then call `cv2.setNumThreads(0)`, `torch.set_num_threads(1)`, and
+`torch.set_num_interop_threads(1)`. Time thread counts above one only on an explicit user request. Never write a bare
+`timeit` loop; load the `benchmark` skill first.
+
 ## Acceptance profile
 
 Final Core/AX acceptance, including float16 acceptance, uses Python 3.11 and the newest stable third-party releases

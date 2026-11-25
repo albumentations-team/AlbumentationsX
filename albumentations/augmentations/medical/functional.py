@@ -202,7 +202,9 @@ def rician_noise(
     np.multiply(result, result, out=result)
     np.add(result, np.square(imaginary_noise), out=result)
     np.sqrt(result, out=result)
-    return convert_dtype(np.clip(result, 0.0, 1.0, out=result), input_dtype)
+    if input_dtype.type is not np.uint8:  # uint8 conversion saturates
+        clip(result, out=result)
+    return convert_dtype(result, input_dtype)
 
 
 def k_space_spike(
@@ -314,7 +316,9 @@ def _k_space_spike_fft(
             spectrum[index_for(bin_coords, channel)] += amplitude
 
     reconstructed = cast("np.ndarray", fft.irfftn(spectrum, s=axis_sizes, axes=axes, workers=1))
-    return convert_dtype(np.clip(reconstructed, 0.0, 1.0), input_dtype)
+    if input_dtype.type is not np.uint8:  # uint8 conversion saturates
+        reconstructed = np.clip(reconstructed, 0.0, 1.0)
+    return convert_dtype(reconstructed, input_dtype)
 
 
 def _rfft_spike_bins(coords: tuple[int, ...], axis_sizes: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:

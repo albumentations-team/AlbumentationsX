@@ -1212,6 +1212,31 @@ def test_image_compression_compose_preserves_singleton_channel(dtype, compressio
     np.testing.assert_array_equal(image, original)
 
 
+@pytest.mark.parametrize(
+    ("target", "leading_shape"), [("image", ()), ("images", (2,)), ("volume", (3,)), ("volumes", (2, 3))]
+)
+@pytest.mark.parametrize("explicit_channel", [False, True], ids=["HW", "HWC1"])
+@pytest.mark.parametrize(
+    ("codec", "ext", "flag"), [("jpeg", ".jpg", cv2.IMWRITE_JPEG_QUALITY), ("webp", ".webp", cv2.IMWRITE_WEBP_QUALITY)]
+)
+def test_image_compression_standalone_grayscale_shape(target, leading_shape, explicit_channel, codec, ext, flag):
+    frame = np.random.default_rng(137).integers(0, 256, (7, 3), dtype=np.uint8)
+    ok, encoded = cv2.imencode(ext, frame, (flag, 75))
+    assert ok
+    decoded = cv2.imdecode(encoded, cv2.IMREAD_GRAYSCALE)
+    if explicit_channel:
+        frame = frame[..., None]
+        decoded = decoded[..., None]
+    shape = (*leading_shape, *frame.shape)
+    source = np.broadcast_to(frame, shape)
+    transform = A.ImageCompression(compression_type=codec, quality_range=(75, 75), p=0)
+    skipped = transform(**{target: source})[target]
+    applied = transform(force_apply=True, **{target: source})[target]
+
+    np.testing.assert_array_equal(skipped, source, strict=True)
+    np.testing.assert_array_equal(applied, np.broadcast_to(decoded, shape), strict=True)
+
+
 def _check_public_rgba(image, quality, compression_type, route):
     image_type = ".jpg" if compression_type == "jpeg" else ".webp"
     original = image.copy()

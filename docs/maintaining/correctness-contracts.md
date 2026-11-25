@@ -60,8 +60,10 @@ slice of NumPy and CPU Tensor targets. [Functional tests](../../tests/functional
 
 For a two-dimensional NumPy image of shape `H×W`, `fpixel.image_compression` compresses one grayscale plane.
 JPEG and WebP return `H×W×1` at the input dtype, including when the width is four. Direct callers can use
-`result[..., 0]` to obtain `H×W`. When a 2D image is passed to `Compose`, its public output has the original
-`H×W` shape. [`test_image_compression_gray_width_four`](../../tests/functional/test_functional.py).
+`result[..., 0]` to obtain `H×W`. The standalone `ImageCompression` transform and `Compose` preserve the input
+shape on both applied and skipped calls, including grayscale frames in `images`, `volume` and `volumes`.
+[`test_image_compression_gray_width_four`](../../tests/functional/test_functional.py) ·
+[`test_image_compression_standalone_grayscale_shape`](../../tests/test_augmentations.py).
 
 ## Box-aware RandomResizedCrop sampling
 

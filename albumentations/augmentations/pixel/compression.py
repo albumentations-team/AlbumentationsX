@@ -114,7 +114,7 @@ class ImageCompression(ImageOnlyTransform):
         image_type: Literal[".jpg", ".webp"],
         **params: Any,
     ) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
-        return fpixel.image_compression(img, quality, image_type)
+        return fpixel.image_compression(img, quality, image_type).reshape(img.shape)
 
     def sample_parameters(
         self,

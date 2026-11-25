@@ -546,11 +546,15 @@ def image_compression(
     """
     num_channels = 1 if img.ndim == 2 else get_num_channels(img)
     if num_channels == 4:
-        # Pack RGB before dtype conversion so the codec path reads contiguous pixels, including for float16.
-        rgb = np.empty((*img.shape[:2], NUM_RGB_CHANNELS), dtype=img.dtype)
+        height, width = img.shape[:2]
+        result = np.empty(img.shape, dtype=img.dtype)
+        # The codec decodes to separate storage, so its packed RGB input can borrow the start of the output.
+        rgb = result.reshape(-1)[: height * width * NUM_RGB_CHANNELS].reshape(height, width, NUM_RGB_CHANNELS)
         cv2.mixChannels([img], [rgb], [0, 0, 1, 1, 2, 2])
         decoded = _compress_image_channels(rgb, quality, image_type, NUM_RGB_CHANNELS)
-        return cast("NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]", cv2.merge((decoded, img[..., 3])))
+        # mixChannels numbers the three decoded channels first, so source channel 6 is the original alpha.
+        cv2.mixChannels([decoded, img], [result], [0, 0, 1, 1, 2, 2, 6, 3])
+        return result
     return _compress_image_channels(img, quality, image_type, num_channels)
 
 

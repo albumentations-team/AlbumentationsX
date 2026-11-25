@@ -1411,6 +1411,7 @@ def test_image_compression_rgba_strided_float(image_type, dtype):
     # Packing RGB can change the dtype conversion backend on large read-only inputs.
     levels = np.random.default_rng(137).integers(0, 255, (384, 1024, 4), dtype=np.uint8)
     image = ((levels.astype(np.float32) + 0.5) / 255).astype(dtype)[:, ::-2]
+    image[:, ::3, 3] = -0.0
     image.setflags(write=False)
     _check_rgba_compression(image, 75, image_type)
 

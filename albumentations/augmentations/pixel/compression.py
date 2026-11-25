@@ -29,11 +29,17 @@ __all__ = [
 
 
 class ImageCompression(ImageOnlyTransform):
-    """Simulate the artifacts introduced by saving an image as JPEG or WebP to test model
-    robustness to compression at different quality settings.
+    """Apply lossy JPEG or WebP compression to reproduce the artifacts a model may encounter
+    in photos saved or shared at reduced quality.
+
+    Lower quality settings typically produce smaller files, but can erase fine texture and, with JPEG,
+    make block boundaries visible. During training, sample a range of qualities to simulate photos
+    compressed for low-bandwidth connections. During evaluation, use a fixed quality at a time to
+    measure how model performance changes as compression artifacts become more pronounced.
 
     Args:
-        quality_range (tuple[int, int]): Range for the compression quality.
+        quality_range (tuple[int, int]): Integer quality is sampled uniformly from this inclusive range
+            each time the transform is applied. Set both endpoints to the same value for a fixed quality.
             The values should be in [1, 100] range, where:
             - 1 is the lowest quality (maximum compression)
             - 100 is the highest quality (minimum compression)
@@ -56,6 +62,7 @@ class ImageCompression(ImageOnlyTransform):
         Any
 
     Note:
+        - The transform encodes and decodes the image in memory and returns the decoded pixels.
         - One channel is compressed as grayscale. Two channels are padded with a zero third channel for
           compression. Three channels are compressed together as a color image.
         - For exactly four channels, JPEG and WebP both compress RGB and return four channels. The fourth
@@ -70,6 +77,8 @@ class ImageCompression(ImageOnlyTransform):
         >>> image = np.random.default_rng(137).integers(0, 256, (100, 100, 4), dtype=np.uint8)
         >>> transform = A.ImageCompression(quality_range=(50, 90), compression_type="jpeg", p=1.0)
         >>> compressed = transform(image=image)["image"]
+        >>> np.array_equal(compressed[..., :3], image[..., :3])
+        False
         >>> np.array_equal(compressed[..., 3], image[..., 3])
         True
 

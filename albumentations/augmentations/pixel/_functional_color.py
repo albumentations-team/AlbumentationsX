@@ -534,7 +534,8 @@ def image_compression(
 
     Args:
         img (NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]): Input image
-        quality (int): Quality of compression in range [1, 100]
+        quality (int): Compression quality in [1, 100]. Lower values can discard fine detail
+            and make JPEG block boundaries more visible.
         image_type (Literal['.jpg', '.webp']): Type of compression to use
 
     Returns:

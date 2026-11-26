@@ -23,7 +23,7 @@ from tests.conftest import (
     UINT8_IMAGES,
     VOLUME,
 )
-from tests.helpers.image_compression import check_rgba_compression, opencv_compression
+from tests.helpers.image_compression import Codec, Extension, check_rgba_compression, opencv_compression
 from tests.utils import convert_2d_to_target_format
 
 
@@ -1345,7 +1345,7 @@ def test_image_compression_shapes(image_type, quality, shape, expected_shape):
 @pytest.mark.parametrize("compression_type", ["jpeg", "webp"])
 @pytest.mark.parametrize("quality", [4, 75])
 @pytest.mark.parametrize("alpha", [0, 255])
-def test_image_compression_rgba_constant_alpha(compression_type, quality, alpha):
+def test_image_compression_rgba_constant_alpha(compression_type: Codec, quality: int, alpha: int) -> None:
     image = np.random.default_rng(137).integers(0, 256, (17, 23, 4), dtype=np.uint8)
     image[..., 3] = alpha
     result = check_rgba_compression(image, quality, compression_type)
@@ -1355,7 +1355,7 @@ def test_image_compression_rgba_constant_alpha(compression_type, quality, alpha)
 
 @pytest.mark.parametrize("compression_type", ["jpeg", "webp"])
 @pytest.mark.parametrize("dtype", [np.float16, np.float32])
-def test_image_compression_rgba_strided_float(compression_type, dtype):
+def test_image_compression_rgba_strided_float(compression_type: Codec, dtype: type[np.floating]) -> None:
     # Packing RGB can change the dtype conversion backend on large read-only inputs.
     levels = np.random.default_rng(137).integers(0, 255, (384, 1024, 4), dtype=np.uint8)
     image = ((levels.astype(np.float32) + 0.5) / 255).astype(dtype)[:, ::-2]
@@ -1365,14 +1365,14 @@ def test_image_compression_rgba_strided_float(compression_type, dtype):
 
 
 @pytest.mark.parametrize("image_type", [".jpg", ".webp"])
-def test_image_compression_gray_width_four(image_type):
+def test_image_compression_gray_width_four(image_type: Extension) -> None:
     image = np.random.default_rng(137).integers(0, 256, (7, 4), dtype=np.uint8)
     expected = opencv_compression(image, 75, image_type, cv2.IMREAD_GRAYSCALE)
     np.testing.assert_array_equal(fpixel.image_compression(image, 75, image_type), expected[..., None], strict=True)
 
 
 @pytest.mark.parametrize("image_type", [".jpg", ".webp"])
-def test_image_compression_two_channel_opencv(image_type):
+def test_image_compression_two_channel_opencv(image_type: Extension) -> None:
     image = np.random.default_rng(137).integers(0, 256, (17, 23, 2), dtype=np.uint8)
     padded = np.zeros((17, 23, 3), dtype=np.uint8)
     padded[..., :2] = image
@@ -1381,7 +1381,7 @@ def test_image_compression_two_channel_opencv(image_type):
 
 
 @pytest.mark.parametrize("image_type", [".jpg", ".webp"])
-def test_image_compression_five_band(image_type):
+def test_image_compression_five_band(image_type: Extension) -> None:
     image = np.random.default_rng(137).integers(0, 256, (17, 23, 5), dtype=np.uint8)
     result = fpixel.image_compression(image, 75, image_type)
     for band in (3, 4):

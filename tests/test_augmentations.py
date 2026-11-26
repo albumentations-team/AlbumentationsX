@@ -21,7 +21,14 @@ from tests.conftest import (
     SQUARE_UINT8_IMAGE,
 )
 from tests.helpers import TransformTestHelper
-from tests.helpers.image_compression import assert_rgba_compression, check_rgba_compression, opencv_compression
+from tests.helpers.image_compression import (
+    Codec,
+    Extension,
+    Route,
+    assert_rgba_compression,
+    check_rgba_compression,
+    opencv_compression,
+)
 
 from .utils import (
     get_primary_2d_transform_params,
@@ -1218,7 +1225,9 @@ def test_image_compression_compose_preserves_singleton_channel(dtype, compressio
 )
 @pytest.mark.parametrize("explicit_channel", [False, True], ids=["HW", "HWC1"])
 @pytest.mark.parametrize(("codec", "ext"), [("jpeg", ".jpg"), ("webp", ".webp")])
-def test_image_compression_standalone_grayscale_shape(target, leading_shape, explicit_channel, codec, ext):
+def test_image_compression_standalone_grayscale_shape(
+    target: str, leading_shape: tuple[int, ...], explicit_channel: bool, codec: Codec, ext: Extension
+) -> None:
     frame = np.random.default_rng(137).integers(0, 256, (7, 3), dtype=np.uint8)
     decoded = opencv_compression(frame, 75, ext, cv2.IMREAD_GRAYSCALE)
     if explicit_channel:
@@ -1236,7 +1245,7 @@ def test_image_compression_standalone_grayscale_shape(target, leading_shape, exp
 
 @pytest.mark.parametrize(("codec", "ext"), [("jpeg", ".jpg"), ("webp", ".webp")])
 @pytest.mark.parametrize("dtype", [np.float16, np.float32])
-def test_image_compression_single_pixel_grayscale(codec, ext, dtype):
+def test_image_compression_single_pixel_grayscale(codec: Codec, ext: Extension, dtype: type[np.floating]) -> None:
     image = np.full((1, 1), 125 / 255, dtype=dtype)
     decoded = opencv_compression(np.full((1, 1), 125, dtype=np.uint8), 75, ext, cv2.IMREAD_GRAYSCALE)
     expected = (decoded.astype(np.float32) / 255).astype(dtype)
@@ -1251,7 +1260,7 @@ def test_image_compression_single_pixel_grayscale(codec, ext, dtype):
     ("pattern", "quality"),
     [("circle", q) for q in (1, 75, 90, 91, 92, 93, 94, 95, 99, 100)] + [("gradient", q) for q in (1, 75, 99, 100)],
 )
-def test_image_compression_rgba_mixed_alpha(route, compression_type, pattern, quality):
+def test_image_compression_rgba_mixed_alpha(route: Route, compression_type: Codec, pattern: str, quality: int) -> None:
     if pattern == "circle":
         image = np.empty((64, 64, 4), dtype=np.uint8)
         image[..., :3] = (20, 110, 220)
@@ -1272,7 +1281,9 @@ def test_image_compression_rgba_mixed_alpha(route, compression_type, pattern, qu
 @pytest.mark.parametrize("compression_type", ["jpeg", "webp"])
 @pytest.mark.parametrize("quality", [1, 100])
 @pytest.mark.parametrize("dtype", [np.float16, np.float32])
-def test_image_compression_rgba_float_precision(route, compression_type, quality, dtype):
+def test_image_compression_rgba_float_precision(
+    route: Route, compression_type: Codec, quality: int, dtype: type[np.floating]
+) -> None:
     image = np.random.default_rng(137).random((7, 9, 4), dtype=np.float32).astype(dtype)
     image[:, ::2, 3] = 0.5
     image[:, 1::2, 3] = 0.5009765625
@@ -1283,7 +1294,7 @@ def test_image_compression_rgba_float_precision(route, compression_type, quality
 @pytest.mark.parametrize("container", ["numpy", "tensor"])
 @pytest.mark.parametrize("compression_type", ["jpeg", "webp"])
 @pytest.mark.parametrize("dtype", [np.uint8, np.float16, np.float32])
-def test_image_compression_rgba_targets(target, container, compression_type, dtype):
+def test_image_compression_rgba_targets(target: str, container: str, compression_type: Codec, dtype: type) -> None:
     leading_axes = {"image": (), "images": (2,), "volume": (3,), "volumes": (2, 3)}[target]
     shape = (*leading_axes, 7, 11, 4)
     rng = np.random.default_rng(137)

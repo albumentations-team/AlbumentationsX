@@ -8,6 +8,8 @@ import tarfile
 import zipfile
 from pathlib import Path
 
+import pytest
+
 from tools import verify_legal_integrity as legal_integrity
 from tools.verify_legal_integrity import (
     FIRST_ONLY_RELEASE,
@@ -84,6 +86,39 @@ def _write_sdist(
 
 def test_source_legal_integrity() -> None:
     assert collect_source_errors() == []
+
+
+MISSING_AGPL_OPTION = "README must name the AGPL-3.0-only option ('also available under [AGPL-3.0-only]')"
+
+
+@pytest.mark.parametrize(
+    ("readme", "expected_error"),
+    [
+        (
+            (
+                "Commercial status alone does not require a commercial license. "
+                "It is also available under [AGPL-3.0-only](LICENSE)."
+            ),
+            "README contains stale license wording: 'does not require a commercial license'",
+        ),
+        (
+            "AGPL-3.0-only is available at no charge. AlbumentationsX is also available under [AGPL-3.0-only](LICENSE).",
+            "README contains stale license wording: 'available at no charge'",
+        ),
+        (
+            "Request a quote for a commercial license.",
+            MISSING_AGPL_OPTION,
+        ),
+        (
+            "AlbumentationsX is also available under MIT.",
+            MISSING_AGPL_OPTION,
+        ),
+    ],
+)
+def test_public_copy_rejects_purchase_avoidance_wording(tmp_path: Path, readme: str, expected_error: str) -> None:
+    (tmp_path / "README.md").write_text(readme, encoding="utf-8")
+
+    assert legal_integrity._check_public_copy(tmp_path) == [expected_error]
 
 
 def test_source_legal_integrity_with_windows_default_encoding(monkeypatch) -> None:

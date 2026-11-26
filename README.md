@@ -34,18 +34,15 @@ Your citation makes the project's research impact visible to funders and helps s
 
 ## Licensing
 
-AlbumentationsX offers two license options:
+A commercial license lets your company use, modify, and ship AlbumentationsX in proprietary software without AGPL
+source-sharing requirements for the use covered by your agreement. One agreement covers your team, products, and
+deployments, and nobody on your team has to work through the AGPL.
+[Request a quote](https://albumentations.ai/pricing?utm_source=github&utm_medium=referral&utm_campaign=readme)
+or email [vladimir@albumentations.ai](mailto:vladimir@albumentations.ai).
 
-- **Commercial license:** choose alternative permissions for proprietary software under an agreement covering your
-  team, products, and deployments. [Request a quote](https://albumentations.ai/pricing?utm_source=github&utm_medium=referral&utm_campaign=readme)
-  or email [vladimir@albumentations.ai](mailto:vladimir@albumentations.ai).
-- **AGPL-3.0-only:** available at no charge. The AGPL permits commercial use subject to its terms.
-  [Read the license guide](https://albumentations.ai/docs/license/).
-
-Commercial, proprietary, internal, or production status alone does not require a commercial license.
-See the [AGPL text](https://github.com/albumentations-team/AlbumentationsX/blob/5bac7d5ae4b38f3c2a89c21dc088245613e9e99c/LICENSE)
-and [licensing details and history](https://github.com/albumentations-team/AlbumentationsX/blob/5bac7d5ae4b38f3c2a89c21dc088245613e9e99c/LICENSING.md)
-for the applicable terms.
+AlbumentationsX is also available under
+[AGPL-3.0-only](https://github.com/albumentations-team/AlbumentationsX/blob/5bac7d5ae4b38f3c2a89c21dc088245613e9e99c/LICENSE).
+See the [licensing details and history](https://github.com/albumentations-team/AlbumentationsX/blob/5bac7d5ae4b38f3c2a89c21dc088245613e9e99c/LICENSING.md).
 
 For supplier questionnaires and purchasing documents, see
 [institutional procurement](https://github.com/albumentations-team/AlbumentationsX/blob/main/LICENSING.md#institutional-procurement).

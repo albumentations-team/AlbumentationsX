@@ -7,7 +7,9 @@ consistent. It is an operational record, not advice about a user's facts.
 ## Current Repository Position
 
 - Repository default: `AGPL-3.0-only`.
-- The AGPL permits commercial use subject to its terms.
+- The AGPL permits commercial use subject to its terms. `LICENSING.md` states
+  this; public copy such as the README leads with the commercial license and
+  names AGPL-3.0-only in one neutral line.
 - Albumentations, LLC may offer separately negotiated commercial terms for the
   versions and uses specified in an executed agreement or order form.
 - Commercial terms do not remove the public repository's AGPL availability.

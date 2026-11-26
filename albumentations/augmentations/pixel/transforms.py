@@ -1024,8 +1024,10 @@ class UnsharpMask(ImageOnlyTransform):
         sigma_range (tuple[float, float]): Gaussian kernel standard deviation. Must be more or equal to 0.
             If set single value `sigma_range` will be in range (0, sigma_range).
             If set to 0 sigma will be computed as `sigma = 0.3*((ksize-1)*0.5 - 1) + 0.8`. Default: 0.
-        alpha_range (tuple[float, float]): range to choose the visibility of the sharpened image.
+        alpha_range (tuple[float, float]): range to choose the visibility of the sharpened image, in [-1, 1].
             At 0, only the original image is visible, at 1.0 only its sharpened version is visible.
+            A negative value blends the image toward its blur instead: at -1.0 the Gaussian blur replaces the
+            image where the threshold applies.
             Default: (0.2, 0.5).
         threshold (int): Value to limit sharpening only for areas with high pixel difference between original image
             and it's smoothed version. Higher threshold means less sharpening on flat areas.
@@ -1043,6 +1045,8 @@ class UnsharpMask(ImageOnlyTransform):
             blurred version.
         - The final image is computed as: output = I + M if |I - G| > threshold, else I.
         - Higher alpha_range values increase the strength of the sharpening effect.
+        - A negative alpha gives output = I - |alpha| * (I - G), which is Pillow's `ImageEnhance.Sharpness` with a
+            factor below 1 up to the kernel.
         - Higher threshold values limit the sharpening effect to areas with more significant edges or details.
         - The blur_range and sigma_range parameters control the Gaussian blur used to create the mask.
 
@@ -1078,7 +1082,7 @@ class UnsharpMask(ImageOnlyTransform):
         ]
         alpha_range: Annotated[
             tuple[float, float],
-            AfterValidator(check_range_bounds(0, 1)),
+            AfterValidator(check_range_bounds(-1, 1)),
             AfterValidator(nondecreasing),
         ]
         threshold: int = Field(ge=0, le=255)

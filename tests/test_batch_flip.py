@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import math
+import multiprocessing
 import py_compile
+import struct
 import sys
+from concurrent.futures import ProcessPoolExecutor
 from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -197,21 +200,13 @@ def test_in_place_values_and_layout(
         assert torch.equal(parent, expected_parent)
 
 
-@pytest.mark.parametrize(
-    ("probability", "outcomes"),
-    [
-        (3 / 8, list(range(8))),
-        (1 - 2**-30, [2**30 - 2, 2**30 - 1]),
-        ((2**30 + 1) / 2**31, [2**30, 2**30 + 1, 2**30 + 2]),
-        (2**-1074, [0, *(1 << bit for bit in range(1074))]),
-    ],
-    ids=["three-eighths", "below-one", "two-words", "smallest-subnormal"],
-)
-def test_exact_binary64_threshold(
-    device: torch.device, probability: float, outcomes: list[int], monkeypatch: pytest.MonkeyPatch
+def _binary64_from_bits(bits: int) -> float:
+    return struct.unpack(">d", bits.to_bytes(8, "big"))[0]
+
+
+def _assert_exact_threshold(
+    device: torch.device, probability: float, numerator: int, width: int, outcomes: list[int]
 ) -> None:
-    numerator, denominator = probability.as_integer_ratio()
-    width = denominator.bit_length() - 1
     generator = torch.Generator(device=device).manual_seed(137)
     shift = 0
 
@@ -225,12 +220,56 @@ def test_exact_binary64_threshold(
         shift += bits
         return torch.tensor(words, dtype=torch.int32, device=device)
 
-    monkeypatch.setattr(flipping, "randint", known_words)
-    plan = sample_flip(
-        batch_size=len(outcomes), direction="horizontal", p=probability, device=device, generator=generator
-    )
+    with patch.object(flipping, "randint", known_words):
+        plan = sample_flip(
+            batch_size=len(outcomes), direction="horizontal", p=probability, device=device, generator=generator
+        )
     assert shift == width
     assert plan.selected.tolist() == [outcome < numerator for outcome in outcomes]
+
+
+@pytest.mark.parametrize(
+    ("probability", "numerator", "width", "outcomes"),
+    [
+        (3 / 8, 3, 3, list(range(8))),
+        (1 - 2**-30, 2**30 - 1, 30, [2**30 - 2, 2**30 - 1]),
+        ((2**30 + 1) / 2**31, 2**30 + 1, 31, [2**30, 2**30 + 1, 2**30 + 2]),
+        (_binary64_from_bits(1), 1, 1074, [0, *(1 << bit for bit in range(1074))]),
+        (_binary64_from_bits(2**52 - 1), 2**52 - 1, 1074, [2**52 - 2, 2**52 - 1]),
+        (2**-1022, 1, 1022, [0, 1]),
+    ],
+    ids=["three-eighths", "below-one", "two-words", "smallest-subnormal", "largest-subnormal", "smallest-normal"],
+)
+def test_exact_binary64_threshold(
+    device: torch.device, probability: float, numerator: int, width: int, outcomes: list[int]
+) -> None:
+    _assert_exact_threshold(device, probability, numerator, width, outcomes)
+
+
+def _check_subnormal_sampling_modes() -> bool:
+    device = torch.device("cpu")
+    generator = torch.Generator().manual_seed(137)
+    state = generator.get_state()
+    for flush in (False, True):
+        if not torch.set_flush_denormal(flush):
+            return False
+        _assert_exact_threshold(device, _binary64_from_bits(1), 1, 1074, [0, 1])
+        _assert_exact_threshold(device, _binary64_from_bits(6), 3, 1073, [2, 3])
+        with pytest.raises(ValueError, match="probability"):
+            sample_flip(
+                batch_size=2, direction="vertical", device=device, generator=generator, p=_binary64_from_bits(2**63 + 1)
+            )
+        plan = sample_flip(batch_size=2, direction="vertical", device=device, generator=generator, p=-0.0)
+        assert plan.selected.tolist() == [False, False]
+        assert torch.equal(generator.get_state(), state)
+    return True
+
+
+def test_subnormal_sampling_with_flush_denormal() -> None:
+    # A fresh process isolates both floating-point modes from the rest of the suite.
+    with ProcessPoolExecutor(max_workers=1, mp_context=multiprocessing.get_context("spawn")) as executor:
+        if not executor.submit(_check_subnormal_sampling_modes).result():
+            pytest.skip("This CPU does not support changing the denormal mode.")
 
 
 def _default_state(device: torch.device) -> torch.Tensor:
@@ -281,6 +320,7 @@ def test_deterministic_selection_preserves_rng(device: torch.device, count: int,
         {"p": -float("inf")},
         {"p": -0.1},
         {"p": 1.01},
+        {"p": 2**1024},
         {"p": "0.5"},
         {"p": True},
         {"batch_size": -1},
@@ -290,6 +330,10 @@ def test_deterministic_selection_preserves_rng(device: torch.device, count: int,
         {"direction": []},
         {"device": "meta"},
         {"device": "broken"},
+        {"device": "cpu:1"},
+        {"device": "cpu:256"},
+        {"device": "cpu:1", "p": 1},
+        {"device": "cpu:256", "batch_size": 0},
         {"device": None},
         {"generator": None},
         {"device": "cuda", "p": 0},
@@ -309,6 +353,17 @@ def test_invalid_sampling_precedes_rng_and_retry(invalid: dict) -> None:
     assert torch.equal(sample_flip(**args).selected, sample_flip(**(args | {"generator": reference})).selected)
     assert torch.equal(generator.get_state(), reference.get_state())
     assert torch.equal(before, torch.get_rng_state())
+
+
+@pytest.mark.parametrize("device", ["cpu:0", torch.device("cpu:0")])
+def test_cpu_zero_index_matches_generator(device: torch.device | str) -> None:
+    generator = torch.Generator().manual_seed(137)
+    reference = torch.Generator().manual_seed(137)
+    plan = sample_flip(batch_size=17, direction="horizontal", device=device, generator=generator)
+    expected = sample_flip(batch_size=17, direction="horizontal", device="cpu", generator=reference)
+    assert plan.selected.device == torch.device("cpu")
+    assert torch.equal(plan.selected, expected.selected)
+    assert torch.equal(generator.get_state(), reference.get_state())
 
 
 @pytest.mark.parametrize("kind", ["dtype", "rank", "sparse", "subclass", "meta", "list"])
@@ -614,8 +669,8 @@ def test_cuda_hybrid_uses_selected_indices(kind: str, count: int) -> None:
     assert torch.equal(plan.selected, selected)
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="Requires CUDA.")
-@pytest.mark.parametrize("missing", ["triton", "kernel_source"])
+@pytest.mark.skipif(torch.version.cuda is None or not torch.cuda.is_available(), reason="Requires NVIDIA CUDA.")
+@pytest.mark.parametrize("missing", ["capability", "triton", "kernel_source"])
 def test_cuda_flip_with_unavailable_backend(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, missing: str) -> None:
     values = torch.arange(60, device="cuda", dtype=torch.float32).reshape(4, 1, 3, 5)
     selected = torch.tensor([True, False, False, True], device=values.device)
@@ -624,15 +679,26 @@ def test_cuda_flip_with_unavailable_backend(monkeypatch: pytest.MonkeyPatch, tmp
     monkeypatch.delitem(sys.modules, "albumentations.batch._flip_cuda", raising=False)
     if missing == "triton":
         monkeypatch.setitem(sys.modules, "triton", None)
-    else:
+    elif missing == "kernel_source":
         pytest.importorskip("triton")
         source = Path(flipping.__file__).with_name("_flip_cuda.py")
         py_compile.compile(str(source), str(tmp_path / "_flip_cuda.pyc"), str(tmp_path / source.name), doraise=True)
         monkeypatch.setattr(import_module("albumentations.batch"), "__path__", [str(tmp_path)])
     flipping._cuda_flip_backend.cache_clear()
     try:
-        with patch.object(flipping, "_flip_cuda_indexed", wraps=flipping._flip_cuda_indexed) as hybrid:
+        with (
+            patch.object(torch.cuda, "get_device_capability", return_value=(8, 0)) as capability,
+            patch.object(flipping, "import_module", wraps=import_module) as backend_import,
+            patch.object(flipping, "_flip_cuda_indexed", wraps=flipping._flip_cuda_indexed) as hybrid,
+        ):
+            if missing == "capability":
+                capability.side_effect = RuntimeError("CUDA capability query failed")
             assert apply_flip_(values, FlipPlan("horizontal", selected)) is values
+        capability.assert_called_once_with(values.device)
+        if missing == "capability":
+            backend_import.assert_not_called()
+        else:
+            backend_import.assert_called_once_with("albumentations.batch._flip_cuda")
         hybrid.assert_called_once()
         assert torch.equal(values, expected)
     finally:

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import math
+import struct
+import sys
 from contextlib import nullcontext
 from functools import cache
 from importlib import import_module
@@ -31,6 +33,7 @@ _FLIP_DTYPES: Final = frozenset(
     }
 )
 _WORD_BITS: Final = 30
+_BINARY64_ZEROS: Final = (struct.pack(">d", 0.0), struct.pack(">d", -0.0))
 
 
 def _validate_direction(direction: FlipDirection) -> None:
@@ -86,28 +89,54 @@ class FlipPlan:
 def _generator_device(device: torch.device | str, generator: torch.Generator) -> torch.device:
     if not isinstance(generator, torch.Generator) or not isinstance(device, (str, torch.device)):
         raise ValueError("Expected a CPU or CUDA device and a torch.Generator.")  # noqa: TRY004
-    try:
-        requested = torch.device(device)
-    except (ValueError, RuntimeError) as exc:
-        raise ValueError(f"Invalid flip device {device!r}.") from exc
     actual = generator.device
-    if requested.type == "cpu" and actual.type == "cpu":
+    canonical = str(actual) if isinstance(device, str) else actual
+    if device == canonical and actual.type in ("cpu", "cuda"):
+        return actual
+    if isinstance(device, str):
+        try:
+            requested = torch.device(device)
+        except (ValueError, RuntimeError) as exc:
+            raise ValueError(f"Invalid flip device {device!r}.") from exc
+        # torch.device can narrow an explicit index, e.g. "cpu:256" to cpu:0.
+        index = int(device.partition(":")[2]) if ":" in device else requested.index
+    else:
+        requested = device
+        index = requested.index
+    if requested.type == "cpu" and actual.type == "cpu" and index in (None, 0):
         return actual
     if requested.type == "cuda" and actual.type == "cuda":
-        if isinstance(device, str) and ":" in device:
-            # torch.device can narrow an explicit index, e.g. "cuda:256" to cuda:0.
-            index = int(device.partition(":")[2])
-        else:
-            index = torch.cuda.current_device() if requested.index is None else requested.index
+        if index is None:
+            index = torch.cuda.current_device()
         if index == actual.index:
             return actual
     raise ValueError(f"Flip device {device} must match the CPU or CUDA generator device {actual}.")
 
 
-def _sample_selection(count: int, probability: float, device: torch.device, generator: torch.Generator) -> torch.Tensor:
-    if not count or probability in (0, 1):
-        return torch.full((count,), probability == 1, dtype=torch.bool, device=device)
-    numerator, denominator = probability.as_integer_ratio()
+def _probability_ratio(probability: float) -> tuple[int, int]:
+    if isinstance(probability, float):
+        if sys.float_info.min <= probability <= 1.0:
+            return float.as_integer_ratio(probability)
+        # Compare the stored bits near zero because flush-to-zero makes subnormals compare equal to zero.
+        encoded = struct.pack(">d", probability)
+        if encoded in _BINARY64_ZEROS:
+            return 0, 1
+        bits = int.from_bytes(encoded, "big")
+        if bits < 1 << 52:
+            # A positive subnormal is its fraction bits divided by 2**1074. Reduce before sampling.
+            divisor = bits & -bits
+            return bits // divisor, (1 << 1074) // divisor
+    elif isinstance(probability, int) and not isinstance(probability, bool) and probability in (0, 1):
+        return probability, 1
+    raise ValueError("Flip probability must be a finite number between zero and one.")
+
+
+def _sample_selection(
+    count: int, ratio: tuple[int, int], device: torch.device, generator: torch.Generator
+) -> torch.Tensor:
+    numerator, denominator = ratio
+    if not count or denominator == 1:
+        return torch.full((count,), numerator == 1, dtype=torch.bool, device=device)
     bits = denominator.bit_length() - 1
     # Compare a uniform integer to the binary64 numerator, least significant word first.
     limit = 1 << min(bits, _WORD_BITS)
@@ -128,7 +157,7 @@ def sample_flip(
     Args:
         batch_size (int): Number of samples, including zero.
         direction (FlipDirection): `"horizontal"` or `"vertical"`.
-        device (torch.device | str): CPU or CUDA device of the batch.
+        device (torch.device | str): CPU or CUDA device of the batch. CPU accepts no index or index zero.
         generator (torch.Generator): Generator on that device. An empty batch or a probability
             of zero or one leaves its state unchanged.
         p (float): Exact Python float probability in [0, 1]. Defaults to 0.5.
@@ -140,10 +169,9 @@ def sample_flip(
     if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size < 0:
         raise ValueError("Flip batch size must be a nonnegative integer.")
     _validate_direction(direction)
-    if isinstance(p, bool) or not isinstance(p, (int, float)) or not 0 <= p <= 1:
-        raise ValueError("Flip probability must be a finite number between zero and one.")
+    ratio = _probability_ratio(p)
     actual_device = _generator_device(device, generator)
-    return FlipPlan(direction, _sample_selection(batch_size, float(p), actual_device, generator))
+    return FlipPlan(direction, _sample_selection(batch_size, ratio, actual_device, generator))
 
 
 def _validate_values(values: torch.Tensor, selected: torch.Tensor) -> None:
@@ -194,9 +222,9 @@ def _raster_views(values: torch.Tensor) -> Iterator[torch.Tensor]:
 
 @cache
 def _cuda_flip_backend(device: torch.device) -> ModuleType | None:
-    if torch.version.cuda is None or torch.cuda.get_device_capability(device) < (8, 0):
-        return None
     try:
+        if torch.version.cuda is None or torch.cuda.get_device_capability(device) < (8, 0):
+            return None
         return import_module("albumentations.batch._flip_cuda")
     except (AttributeError, ImportError, OSError, RuntimeError, ValueError):
         return None
@@ -259,6 +287,8 @@ def apply_flip_(values: torch.Tensor, plan: FlipPlan) -> torch.Tensor:
 
     On CUDA, contiguous BCHW uint8 and float32 inputs can use an installed Triton backend.
     The PyTorch fallback reuses the selected sample indices.
+    If execution fails after writes begin, the tensor may be partially flipped. Discard the affected
+    batch and retry with fresh inputs.
 
     Args:
         values (torch.Tensor): Writable, unnamed strided CPU or CUDA raster of shape

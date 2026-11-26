@@ -232,14 +232,14 @@ def _check_public_copy(repo_root: Path) -> list[str]:
         "Free for open-source projects",
         "For proprietary/commercial use",
         "bypassing the open-source requirements",
+        "does not require a commercial license",
+        "available at no charge",
     )
     errors = [
-        f"README contains stale categorical license wording: {phrase!r}"
-        for phrase in stale_phrases
-        if phrase in normalized_readme
+        f"README contains stale license wording: {phrase!r}" for phrase in stale_phrases if phrase in normalized_readme
     ]
-    if "The AGPL permits commercial use subject to its terms." not in normalized_readme:
-        errors.append("README must state that the AGPL permits commercial use subject to its terms")
+    if "also available under" not in normalized_readme:
+        errors.append("README must name the AGPL-3.0-only option ('also available under')")
     return errors
 
 

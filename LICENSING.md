@@ -16,7 +16,8 @@ remains available under AGPL-3.0-only when commercial licenses are also offered.
 Albumentations, LLC offers commercial licenses for proprietary applications
 and services. An agreement can grant rights to use, modify, integrate, host,
 or distribute AlbumentationsX without AGPL source-sharing requirements for
-the use covered by that agreement.
+the use covered by that agreement. Your team works from that agreement and
+does not need to analyze the AGPL for the covered use.
 
 The agreement or order form defines scope-specific permissions for the named
 legal entities, teams, projects or products, versions, deployments, and term,
@@ -26,9 +27,9 @@ maintenance, and service levels are included only when an executed agreement
 or order form expressly says so.
 
 [Request a quote](https://albumentations.ai/pricing) for the coverage you need,
-or email <vladimir@albumentations.ai>. To compare the commercial option with
-AGPL, including internal training and model outputs, read the
-[license guide](https://albumentations.ai/docs/license/).
+or email <vladimir@albumentations.ai>. The
+[license guide](https://albumentations.ai/docs/license/) describes coverage and
+procurement.
 
 ## Institutional Procurement
 

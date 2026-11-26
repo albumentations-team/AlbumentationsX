@@ -71,6 +71,10 @@ class ImageCompression(ImageOnlyTransform):
         - For five or more channels, the first three are compressed together and each additional band is
           compressed separately as grayscale.
 
+    See Also:
+        - `Downscale` simulates low spatial resolution by shrinking the image and resizing it back.
+        - `Posterize` simulates limited color depth by reducing the number of intensity levels per channel.
+
     Examples:
         >>> import numpy as np
         >>> import albumentations as A
@@ -178,6 +182,10 @@ class Downscale(ImageOnlyTransform):
           while using INTER_LINEAR or INTER_CUBIC can produce smoother results.
         - This transform can be useful for data augmentation, especially when training models
           that need to be robust to variations in image quality or resolution.
+
+    See Also:
+        - `ImageCompression` simulates artifacts from saving an image as lossy JPEG or WebP.
+        - `Posterize` reduces color depth to produce visible bands in smooth gradients.
 
     Examples:
         >>> import albumentations as A

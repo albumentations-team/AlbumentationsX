@@ -481,6 +481,10 @@ class Posterize(ImageOnlyTransform):
         new_value = (old_value >> (8 - n)) << (8 - n)
         This operation keeps the n most significant bits and sets the rest to zero.
 
+    See Also:
+        - `ImageCompression` simulates artifacts introduced by a JPEG or WebP encoder.
+        - `Downscale` simulates pixelation when nearest-neighbor interpolation is used for resizing.
+
     Examples:
         >>> import numpy as np
         >>> import albumentations as A

@@ -232,6 +232,17 @@ exclude = [
   ".claude",
   ".codex",
   "conda.recipe",
+  "ci",
+  "img",
+  ".well-known",
+  ".pre-commit-config.yaml",
+  ".readthedocs.yml",
+  ".markdownlint.json",
+  ".gitattributes",
+  "uv.lock",
+  "AGENTS.md",
+  "AI_USAGE.md",
+  "MAINTAINERS.md",
 ]
 
 [tool.ruff]

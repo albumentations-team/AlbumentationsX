@@ -13,7 +13,7 @@ import sys
 import tomllib
 import urllib.parse
 import urllib.request
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
@@ -22,6 +22,7 @@ from typing import Any, Protocol
 SCHEMA_VERSION = 1
 MANIFEST_NAME = "release-manifest.json"
 DEFAULT_RETENTION_DAYS = 90
+_SYMLINK_MODE = b"120000"
 DEFAULT_WORKFLOW_PATH = ".github/workflows/pr.yml"
 # GitHub upload-artifact omitted this uv-generated hidden file before hidden-file uploads were enabled.
 LEGACY_TRANSPORT_OMISSIONS = {
@@ -183,7 +184,7 @@ def _tracked_records(repository: Path) -> list[tuple[bytes, bytes]]:
             msg = "Release source digest requires an index without unmerged entries"
             raise BundleError(msg)
         mode = fields[0]
-        if mode not in {b"100644", b"100755"}:
+        if mode not in {b"100644", b"100755", _SYMLINK_MODE}:
             decoded_path = os.fsdecode(raw_path)
             msg = f"Unsupported tracked file mode {mode.decode()} for {decoded_path}"
             raise BundleError(msg)
@@ -194,6 +195,16 @@ def _tracked_records(repository: Path) -> list[tuple[bytes, bytes]]:
     return sorted(records)
 
 
+def _update_digest(digest: Any, mode: bytes, raw_path: bytes, size: int, chunks: Iterable[bytes]) -> None:
+    digest.update(mode)
+    digest.update(b"\0")
+    digest.update(len(raw_path).to_bytes(8, "big"))
+    digest.update(raw_path)
+    digest.update(size.to_bytes(8, "big"))
+    for chunk in chunks:
+        digest.update(chunk)
+
+
 def source_digest(repository: Path) -> str:
     """Return a commit-independent SHA-256 digest of the clean tracked tree."""
     repository = repository.resolve()
@@ -201,18 +212,20 @@ def source_digest(repository: Path) -> str:
     digest = hashlib.sha256()
     for raw_path, mode in _tracked_records(repository):
         path = repository / os.fsdecode(raw_path)
+        if mode == _SYMLINK_MODE:
+            if not path.is_symlink():
+                msg = f"Tracked symlink is not a symlink in the working tree: {os.fsdecode(raw_path)}"
+                raise BundleError(msg)
+            content = os.fsencode(path.readlink())
+            _update_digest(digest, mode, raw_path, len(content), (content,))
+            continue
         if path.is_symlink() or not path.is_file():
             msg = f"Tracked release input must be a regular file: {os.fsdecode(raw_path)}"
             raise BundleError(msg)
-        file_size = path.stat().st_size
-        digest.update(mode)
-        digest.update(b"\0")
-        digest.update(len(raw_path).to_bytes(8, "big"))
-        digest.update(raw_path)
-        digest.update(file_size.to_bytes(8, "big"))
         with path.open("rb") as tracked_file:
-            while chunk := tracked_file.read(1024 * 1024):
-                digest.update(chunk)
+            _update_digest(
+                digest, mode, raw_path, path.stat().st_size, iter(lambda: tracked_file.read(1024 * 1024), b"")
+            )
     return f"sha256:{digest.hexdigest()}"
 
 

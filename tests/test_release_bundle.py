@@ -85,6 +85,37 @@ def test_source_digest_changes_with_tracked_content(tmp_path: Path) -> None:
     assert source_digest(repository) != first_digest
 
 
+def _track_symlink(repository: Path, target: str) -> None:
+    (repository / "link").symlink_to(target)
+    _run_git(repository, "add", "link")
+    _run_git(repository, "commit", "-m", "add symlink")
+
+
+def test_source_digest_covers_symlink_target_without_following_it(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    before = source_digest(repository)
+    _track_symlink(repository, "source.py")
+    with_link = source_digest(repository)
+    (repository / "link").unlink()
+    (repository / "link").symlink_to("pyproject.toml")
+    _run_git(repository, "add", "link")
+    _run_git(repository, "commit", "-m", "retarget symlink")
+
+    assert with_link != before
+    assert source_digest(repository) != with_link
+
+
+def test_source_digest_rejects_tracked_symlink_replaced_by_file(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    _track_symlink(repository, "source.py")
+    (repository / "link").unlink()
+    (repository / "link").write_text("x", encoding="utf-8")
+    _run_git(repository, "update-index", "--assume-unchanged", "link")
+
+    with pytest.raises(BundleError, match="not a symlink"):
+        source_digest(repository)
+
+
 def test_release_metadata_binds_version_and_source_digest(tmp_path: Path) -> None:
     repository = _repository(tmp_path)
 

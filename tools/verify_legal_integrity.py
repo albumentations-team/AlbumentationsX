@@ -238,8 +238,8 @@ def _check_public_copy(repo_root: Path) -> list[str]:
     errors = [
         f"README contains stale license wording: {phrase!r}" for phrase in stale_phrases if phrase in normalized_readme
     ]
-    if "also available under" not in normalized_readme:
-        errors.append("README must name the AGPL-3.0-only option ('also available under')")
+    if f"also available under [{SPDX_LICENSE}]" not in normalized_readme:
+        errors.append(f"README must name the {SPDX_LICENSE} option ('also available under [{SPDX_LICENSE}]')")
     return errors
 
 

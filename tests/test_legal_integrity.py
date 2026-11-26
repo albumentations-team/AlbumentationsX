@@ -88,20 +88,30 @@ def test_source_legal_integrity() -> None:
     assert collect_source_errors() == []
 
 
+MISSING_AGPL_OPTION = "README must name the AGPL-3.0-only option ('also available under [AGPL-3.0-only]')"
+
+
 @pytest.mark.parametrize(
     ("readme", "expected_error"),
     [
         (
-            "Commercial status alone does not require a commercial license. It is also available under AGPL-3.0-only.",
+            (
+                "Commercial status alone does not require a commercial license. "
+                "It is also available under [AGPL-3.0-only](LICENSE)."
+            ),
             "README contains stale license wording: 'does not require a commercial license'",
         ),
         (
-            "AGPL-3.0-only is available at no charge. AlbumentationsX is also available under AGPL-3.0-only.",
+            "AGPL-3.0-only is available at no charge. AlbumentationsX is also available under [AGPL-3.0-only](LICENSE).",
             "README contains stale license wording: 'available at no charge'",
         ),
         (
             "Request a quote for a commercial license.",
-            "README must name the AGPL-3.0-only option ('also available under')",
+            MISSING_AGPL_OPTION,
+        ),
+        (
+            "AlbumentationsX is also available under MIT.",
+            MISSING_AGPL_OPTION,
         ),
     ],
 )

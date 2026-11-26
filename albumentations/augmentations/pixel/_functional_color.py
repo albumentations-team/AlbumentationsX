@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from math import prod
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 import albucore
@@ -28,7 +29,6 @@ from ._functional_shared import (
     convert_dtype,
     cv2,
     fgeometric,
-    get_num_channels,
     is_grayscale_image,
     is_rgb_image,
     mean,
@@ -544,7 +544,16 @@ def image_compression(
             Only channels sent to the codec are quantized to uint8 and restored to the input dtype.
 
     """
-    num_channels = 1 if img.ndim == 2 else get_num_channels(img)
+    # HW has one plane (the empty product); HWC has C. Keep the original view for dtype conversion.
+    return _compress_image_channels(img, quality, image_type, prod(img.shape[2:]))
+
+
+def _compress_image_channels(
+    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
+    quality: int,
+    image_type: Literal[".jpg", ".webp"],
+    num_channels: int,
+) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     if num_channels == 4:
         height, width = img.shape[:2]
         result = np.empty(img.shape, dtype=img.dtype)
@@ -555,15 +564,7 @@ def image_compression(
         # mixChannels numbers the three decoded channels first, so source channel 6 is the original alpha.
         cv2.mixChannels([decoded, img], [result], [0, 0, 1, 1, 2, 2, 6, 3])
         return result
-    return _compress_image_channels(img, quality, image_type, num_channels)
 
-
-def _compress_image_channels(
-    img: NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32],
-    quality: int,
-    image_type: Literal[".jpg", ".webp"],
-    num_channels: int,
-) -> NDArray[np.uint8] | NDArray[np.float16] | NDArray[np.float32]:
     img, input_dtype = to_uint8_working_image(img)
     # Determine the quality flag for compression
     quality_flag = cv2.IMWRITE_JPEG_QUALITY if image_type == ".jpg" else cv2.IMWRITE_WEBP_QUALITY

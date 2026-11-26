@@ -23,6 +23,7 @@ from tests.conftest import (
     UINT8_IMAGES,
     VOLUME,
 )
+from tests.helpers.image_compression import assert_rgba_compression, opencv_compression
 from tests.utils import convert_2d_to_target_format
 
 
@@ -1341,47 +1342,14 @@ def test_image_compression_shapes(image_type, quality, shape, expected_shape):
     assert compressed.dtype == np.uint8
 
 
-def _opencv_compression(image, quality, image_type, read_mode):
-    flag = cv2.IMWRITE_JPEG_QUALITY if image_type == ".jpg" else cv2.IMWRITE_WEBP_QUALITY
-    ok, encoded = cv2.imencode(image_type, image, (flag, quality))
-    assert ok
-    return cv2.imdecode(encoded, read_mode)
-
-
 def _check_rgba_compression(image, quality, image_type):
     original = image.copy()
-    expected_rgb = fpixel.image_compression(image[..., :3], quality, image_type)
     result = fpixel.image_compression(image, quality, image_type)
 
-    assert result.shape == original.shape
-    assert result.dtype == original.dtype
+    assert_rgba_compression(result, original, quality, image_type)
     assert not np.shares_memory(result, image)
-    np.testing.assert_array_equal(result[..., :3], expected_rgb, strict=True)
-    assert result[..., 3].tobytes() == original[..., 3].tobytes()
     np.testing.assert_array_equal(image, original, strict=True)
     return result
-
-
-@pytest.mark.parametrize("image_type", [".jpg", ".webp"])
-@pytest.mark.parametrize(
-    ("pattern", "quality"),
-    [("circle", q) for q in (1, 75, 90, 91, 92, 93, 94, 95, 99, 100)] + [("gradient", q) for q in (1, 75, 99, 100)],
-)
-def test_image_compression_rgba_mixed_alpha(image_type, pattern, quality):
-    if pattern == "circle":
-        y, x = np.ogrid[:64, :64]
-        alpha = np.where((x - 32) ** 2 + (y - 32) ** 2 <= 20**2, 255, 0).astype(np.uint8)
-        rgb = np.broadcast_to(np.uint8([20, 110, 220]), (*alpha.shape, 3))
-    else:
-        alpha = np.arange(63, dtype=np.uint8).reshape(7, 9) * 4
-        rgb = np.random.default_rng(137).integers(0, 256, (*alpha.shape, 3), dtype=np.uint8)
-    image = np.dstack((rgb, alpha))
-    result = _check_rgba_compression(image, quality, image_type)
-    if image_type == ".webp":
-        bgra = cv2.cvtColor(image, cv2.COLOR_RGBA2BGRA)
-        native = _opencv_compression(bgra, quality, image_type, cv2.IMREAD_UNCHANGED)
-        assert native.shape == image.shape
-        np.testing.assert_array_equal(result[..., 3], native[..., 3], strict=True)
 
 
 @pytest.mark.parametrize("image_type", [".jpg", ".webp"])
@@ -1393,16 +1361,6 @@ def test_image_compression_rgba_constant_alpha(image_type, quality, alpha):
     result = _check_rgba_compression(image, quality, image_type)
     if quality == 75:
         assert np.any(result[..., :3] != image[..., :3])
-
-
-@pytest.mark.parametrize("image_type", [".jpg", ".webp"])
-@pytest.mark.parametrize("quality", [1, 100])
-@pytest.mark.parametrize("dtype", [np.float16, np.float32])
-def test_image_compression_rgba_float_precision(image_type, quality, dtype):
-    image = np.random.default_rng(137).random((17, 24, 4), dtype=np.float32).astype(dtype)
-    image[:, ::2, 3] = 0.5
-    image[:, 1::2, 3] = 0.5009765625
-    _check_rgba_compression(image, quality, image_type)
 
 
 @pytest.mark.parametrize("image_type", [".jpg", ".webp"])
@@ -1419,7 +1377,7 @@ def test_image_compression_rgba_strided_float(image_type, dtype):
 @pytest.mark.parametrize("image_type", [".jpg", ".webp"])
 def test_image_compression_gray_width_four(image_type):
     image = np.random.default_rng(137).integers(0, 256, (7, 4), dtype=np.uint8)
-    expected = _opencv_compression(image, 75, image_type, cv2.IMREAD_GRAYSCALE)
+    expected = opencv_compression(image, 75, image_type, cv2.IMREAD_GRAYSCALE)
     np.testing.assert_array_equal(fpixel.image_compression(image, 75, image_type), expected[..., None], strict=True)
 
 
@@ -1428,7 +1386,7 @@ def test_image_compression_two_channel_opencv(image_type):
     image = np.random.default_rng(137).integers(0, 256, (17, 23, 2), dtype=np.uint8)
     padded = np.zeros((17, 23, 3), dtype=np.uint8)
     padded[..., :2] = image
-    decoded = _opencv_compression(padded, 75, image_type, cv2.IMREAD_UNCHANGED)
+    decoded = opencv_compression(padded, 75, image_type, cv2.IMREAD_UNCHANGED)
     np.testing.assert_array_equal(fpixel.image_compression(image, 75, image_type), decoded[..., :2], strict=True)
 
 
@@ -1437,7 +1395,7 @@ def test_image_compression_five_band(image_type):
     image = np.random.default_rng(137).integers(0, 256, (17, 23, 5), dtype=np.uint8)
     result = fpixel.image_compression(image, 75, image_type)
     for band in (3, 4):
-        expected = _opencv_compression(image[..., band], 75, image_type, cv2.IMREAD_GRAYSCALE)
+        expected = opencv_compression(image[..., band], 75, image_type, cv2.IMREAD_GRAYSCALE)
         np.testing.assert_array_equal(result[..., band], expected, strict=True)
 
 

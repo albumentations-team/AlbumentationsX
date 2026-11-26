@@ -928,6 +928,47 @@ def test_unsharp_mask_float_uint8_diff_less_than_three(val_uint8):
 
 
 @pytest.mark.parametrize(
+    ("dtype", "tolerance"),
+    [(np.uint8, 1.0), (np.float32, 1e-5)],
+)
+@pytest.mark.parametrize("alpha", [-0.27, -1.0, 0.27])
+def test_unsharp_mask_blends_toward_the_blur_for_a_negative_alpha(dtype, tolerance, alpha):
+    rng = np.random.default_rng(0)
+    image = rng.integers(0, 256, (32, 32, 3), dtype=np.uint8)
+    scale = 255.0
+    if dtype == np.float32:
+        image = image.astype(np.float32) / scale
+        scale = 1.0
+
+    transform = A.Compose(
+        [A.UnsharpMask(blur_range=(3, 3), sigma_range=(0.0, 0.0), alpha_range=(alpha, alpha), threshold=0, p=1)],
+        seed=137,
+    )
+    result = transform(image=image)["image"]
+
+    blurred = cv2.GaussianBlur(image, (3, 3), 0).astype(np.float64)
+    expected = np.clip(image + alpha * (image - blurred), 0, scale)
+
+    assert result.dtype == dtype
+    assert np.abs(result.astype(np.float64) - expected).max() <= tolerance
+
+
+def test_unsharp_mask_negative_alpha_lowers_edge_energy():
+    image = np.zeros((16, 16, 3), dtype=np.uint8)
+    image[:, 8:] = 255
+
+    result = A.Compose([A.UnsharpMask(alpha_range=(-0.5, -0.5), threshold=0, p=1)], seed=137)(image=image)["image"]
+
+    assert np.abs(np.diff(result.astype(np.int16), axis=1)).max() < 255
+
+
+@pytest.mark.parametrize("alpha_range", [(-1.01, 0.0), (0.0, 1.01)])
+def test_unsharp_mask_rejects_alpha_outside_minus_one_to_one(alpha_range):
+    with pytest.raises(ValueError, match="alpha_range"):
+        A.UnsharpMask(alpha_range=alpha_range)
+
+
+@pytest.mark.parametrize(
     ["brightness", "contrast", "saturation", "hue"],
     [
         [1, 1, 1, 0],

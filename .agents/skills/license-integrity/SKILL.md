@@ -33,9 +33,14 @@ extras that the license registry excludes.
 ## Invariants
 
 - Default repository SPDX expression is `AGPL-3.0-only`.
-- The AGPL permits commercial use subject to its terms. Do not use the words
-  commercial, proprietary, internal, or production as automatic license
-  triggers.
+- Do not use the words commercial, proprietary, internal, or production as
+  automatic license triggers, and never claim a purchase is mandatory.
+- Public copy (README, PyPI description, the commercial section of
+  `LICENSING.md`) leads with the commercial license as the way to skip AGPL
+  analysis for the agreed scope. It does not explain how to avoid buying or
+  analyze AGPL obligations; it names AGPL-3.0-only in one neutral line with a
+  link to `LICENSE`. The legal statement "The AGPL permits commercial use
+  subject to its terms" stays in the `LICENSING.md` repository-license section.
 - Separately negotiated commercial terms grant alternative permissions only
   for their stated scope. Do not promise support, warranties, maintenance, or
   an SLA unless an executed agreement or order form includes it.

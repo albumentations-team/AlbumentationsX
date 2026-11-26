@@ -43,7 +43,7 @@ wheels = [
 
 [[package]]
 name = "albumentationsx"
-version = "2.6.8"
+version = "2.6.9"
 source = { editable = "." }
 dependencies = [
     { name = "albucore" },

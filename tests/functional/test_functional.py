@@ -23,7 +23,7 @@ from tests.conftest import (
     UINT8_IMAGES,
     VOLUME,
 )
-from tests.helpers.image_compression import assert_rgba_compression, opencv_compression
+from tests.helpers.image_compression import check_rgba_compression, opencv_compression
 from tests.utils import convert_2d_to_target_format
 
 
@@ -1342,36 +1342,26 @@ def test_image_compression_shapes(image_type, quality, shape, expected_shape):
     assert compressed.dtype == np.uint8
 
 
-def _check_rgba_compression(image, quality, image_type):
-    original = image.copy()
-    result = fpixel.image_compression(image, quality, image_type)
-
-    assert_rgba_compression(result, original, quality, image_type)
-    assert not np.shares_memory(result, image)
-    np.testing.assert_array_equal(image, original, strict=True)
-    return result
-
-
-@pytest.mark.parametrize("image_type", [".jpg", ".webp"])
+@pytest.mark.parametrize("compression_type", ["jpeg", "webp"])
 @pytest.mark.parametrize("quality", [4, 75])
 @pytest.mark.parametrize("alpha", [0, 255])
-def test_image_compression_rgba_constant_alpha(image_type, quality, alpha):
+def test_image_compression_rgba_constant_alpha(compression_type, quality, alpha):
     image = np.random.default_rng(137).integers(0, 256, (17, 23, 4), dtype=np.uint8)
     image[..., 3] = alpha
-    result = _check_rgba_compression(image, quality, image_type)
+    result = check_rgba_compression(image, quality, compression_type)
     if quality == 75:
         assert np.any(result[..., :3] != image[..., :3])
 
 
-@pytest.mark.parametrize("image_type", [".jpg", ".webp"])
+@pytest.mark.parametrize("compression_type", ["jpeg", "webp"])
 @pytest.mark.parametrize("dtype", [np.float16, np.float32])
-def test_image_compression_rgba_strided_float(image_type, dtype):
+def test_image_compression_rgba_strided_float(compression_type, dtype):
     # Packing RGB can change the dtype conversion backend on large read-only inputs.
     levels = np.random.default_rng(137).integers(0, 255, (384, 1024, 4), dtype=np.uint8)
     image = ((levels.astype(np.float32) + 0.5) / 255).astype(dtype)[:, ::-2]
     image[:, ::3, 3] = -0.0
     image.setflags(write=False)
-    _check_rgba_compression(image, 75, image_type)
+    check_rgba_compression(image, 75, compression_type)
 
 
 @pytest.mark.parametrize("image_type", [".jpg", ".webp"])

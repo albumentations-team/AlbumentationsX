@@ -21,7 +21,7 @@ from tests.conftest import (
     SQUARE_UINT8_IMAGE,
 )
 from tests.helpers import TransformTestHelper
-from tests.helpers.image_compression import assert_rgba_compression, opencv_compression
+from tests.helpers.image_compression import assert_rgba_compression, check_rgba_compression, opencv_compression
 
 from .utils import (
     get_primary_2d_transform_params,
@@ -1245,22 +1245,6 @@ def test_image_compression_single_pixel_grayscale(codec, ext, dtype):
     np.testing.assert_array_equal(transform(image=image)["image"], expected, strict=True)
 
 
-def _check_public_rgba(image, quality, compression_type, route):
-    image_type = ".jpg" if compression_type == "jpeg" else ".webp"
-    original = image.copy()
-    if route == "functional":
-        result = fpixel.image_compression(image, quality, image_type)
-    else:
-        transform = A.ImageCompression(compression_type=compression_type, quality_range=(quality, quality), p=1)
-        pipeline = A.Compose([transform], seed=137, strict=True) if route == "compose" else transform
-        result = pipeline(image=image)["image"]
-
-    assert_rgba_compression(result, original, quality, image_type)
-    assert not np.shares_memory(result, image)
-    np.testing.assert_array_equal(image, original, strict=True)
-    return result
-
-
 @pytest.mark.parametrize("route", ["functional", "direct", "compose"])
 @pytest.mark.parametrize("compression_type", ["jpeg", "webp"])
 @pytest.mark.parametrize(
@@ -1276,7 +1260,7 @@ def test_image_compression_rgba_mixed_alpha(route, compression_type, pattern, qu
     else:
         image = np.random.default_rng(137).integers(0, 256, (7, 9, 4), dtype=np.uint8)
         image[..., 3] = np.arange(63, dtype=np.uint8).reshape(7, 9) * 4
-    result = _check_public_rgba(image, quality, compression_type, route)
+    result = check_rgba_compression(image, quality, compression_type, route)
     if compression_type == "webp":
         bgra = cv2.cvtColor(image, cv2.COLOR_RGBA2BGRA)
         native = opencv_compression(bgra, quality, ".webp", cv2.IMREAD_UNCHANGED)
@@ -1292,7 +1276,7 @@ def test_image_compression_rgba_float_precision(route, compression_type, quality
     image = np.random.default_rng(137).random((7, 9, 4), dtype=np.float32).astype(dtype)
     image[:, ::2, 3] = 0.5
     image[:, 1::2, 3] = 0.5009765625
-    _check_public_rgba(image, quality, compression_type, route)
+    check_rgba_compression(image, quality, compression_type, route)
 
 
 @pytest.mark.parametrize("target", ["image", "images", "volume", "volumes"])
@@ -1335,7 +1319,9 @@ def test_image_compression_rgba_targets(target, container, compression_type, dty
     np.testing.assert_array_equal(parent, original, strict=True)
     image_type = ".jpg" if compression_type == "jpeg" else ".webp"
     for index in np.ndindex(leading_axes):
-        assert_rgba_compression(result[index], image[index], 75, image_type)
+        frame = image[index]
+        expected_rgb = fpixel.image_compression(frame[..., :3], 75, image_type)
+        assert_rgba_compression(result[index], frame, expected_rgb)
 
 
 @pytest.mark.parametrize("target", ["image", "images", "volume", "volumes"])

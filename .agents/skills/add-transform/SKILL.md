@@ -49,8 +49,10 @@ Implement the operation in the corresponding functional module, without transfor
   `gradient`, `displacement`, `vector_field`, and `normal` separately: covectors, finite endpoint offsets, local
   vectors, and unit normals obey different component rules. Repeat the check for 3D targets and for 2D transforms
   applied to volumes. A field target belongs in `_targets` only when the handler preserves that meaning. Keep field
-  input dtypes at float16/float32; the raster image dtype list does not apply to fields. Use the field target profiles
-  and exact geometry tests rather than relying on output shape alone.
+  input dtypes at float16/float32; the raster image dtype list does not apply to fields. A field handler may call only
+  the Albucore functions listed in
+  [Vector fields](../../../docs/vector-fields.md#albucore-functions-that-may-receive-a-field). Use the field target
+  profiles and exact geometry tests rather than relying on output shape alone.
 - `_targets` is the only source for active dispatch. Do not infer targets from method names or add an automatic route
   for `user_data`; it is passthrough unless a custom transform explicitly declares and implements that target.
 - Read [Instance and Frame Binding](../../../docs/design/instance_binding.md) when a transform supports batches or

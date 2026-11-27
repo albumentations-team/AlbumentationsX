@@ -37,6 +37,8 @@ always_apply: true
   native Tensor handlers are channel-first and grayscale is `(1, H, W)`. Do not add channel-free compatibility branches or
   hedge for "maybe grayscale" in `apply_*` methods or in functional kernels that `Compose` dispatches to. Functional helpers
   that are public for direct calls keep their documented `(H, W)` support in their owning functional layer.
+  Direct calls to a leaf transform bypass `Compose` normalization and must pass the canonical layout with an explicit
+  channel axis; transforms do not add `(H, W)` support for them.
 - Every channel is image data. Do not treat a fourth channel as alpha or a mask, and do not exempt it from a
   transform. Masks and labels go through `mask`, `masks`, and the other targets, which image transforms do not touch.
 - A transform that handles channels differently (for example RGB-only color math) declares that restriction on the

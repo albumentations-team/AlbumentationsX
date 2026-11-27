@@ -68,6 +68,12 @@ Implement the operation in the corresponding functional module, without transfor
 - NumPy inputs inside transform execution have explicit channel-last layouts: `(H, W, C)`, `(N, H, W, C)`, and
   `(D, H, W, C)`; grayscale is `(H, W, 1)`. Compose normalizes public channel-free inputs before dispatch. Native
   Tensor handlers use the channel-first layouts in [NumPy and Tensor routing](../../../docs/design/numpy-tensor-routing.md).
+- Every channel is image data. Do not add channel-free compatibility branches to `apply_*` methods or kernels that `Compose`
+  dispatches to (public functional helpers keep their documented `(H, W)` direct-call support; direct leaf-transform calls must
+  pass explicit channels), treat a fourth channel
+  as alpha, or exempt it from the operation; masks and labels go through the mask targets. An operation may process channel groups differently, including a single-channel branch,
+  when the math requires it (`ImageCompression` encodes one channel as grayscale, the first three together, and each
+  further one as grayscale). Restrict channel counts only when needed, and say so in the docstring.
 - Keep reusable pixel arithmetic in `functional.py`, not in a transform class.
 
 ## 4. Add batch optimization (`apply_to_images`)

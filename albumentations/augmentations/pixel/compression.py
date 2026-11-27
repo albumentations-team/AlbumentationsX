@@ -29,25 +29,19 @@ __all__ = [
 
 
 class ImageCompression(ImageOnlyTransform):
-    """Reduce image quality via JPEG or WebP compression. quality_range and compression_type
-    control strength and format. Simulates real-world compression artifacts.
+    """Re-encode the image as lossy JPEG or WebP and decode it, adding the blocking, ringing, and
+    color-smearing artifacts of photos saved at reduced quality.
 
-    This transform simulates the effect of saving an image with lower quality settings,
-    which can introduce compression artifacts. It's useful for data augmentation and
-    for testing model robustness against varying image qualities.
+    Use it to make a model robust to compression it meets in real data, sampling a range of qualities
+    during training, or to measure how accuracy falls as quality drops by fixing one quality at a time
+    during evaluation. Encoding and decoding happen in memory; nothing is written to disk.
 
     Args:
-        quality_range (tuple[int, int]): Range for the compression quality.
-            The values should be in [1, 100] range, where:
-            - 1 is the lowest quality (maximum compression)
-            - 100 is the highest quality (minimum compression)
-            Default: (99, 100)
-
-        compression_type (Literal['jpeg', 'webp']): Type of compression to apply.
-            - "jpeg": JPEG compression
-            - "webp": WebP compression
-            Default: "jpeg"
-
+        quality_range (tuple[int, int]): Inclusive range of integer qualities in [1, 100]. One quality is
+            sampled uniformly each time the transform is applied. Lower values discard more detail; 1 is the
+            strongest compression and 100 the weakest. Set both endpoints equal for a fixed quality.
+            Default: (99, 100).
+        compression_type (Literal['jpeg', 'webp']): Codec used for the round trip. Default: "jpeg".
         p (float): Probability of applying the transform. Default: 0.5.
 
     Targets:
@@ -60,23 +54,26 @@ class ImageCompression(ImageOnlyTransform):
         Any
 
     Note:
-        - This transform expects images with 1, 3, or 4 channels.
-        - For JPEG compression, alpha channels (4th channel) will be ignored.
-        - WebP compression supports transparency (4 channels).
-        - The actual file is not saved to disk; the compression is simulated in memory.
-        - Lower quality values result in smaller file sizes but may introduce visible artifacts.
-        - This transform can be useful for:
-          * Data augmentation to improve model robustness
-          * Testing how models perform on images of varying quality
-          * Simulating images transmitted over low-bandwidth connections
+        - Every channel is image data and receives artifacts. The first three channels are compressed together
+          as a color image. Each further channel is compressed separately as a grayscale plane. One channel is
+          compressed as grayscale, and two channels are padded with a zero third channel for encoding.
+        - A fourth channel is an ordinary channel, not an alpha mask. Pass masks and labels through `mask`
+          or `masks`, which this transform does not change.
+        - Floating-point images pass through uint8 during encoding and are restored to the input dtype, so
+          values are quantized to 256 levels.
 
     Examples:
         >>> import numpy as np
         >>> import albumentations as A
-        >>> image = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
-        >>> transform = A.ImageCompression(quality_range=(50, 90), compression_type=0, p=1.0)
-        >>> result = transform(image=image)
-        >>> compressed_image = result["image"]
+        >>> image = np.random.default_rng(137).integers(0, 256, (100, 100, 3), dtype=np.uint8)
+        >>> transform = A.ImageCompression(quality_range=(30, 70), compression_type="webp", p=1.0)
+        >>> compressed = transform(image=image)["image"]
+        >>> compressed.shape == image.shape
+        True
+
+    See Also:
+        Downscale: Lose fine detail by shrinking and enlarging the image instead of re-encoding it.
+        Posterize: Reduce intensity levels per channel to produce visible banding.
 
     References:
         - JPEG compression: https://en.wikipedia.org/wiki/JPEG
@@ -174,6 +171,9 @@ class Downscale(ImageOnlyTransform):
           while using INTER_LINEAR or INTER_CUBIC can produce smoother results.
         - This transform can be useful for data augmentation, especially when training models
           that need to be robust to variations in image quality or resolution.
+
+    See Also:
+        ImageCompression: Add JPEG or WebP encoding artifacts instead of resampling blur.
 
     Examples:
         >>> import albumentations as A

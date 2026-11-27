@@ -46,7 +46,7 @@ performance-shape, documentation, bbox propagation, and target-specific sampling
 `BboxParams.__init__(bbox_type="hbb")` compatibility default is intentional. At the call boundary, `BasicTransform`
 treats box targets as normalized HBBs when no bounding-box processor is configured. Internal transform, processor,
 and functional calls must pass `bbox_type` explicitly. Keep design judgment and benchmark interpretation in the relevant
-review skill rather than duplicating these mechanical checks. `AGENTS.md`, `.codex/rules/`, and `.agents/skills/` point
+review skill rather than duplicating these mechanical checks. `AGENTS.md`, `.agents/rules/`, and `.agents/skills/` point
 to this document and the hook instead of restating the AXG catalog.
 
 - Before handing off Python changes, run the fast local quality gate:

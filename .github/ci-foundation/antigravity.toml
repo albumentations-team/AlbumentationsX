@@ -6,7 +6,6 @@ include = [
   ".github/**",
   ".agents/**",
   ".claude/**",
-  ".codex/**",
   "legal/**",
   "THIRD_PARTY_LICENSES/**",
   "CLA.md",

@@ -230,7 +230,6 @@ exclude = [
   ".github",
   ".agents",
   ".claude",
-  ".codex",
   "conda.recipe",
   "ci",
   "img",

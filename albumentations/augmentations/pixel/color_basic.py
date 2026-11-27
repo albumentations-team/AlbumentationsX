@@ -481,6 +481,9 @@ class Posterize(ImageOnlyTransform):
         new_value = (old_value >> (8 - n)) << (8 - n)
         This operation keeps the n most significant bits and sets the rest to zero.
 
+    See Also:
+        ImageCompression: Add JPEG or WebP encoding artifacts instead of banding from fewer levels.
+
     Examples:
         >>> import numpy as np
         >>> import albumentations as A

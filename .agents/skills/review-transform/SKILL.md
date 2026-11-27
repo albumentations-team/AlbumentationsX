@@ -31,6 +31,8 @@ Then review the behavior the hook cannot prove.
 - Check empty inputs, ownership, aliasing, and unsupported input handling through the public route.
 - Distinguish public grayscale inputs from internal execution: Compose normalizes NumPy inputs to explicit channels
   before dispatch. Use [NumPy and Tensor routing](../../../docs/design/numpy-tensor-routing.md) for boundary changes.
+- Treat every channel as image data: reject special handling of a fourth channel as alpha or a mask, and reject
+  channel-free or grayscale branches inside `apply_*` and kernels. Labels belong in the mask targets.
 - Take bbox type from `BboxParams.bbox_type`, never column count. Convert OpenCV rotated rectangles through
   `cv2.boxPoints` and `polygons_to_obb`.
 - Remove unreachable code and unused helpers after checking external callers and inherited dispatch.

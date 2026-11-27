@@ -12,7 +12,7 @@ AX source contracts; [Coding Guidelines](coding_guidelines.md) explains its diag
 | Change, inspect, or optimize runtime code | `.agents/skills/performance-optimization/SKILL.md` |
 | Measure a runtime claim | `.agents/skills/benchmark/SKILL.md` |
 | Write public docstrings | `.agents/skills/docstring-deep-dive/SKILL.md` |
-| Change tests | `.codex/rules/testing-conventions.md` |
+| Change tests | `.agents/rules/testing-conventions.md` |
 | Change mixing transforms | `.agents/skills/mixing-transforms/SKILL.md` |
 | Change licensing, procurement/privacy copy, packaging legal metadata, or CLA text | `.agents/skills/license-integrity/SKILL.md` |
 | Validate a completed change | `.agents/skills/validate-and-fix/SKILL.md` |

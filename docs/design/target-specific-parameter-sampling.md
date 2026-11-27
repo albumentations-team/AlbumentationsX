@@ -805,5 +805,5 @@ The class of bugs is resolved when:
 - [Generated Transform Target Contracts](transform-target-contracts.md)
 - [Applied Configuration Replay Contracts](applied-config-replay-contracts.md)
 - [Coding Guidelines](../contributing/coding_guidelines.md)
-- [Testing Conventions](../../.codex/rules/testing-conventions.md)
-- [Performance and Benchmarking Rules](../../.codex/rules/benchmarking.md)
+- [Testing Conventions](../../.agents/rules/testing-conventions.md)
+- [Performance and Benchmarking Rules](../../.agents/rules/benchmarking.md)

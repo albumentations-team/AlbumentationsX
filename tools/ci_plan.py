@@ -153,7 +153,7 @@ def _isolated_test_targets(changed_files: tuple[str, ...]) -> tuple[str, ...]:
 def _is_documentation(path: str) -> bool:
     return (
         path.endswith(".md")
-        or path.startswith(("docs/", ".agents/", ".claude/", ".codex/"))
+        or path.startswith(("docs/", ".agents/", ".claude/"))
         or path in {"AGENTS.md", "CONTRIBUTING.md"}
     )
 

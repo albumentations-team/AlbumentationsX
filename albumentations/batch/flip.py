@@ -1,0 +1,324 @@
+"""Horizontal and vertical flips of individual samples in a collated raster batch."""
+
+from __future__ import annotations
+
+import math
+import struct
+import sys
+from contextlib import nullcontext
+from functools import cache
+from importlib import import_module
+from typing import TYPE_CHECKING, Final, Literal
+
+import torch
+from torch import randint
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from types import ModuleType
+
+FlipDirection = Literal["horizontal", "vertical"]
+_FLIP_DTYPES: Final = frozenset(
+    {
+        torch.bool,
+        torch.uint8,
+        torch.int8,
+        torch.int16,
+        torch.int32,
+        torch.int64,
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+        torch.float64,
+    }
+)
+_WORD_BITS: Final = 30
+_BINARY64_ZEROS: Final = (struct.pack(">d", 0.0), struct.pack(">d", -0.0))
+
+
+def _validate_direction(direction: FlipDirection) -> None:
+    if not isinstance(direction, str) or direction not in ("horizontal", "vertical"):
+        raise ValueError("Flip direction must be 'horizontal' or 'vertical'.")
+
+
+def _validate_plain_tensor(tensor: torch.Tensor) -> None:
+    if (
+        type(tensor) is not torch.Tensor
+        or tensor.device.type not in {"cpu", "cuda"}
+        or tensor.layout is not torch.strided
+        or tensor.is_nested
+        or tensor.is_quantized
+        or tensor._is_zerotensor()  # noqa: SLF001 -- immutable virtual storage also reports a strided layout
+    ):
+        raise ValueError("Flipping requires a plain strided CPU or CUDA tensor.")
+    if tensor.is_neg() or any(getattr(tensor, "names", ())):
+        raise ValueError("Flipping requires unnamed axes and materialized values.")
+
+
+class FlipPlan:
+    """A direction and one reusable decision per sample, shared across raster targets.
+
+    Args:
+        direction (FlipDirection): `"horizontal"` reflects width and `"vertical"` reflects height.
+        selected (torch.Tensor): One-dimensional strided boolean CPU or CUDA tensor. The plan
+            takes a snapshot on this device, even when the input shares storage with a target.
+
+    """
+
+    __slots__ = ("_direction", "_selected")
+
+    def __init__(self, direction: FlipDirection, selected: torch.Tensor) -> None:
+        _validate_direction(direction)
+        _validate_plain_tensor(selected)
+        if selected.dtype is not torch.bool or selected.ndim != 1:
+            raise ValueError("Flip selection must be a one-dimensional boolean tensor.")
+        self._direction = direction
+        self._selected = selected.clone(memory_format=torch.contiguous_format)
+
+    @property
+    def direction(self) -> FlipDirection:
+        """Spatial direction of the flip."""
+        return self._direction
+
+    @property
+    def selected(self) -> torch.Tensor:
+        """Get an independent copy of the per-sample decisions."""
+        return self._selected.clone()
+
+
+def _generator_device(device: torch.device | str, generator: torch.Generator) -> torch.device:
+    if not isinstance(generator, torch.Generator) or not isinstance(device, (str, torch.device)):
+        raise ValueError("Expected a CPU or CUDA device and a torch.Generator.")  # noqa: TRY004
+    actual = generator.device
+    canonical = str(actual) if isinstance(device, str) else actual
+    if device == canonical and actual.type in ("cpu", "cuda"):
+        return actual
+    if isinstance(device, str):
+        try:
+            requested = torch.device(device)
+        except (ValueError, RuntimeError) as exc:
+            raise ValueError(f"Invalid flip device {device!r}.") from exc
+        # torch.device can narrow an explicit index, e.g. "cpu:256" to cpu:0.
+        index = int(device.partition(":")[2]) if ":" in device else requested.index
+    else:
+        requested = device
+        index = requested.index
+    if requested.type == "cpu" and actual.type == "cpu" and index in (None, 0):
+        return actual
+    if requested.type == "cuda" and actual.type == "cuda":
+        if index is None:
+            index = torch.cuda.current_device()
+        if index == actual.index:
+            return actual
+    raise ValueError(f"Flip device {device} must match the CPU or CUDA generator device {actual}.")
+
+
+def _probability_ratio(probability: float) -> tuple[int, int]:
+    if isinstance(probability, float):
+        if sys.float_info.min <= probability <= 1.0:
+            return float.as_integer_ratio(probability)
+        # Compare the stored bits near zero because flush-to-zero makes subnormals compare equal to zero.
+        encoded = struct.pack(">d", probability)
+        if encoded in _BINARY64_ZEROS:
+            return 0, 1
+        bits = int.from_bytes(encoded, "big")
+        if bits < 1 << 52:
+            # A positive subnormal is its fraction bits divided by 2**1074. Reduce before sampling.
+            divisor = bits & -bits
+            return bits // divisor, (1 << 1074) // divisor
+    elif isinstance(probability, int) and not isinstance(probability, bool) and probability in (0, 1):
+        return probability, 1
+    raise ValueError("Flip probability must be a finite number between zero and one.")
+
+
+def _sample_selection(
+    count: int, ratio: tuple[int, int], device: torch.device, generator: torch.Generator
+) -> torch.Tensor:
+    numerator, denominator = ratio
+    if not count or denominator == 1:
+        return torch.full((count,), numerator == 1, dtype=torch.bool, device=device)
+    bits = denominator.bit_length() - 1
+    # Compare a uniform integer to the binary64 numerator, least significant word first.
+    limit = 1 << min(bits, _WORD_BITS)
+    selected = randint(limit, (count,), dtype=torch.int32, device=device, generator=generator) < (numerator % limit)
+    for shift in range(_WORD_BITS, bits, _WORD_BITS):
+        limit = 1 << min(bits - shift, _WORD_BITS)
+        digit = (numerator >> shift) % limit
+        word = randint(limit, (count,), dtype=torch.int32, device=device, generator=generator)
+        selected = (word < digit) | ((word == digit) & selected)
+    return selected
+
+
+def sample_flip(
+    *, batch_size: int, direction: FlipDirection, device: torch.device | str, generator: torch.Generator, p: float = 0.5
+) -> FlipPlan:
+    """Select each sample independently with probability `p` for a flip in one direction.
+
+    Args:
+        batch_size (int): Number of samples, including zero.
+        direction (FlipDirection): `"horizontal"` or `"vertical"`.
+        device (torch.device | str): CPU or CUDA device of the batch. CPU accepts no index or index zero.
+        generator (torch.Generator): Generator on that device. An empty batch or a probability
+            of zero or one leaves its state unchanged.
+        p (float): Exact Python float probability in [0, 1]. Defaults to 0.5.
+
+    Returns:
+        FlipPlan: Sampled decisions for reuse with any compatible raster target.
+
+    """
+    if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size < 0:
+        raise ValueError("Flip batch size must be a nonnegative integer.")
+    _validate_direction(direction)
+    ratio = _probability_ratio(p)
+    actual_device = _generator_device(device, generator)
+    return FlipPlan(direction, _sample_selection(batch_size, ratio, actual_device, generator))
+
+
+def _validate_values(values: torch.Tensor, selected: torch.Tensor) -> None:
+    _validate_plain_tensor(values)
+    if values.dtype not in _FLIP_DTYPES or values.ndim < 3:
+        raise ValueError("Flip values must have a supported raster dtype and shape [B, ..., H, W].")
+    if values.shape[0] != selected.numel() or values.device != selected.device:
+        raise ValueError("Flip selection and values must have matching batch sizes and devices.")
+    in_inference_mode = torch.is_inference_mode_enabled()
+    if values.is_inference() and not in_inference_mode:
+        raise ValueError("An inference tensor can only be flipped inside inference mode.")
+    # Inference mode hides the tangent of a dual created by the caller before entering that mode.
+    with torch.inference_mode(False) if in_inference_mode else nullcontext():
+        if values.requires_grad or torch.autograd.forward_ad.unpack_dual(values).tangent is not None:
+            raise ValueError("In-place flips require values outside autograd.")
+    if values.numel() and not values.is_contiguous():
+        span = 1
+        for stride, size in sorted(zip(values.stride(), values.shape, strict=True)):
+            if size > 1:
+                if stride < span:
+                    raise ValueError("Flip values require non-overlapping strides with disjoint axis spans.")
+                span += (size - 1) * stride
+
+
+def _raster_views(values: torch.Tensor) -> Iterator[torch.Tensor]:
+    if values.ndim <= 5:
+        yield values
+        return
+    middle = [
+        (size, stride) for size, stride in zip(values.shape[1:-2], values.stride()[1:-2], strict=True) if size > 1
+    ]
+    if len(middle) <= 2:
+        sizes = (values.size(0), *(size for size, _ in middle), *values.shape[-2:])
+        strides = (values.stride(0), *(stride for _, stride in middle), *values.stride()[-2:])
+        yield values.as_strided(sizes, strides, storage_offset=values.storage_offset())
+        return
+    # Keep the batch axis on each spatial plane so all planes can reuse the same sample indices.
+    sizes = (values.size(0), *values.shape[-2:])
+    strides = (values.stride(0), *values.stride()[-2:])
+    for ordinal in range(math.prod(size for size, _ in middle)):
+        offset = values.storage_offset()
+        remaining = ordinal
+        for size, stride in reversed(middle):
+            remaining, position = divmod(remaining, size)
+            offset += position * stride
+        yield values.as_strided(sizes, strides, storage_offset=offset)
+
+
+@cache
+def _cuda_flip_backend(device: torch.device) -> ModuleType | None:
+    try:
+        if torch.version.cuda is None or torch.cuda.get_device_capability(device) < (8, 0):
+            return None
+        return import_module("albumentations.batch._flip_cuda")
+    except (AttributeError, ImportError, OSError, RuntimeError, ValueError):
+        return None
+
+
+def _try_triton_flip(values: torch.Tensor, selected: torch.Tensor, dim: int) -> bool:
+    if (
+        values.ndim != 4
+        or values.dtype not in (torch.uint8, torch.float32)
+        or not values.is_contiguous()
+        or torch.compiler.is_compiling()
+        or torch._C._are_functorch_transforms_active()  # noqa: SLF001 - transformed tensors may lack addressable storage.
+    ):
+        return False
+    backend = _cuda_flip_backend(values.device)
+    return backend is not None and backend.try_flip(values, selected, dim)
+
+
+def _flip_samples(values: torch.Tensor, indices: list[int], dim: int) -> None:
+    if not indices:
+        return
+    for view in _raster_views(values):
+        for index in indices:
+            sample = view[index]
+            sample.copy_(sample.flip((dim,)))
+
+
+def _flip_cuda_indexed(values: torch.Tensor, indices: torch.Tensor, dim: int) -> None:
+    count = indices.numel()
+    if count == 0:
+        return
+    if count == 1:
+        _flip_samples(values, [int(indices.item())], dim)
+        return
+    destinations = None
+    for view in _raster_views(values):
+        flipped = view[indices].flip((dim,))
+        if torch.are_deterministic_algorithms_enabled() and not view.is_contiguous():
+            # Deterministic advanced scatter would copy the whole destination, including unselected pixels.
+            if destinations is None:
+                destinations = indices.tolist()
+            for index, source in zip(destinations, flipped.unbind(), strict=True):
+                view[index].copy_(source)
+        else:
+            view[indices] = flipped
+
+
+def _flip_selected(values: torch.Tensor, selected: torch.Tensor, dim: int) -> None:
+    if values.is_cuda and _try_triton_flip(values, selected, dim):
+        return
+    indices = selected.nonzero().flatten()
+    if values.is_cuda:
+        _flip_cuda_indexed(values, indices, dim)
+    else:
+        _flip_samples(values, indices.tolist(), dim)
+
+
+def apply_flip_(values: torch.Tensor, plan: FlipPlan) -> torch.Tensor:
+    """Flip selected samples in place across the last axis (horizontal) or penultimate axis (vertical).
+
+    On CUDA, contiguous BCHW uint8 and float32 inputs can use an installed Triton backend.
+    The PyTorch fallback reuses the selected sample indices.
+    If execution fails after writes begin, the tensor may be partially flipped. Discard the affected
+    batch and retry with fresh inputs.
+
+    Args:
+        values (torch.Tensor): Writable, unnamed strided CPU or CUDA raster of shape
+            `[B, ..., H, W]`, outside autograd. Supports bool, uint8, signed integers
+            and float16, bfloat16, float32, float64. Strides of non-singleton axes in ascending
+            order must each span all preceding axes. An inference tensor requires inference mode.
+        plan (FlipPlan): Reusable selection on the same device with one decision per sample.
+
+    Returns:
+        torch.Tensor: The original object. All channels and slices of a selected sample move together.
+
+    Examples:
+        >>> import torch
+        >>> from albumentations.batch import apply_flip_, sample_flip
+        >>> images = torch.arange(120).reshape(4, 2, 3, 5)
+        >>> masks = images[:, 0].clone()
+        >>> generator = torch.Generator(device=images.device).manual_seed(137)
+        >>> for direction, p in (("horizontal", 0.5), ("vertical", 0.2)):
+        ...     plan = sample_flip(batch_size=4, direction=direction, device=images.device, generator=generator, p=p)
+        ...     _ = apply_flip_(images, plan)
+        ...     _ = apply_flip_(masks, plan)
+        >>> torch.equal(images[:, 0], masks)
+        True
+
+    """
+    if not isinstance(plan, FlipPlan):
+        raise ValueError("In-place flips require a FlipPlan.")  # noqa: TRY004
+    selected = plan._selected  # noqa: SLF001 -- applying a plan reads its owned snapshot directly
+    _validate_values(values, selected)
+    dim = -1 if plan.direction == "horizontal" else -2
+    if values.numel() and values.size(dim) > 1:
+        _flip_selected(values, selected, dim)
+    return values
